@@ -85,7 +85,7 @@ export async function registerRoutes(
 
       // Simple AI logic to categorize transaction or just reply
       const systemPrompt = `You are a helpful AI accounting assistant for non-accountants. You speak Arabic. 
-If the user tells you about an expense or income, you should respond acknowledging it, and optionally output a JSON block to add a transaction. 
+If the user tells you about an expense or income, or provides a description of a receipt/invoice, you should respond acknowledging it, and optionally output a JSON block to add a transaction. 
 If you want to add a transaction, include a block like this in your response:
 \`\`\`json
 {
@@ -99,7 +99,7 @@ If you want to add a transaction, include a block like this in your response:
 Otherwise, just help the user with their accounting questions in simple Arabic.`;
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5.1",
+        model: "gpt-5.2", // Using a more capable model for better extraction
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: input.content }
