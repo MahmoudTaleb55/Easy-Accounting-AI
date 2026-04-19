@@ -13,6 +13,8 @@ import Dashboard from "@/pages/dashboard";
 import Transactions from "@/pages/transactions";
 import AiAssistant from "@/pages/ai-assistant";
 import Reports from "@/pages/reports";
+import ChartOfAccounts from "@/pages/chart-of-accounts";
+import JournalEntries from "@/pages/journal-entries";
 
 function Router() {
   return (
@@ -21,6 +23,8 @@ function Router() {
         <Route path="/" component={Dashboard}/>
         <Route path="/transactions" component={Transactions}/>
         <Route path="/reports" component={Reports}/>
+        <Route path="/accounts" component={ChartOfAccounts}/>
+        <Route path="/journal" component={JournalEntries}/>
         <Route path="/ai-assistant" component={AiAssistant}/>
         <Route component={NotFound} />
       </Switch>

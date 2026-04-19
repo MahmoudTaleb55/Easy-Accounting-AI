@@ -2,39 +2,131 @@ import { db } from "./db";
 import {
   transactions,
   chatMessages,
+  accounts,
+  journalEntries,
+  journalLines,
   type Transaction,
   type InsertTransaction,
   type ChatMessage,
   type InsertChatMessage,
+  type Account,
+  type InsertAccount,
+  type JournalEntry,
+  type JournalLine,
+  type CreateJournalEntryInput,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import {
+  CASH_ACCOUNT_CODE,
+  pickExpenseAccountCode,
+  pickRevenueAccountCode,
+} from "@shared/coa-seed";
+import { eq, sql, desc } from "drizzle-orm";
+
+export interface JournalEntryWithLines extends JournalEntry {
+  lines: (JournalLine & { account?: Account })[];
+}
 
 export interface IStorage {
+  // Legacy quick-entry transactions
   getTransactions(): Promise<Transaction[]>;
   createTransaction(tx: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: number): Promise<void>;
-  
+
+  // Chat
   getChatMessages(): Promise<ChatMessage[]>;
   createChatMessage(msg: InsertChatMessage): Promise<ChatMessage>;
+
+  // Chart of accounts
+  getAccounts(): Promise<Account[]>;
+  createAccount(input: InsertAccount): Promise<Account>;
+  getAccountByCode(code: string): Promise<Account | undefined>;
+
+  // Journal entries
+  getJournalEntries(): Promise<JournalEntryWithLines[]>;
+  createJournalEntry(input: CreateJournalEntryInput): Promise<JournalEntryWithLines>;
+  deleteJournalEntry(id: number): Promise<void>;
+}
+
+async function nextJournalReference(): Promise<string> {
+  const [{ c }] = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(journalEntries);
+  return `JE-${String(c + 1).padStart(5, "0")}`;
 }
 
 export class DatabaseStorage implements IStorage {
+  // ----- Transactions -----
   async getTransactions(): Promise<Transaction[]> {
     return await db.select().from(transactions).orderBy(transactions.date);
   }
 
   async createTransaction(tx: InsertTransaction): Promise<Transaction> {
-    const [transaction] = await db.insert(transactions).values({
-      ...tx,
-      amount: tx.amount.toString(),
-    }).returning();
+    const [transaction] = await db
+      .insert(transactions)
+      .values({ ...tx, amount: tx.amount.toString() })
+      .returning();
+
+    // Auto-post double-entry journal entry
+    try {
+      await this.autoPostFromTransaction(transaction);
+    } catch (e) {
+      console.error("Failed to auto-post journal entry for transaction", transaction.id, e);
+    }
     return transaction;
   }
 
   async deleteTransaction(id: number): Promise<void> {
-    await db.delete(transactions).where(eq(transactions.id, id));
+    // Cascade-delete the auto-posted journal lines + entry atomically
+    await db.transaction(async (tx) => {
+      const linkedJEs = await tx
+        .select({ id: journalEntries.id })
+        .from(journalEntries)
+        .where(eq(journalEntries.sourceTransactionId, id));
+      for (const je of linkedJEs) {
+        await tx.delete(journalLines).where(eq(journalLines.journalEntryId, je.id));
+        await tx.delete(journalEntries).where(eq(journalEntries.id, je.id));
+      }
+      await tx.delete(transactions).where(eq(transactions.id, id));
+    });
   }
 
+  private async autoPostFromTransaction(tx: Transaction): Promise<void> {
+    const cash = await this.getAccountByCode(CASH_ACCOUNT_CODE);
+    if (!cash) return;
+    const amt = Number(tx.amount);
+    let drId: number;
+    let crId: number;
+    if (tx.type === "income") {
+      const rev = await this.getAccountByCode(
+        pickRevenueAccountCode(tx.category, tx.description)
+      );
+      drId = cash.id;
+      crId = rev?.id ?? cash.id;
+    } else {
+      const exp = await this.getAccountByCode(
+        pickExpenseAccountCode(tx.category, tx.description)
+      );
+      drId = exp?.id ?? cash.id;
+      crId = cash.id;
+    }
+    const reference = await nextJournalReference();
+    const [je] = await db
+      .insert(journalEntries)
+      .values({
+        reference,
+        entryDate: tx.date ?? new Date(),
+        description: tx.description,
+        source: "transaction",
+        sourceTransactionId: tx.id,
+      })
+      .returning();
+    await db.insert(journalLines).values([
+      { journalEntryId: je.id, accountId: drId, debit: amt.toFixed(2), credit: "0", description: tx.description },
+      { journalEntryId: je.id, accountId: crId, debit: "0", credit: amt.toFixed(2), description: tx.description },
+    ]);
+  }
+
+  // ----- Chat -----
   async getChatMessages(): Promise<ChatMessage[]> {
     return await db.select().from(chatMessages).orderBy(chatMessages.createdAt);
   }
@@ -42,6 +134,73 @@ export class DatabaseStorage implements IStorage {
   async createChatMessage(msg: InsertChatMessage): Promise<ChatMessage> {
     const [message] = await db.insert(chatMessages).values(msg).returning();
     return message;
+  }
+
+  // ----- Accounts -----
+  async getAccounts(): Promise<Account[]> {
+    return await db.select().from(accounts).orderBy(accounts.code);
+  }
+
+  async createAccount(input: InsertAccount): Promise<Account> {
+    const [created] = await db.insert(accounts).values(input).returning();
+    return created;
+  }
+
+  async getAccountByCode(code: string): Promise<Account | undefined> {
+    const rows = await db.select().from(accounts).where(eq(accounts.code, code));
+    return rows[0];
+  }
+
+  // ----- Journal Entries -----
+  async getJournalEntries(): Promise<JournalEntryWithLines[]> {
+    const entries = await db
+      .select()
+      .from(journalEntries)
+      .orderBy(desc(journalEntries.entryDate), desc(journalEntries.id));
+    if (entries.length === 0) return [];
+
+    const allLines = await db.select().from(journalLines);
+    const allAccounts = await db.select().from(accounts);
+    const accountById = new Map(allAccounts.map((a) => [a.id, a]));
+
+    return entries.map((e) => ({
+      ...e,
+      lines: allLines
+        .filter((l) => l.journalEntryId === e.id)
+        .map((l) => ({ ...l, account: accountById.get(l.accountId) })),
+    }));
+  }
+
+  async createJournalEntry(input: CreateJournalEntryInput): Promise<JournalEntryWithLines> {
+    const reference = await nextJournalReference();
+    const [je] = await db
+      .insert(journalEntries)
+      .values({
+        reference,
+        entryDate: input.entryDate ? new Date(input.entryDate as any) : new Date(),
+        description: input.description,
+        source: input.source,
+      })
+      .returning();
+    const linesToInsert = input.lines.map((l) => ({
+      journalEntryId: je.id,
+      accountId: l.accountId,
+      debit: Number(l.debit || 0).toFixed(2),
+      credit: Number(l.credit || 0).toFixed(2),
+      description: l.description,
+    }));
+    const insertedLines = await db.insert(journalLines).values(linesToInsert).returning();
+    const allAccounts = await db.select().from(accounts);
+    const accountById = new Map(allAccounts.map((a) => [a.id, a]));
+    return {
+      ...je,
+      lines: insertedLines.map((l) => ({ ...l, account: accountById.get(l.accountId) })),
+    };
+  }
+
+  async deleteJournalEntry(id: number): Promise<void> {
+    await db.delete(journalLines).where(eq(journalLines.journalEntryId, id));
+    await db.delete(journalEntries).where(eq(journalEntries.id, id));
   }
 }
 

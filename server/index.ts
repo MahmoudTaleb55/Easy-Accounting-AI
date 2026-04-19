@@ -63,6 +63,15 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
 
+  // Bootstrap IFRS Chart of Accounts and backfill journal entries for legacy data
+  try {
+    const { ensureIfrsBootstrap } = await import("./init-coa");
+    await ensureIfrsBootstrap();
+    log("IFRS chart of accounts initialized");
+  } catch (err) {
+    console.error("Failed to bootstrap IFRS COA:", err);
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

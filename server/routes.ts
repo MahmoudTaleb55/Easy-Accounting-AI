@@ -154,6 +154,173 @@ export async function registerRoutes(
     }
   });
 
+  // ----- Chart of Accounts -----
+  app.get(api.accounts.list.path, async (_req, res) => {
+    const list = await storage.getAccounts();
+    res.json(list);
+  });
+
+  app.post(api.accounts.create.path, async (req, res) => {
+    try {
+      const input = api.accounts.create.input.parse(req.body);
+      const created = await storage.createAccount(input);
+      res.status(201).json(created);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      res.status(500).json({ message: "تعذّر إنشاء الحساب" });
+    }
+  });
+
+  // ----- Journal Entries -----
+  app.get(api.journal.list.path, async (_req, res) => {
+    const entries = await storage.getJournalEntries();
+    res.json(entries);
+  });
+
+  app.post(api.journal.create.path, async (req, res) => {
+    try {
+      const input = api.journal.create.input.parse(req.body);
+      const created = await storage.createJournalEntry(input);
+      res.status(201).json(created);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      console.error("Journal create error", err);
+      res.status(500).json({ message: "تعذّر إنشاء القيد" });
+    }
+  });
+
+  app.delete(api.journal.delete.path, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    await storage.deleteJournalEntry(id);
+    res.status(204).send();
+  });
+
+  // ----- Reports: Trial Balance -----
+  app.get(api.reports.trialBalance.path, async (_req, res) => {
+    const allAccounts = await storage.getAccounts();
+    const entries = await storage.getJournalEntries();
+    const debitMap = new Map<number, number>();
+    const creditMap = new Map<number, number>();
+    entries.forEach((je) =>
+      je.lines.forEach((l) => {
+        debitMap.set(l.accountId, (debitMap.get(l.accountId) || 0) + Number(l.debit || 0));
+        creditMap.set(l.accountId, (creditMap.get(l.accountId) || 0) + Number(l.credit || 0));
+      })
+    );
+    const rows = allAccounts
+      .filter((a) => !a.isHeader)
+      .map((a) => {
+        const debit = debitMap.get(a.id) || 0;
+        const credit = creditMap.get(a.id) || 0;
+        // For asset/expense → balance = debit - credit; liability/equity/revenue → credit - debit
+        const isDebitNormal = a.type === "asset" || a.type === "expense";
+        const balance = isDebitNormal ? debit - credit : credit - debit;
+        return {
+          accountId: a.id,
+          code: a.code,
+          nameAr: a.nameAr,
+          type: a.type,
+          debit,
+          credit,
+          balance,
+        };
+      })
+      .filter((r) => r.debit !== 0 || r.credit !== 0)
+      .sort((a, b) => a.code.localeCompare(b.code));
+
+    const totalDebit = rows.reduce((s, r) => s + r.debit, 0);
+    const totalCredit = rows.reduce((s, r) => s + r.credit, 0);
+    res.json({ rows, totalDebit, totalCredit });
+  });
+
+  // ----- Reports: Balance Sheet -----
+  app.get(api.reports.balanceSheet.path, async (_req, res) => {
+    const allAccounts = await storage.getAccounts();
+    const entries = await storage.getJournalEntries();
+    const debitMap = new Map<number, number>();
+    const creditMap = new Map<number, number>();
+    entries.forEach((je) =>
+      je.lines.forEach((l) => {
+        debitMap.set(l.accountId, (debitMap.get(l.accountId) || 0) + Number(l.debit || 0));
+        creditMap.set(l.accountId, (creditMap.get(l.accountId) || 0) + Number(l.credit || 0));
+      })
+    );
+
+    const balanceFor = (a: typeof allAccounts[number]) => {
+      const debit = debitMap.get(a.id) || 0;
+      const credit = creditMap.get(a.id) || 0;
+      const isDebitNormal = a.type === "asset" || a.type === "expense";
+      return isDebitNormal ? debit - credit : credit - debit;
+    };
+
+    const items = (predicate: (a: typeof allAccounts[number]) => boolean) =>
+      allAccounts
+        .filter((a) => !a.isHeader && predicate(a))
+        .map((a) => ({ code: a.code, nameAr: a.nameAr, balance: balanceFor(a) }))
+        .filter((i) => i.balance !== 0)
+        .sort((a, b) => a.code.localeCompare(b.code));
+
+    const currentAssets = items((a) => a.subtype === "current_asset");
+    const nonCurrentAssets = items((a) => a.subtype === "non_current_asset" || a.subtype === "contra_asset");
+    const currentLiabilities = items((a) => a.subtype === "current_liability");
+    const nonCurrentLiabilities = items((a) => a.subtype === "non_current_liability");
+    const equityItems = items((a) => a.type === "equity");
+
+    // Compute net income from period to add to equity
+    const totalRevenue = allAccounts
+      .filter((a) => a.type === "revenue")
+      .reduce((s, a) => s + balanceFor(a), 0);
+    const totalExpenses = allAccounts
+      .filter((a) => a.type === "expense")
+      .reduce((s, a) => s + balanceFor(a), 0);
+    const netIncome = totalRevenue - totalExpenses;
+
+    const totalCurrentAssets = currentAssets.reduce((s, x) => s + x.balance, 0);
+    const totalNonCurrentAssets = nonCurrentAssets.reduce((s, x) => s + x.balance, 0);
+    const totalAssets = totalCurrentAssets + totalNonCurrentAssets;
+    const totalCurrentLiabilities = currentLiabilities.reduce((s, x) => s + x.balance, 0);
+    const totalNonCurrentLiabilities = nonCurrentLiabilities.reduce((s, x) => s + x.balance, 0);
+    const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities;
+    const totalEquityBeforeIncome = equityItems.reduce((s, x) => s + x.balance, 0);
+    const totalEquity = totalEquityBeforeIncome + netIncome;
+
+    res.json({
+      asOf: new Date().toISOString(),
+      assets: {
+        current: currentAssets,
+        nonCurrent: nonCurrentAssets,
+        totalCurrent: totalCurrentAssets,
+        totalNonCurrent: totalNonCurrentAssets,
+        total: totalAssets,
+      },
+      liabilities: {
+        current: currentLiabilities,
+        nonCurrent: nonCurrentLiabilities,
+        totalCurrent: totalCurrentLiabilities,
+        totalNonCurrent: totalNonCurrentLiabilities,
+        total: totalLiabilities,
+      },
+      equity: {
+        items: equityItems,
+        netIncome,
+        total: totalEquity,
+      },
+      totalLiabilitiesAndEquity: totalLiabilities + totalEquity,
+      isBalanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01,
+    });
+  });
+
   // Chat
   app.get(api.chat.list.path, async (req, res) => {
     const messages = await storage.getChatMessages();

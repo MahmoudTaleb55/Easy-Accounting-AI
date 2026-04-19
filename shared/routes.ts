@@ -1,5 +1,14 @@
 import { z } from 'zod';
-import { insertTransactionSchema, transactions, chatMessages, insertChatMessageSchema } from './schema';
+import {
+  insertTransactionSchema,
+  transactions,
+  chatMessages,
+  insertChatMessageSchema,
+  accounts,
+  insertAccountSchema,
+  createJournalEntrySchema,
+  journalEntries,
+} from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -49,6 +58,79 @@ export const api = {
           totalExpense: z.number(),
           balance: z.number(),
         }),
+      },
+    },
+  },
+  accounts: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/accounts' as const,
+      responses: {
+        200: z.array(z.custom<typeof accounts.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/accounts' as const,
+      input: insertAccountSchema,
+      responses: {
+        201: z.custom<typeof accounts.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+  },
+  journal: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/journal-entries' as const,
+      responses: {
+        200: z.array(z.any()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/journal-entries' as const,
+      input: createJournalEntrySchema,
+      responses: {
+        201: z.any(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/journal-entries/:id' as const,
+      responses: {
+        204: z.void(),
+      },
+    },
+  },
+  reports: {
+    trialBalance: {
+      method: 'GET' as const,
+      path: '/api/reports/trial-balance' as const,
+      responses: {
+        200: z.object({
+          rows: z.array(
+            z.object({
+              accountId: z.number(),
+              code: z.string(),
+              nameAr: z.string(),
+              type: z.string(),
+              debit: z.number(),
+              credit: z.number(),
+              balance: z.number(),
+            })
+          ),
+          totalDebit: z.number(),
+          totalCredit: z.number(),
+        }),
+      },
+    },
+    balanceSheet: {
+      method: 'GET' as const,
+      path: '/api/reports/balance-sheet' as const,
+      responses: {
+        200: z.any(),
       },
     },
   },

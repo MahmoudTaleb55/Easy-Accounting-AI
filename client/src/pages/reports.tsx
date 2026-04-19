@@ -19,6 +19,9 @@ import {
 } from "lucide-react";
 import { IfrsIncomeStatement } from "@/components/reports/ifrs-statement";
 import { FinancialAnalysis } from "@/components/reports/financial-analysis";
+import { TrialBalance } from "@/components/reports/trial-balance";
+import { BalanceSheet } from "@/components/reports/balance-sheet";
+import { Scale, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -58,7 +61,7 @@ const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: "all", label: "كل الفترات" },
 ];
 
-type ViewMode = "analytics" | "ifrs" | "analysis";
+type ViewMode = "analytics" | "ifrs" | "trial-balance" | "balance-sheet" | "analysis";
 
 export default function Reports() {
   const { data: transactions, isLoading } = useTransactions();
@@ -261,6 +264,30 @@ export default function Reports() {
           قائمة الدخل (IFRS)
         </button>
         <button
+          onClick={() => setViewMode("trial-balance")}
+          data-testid="button-view-trial-balance"
+          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+            viewMode === "trial-balance"
+              ? "bg-primary text-primary-foreground shadow-md"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Scale className="w-4 h-4" />
+          ميزان المراجعة
+        </button>
+        <button
+          onClick={() => setViewMode("balance-sheet")}
+          data-testid="button-view-balance-sheet"
+          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+            viewMode === "balance-sheet"
+              ? "bg-primary text-primary-foreground shadow-md"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          المركز المالي
+        </button>
+        <button
           onClick={() => setViewMode("analysis")}
           data-testid="button-view-analysis"
           className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
@@ -303,6 +330,10 @@ export default function Reports() {
           periodEnd={range?.end ?? null}
         />
       )}
+
+      {viewMode === "trial-balance" && <TrialBalance />}
+
+      {viewMode === "balance-sheet" && <BalanceSheet />}
 
       {viewMode === "analysis" && (
         <FinancialAnalysis
