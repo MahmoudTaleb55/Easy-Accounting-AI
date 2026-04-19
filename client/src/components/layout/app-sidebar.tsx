@@ -4,7 +4,8 @@ import {
   ListOrdered, 
   Bot,
   Wallet,
-  Menu
+  Menu,
+  BarChart3
 } from "lucide-react";
 import {
   Sidebar,
@@ -23,6 +24,7 @@ import { Button } from "@/components/ui/button";
 const items = [
   { title: "الرئيسية", url: "/", icon: Home },
   { title: "المعاملات", url: "/transactions", icon: ListOrdered },
+  { title: "التقرير المالي", url: "/reports", icon: BarChart3 },
   { title: "المساعد الذكي", url: "/ai-assistant", icon: Bot },
 ];
 

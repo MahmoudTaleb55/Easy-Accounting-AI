@@ -12,6 +12,7 @@ import { MainLayout } from "@/components/layout/main-layout";
 import Dashboard from "@/pages/dashboard";
 import Transactions from "@/pages/transactions";
 import AiAssistant from "@/pages/ai-assistant";
+import Reports from "@/pages/reports";
 
 function Router() {
   return (
@@ -19,6 +20,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Dashboard}/>
         <Route path="/transactions" component={Transactions}/>
+        <Route path="/reports" component={Reports}/>
         <Route path="/ai-assistant" component={AiAssistant}/>
         <Route component={NotFound} />
       </Switch>
