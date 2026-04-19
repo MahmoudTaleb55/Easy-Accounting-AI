@@ -67,6 +67,93 @@ export async function registerRoutes(
     });
   });
 
+  // Financial analysis (AI-powered recommendations)
+  app.post(api.analysis.generate.path, async (req, res) => {
+    try {
+      const input = api.analysis.generate.input.parse(req.body);
+
+      const systemPrompt = `أنت مستشار مالي خبير ومدرّب على المعايير الدولية لإعداد التقارير المالية (IFRS) وتحليل أداء المنشآت الصغيرة والمتوسطة. تتحدث العربية الفصحى البسيطة الواضحة. هدفك تقديم تحليل عملي قابل للتنفيذ يساعد صاحب العمل على اتخاذ قرارات أفضل.
+
+ستصلك بيانات مالية موجزة بصيغة JSON. حلّلها وأعد ردّك **فقط** بصيغة JSON صالحة (بدون أي نص قبله أو بعده) بالشكل التالي تماماً:
+
+{
+  "healthScore": <عدد صحيح من 0 إلى 100 يعكس صحة الوضع المالي>,
+  "summary": "<جملتان أو ثلاث تلخص الوضع العام بصراحة ومهنية>",
+  "strengths": ["<نقطة قوة محددة مرتبطة بالأرقام>", ...],
+  "weaknesses": ["<نقطة ضعف محددة مرتبطة بالأرقام>", ...],
+  "recommendations": [
+    { "title": "<عنوان قصير للتوصية>", "detail": "<شرح التوصية وكيفية تنفيذها>", "priority": "high" | "medium" | "low" },
+    ...
+  ],
+  "topAction": "<أهم خطوة واحدة يجب اتخاذها فوراً، جملة واحدة محفّزة وعملية>"
+}
+
+قواعد:
+- استخدم النسب المئوية والأرقام الفعلية في تحليلك (مثال: "هامش الربح الإجمالي 23% أقل من المعدل الصحي 30%").
+- 3 إلى 5 توصيات كحد أقصى، مرتبة حسب الأولوية.
+- لا تستخدم لغة جامدة ولا مصطلحات مبهمة، اشرح كأنك تتحدث لصاحب محل صغير.
+- إذا كانت الأرقام إيجابية جداً، احتفل بذلك ولكن قدّم اقتراحات للنمو.
+- إذا كانت الأرقام سلبية، كن صريحاً ولكن داعماً واقترح خطوات إنقاذ ملموسة.`;
+
+      const userPayload = JSON.stringify(input, null, 2);
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-5.2",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `حلّل البيانات التالية وأعد ردّك بصيغة JSON فقط:\n${userPayload}` },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const raw = response.choices[0]?.message?.content || "{}";
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return res.status(200).json({
+          healthScore: 50,
+          summary: "تعذر توليد تحليل مفصل، حاول مرة أخرى.",
+          strengths: [],
+          weaknesses: [],
+          recommendations: [],
+          topAction: "أعد المحاولة بعد قليل.",
+        });
+      }
+
+      // Validate & clamp the AI output
+      const result = {
+        healthScore: Math.max(0, Math.min(100, Number(parsed.healthScore) || 50)),
+        summary: String(parsed.summary || "").slice(0, 800),
+        strengths: Array.isArray(parsed.strengths)
+          ? parsed.strengths.slice(0, 8).map((s: any) => String(s).slice(0, 300))
+          : [],
+        weaknesses: Array.isArray(parsed.weaknesses)
+          ? parsed.weaknesses.slice(0, 8).map((s: any) => String(s).slice(0, 300))
+          : [],
+        recommendations: Array.isArray(parsed.recommendations)
+          ? parsed.recommendations.slice(0, 6).map((r: any) => ({
+              title: String(r?.title || "توصية").slice(0, 120),
+              detail: String(r?.detail || "").slice(0, 600),
+              priority: ["high", "medium", "low"].includes(r?.priority) ? r.priority : "medium",
+            }))
+          : [],
+        topAction: String(parsed.topAction || "راجع نتائجك المالية بشكل دوري.").slice(0, 300),
+      };
+
+      res.json(result);
+    } catch (err) {
+      console.error("Analysis error", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      res.status(500).json({ message: "حدث خطأ في توليد التحليل" });
+    }
+  });
+
   // Chat
   app.get(api.chat.list.path, async (req, res) => {
     const messages = await storage.getChatMessages();

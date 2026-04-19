@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
 } from "lucide-react";
 import { IfrsIncomeStatement } from "@/components/reports/ifrs-statement";
+import { FinancialAnalysis } from "@/components/reports/financial-analysis";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: "all", label: "كل الفترات" },
 ];
 
-type ViewMode = "analytics" | "ifrs";
+type ViewMode = "analytics" | "ifrs" | "analysis";
 
 export default function Reports() {
   const { data: transactions, isLoading } = useTransactions();
@@ -259,6 +260,18 @@ export default function Reports() {
           <FileText className="w-4 h-4" />
           قائمة الدخل (IFRS)
         </button>
+        <button
+          onClick={() => setViewMode("analysis")}
+          data-testid="button-view-analysis"
+          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+            viewMode === "analysis"
+              ? "bg-primary text-primary-foreground shadow-md"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          تحليل ذكي
+        </button>
       </div>
 
       {/* Period selector */}
@@ -288,6 +301,13 @@ export default function Reports() {
           transactions={filteredTx}
           periodStart={range?.start ?? null}
           periodEnd={range?.end ?? null}
+        />
+      )}
+
+      {viewMode === "analysis" && (
+        <FinancialAnalysis
+          transactions={filteredTx}
+          periodLabel={PERIOD_OPTIONS.find((p) => p.key === period)?.label || ""}
         />
       )}
 

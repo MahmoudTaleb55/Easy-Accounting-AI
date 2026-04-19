@@ -52,6 +52,51 @@ export const api = {
       },
     },
   },
+  analysis: {
+    generate: {
+      method: 'POST' as const,
+      path: '/api/analysis' as const,
+      input: z.object({
+        period: z.string().max(50),
+        totals: z.object({
+          revenue: z.number(),
+          cogs: z.number(),
+          grossProfit: z.number(),
+          operatingExpenses: z.number(),
+          netProfit: z.number(),
+          txCount: z.number(),
+        }),
+        ratios: z.object({
+          grossMargin: z.number(),
+          operatingMargin: z.number(),
+          netMargin: z.number(),
+          expenseRatio: z.number(),
+          topExpenseShare: z.number(),
+          topExpenseCategory: z.string().max(80),
+        }),
+        topExpenses: z
+          .array(z.object({ category: z.string().max(80), amount: z.number() }))
+          .max(10),
+      }),
+      responses: {
+        200: z.object({
+          healthScore: z.number(),
+          summary: z.string(),
+          strengths: z.array(z.string()),
+          weaknesses: z.array(z.string()),
+          recommendations: z.array(
+            z.object({
+              title: z.string(),
+              detail: z.string(),
+              priority: z.enum(['high', 'medium', 'low']),
+            })
+          ),
+          topAction: z.string(),
+        }),
+        400: errorSchemas.validation,
+      },
+    },
+  },
   chat: {
     list: {
       method: 'GET' as const,
