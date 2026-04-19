@@ -148,6 +148,129 @@ export type Budget = typeof budgets.$inferSelect;
 export type InsertBudget = z.infer<typeof insertBudgetSchema>;
 
 // ============================================================================
+// Org Settings (singleton row id=1)
+// ============================================================================
+
+export const settings = pgTable("settings", {
+  id: serial("id").primaryKey(),
+  orgName: text("org_name").notNull().default("My Business"),
+  countryCode: text("country_code").notNull().default("INTL"),
+  locale: text("locale").notNull().default("ar"), // 'ar' | 'en'
+  currencyCode: text("currency_code").notNull().default("USD"),
+  currencySymbol: text("currency_symbol").notNull().default("$"),
+  vatRate: numeric("vat_rate", { precision: 5, scale: 4 }).notNull().default("0"),
+  zakatEnabled: boolean("zakat_enabled").notNull().default(false),
+  fiscalYearStartMonth: integer("fiscal_year_start_month").notNull().default(1),
+});
+
+export const upsertSettingsSchema = z.object({
+  orgName: z.string().min(1).max(100),
+  countryCode: z.string().min(2).max(8),
+  locale: z.enum(["ar", "en"]),
+  currencyCode: z.string().min(2).max(8),
+  currencySymbol: z.string().min(1).max(8),
+  vatRate: z.coerce.number().min(0).max(0.99),
+  zakatEnabled: z.boolean(),
+  fiscalYearStartMonth: z.coerce.number().int().min(1).max(12),
+});
+export type OrgSettings = typeof settings.$inferSelect;
+export type UpsertOrgSettings = z.infer<typeof upsertSettingsSchema>;
+
+// ============================================================================
+// HR — Employees, Attendance, Leaves, Payroll
+// ============================================================================
+
+export const employees = pgTable("employees", {
+  id: serial("id").primaryKey(),
+  fullName: text("full_name").notNull(),
+  jobTitle: text("job_title").notNull().default(""),
+  hireDate: text("hire_date").notNull(), // YYYY-MM-DD
+  baseSalary: numeric("base_salary", { precision: 12, scale: 2 }).notNull(),
+  allowances: numeric("allowances", { precision: 12, scale: 2 }).notNull().default("0"),
+  isNational: boolean("is_national").notNull().default(true),
+  annualLeaveDaysOverride: integer("annual_leave_days_override"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEmployeeSchema = createInsertSchema(employees)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    baseSalary: z.coerce.number().nonnegative(),
+    allowances: z.coerce.number().nonnegative().default(0),
+    fullName: z.string().min(1, "الاسم مطلوب"),
+    hireDate: z.string().min(1, "تاريخ التعيين مطلوب"),
+  });
+export type Employee = typeof employees.$inferSelect;
+export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
+
+export const attendance = pgTable(
+  "attendance",
+  {
+    id: serial("id").primaryKey(),
+    employeeId: integer("employee_id").notNull(),
+    date: text("date").notNull(),
+    status: text("status").notNull(), // present|absent|leave|holiday|weekend
+    overtimeHours: numeric("overtime_hours", { precision: 5, scale: 2 }).notNull().default("0"),
+  },
+  (t) => ({ uniqEmpDate: index("attendance_emp_date_idx").on(t.employeeId, t.date) }),
+);
+
+export const insertAttendanceSchema = createInsertSchema(attendance)
+  .omit({ id: true })
+  .extend({ overtimeHours: z.coerce.number().nonnegative().default(0) });
+export type Attendance = typeof attendance.$inferSelect;
+export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
+
+export const leaves = pgTable("leaves", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").notNull(),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  days: integer("days").notNull(),
+  type: text("type").notNull().default("annual"), // annual|sick|unpaid|other
+  status: text("status").notNull().default("approved"), // approved|pending|rejected
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLeaveSchema = createInsertSchema(leaves)
+  .omit({ id: true, createdAt: true })
+  .extend({ days: z.coerce.number().int().positive() });
+export type Leave = typeof leaves.$inferSelect;
+export type InsertLeave = z.infer<typeof insertLeaveSchema>;
+
+export const payrollRuns = pgTable("payroll_runs", {
+  id: serial("id").primaryKey(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  status: text("status").notNull().default("draft"), // draft|posted
+  totalGross: numeric("total_gross", { precision: 14, scale: 2 }).notNull().default("0"),
+  totalNet: numeric("total_net", { precision: 14, scale: 2 }).notNull().default("0"),
+  journalEntryId: integer("journal_entry_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type PayrollRun = typeof payrollRuns.$inferSelect;
+
+export const payrollLines = pgTable("payroll_lines", {
+  id: serial("id").primaryKey(),
+  payrollRunId: integer("payroll_run_id").notNull(),
+  employeeId: integer("employee_id").notNull(),
+  baseSalary: numeric("base_salary", { precision: 12, scale: 2 }).notNull(),
+  allowances: numeric("allowances", { precision: 12, scale: 2 }).notNull().default("0"),
+  overtime: numeric("overtime", { precision: 12, scale: 2 }).notNull().default("0"),
+  bonuses: numeric("bonuses", { precision: 12, scale: 2 }).notNull().default("0"),
+  absenceDeduction: numeric("absence_deduction", { precision: 12, scale: 2 }).notNull().default("0"),
+  advances: numeric("advances", { precision: 12, scale: 2 }).notNull().default("0"),
+  socialInsuranceEmployee: numeric("si_employee", { precision: 12, scale: 2 }).notNull().default("0"),
+  socialInsuranceEmployer: numeric("si_employer", { precision: 12, scale: 2 }).notNull().default("0"),
+  netPay: numeric("net_pay", { precision: 12, scale: 2 }).notNull(),
+  endOfServiceAccrual: numeric("eos_accrual", { precision: 12, scale: 2 }).notNull().default("0"),
+  leaveAccrual: numeric("leave_accrual", { precision: 12, scale: 2 }).notNull().default("0"),
+});
+export type PayrollLine = typeof payrollLines.$inferSelect;
+
+// ============================================================================
 // Chat
 // ============================================================================
 

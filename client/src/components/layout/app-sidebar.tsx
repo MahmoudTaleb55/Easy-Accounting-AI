@@ -8,7 +8,9 @@ import {
   BarChart3,
   BookOpen,
   BookText,
-  Sparkles
+  Sparkles,
+  Users,
+  Settings as SettingsIcon
 } from "lucide-react";
 import {
   Sidebar,
@@ -31,7 +33,9 @@ const items = [
   { title: "قيود اليومية", url: "/journal", icon: BookText },
   { title: "التقرير المالي", url: "/reports", icon: BarChart3 },
   { title: "مركز القرارات", url: "/insights", icon: Sparkles },
+  { title: "الموارد البشرية", url: "/hr", icon: Users },
   { title: "المساعد الذكي", url: "/ai-assistant", icon: Bot },
+  { title: "الإعدادات", url: "/settings", icon: SettingsIcon },
 ];
 
 export function AppSidebar() {

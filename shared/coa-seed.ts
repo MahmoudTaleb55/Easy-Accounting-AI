@@ -111,3 +111,20 @@ export function pickRevenueAccountCode(category: string, description: string): s
 }
 
 export const CASH_ACCOUNT_CODE = "1110";
+// HR / Payroll account codes
+export const SALARIES_EXPENSE_CODE = "6010";              // existing
+export const SOCIAL_INSURANCE_EXPENSE_CODE = "6011";      // added below
+export const EOS_EXPENSE_CODE = "6012";                   // added below
+export const ACCRUED_SALARIES_CODE = "2130";              // existing (Salaries Payable)
+export const SOCIAL_INSURANCE_PAYABLE_CODE = "2150";      // added below
+export const ACCRUED_LEAVE_LIABILITY_CODE = "2160";       // added below
+export const EOS_LIABILITY_CODE = "2220";                 // added below
+
+// Extra payroll-related accounts to merge into seed at startup (in init-coa).
+export const PAYROLL_EXTRA_ACCOUNTS = [
+  { code: "6011", nameAr: "اشتراكات التأمينات الاجتماعية", nameEn: "Social Insurance Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6012", nameAr: "مصروف مكافأة نهاية الخدمة", nameEn: "End of Service Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "2150", nameAr: "تأمينات اجتماعية مستحقة", nameEn: "Social Insurance Payable", type: "liability", subtype: "current_liability", parentCode: "2100" },
+  { code: "2160", nameAr: "إجازات مستحقة للموظفين", nameEn: "Accrued Leave Liability", type: "liability", subtype: "current_liability", parentCode: "2100" },
+  { code: "2220", nameAr: "التزامات نهاية الخدمة", nameEn: "End of Service Liability", type: "liability", subtype: "non_current_liability", parentCode: "2200" },
+];

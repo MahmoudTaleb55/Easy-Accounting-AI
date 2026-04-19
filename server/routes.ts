@@ -322,6 +322,145 @@ export async function registerRoutes(
   });
 
   // ============================================================================
+  // Settings (singleton org settings)
+  // ============================================================================
+  app.get("/api/settings", async (_req, res) => {
+    res.json(await storage.getSettings());
+  });
+
+  app.patch("/api/settings", async (req, res) => {
+    try {
+      const { upsertSettingsSchema } = await import("@shared/schema");
+      const input = upsertSettingsSchema.parse(req.body);
+      const updated = await storage.updateSettings(input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "تعذر حفظ الإعدادات" });
+    }
+  });
+
+  app.get("/api/localization/packs", async (_req, res) => {
+    const { LOCALIZATION_PACKS } = await import("@shared/localization");
+    res.json(Object.values(LOCALIZATION_PACKS));
+  });
+
+  // ============================================================================
+  // HR — Employees, Attendance, Leaves, Payroll
+  // ============================================================================
+  const { insertEmployeeSchema, insertAttendanceSchema, insertLeaveSchema } = await import("@shared/schema");
+
+  app.get("/api/hr/employees", async (_req, res) => res.json(await storage.getEmployees()));
+  app.post("/api/hr/employees", async (req, res) => {
+    try {
+      const input = insertEmployeeSchema.parse(req.body);
+      res.status(201).json(await storage.createEmployee(input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "تعذر حفظ الموظف" });
+    }
+  });
+  app.patch("/api/hr/employees/:id", async (req, res) => {
+    try {
+      const input = insertEmployeeSchema.partial().parse(req.body);
+      res.json(await storage.updateEmployee(Number(req.params.id), input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "تعذر التحديث" });
+    }
+  });
+  app.delete("/api/hr/employees/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      // Prevent deletion if linked payroll history exists
+      const { db } = await import("./db");
+      const { payrollLines } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const existing = await db.select().from(payrollLines).where(eq(payrollLines.employeeId, id)).limit(1);
+      if (existing.length > 0) {
+        return res.status(409).json({
+          message: "لا يمكن حذف الموظف لأنه مرتبط بكشوف رواتب سابقة. يمكنك تعطيله بدلاً من ذلك.",
+        });
+      }
+      await storage.deleteEmployee(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر الحذف" });
+    }
+  });
+
+  app.get("/api/hr/attendance", async (req, res) => {
+    const employeeId = req.query.employeeId ? Number(req.query.employeeId) : undefined;
+    const yearMonth = req.query.yearMonth as string | undefined;
+    res.json(await storage.getAttendance(employeeId, yearMonth));
+  });
+  app.post("/api/hr/attendance", async (req, res) => {
+    try {
+      const input = insertAttendanceSchema.parse(req.body);
+      res.status(201).json(await storage.upsertAttendance(input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "تعذر حفظ الحضور" });
+    }
+  });
+
+  app.get("/api/hr/leaves", async (req, res) => {
+    const employeeId = req.query.employeeId ? Number(req.query.employeeId) : undefined;
+    res.json(await storage.getLeaves(employeeId));
+  });
+  app.post("/api/hr/leaves", async (req, res) => {
+    try {
+      const input = insertLeaveSchema.parse(req.body);
+      res.status(201).json(await storage.createLeave(input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "تعذر حفظ الإجازة" });
+    }
+  });
+  app.delete("/api/hr/leaves/:id", async (req, res) => {
+    await storage.deleteLeave(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  app.get("/api/hr/leave-balance/:employeeId", async (req, res) => {
+    const { leaveBalance } = await import("./payroll");
+    res.json(await leaveBalance(Number(req.params.employeeId)));
+  });
+
+  const payrollPeriodSchema = z.object({
+    year: z.coerce.number().int().min(2000).max(2100),
+    month: z.coerce.number().int().min(1).max(12),
+  });
+
+  app.get("/api/hr/payroll/preview", async (req, res) => {
+    try {
+      const { computePayrollPreview } = await import("./payroll");
+      const { year, month } = payrollPeriodSchema.parse({
+        year: req.query.year || new Date().getFullYear(),
+        month: req.query.month || new Date().getMonth() + 1,
+      });
+      res.json({ year, month, lines: await computePayrollPreview(year, month) });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: err?.message || "تعذر حساب الرواتب" });
+    }
+  });
+
+  app.post("/api/hr/payroll/run", async (req, res) => {
+    try {
+      const { runPayroll } = await import("./payroll");
+      const { year, month } = payrollPeriodSchema.parse({
+        year: req.body?.year || new Date().getFullYear(),
+        month: req.body?.month || new Date().getMonth() + 1,
+      });
+      res.status(201).json(await runPayroll(year, month));
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(400).json({ message: err?.message || "تعذر تنفيذ كشف الرواتب" });
+    }
+  });
+
+  // ============================================================================
   // Decision Cockpit / Insights
   // ============================================================================
   const insights = await import("./insights");

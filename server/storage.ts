@@ -6,6 +6,12 @@ import {
   journalEntries,
   journalLines,
   budgets,
+  settings,
+  employees,
+  attendance,
+  leaves,
+  payrollRuns,
+  payrollLines,
   type Transaction,
   type InsertTransaction,
   type ChatMessage,
@@ -17,6 +23,14 @@ import {
   type CreateJournalEntryInput,
   type Budget,
   type InsertBudget,
+  type OrgSettings,
+  type UpsertOrgSettings,
+  type Employee,
+  type InsertEmployee,
+  type Attendance,
+  type InsertAttendance,
+  type Leave,
+  type InsertLeave,
 } from "@shared/schema";
 import {
   CASH_ACCOUNT_CODE,
@@ -53,6 +67,23 @@ export interface IStorage {
   getBudgets(year?: number, month?: number): Promise<Budget[]>;
   upsertBudget(input: InsertBudget): Promise<Budget>;
   deleteBudget(id: number): Promise<void>;
+
+  // Settings
+  getSettings(): Promise<OrgSettings>;
+  updateSettings(input: UpsertOrgSettings): Promise<OrgSettings>;
+
+  // HR
+  getEmployees(): Promise<Employee[]>;
+  createEmployee(input: InsertEmployee): Promise<Employee>;
+  updateEmployee(id: number, input: Partial<InsertEmployee>): Promise<Employee>;
+  deleteEmployee(id: number): Promise<void>;
+
+  getAttendance(employeeId?: number, yearMonth?: string): Promise<Attendance[]>;
+  upsertAttendance(input: InsertAttendance): Promise<Attendance>;
+
+  getLeaves(employeeId?: number): Promise<Leave[]>;
+  createLeave(input: InsertLeave): Promise<Leave>;
+  deleteLeave(id: number): Promise<void>;
 }
 
 async function nextJournalReference(): Promise<string> {
@@ -243,6 +274,96 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBudget(id: number): Promise<void> {
     await db.delete(budgets).where(eq(budgets.id, id));
+  }
+
+  // ----- Settings (singleton row id=1) -----
+  async getSettings(): Promise<OrgSettings> {
+    const rows = await db.select().from(settings).where(eq(settings.id, 1));
+    if (rows[0]) return rows[0];
+    const [created] = await db.insert(settings).values({ id: 1 }).returning();
+    return created;
+  }
+
+  async updateSettings(input: UpsertOrgSettings): Promise<OrgSettings> {
+    await this.getSettings(); // ensure row exists
+    const [updated] = await db
+      .update(settings)
+      .set({ ...input, vatRate: String(input.vatRate) })
+      .where(eq(settings.id, 1))
+      .returning();
+    return updated;
+  }
+
+  // ----- HR -----
+  async getEmployees(): Promise<Employee[]> {
+    return await db.select().from(employees).orderBy(employees.fullName);
+  }
+
+  async createEmployee(input: InsertEmployee): Promise<Employee> {
+    const [created] = await db
+      .insert(employees)
+      .values({
+        ...input,
+        baseSalary: String(input.baseSalary),
+        allowances: String(input.allowances ?? 0),
+      })
+      .returning();
+    return created;
+  }
+
+  async updateEmployee(id: number, input: Partial<InsertEmployee>): Promise<Employee> {
+    const patch: any = { ...input };
+    if (input.baseSalary !== undefined) patch.baseSalary = String(input.baseSalary);
+    if (input.allowances !== undefined) patch.allowances = String(input.allowances);
+    const [updated] = await db.update(employees).set(patch).where(eq(employees.id, id)).returning();
+    return updated;
+  }
+
+  async deleteEmployee(id: number): Promise<void> {
+    await db.delete(employees).where(eq(employees.id, id));
+  }
+
+  async getAttendance(employeeId?: number, yearMonth?: string): Promise<Attendance[]> {
+    const all = await db.select().from(attendance);
+    return all.filter(
+      (a) =>
+        (!employeeId || a.employeeId === employeeId) &&
+        (!yearMonth || a.date.startsWith(yearMonth)),
+    );
+  }
+
+  async upsertAttendance(input: InsertAttendance): Promise<Attendance> {
+    const existing = await db
+      .select()
+      .from(attendance)
+      .where(and(eq(attendance.employeeId, input.employeeId), eq(attendance.date, input.date)));
+    if (existing[0]) {
+      const [u] = await db
+        .update(attendance)
+        .set({ status: input.status, overtimeHours: String(input.overtimeHours ?? 0) })
+        .where(eq(attendance.id, existing[0].id))
+        .returning();
+      return u;
+    }
+    const [c] = await db
+      .insert(attendance)
+      .values({ ...input, overtimeHours: String(input.overtimeHours ?? 0) })
+      .returning();
+    return c;
+  }
+
+  async getLeaves(employeeId?: number): Promise<Leave[]> {
+    const all = await db.select().from(leaves).orderBy(desc(leaves.startDate));
+    return employeeId ? all.filter((l) => l.employeeId === employeeId) : all;
+  }
+
+  async createLeave(input: InsertLeave): Promise<Leave> {
+    const [c] = await db.insert(leaves).values(input).returning();
+    return c;
+  }
+
+  async deleteLeave(id: number): Promise<void> {
+    await db.delete(leaves).where(eq(leaves.id, id));
   }
 }
 

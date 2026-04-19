@@ -398,29 +398,36 @@ export async function simulateScenario(input: ScenarioInput) {
 // Tax & Zakat Estimates (simplified — Saudi context)
 // ============================================================================
 export async function estimateTaxes() {
-  const k = await computeKPIs();
-  // VAT: assume sales include VAT-able revenue; simplified = 15% × (sales - taxable purchases)
-  // Here we use revenue - cogs as the value-added base (rough approximation).
-  const vatBase = Math.max(0, k.totalRevenue - k.totalCogs);
-  const vatPayable = vatBase * 0.15;
+  const { storage } = await import("./storage");
+  const settings = await storage.getSettings();
+  const vatRate = Number(settings.vatRate);
+  const zakatEnabled = settings.zakatEnabled;
 
-  // Zakat (rough): 2.5% of net working capital (current assets - current liabilities)
-  // Real Zakat involves religious & legal nuances (zakat base, full year hold). This is an indicator only.
+  const k = await computeKPIs();
+  const vatBase = Math.max(0, k.totalRevenue - k.totalCogs);
+  const vatPayable = vatBase * vatRate;
+
   const zakatBase = Math.max(0, k.totalCurrentAssets - k.totalCurrentLiabilities);
   const zakatEstimate = zakatBase * 0.025;
 
   return {
     vat: {
       baseAmount: Math.round(vatBase * 100) / 100,
-      rate: 0.15,
+      rate: vatRate,
       payable: Math.round(vatPayable * 100) / 100,
-      note: "تقدير مبسط: 15% × (الإيرادات - تكلفة المبيعات). الرقم الفعلي يعتمد على الفواتير الضريبية المسجلة.",
+      enabled: vatRate > 0,
+      note: vatRate > 0
+        ? `تقدير مبسط: ${(vatRate * 100).toFixed(1)}% × (الإيرادات - تكلفة المبيعات).`
+        : "ضريبة القيمة المضافة معطّلة في الإعدادات (المعدل = 0%).",
     },
     zakat: {
       baseAmount: Math.round(zakatBase * 100) / 100,
       rate: 0.025,
       payable: Math.round(zakatEstimate * 100) / 100,
-      note: "تقدير مبسط جداً: 2.5% × (الأصول المتداولة - الخصوم المتداولة). الزكاة الشرعية تحتاج تقييماً متخصصاً.",
+      enabled: zakatEnabled,
+      note: zakatEnabled
+        ? "تقدير مبسط: 2.5% × (الأصول المتداولة - الخصوم المتداولة). الزكاة الشرعية تحتاج تقييماً متخصصاً."
+        : "الزكاة معطّلة في الإعدادات.",
     },
   };
 }

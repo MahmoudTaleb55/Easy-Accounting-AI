@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { accounts, journalEntries, journalLines, transactions } from "@shared/schema";
-import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode } from "@shared/coa-seed";
+import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode, PAYROLL_EXTRA_ACCOUNTS } from "@shared/coa-seed";
 import { eq, sql } from "drizzle-orm";
 
 export async function initChartOfAccounts(): Promise<void> {
@@ -15,7 +15,8 @@ export async function initChartOfAccounts(): Promise<void> {
   const fullExisting = await db.select().from(accounts);
   fullExisting.forEach((a) => codeToId.set(a.code, a.id));
 
-  for (const seed of DEFAULT_COA) {
+  const allSeed = [...DEFAULT_COA, ...PAYROLL_EXTRA_ACCOUNTS];
+  for (const seed of allSeed) {
     if (existingCodes.has(seed.code)) continue;
     const parentId = seed.parentCode ? codeToId.get(seed.parentCode) ?? null : null;
     const [created] = await db

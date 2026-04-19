@@ -7,6 +7,18 @@ This is an Arabic-language personal finance management application called "مح�
 - Track income and expenses via a transactions dashboard
 - View financial summaries and charts (pie charts and bar charts via Recharts)
 - Interact with an AI assistant (powered by OpenAI) to log transactions via natural language chat, including image uploads (e.g., receipts)
+- Full IFRS-compliant double-entry accounting (Chart of Accounts, Journal Entries, IFRS statements)
+- Decision Cockpit (`/insights`): health score, alerts, cash forecast, what-if simulator, budgets, AI coach
+- **Multi-country localization** (`/settings`): 7 country packs (INTL, SA, AE, EG, KW, QA, JO) with configurable currency, VAT rate, zakat toggle, weekend days, social-insurance rates, and end-of-service formulas. IFRS is the universal core; country specifics are pluggable.
+- **HR & Payroll** (`/hr`): Employees, attendance, leaves, monthly payroll runs with auto-posted journal entries (IAS 19 end-of-service & accrued-leave provisions, social-insurance employer + employee shares, configurable per country pack)
+
+### Key files for the localization + HR layer
+- `shared/localization.ts` — country packs and IAS 19 helpers
+- `shared/coa-seed.ts` — `PAYROLL_EXTRA_ACCOUNTS` adds 6011/6012/2150/2160/2220 on top of base COA
+- `server/payroll.ts` — `computePayrollPreview` + `runPayroll` (30-day standard divisor, fractional EoS rate)
+- `server/init-coa.ts` — bootstraps base COA + payroll accounts on every startup
+- Settings is a singleton row at `id=1` in the `settings` table
+- Currency display in new code uses `useFormatMoney()` from `client/src/lib/format.ts` (older pages still hardcode ر.س; can be migrated incrementally)
 
 The app is built as a full-stack TypeScript monorepo with a React frontend and an Express backend, sharing schema and route definitions through a `shared/` directory.
 
