@@ -14,7 +14,10 @@ import {
   CalendarRange,
   PieChart as PieChartIcon,
   Sparkles,
+  FileText,
+  LayoutDashboard,
 } from "lucide-react";
+import { IfrsIncomeStatement } from "@/components/reports/ifrs-statement";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -54,9 +57,12 @@ const PERIOD_OPTIONS: { key: Period; label: string }[] = [
   { key: "all", label: "كل الفترات" },
 ];
 
+type ViewMode = "analytics" | "ifrs";
+
 export default function Reports() {
   const { data: transactions, isLoading } = useTransactions();
   const [period, setPeriod] = useState<Period>("3months");
+  const [viewMode, setViewMode] = useState<ViewMode>("analytics");
 
   const range = useMemo(() => {
     const now = new Date();
@@ -227,6 +233,34 @@ export default function Reports() {
         </div>
       </div>
 
+      {/* View mode tabs */}
+      <div className="flex flex-wrap gap-2 bg-card rounded-2xl p-1.5 border border-border/50 w-fit print:hidden">
+        <button
+          onClick={() => setViewMode("analytics")}
+          data-testid="button-view-analytics"
+          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+            viewMode === "analytics"
+              ? "bg-primary text-primary-foreground shadow-md"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <LayoutDashboard className="w-4 h-4" />
+          عرض تحليلي
+        </button>
+        <button
+          onClick={() => setViewMode("ifrs")}
+          data-testid="button-view-ifrs"
+          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+            viewMode === "ifrs"
+              ? "bg-primary text-primary-foreground shadow-md"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          قائمة الدخل (IFRS)
+        </button>
+      </div>
+
       {/* Period selector */}
       <div className="flex flex-wrap items-center gap-3 print:hidden">
         <CalendarRange className="w-5 h-5 text-muted-foreground" />
@@ -248,6 +282,46 @@ export default function Reports() {
           ))}
         </div>
       </div>
+
+      {viewMode === "ifrs" && (
+        <IfrsIncomeStatement
+          transactions={filteredTx}
+          periodStart={range?.start ?? null}
+          periodEnd={range?.end ?? null}
+        />
+      )}
+
+      {viewMode === "analytics" && (
+        <>
+          <AnalyticsView
+            totals={totals}
+            categoryBreakdown={categoryBreakdown}
+            incomeBreakdown={incomeBreakdown}
+            monthlyTrend={monthlyTrend}
+            filteredTx={filteredTx}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function AnalyticsView({
+  totals,
+  categoryBreakdown,
+  incomeBreakdown,
+  monthlyTrend,
+  filteredTx,
+}: {
+  totals: { income: number; expense: number; net: number; savingsRate: number; txCount: number };
+  categoryBreakdown: { name: string; value: number; percent: number }[];
+  incomeBreakdown: { name: string; value: number; percent: number }[];
+  monthlyTrend: { month: string; إيراد: number; مصروف: number; صافي: number }[];
+  filteredTx: any[];
+}) {
+  return (
+    <div className="space-y-8">
+
 
       {/* Print-only header */}
       <div className="hidden print:block border-b pb-4">
