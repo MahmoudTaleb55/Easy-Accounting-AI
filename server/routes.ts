@@ -321,6 +321,164 @@ export async function registerRoutes(
     });
   });
 
+  // ============================================================================
+  // Decision Cockpit / Insights
+  // ============================================================================
+  const insights = await import("./insights");
+
+  app.get("/api/insights/health", async (_req, res) => {
+    const k = await insights.computeKPIs();
+    const health = insights.computeHealthScore(k);
+    res.json({ kpis: k, health });
+  });
+
+  app.get("/api/insights/alerts", async (_req, res) => {
+    const alerts = await insights.generateAlerts();
+    res.json({ alerts });
+  });
+
+  app.get("/api/insights/cash-forecast", async (req, res) => {
+    const days = Number(req.query.days || 90);
+    const forecast = await insights.projectCash(Math.min(Math.max(days, 7), 365));
+    res.json(forecast);
+  });
+
+  const scenarioSchema = z.object({
+    priceChangePct: z.coerce.number().min(-90).max(200).default(0),
+    costChangePct: z.coerce.number().min(-90).max(200).default(0),
+    newMonthlyExpense: z.coerce.number().min(0).default(0),
+    expenseReductionPct: z.coerce.number().min(0).max(95).default(0),
+    monthsAhead: z.coerce.number().int().min(1).max(36).default(12),
+  });
+
+  app.post("/api/insights/simulate", async (req, res) => {
+    try {
+      const input = scenarioSchema.parse(req.body);
+      const result = await insights.simulateScenario(input);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "تعذر تشغيل المحاكاة" });
+    }
+  });
+
+  app.get("/api/insights/taxes", async (_req, res) => {
+    const t = await insights.estimateTaxes();
+    res.json(t);
+  });
+
+  app.get("/api/insights/budget-vs-actual", async (req, res) => {
+    const year = Number(req.query.year || new Date().getFullYear());
+    const month = Number(req.query.month || new Date().getMonth() + 1);
+    const rows = await insights.budgetVsActual(year, month);
+    res.json({ year, month, rows });
+  });
+
+  app.get("/api/budgets", async (req, res) => {
+    const year = req.query.year ? Number(req.query.year) : undefined;
+    const month = req.query.month ? Number(req.query.month) : undefined;
+    const list = await storage.getBudgets(year, month);
+    res.json(list);
+  });
+
+  app.post("/api/budgets", async (req, res) => {
+    try {
+      const { insertBudgetSchema } = await import("@shared/schema");
+      const input = insertBudgetSchema.extend({
+        year: z.coerce.number().int().min(2000).max(2100),
+        month: z.coerce.number().int().min(1).max(12),
+      }).parse(req.body);
+      const acc = await storage.getAccounts();
+      if (!acc.find((a) => a.id === input.accountId && !a.isHeader)) {
+        return res.status(400).json({ message: "حساب غير صالح" });
+      }
+      const b = await storage.upsertBudget(input);
+      res.status(201).json(b);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "فشل حفظ الميزانية" });
+    }
+  });
+
+  app.delete("/api/budgets/:id", async (req, res) => {
+    await storage.deleteBudget(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // AI Decision Coach (with simple per-IP rate limit to prevent abuse)
+  const coachLimiter = new Map<string, number[]>();
+  app.post("/api/insights/ai-coach", async (req, res) => {
+    try {
+      const ip = (req.ip || req.headers["x-forwarded-for"] || "anon").toString();
+      const now = Date.now();
+      const win = (coachLimiter.get(ip) || []).filter((t) => now - t < 60_000);
+      if (win.length >= 8) {
+        return res.status(429).json({ message: "كثرة الطلبات — حاول بعد دقيقة" });
+      }
+      win.push(now);
+      coachLimiter.set(ip, win);
+      const question = String(req.body?.question || "").slice(0, 1000);
+      if (!question.trim()) return res.status(400).json({ message: "أدخل سؤالك" });
+
+      const k = await insights.computeKPIs();
+      const cash = await insights.projectCash(90);
+      const alerts = await insights.generateAlerts();
+      const txs = await storage.getTransactions();
+
+      const recentTxs = txs.slice(-15).map((t) => ({
+        type: t.type,
+        amount: Number(t.amount),
+        category: t.category,
+        description: t.description,
+      }));
+
+      const context = {
+        kpis: {
+          revenue: k.totalRevenue,
+          expenses: k.totalExpenses,
+          netProfit: k.netProfit,
+          netMargin: `${(k.netMargin * 100).toFixed(1)}%`,
+          grossMargin: `${(k.grossMargin * 100).toFixed(1)}%`,
+          cash: k.cash,
+          currentRatio: k.currentRatio.toFixed(2),
+          totalAssets: k.totalAssets,
+          totalLiabilities: k.totalLiabilities,
+          totalEquity: k.totalEquity,
+        },
+        cashRunwayDays: cash.runwayDays,
+        avgDailyNet: cash.avgDailyNet.toFixed(2),
+        topAlerts: alerts.slice(0, 3).map((a) => `${a.severity}: ${a.title} — ${a.description}`),
+        recentTransactions: recentTxs,
+      };
+
+      const systemPrompt = `أنت مستشار مالي ذكي خبير في معايير IFRS وفي قرارات الأعمال الصغيرة والمتوسطة في السوق السعودي.
+- جاوب بالعربية الفصحى المختصرة، بأسلوب عملي مباشر بدون حشو.
+- استخدم الأرقام الفعلية من السياق المُرفق ولا تخترع أرقاماً.
+- نظّم جوابك في 3-5 نقاط واضحة (- نقطة:...).
+- اختم برأي قاطع: "توصيتي: …" بجملة أو جملتين.
+- إذا الأرقام لا تكفي للإجابة، قل ذلك صراحة واطلب البيانات الناقصة.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-5.2",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `سؤال صاحب العمل: ${question}\n\nالبيانات المالية الحالية:\n${JSON.stringify(context, null, 2)}`,
+          },
+        ],
+      });
+
+      const answer = response.choices[0]?.message?.content || "تعذّر توليد إجابة.";
+      res.json({ answer });
+    } catch (err) {
+      console.error("AI coach error", err);
+      res.status(500).json({ message: "حدث خطأ في الحصول على نصيحة المستشار" });
+    }
+  });
+
   // Chat
   app.get(api.chat.list.path, async (req, res) => {
     const messages = await storage.getChatMessages();

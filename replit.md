@@ -102,3 +102,19 @@ The `server/replit_integrations/` and `client/replit_integrations/` directories 
 - `DATABASE_URL` — PostgreSQL connection string
 - `AI_INTEGRATIONS_OPENAI_API_KEY` — OpenAI API key (Replit integration)
 - `AI_INTEGRATIONS_OPENAI_BASE_URL` — OpenAI base URL (Replit integration)
+## Decision Cockpit (مركز القرارات) - Added Apr 2026
+
+A complete decision-support layer at /insights with 6 tabs:
+1. **القيادة (Cockpit)**: 5-component health score (profitability 30% / liquidity 20% / cash 20% / discipline 20% / solvency 10%), KPIs, VAT & Zakat estimates.
+2. **الإنذارات (Alerts)**: 7 alert types (cash runway, expense ratio, net loss, category anomalies, revenue drop, outliers, all-clear).
+3. **تنبؤ النقد (Cash Forecast)**: 30/60/90/180-day projection chart with runway calc.
+4. **المحاكي (What-If Simulator)**: price/cost/expense scenarios + monthly break-even revenue.
+5. **الميزانية (Budget vs Actual)**: per-account monthly budgets with variance bars.
+6. **المستشار (AI Coach)**: GPT-5.2 with full live financial context, Arabic prompt, rate-limited.
+
+### Key files
+- shared/schema.ts: budgets table
+- server/insights.ts: analytics engine (~430 lines)
+- server/routes.ts: /api/insights/* + /api/budgets endpoints
+- client/src/pages/insights.tsx: single-file page with 6 tab components
+

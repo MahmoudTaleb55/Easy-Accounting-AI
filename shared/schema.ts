@@ -129,6 +129,25 @@ export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type CreateTransactionRequest = InsertTransaction;
 
 // ============================================================================
+// Budgets (per-account monthly budgets for Budget vs Actual)
+// ============================================================================
+
+export const budgets = pgTable("budgets", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(), // 1-12
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBudgetSchema = createInsertSchema(budgets).omit({ id: true, createdAt: true }).extend({
+  amount: z.coerce.number().nonnegative(),
+});
+export type Budget = typeof budgets.$inferSelect;
+export type InsertBudget = z.infer<typeof insertBudgetSchema>;
+
+// ============================================================================
 // Chat
 // ============================================================================
 

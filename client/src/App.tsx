@@ -15,6 +15,7 @@ import AiAssistant from "@/pages/ai-assistant";
 import Reports from "@/pages/reports";
 import ChartOfAccounts from "@/pages/chart-of-accounts";
 import JournalEntries from "@/pages/journal-entries";
+import Insights from "@/pages/insights";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
         <Route path="/reports" component={Reports}/>
         <Route path="/accounts" component={ChartOfAccounts}/>
         <Route path="/journal" component={JournalEntries}/>
+        <Route path="/insights" component={Insights}/>
         <Route path="/ai-assistant" component={AiAssistant}/>
         <Route component={NotFound} />
       </Switch>

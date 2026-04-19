@@ -5,6 +5,7 @@ import {
   accounts,
   journalEntries,
   journalLines,
+  budgets,
   type Transaction,
   type InsertTransaction,
   type ChatMessage,
@@ -14,13 +15,15 @@ import {
   type JournalEntry,
   type JournalLine,
   type CreateJournalEntryInput,
+  type Budget,
+  type InsertBudget,
 } from "@shared/schema";
 import {
   CASH_ACCOUNT_CODE,
   pickExpenseAccountCode,
   pickRevenueAccountCode,
 } from "@shared/coa-seed";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, sql, desc, and } from "drizzle-orm";
 
 export interface JournalEntryWithLines extends JournalEntry {
   lines: (JournalLine & { account?: Account })[];
@@ -45,6 +48,11 @@ export interface IStorage {
   getJournalEntries(): Promise<JournalEntryWithLines[]>;
   createJournalEntry(input: CreateJournalEntryInput): Promise<JournalEntryWithLines>;
   deleteJournalEntry(id: number): Promise<void>;
+
+  // Budgets
+  getBudgets(year?: number, month?: number): Promise<Budget[]>;
+  upsertBudget(input: InsertBudget): Promise<Budget>;
+  deleteBudget(id: number): Promise<void>;
 }
 
 async function nextJournalReference(): Promise<string> {
@@ -201,6 +209,40 @@ export class DatabaseStorage implements IStorage {
   async deleteJournalEntry(id: number): Promise<void> {
     await db.delete(journalLines).where(eq(journalLines.journalEntryId, id));
     await db.delete(journalEntries).where(eq(journalEntries.id, id));
+  }
+
+  // ----- Budgets -----
+  async getBudgets(year?: number, month?: number): Promise<Budget[]> {
+    if (year && month) {
+      return await db.select().from(budgets).where(
+        and(eq(budgets.year, year), eq(budgets.month, month))
+      );
+    }
+    return await db.select().from(budgets);
+  }
+
+  async upsertBudget(input: InsertBudget): Promise<Budget> {
+    const existing = await db.select().from(budgets).where(
+      and(
+        eq(budgets.accountId, input.accountId),
+        eq(budgets.year, input.year),
+        eq(budgets.month, input.month),
+      )
+    );
+    if (existing[0]) {
+      const [updated] = await db
+        .update(budgets)
+        .set({ amount: String(input.amount) })
+        .where(eq(budgets.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(budgets).values({ ...input, amount: String(input.amount) }).returning();
+    return created;
+  }
+
+  async deleteBudget(id: number): Promise<void> {
+    await db.delete(budgets).where(eq(budgets.id, id));
   }
 }
 

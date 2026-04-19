@@ -7,7 +7,8 @@ import {
   Menu,
   BarChart3,
   BookOpen,
-  BookText
+  BookText,
+  Sparkles
 } from "lucide-react";
 import {
   Sidebar,
@@ -29,6 +30,7 @@ const items = [
   { title: "دليل الحسابات", url: "/accounts", icon: BookOpen },
   { title: "قيود اليومية", url: "/journal", icon: BookText },
   { title: "التقرير المالي", url: "/reports", icon: BarChart3 },
+  { title: "مركز القرارات", url: "/insights", icon: Sparkles },
   { title: "المساعد الذكي", url: "/ai-assistant", icon: Bot },
 ];
 
