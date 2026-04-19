@@ -76,71 +76,120 @@ export async function registerRoutes(
   app.post(api.chat.message.path, async (req, res) => {
     try {
       const input = api.chat.message.input.parse(req.body);
-      
-      // Save user message
+
+      // Save user message (mark if image attached)
+      const userContentForDb = input.imageData
+        ? (input.content?.trim() || "📎 تم إرفاق فاتورة / إيصال")
+        : input.content;
+
       await storage.createChatMessage({
         role: "user",
-        content: input.content
+        content: userContentForDb,
       });
 
-      // Simple AI logic to categorize transaction or just reply
-      const systemPrompt = `You are a helpful AI accounting assistant for non-accountants. You speak Arabic. 
-If the user tells you about an expense or income, or provides a description of a receipt/invoice, you should respond acknowledging it, and optionally output a JSON block to add a transaction. 
-If you want to add a transaction, include a block like this in your response:
+      const systemPrompt = `أنت مساعد محاسبي ذكي ذو شخصية ودودة تتحدث العربية الفصحى البسيطة. مهمتك مساعدة الأشخاص غير المحاسبين على تسجيل وفهم معاملاتهم المالية.
+
+إذا أخبرك المستخدم عن مصروف أو إيراد، أو أرسل لك صورة فاتورة / إيصال:
+1. استخرج: المبلغ الإجمالي، نوع المعاملة (مصروف/إيراد)، وصف مختصر مفيد، وفئة مناسبة (طعام، مواصلات، فواتير، تسوق، صحة، ترفيه، رواتب، مبيعات، ...).
+2. أجب برسالة قصيرة ودافئة مؤكداً تسجيل المعاملة (مثلاً: "تم تسجيل مصروف 120 ر.س على البقالة ✅").
+3. ثم أرفق في نهاية الرسالة كتلة JSON بالشكل التالي تماماً:
 \`\`\`json
 {
   "action": "add_transaction",
-  "type": "expense" or "income",
+  "type": "expense" | "income",
   "amount": <number>,
-  "description": "<string>",
+  "description": "<string قصير>",
   "category": "<string>"
 }
 \`\`\`
-Otherwise, just help the user with their accounting questions in simple Arabic.`;
+
+إذا كانت الصورة فاتورة فيها عدة بنود، استخدم المجموع النهائي وضع الوصف باسم المتجر إن وُجد.
+إذا لم تستطع استخراج المعاملة (الصورة غير واضحة أو الرسالة مجرد سؤال)، أجب بشكل مساعد دون كتلة JSON.
+لا تستخدم كتلة JSON إلا عندما تريد إضافة معاملة فعلية.`;
+
+      // Build user message - either text or multimodal (text + image)
+      let userMessage: any;
+      if (input.imageData) {
+        const textPart = input.content?.trim() || "هذه صورة فاتورة، استخرج منها تفاصيل المعاملة وسجلها.";
+        userMessage = {
+          role: "user",
+          content: [
+            { type: "text", text: textPart },
+            { type: "image_url", image_url: { url: input.imageData } },
+          ],
+        };
+      } else {
+        userMessage = { role: "user", content: input.content };
+      }
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5.2", // Using a more capable model for better extraction
+        model: "gpt-5.2",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: input.content }
+          userMessage,
         ],
       });
 
       const aiContent = response.choices[0]?.message?.content || "عذراً، لم أتمكن من معالجة طلبك.";
 
-      // Try to parse transaction from response
-      const jsonMatch = aiContent.match(/\`\`\`json\n([\s\S]*?)\n\`\`\`/);
+      // Validate AI action JSON with strict Zod schema before creating transaction
+      const aiActionSchema = z.object({
+        action: z.literal("add_transaction"),
+        type: z.enum(["income", "expense"]),
+        amount: z
+          .union([z.number(), z.string()])
+          .transform((v) => Number(v))
+          .refine((n) => Number.isFinite(n) && n > 0, "amount must be positive"),
+        description: z.string().min(1).max(200).default("معاملة"),
+        category: z.string().min(1).max(50).default("أخرى"),
+      });
+
+      const jsonMatch = aiContent.match(/```json\s*([\s\S]*?)\s*```/);
       if (jsonMatch) {
         try {
-          const actionData = JSON.parse(jsonMatch[1]);
-          if (actionData.action === "add_transaction") {
+          const raw = JSON.parse(jsonMatch[1]);
+          const parsed = aiActionSchema.safeParse(raw);
+          if (parsed.success) {
             await storage.createTransaction({
-              type: actionData.type,
-              amount: actionData.amount,
-              description: actionData.description,
-              category: actionData.category
+              type: parsed.data.type,
+              amount: parsed.data.amount,
+              description: parsed.data.description,
+              category: parsed.data.category,
             });
+          } else {
+            console.warn("AI action JSON failed validation:", parsed.error.format());
           }
         } catch (e) {
           console.error("Failed to parse AI action JSON", e);
         }
       }
 
-      // Save assistant message
+      // Save assistant message (strip the JSON block from displayed content)
+      const cleanContent = aiContent.replace(/```json\s*[\s\S]*?\s*```/g, "").trim();
       const assistantMessage = await storage.createChatMessage({
         role: "assistant",
-        content: aiContent.replace(/\`\`\`json\n[\s\S]*?\n\`\`\`/, "").trim() // remove the JSON part before showing to user
+        content: cleanContent || "تم! ✅",
       });
 
       res.json(assistantMessage);
     } catch (err) {
+      console.error("Chat error", err);
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
           field: err.errors[0].path.join('.'),
         });
       }
-      res.status(500).json({ message: "Internal server error" });
+      // Persist a graceful assistant fallback so the chat doesn't appear stuck
+      try {
+        const fallback = await storage.createChatMessage({
+          role: "assistant",
+          content: "عذراً، حدث خطأ أثناء معالجة طلبك. حاول مرة أخرى من فضلك. 🙏",
+        });
+        return res.status(200).json(fallback);
+      } catch {
+        return res.status(500).json({ message: "حدث خطأ في معالجة الطلب" });
+      }
     }
   });
 

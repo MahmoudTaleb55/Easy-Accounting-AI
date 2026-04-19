@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions";
 import { TransactionForm } from "@/components/transactions/transaction-form";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -23,13 +24,32 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Plus, ArrowDownRight, ArrowUpRight, Trash2, ReceiptText, Calendar } from "lucide-react";
+import { Plus, ArrowDownRight, ArrowUpRight, Trash2, ReceiptText, Calendar, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+
+type Filter = "all" | "income" | "expense";
 
 export default function Transactions() {
   const { data: transactions, isLoading } = useTransactions();
   const deleteMutation = useDeleteTransaction();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+
+  const filtered = useMemo(() => {
+    if (!transactions) return [];
+    const q = search.trim().toLowerCase();
+    return [...transactions]
+      .filter((t) => filter === "all" || t.type === filter)
+      .filter(
+        (t) =>
+          !q ||
+          t.description.toLowerCase().includes(q) ||
+          t.category.toLowerCase().includes(q) ||
+          String(t.amount).includes(q)
+      )
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+  }, [transactions, search, filter]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -58,6 +78,44 @@ export default function Transactions() {
         </Dialog>
       </div>
 
+      {/* Search & Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ابحث عن معاملة، فئة، أو مبلغ..."
+            className="h-12 rounded-2xl bg-card border-2 pr-12 focus:border-primary/40 transition-all font-medium"
+            data-testid="input-search"
+          />
+        </div>
+        <div className="flex gap-2 bg-card rounded-2xl p-1.5 border border-border/50">
+          {([
+            { key: "all", label: "الكل" },
+            { key: "income", label: "إيرادات" },
+            { key: "expense", label: "مصروفات" },
+          ] as { key: Filter; label: string }[]).map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setFilter(opt.key)}
+              data-testid={`button-filter-${opt.key}`}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                filter === opt.key
+                  ? opt.key === "income"
+                    ? "bg-emerald-500 text-white shadow-md"
+                    : opt.key === "expense"
+                    ? "bg-rose-500 text-white shadow-md"
+                    : "bg-primary text-primary-foreground shadow-md"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
@@ -72,17 +130,23 @@ export default function Transactions() {
               <Skeleton className="w-24 h-8 rounded-lg" />
             </div>
           ))
-        ) : transactions?.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="bg-card rounded-3xl p-16 text-center shadow-sm border border-border/50 flex flex-col items-center justify-center">
             <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mb-4">
               <ReceiptText className="w-10 h-10 text-primary/50" />
             </div>
-            <h3 className="text-2xl font-bold text-foreground mb-2">سجلك المالي فارغ</h3>
-            <p className="text-muted-foreground max-w-sm text-lg">لم تقم بإضافة أي معاملات بعد. اضغط على الزر أعلاه للبدء.</p>
+            <h3 className="text-2xl font-bold text-foreground mb-2">
+              {search || filter !== "all" ? "لا توجد نتائج" : "سجلك المالي فارغ"}
+            </h3>
+            <p className="text-muted-foreground max-w-sm text-lg">
+              {search || filter !== "all"
+                ? "جرب تعديل البحث أو إزالة التصفية."
+                : "لم تقم بإضافة أي معاملات بعد. اضغط على الزر أعلاه للبدء."}
+            </p>
           </div>
         ) : (
           <div className="space-y-4">
-            {transactions?.map((tx) => (
+            {filtered.map((tx) => (
               <div 
                 key={tx.id} 
                 className="bg-card hover:bg-muted/10 rounded-2xl p-4 sm:p-6 shadow-sm shadow-black/5 border border-border/50 hover:shadow-md transition-all group flex flex-col sm:flex-row sm:items-center justify-between gap-4"

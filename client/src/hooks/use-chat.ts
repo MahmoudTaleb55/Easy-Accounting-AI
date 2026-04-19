@@ -47,12 +47,16 @@ export function useSendMessage() {
       await queryClient.cancelQueries({ queryKey: [api.chat.list.path] });
       const previousMessages = queryClient.getQueryData([api.chat.list.path]);
       
+      const optimisticContent = newMessage.imageData
+        ? (newMessage.content?.trim() || "📎 تم إرفاق فاتورة / إيصال")
+        : newMessage.content;
+
       queryClient.setQueryData([api.chat.list.path], (old: any[] = []) => [
         ...old,
         {
           id: Math.random(), // temp id
           role: 'user',
-          content: newMessage.content,
+          content: optimisticContent,
           createdAt: new Date().toISOString()
         }
       ]);
