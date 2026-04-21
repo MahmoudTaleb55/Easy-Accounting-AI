@@ -91,15 +91,18 @@ export default function FixedAssetsPage() {
   const { activeCompany } = useCompany();
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto" dir="rtl">
-      <header className="flex items-center gap-3">
-        <div className="bg-primary/10 p-3 rounded-2xl">
-          <Building2 className="w-7 h-7 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">الأصول الثابتة</h1>
-          <p className="text-sm text-muted-foreground mt-1">إدارة الأصول وفق المعايير الدولية IAS 16 و IAS 36</p>
-        </div>
+    <div className="space-y-8" data-testid="page-fixed-assets">
+      <header className="space-y-2">
+        <div className="eyebrow text-muted-foreground/80">الموارد والأصول</div>
+        <h1
+          className="font-display text-3xl md:text-4xl tracking-tight text-foreground"
+          data-testid="text-page-title"
+        >
+          الأصول الثابتة، تُدار بثقة محاسبية.
+        </h1>
+        <p className="text-sm text-muted-foreground max-w-xl">
+          سجل الأصول، الإهلاك، إعادة التقييم والاستبعاد — كاملةً وفق IAS 16 وIAS 36.
+        </p>
       </header>
 
       <Tabs defaultValue="register" className="w-full">

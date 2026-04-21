@@ -1,30 +1,26 @@
-import { useMemo, useState } from "react";
-import { useTransactions } from "@/hooks/use-transactions";
-import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths, startOfYear } from "date-fns";
-import { ar } from "date-fns/locale";
+import { useMemo, useState } from "react"
+import { useTransactions } from "@/hooks/use-transactions"
+import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths, startOfYear } from "date-fns"
+import { ar, enUS } from "date-fns/locale"
 import {
-  BarChart3,
-  TrendingUp,
-  TrendingDown,
-  Wallet,
   Printer,
   Download,
-  ArrowUpRight,
-  ArrowDownRight,
-  CalendarRange,
-  PieChart as PieChartIcon,
   Sparkles,
   FileText,
   LayoutDashboard,
-} from "lucide-react";
-import { IfrsIncomeStatement } from "@/components/reports/ifrs-statement";
-import { FinancialAnalysis } from "@/components/reports/financial-analysis";
-import { TrialBalance } from "@/components/reports/trial-balance";
-import { BalanceSheet } from "@/components/reports/balance-sheet";
-import { Scale, Building2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
+  Scale,
+  Building2,
+  TrendingUp,
+  TrendingDown,
+  Inbox,
+} from "lucide-react"
+import { IfrsIncomeStatement } from "@/components/reports/ifrs-statement"
+import { FinancialAnalysis } from "@/components/reports/financial-analysis"
+import { TrialBalance } from "@/components/reports/trial-balance"
+import { BalanceSheet } from "@/components/reports/balance-sheet"
+import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
 import {
   ResponsiveContainer,
   PieChart,
@@ -36,152 +32,229 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Legend,
   Area,
   AreaChart,
-} from "recharts";
+} from "recharts"
+import { useLocale } from "@/contexts/locale-context"
+import { useFormatMoney } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
-const CATEGORY_COLORS = [
-  "#3b82f6",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#ec4899",
-  "#06b6d4",
-  "#f97316",
-];
+const CHART_TOKENS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+]
 
-type Period = "month" | "3months" | "year" | "all";
-
-const PERIOD_OPTIONS: { key: Period; label: string }[] = [
-  { key: "month", label: "هذا الشهر" },
-  { key: "3months", label: "آخر 3 أشهر" },
-  { key: "year", label: "هذه السنة" },
-  { key: "all", label: "كل الفترات" },
-];
-
-type ViewMode = "analytics" | "ifrs" | "trial-balance" | "balance-sheet" | "analysis";
+type Period = "month" | "3months" | "year" | "all"
+type ViewMode = "analytics" | "ifrs" | "trial-balance" | "balance-sheet" | "analysis"
 
 export default function Reports() {
-  const { data: transactions, isLoading } = useTransactions();
-  const [period, setPeriod] = useState<Period>("3months");
-  const [viewMode, setViewMode] = useState<ViewMode>("analytics");
+  const { locale } = useLocale()
+  const fmt = useFormatMoney()
+  const dfLocale = locale === "ar" ? ar : enUS
+  const { data: transactions, isLoading } = useTransactions()
+  const [period, setPeriod] = useState<Period>("3months")
+  const [viewMode, setViewMode] = useState<ViewMode>("analytics")
+
+  const t = useMemo(
+    () => ({
+      eyebrow: locale === "ar" ? "التقارير" : "Reports",
+      title:
+        locale === "ar"
+          ? "صورة واضحة لأداء أعمالك."
+          : "A clear view of your business performance.",
+      subtitle:
+        locale === "ar"
+          ? "قوائم متوافقة مع IFRS، تحليلات لحظية، وقابلة للطباعة والتصدير."
+          : "IFRS-aligned statements with live analytics, ready to print or export.",
+      print: locale === "ar" ? "طباعة" : "Print",
+      exportCsv: locale === "ar" ? "تصدير CSV" : "Export CSV",
+      analytics: locale === "ar" ? "نظرة تحليلية" : "Analytics",
+      ifrs: locale === "ar" ? "قائمة الدخل" : "Income statement",
+      trial: locale === "ar" ? "ميزان المراجعة" : "Trial balance",
+      balance: locale === "ar" ? "المركز المالي" : "Balance sheet",
+      analysis: locale === "ar" ? "تحليل ذكي" : "AI analysis",
+      period: locale === "ar" ? "الفترة" : "Period",
+      pMonth: locale === "ar" ? "هذا الشهر" : "This month",
+      p3: locale === "ar" ? "آخر 3 أشهر" : "Last 3 months",
+      pYear: locale === "ar" ? "هذه السنة" : "This year",
+      pAll: locale === "ar" ? "الكل" : "All time",
+      kpiIncome: locale === "ar" ? "الإيرادات" : "Revenue",
+      kpiExpense: locale === "ar" ? "المصروفات" : "Expenses",
+      kpiNet: locale === "ar" ? "صافي الربح" : "Net profit",
+      kpiSavings: locale === "ar" ? "هامش الربح" : "Profit margin",
+      insightsTitle: locale === "ar" ? "ملخص ذكي" : "Smart summary",
+      monthlyTrend:
+        locale === "ar" ? "الاتجاه الشهري — آخر 6 أشهر" : "Monthly trend — last 6 months",
+      expensesByCat:
+        locale === "ar" ? "المصروفات حسب الفئة" : "Expenses by category",
+      incomeByCat:
+        locale === "ar" ? "الإيرادات حسب الفئة" : "Revenue by category",
+      txDetails: locale === "ar" ? "تفاصيل المعاملات" : "Transaction details",
+      noExpense:
+        locale === "ar" ? "لا توجد مصروفات في هذه الفترة." : "No expenses in this period.",
+      noIncome:
+        locale === "ar" ? "لا توجد إيرادات في هذه الفترة." : "No revenue in this period.",
+      noTx: locale === "ar" ? "لا توجد معاملات في هذه الفترة." : "No transactions in this period.",
+      colDate: locale === "ar" ? "التاريخ" : "Date",
+      colType: locale === "ar" ? "النوع" : "Type",
+      colCat: locale === "ar" ? "الفئة" : "Category",
+      colDesc: locale === "ar" ? "البيان" : "Description",
+      colAmount: locale === "ar" ? "المبلغ" : "Amount",
+      typeIncome: locale === "ar" ? "إيراد" : "Revenue",
+      typeExpense: locale === "ar" ? "مصروف" : "Expense",
+      insPositive: (n: number) =>
+        locale === "ar" ? `وضعك المالي إيجابي. فائض قدره ${fmt(n)}.` : `Net positive. Surplus of ${fmt(n)}.`,
+      insNegative: (n: number) =>
+        locale === "ar"
+          ? `المصروفات تتجاوز الإيرادات بـ ${fmt(n)}. راجع أكبر بنود الإنفاق.`
+          : `Expenses exceed revenue by ${fmt(n)}. Review your largest spending lines.`,
+      insTopCat: (name: string, pct: number) =>
+        locale === "ar"
+          ? `أكبر فئة إنفاق: ${name} (${pct}% من إجمالي المصروفات).`
+          : `Top spending category: ${name} (${pct}% of total expenses).`,
+      insCount: (n: number) =>
+        locale === "ar" ? `سُجّلت ${n} معاملة خلال هذه الفترة.` : `${n} transactions recorded in this period.`,
+      insMargin: (n: number) =>
+        locale === "ar"
+          ? `هامش الربح ${n}% — فوق المتوسط الموصى به.`
+          : `Profit margin at ${n}% — above the recommended threshold.`,
+      reportTitle: locale === "ar" ? "تقرير مالي — محاسب ذكي" : "Financial report — Smart Books",
+      reportDate: locale === "ar" ? "تاريخ التقرير" : "Report date",
+    }),
+    [locale, fmt],
+  )
+
+  const PERIOD_OPTIONS: { key: Period; label: string }[] = [
+    { key: "month", label: t.pMonth },
+    { key: "3months", label: t.p3 },
+    { key: "year", label: t.pYear },
+    { key: "all", label: t.pAll },
+  ]
+
+  const VIEW_MODES: { key: ViewMode; label: string; icon: typeof LayoutDashboard }[] = [
+    { key: "analytics", label: t.analytics, icon: LayoutDashboard },
+    { key: "ifrs", label: t.ifrs, icon: FileText },
+    { key: "trial-balance", label: t.trial, icon: Scale },
+    { key: "balance-sheet", label: t.balance, icon: Building2 },
+    { key: "analysis", label: t.analysis, icon: Sparkles },
+  ]
 
   const range = useMemo(() => {
-    const now = new Date();
-    if (period === "month") return { start: startOfMonth(now), end: endOfMonth(now) };
-    if (period === "3months") return { start: startOfMonth(subMonths(now, 2)), end: endOfMonth(now) };
-    if (period === "year") return { start: startOfYear(now), end: endOfMonth(now) };
-    return null;
-  }, [period]);
+    const now = new Date()
+    if (period === "month") return { start: startOfMonth(now), end: endOfMonth(now) }
+    if (period === "3months") return { start: startOfMonth(subMonths(now, 2)), end: endOfMonth(now) }
+    if (period === "year") return { start: startOfYear(now), end: endOfMonth(now) }
+    return null
+  }, [period])
 
   const filteredTx = useMemo(() => {
-    if (!transactions) return [];
-    if (!range) return transactions;
-    return transactions.filter((t) => {
-      const d = new Date(t.date || new Date());
-      return isWithinInterval(d, range);
-    });
-  }, [transactions, range]);
+    if (!transactions) return []
+    if (!range) return transactions
+    return transactions.filter((tx) => {
+      const d = new Date(tx.date || new Date())
+      return isWithinInterval(d, range)
+    })
+  }, [transactions, range])
 
   const totals = useMemo(() => {
-    let income = 0;
-    let expense = 0;
-    filteredTx.forEach((t) => {
-      const amt = Number(t.amount);
-      if (t.type === "income") income += amt;
-      else expense += amt;
-    });
+    let income = 0
+    let expense = 0
+    filteredTx.forEach((tx) => {
+      const amt = Number(tx.amount)
+      if (tx.type === "income") income += amt
+      else expense += amt
+    })
     return {
       income,
       expense,
       net: income - expense,
       savingsRate: income > 0 ? ((income - expense) / income) * 100 : 0,
       txCount: filteredTx.length,
-    };
-  }, [filteredTx]);
+    }
+  }, [filteredTx])
 
-  // Spending breakdown by category
   const categoryBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, number>()
     filteredTx
-      .filter((t) => t.type === "expense")
-      .forEach((t) => {
-        const amt = Number(t.amount);
-        map.set(t.category, (map.get(t.category) || 0) + amt);
-      });
-    const total = Array.from(map.values()).reduce((a, b) => a + b, 0) || 1;
+      .filter((tx) => tx.type === "expense")
+      .forEach((tx) => {
+        const amt = Number(tx.amount)
+        map.set(tx.category, (map.get(tx.category) || 0) + amt)
+      })
+    const total = Array.from(map.values()).reduce((a, b) => a + b, 0) || 1
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value, percent: (value / total) * 100 }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredTx]);
+      .sort((a, b) => b.value - a.value)
+  }, [filteredTx])
 
   const incomeBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, number>()
     filteredTx
-      .filter((t) => t.type === "income")
-      .forEach((t) => {
-        const amt = Number(t.amount);
-        map.set(t.category, (map.get(t.category) || 0) + amt);
-      });
-    const total = Array.from(map.values()).reduce((a, b) => a + b, 0) || 1;
+      .filter((tx) => tx.type === "income")
+      .forEach((tx) => {
+        const amt = Number(tx.amount)
+        map.set(tx.category, (map.get(tx.category) || 0) + amt)
+      })
+    const total = Array.from(map.values()).reduce((a, b) => a + b, 0) || 1
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value, percent: (value / total) * 100 }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredTx]);
+      .sort((a, b) => b.value - a.value)
+  }, [filteredTx])
 
-  // Monthly trend (last 6 months always for trend chart)
   const monthlyTrend = useMemo(() => {
-    if (!transactions) return [];
-    const now = new Date();
-    const months: { month: string; إيراد: number; مصروف: number; صافي: number }[] = [];
+    const incomeKey = locale === "ar" ? "إيراد" : "Income"
+    const expenseKey = locale === "ar" ? "مصروف" : "Expense"
+    if (!transactions) return { data: [], incomeKey, expenseKey }
+    const now = new Date()
+    const months: Array<Record<string, string | number>> = []
     for (let i = 5; i >= 0; i--) {
-      const monthDate = subMonths(now, i);
-      const start = startOfMonth(monthDate);
-      const end = endOfMonth(monthDate);
-      let income = 0;
-      let expense = 0;
-      transactions.forEach((t) => {
-        const d = new Date(t.date || new Date());
+      const monthDate = subMonths(now, i)
+      const start = startOfMonth(monthDate)
+      const end = endOfMonth(monthDate)
+      let income = 0
+      let expense = 0
+      transactions.forEach((tx) => {
+        const d = new Date(tx.date || new Date())
         if (isWithinInterval(d, { start, end })) {
-          const amt = Number(t.amount);
-          if (t.type === "income") income += amt;
-          else expense += amt;
+          const amt = Number(tx.amount)
+          if (tx.type === "income") income += amt
+          else expense += amt
         }
-      });
+      })
       months.push({
-        month: format(monthDate, "MMM", { locale: ar }),
-        إيراد: income,
-        مصروف: expense,
-        صافي: income - expense,
-      });
+        month: format(monthDate, "MMM", { locale: dfLocale }),
+        [incomeKey]: income,
+        [expenseKey]: expense,
+      })
     }
-    return months;
-  }, [transactions]);
+    return { data: months, incomeKey, expenseKey }
+  }, [transactions, dfLocale, locale])
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => window.print()
 
   const handleExportCSV = () => {
     const rows = [
-      ["التاريخ", "النوع", "الفئة", "الوصف", "المبلغ"],
-      ...filteredTx.map((t) => [
-        format(new Date(t.date || new Date()), "yyyy-MM-dd"),
-        t.type === "income" ? "إيراد" : "مصروف",
-        t.category,
-        t.description,
-        String(t.amount),
+      [t.colDate, t.colType, t.colCat, t.colDesc, t.colAmount],
+      ...filteredTx.map((tx) => [
+        format(new Date(tx.date || new Date()), "yyyy-MM-dd"),
+        tx.type === "income" ? t.typeIncome : t.typeExpense,
+        tx.category,
+        tx.description,
+        String(tx.amount),
       ]),
-    ];
-    const csv = "\uFEFF" + rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `تقرير-مالي-${format(new Date(), "yyyy-MM-dd")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+    ]
+    const csv = "\uFEFF" + rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${locale === "ar" ? "تقرير-مالي" : "report"}-${format(new Date(), "yyyy-MM-dd")}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   if (isLoading) {
     return (
@@ -189,137 +262,68 @@ export default function Reports() {
         <Skeleton className="h-12 w-72" />
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 rounded-2xl" />
+            <Skeleton key={i} className="h-28 rounded-xl" />
           ))}
         </div>
-        <Skeleton className="h-80 rounded-2xl" />
+        <Skeleton className="h-80 rounded-xl" />
       </div>
-    );
+    )
   }
 
   return (
-    <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500" id="report-content">
+    <div
+      className="space-y-8 animate-in fade-in-50 duration-300"
+      id="report-content"
+      data-testid="page-reports"
+    >
       {/* Header */}
-      <div className="flex flex-col lg:flex-row justify-between gap-4">
-        <div>
+      <header className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between print:hidden">
+        <div className="space-y-2">
+          <div className="eyebrow text-muted-foreground/80">{t.eyebrow}</div>
           <h1
-            className="text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-3"
+            className="font-display text-3xl md:text-4xl tracking-tight text-foreground"
             data-testid="text-page-title"
           >
-            <div className="p-2 bg-primary/10 rounded-2xl">
-              <BarChart3 className="w-7 h-7 text-primary" />
-            </div>
-            التقرير المالي
+            {t.title}
           </h1>
-          <p className="text-muted-foreground mt-2 font-medium">
-            تحليل شامل لأدائك المالي مع رؤى ذكية وقابل للطباعة والتصدير.
-          </p>
+          <p className="text-sm text-muted-foreground max-w-xl">{t.subtitle}</p>
         </div>
-
-        <div className="flex flex-wrap gap-2 print:hidden">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             onClick={handleExportCSV}
-            className="rounded-xl h-11 font-bold gap-2"
+            className="gap-2"
             data-testid="button-export-csv"
           >
             <Download className="w-4 h-4" />
-            تصدير CSV
+            {t.exportCsv}
           </Button>
-          <Button
-            onClick={handlePrint}
-            className="rounded-xl h-11 font-bold gap-2 bg-primary hover:bg-primary/90"
-            data-testid="button-print"
-          >
+          <Button onClick={handlePrint} className="gap-2" data-testid="button-print">
             <Printer className="w-4 h-4" />
-            طباعة
+            {t.print}
           </Button>
         </div>
-      </div>
+      </header>
 
-      {/* View mode tabs */}
-      <div className="flex flex-wrap gap-2 bg-card rounded-2xl p-1.5 border border-border/50 w-fit print:hidden">
-        <button
-          onClick={() => setViewMode("analytics")}
-          data-testid="button-view-analytics"
-          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-            viewMode === "analytics"
-              ? "bg-primary text-primary-foreground shadow-md"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <LayoutDashboard className="w-4 h-4" />
-          عرض تحليلي
-        </button>
-        <button
-          onClick={() => setViewMode("ifrs")}
-          data-testid="button-view-ifrs"
-          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-            viewMode === "ifrs"
-              ? "bg-primary text-primary-foreground shadow-md"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          قائمة الدخل (IFRS)
-        </button>
-        <button
-          onClick={() => setViewMode("trial-balance")}
-          data-testid="button-view-trial-balance"
-          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-            viewMode === "trial-balance"
-              ? "bg-primary text-primary-foreground shadow-md"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Scale className="w-4 h-4" />
-          ميزان المراجعة
-        </button>
-        <button
-          onClick={() => setViewMode("balance-sheet")}
-          data-testid="button-view-balance-sheet"
-          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-            viewMode === "balance-sheet"
-              ? "bg-primary text-primary-foreground shadow-md"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          المركز المالي
-        </button>
-        <button
-          onClick={() => setViewMode("analysis")}
-          data-testid="button-view-analysis"
-          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-            viewMode === "analysis"
-              ? "bg-primary text-primary-foreground shadow-md"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Sparkles className="w-4 h-4" />
-          تحليل ذكي
-        </button>
-      </div>
-
-      {/* Period selector */}
-      <div className="flex flex-wrap items-center gap-3 print:hidden">
-        <CalendarRange className="w-5 h-5 text-muted-foreground" />
-        <span className="text-sm font-bold text-muted-foreground">الفترة:</span>
-        <div className="flex flex-wrap gap-2 bg-card rounded-2xl p-1.5 border border-border/50">
-          {PERIOD_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              onClick={() => setPeriod(opt.key)}
-              data-testid={`button-period-${opt.key}`}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                period === opt.key
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+      {/* View mode + period — quiet segmented controls */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between print:hidden">
+        <SegmentedControl
+          options={VIEW_MODES}
+          value={viewMode}
+          onChange={setViewMode}
+          testIdPrefix="button-view"
+        />
+        <div className="flex items-center gap-3">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground/80">
+            {t.period}
+          </span>
+          <SegmentedControl
+            options={PERIOD_OPTIONS.map((p) => ({ key: p.key, label: p.label }))}
+            value={period}
+            onChange={setPeriod}
+            testIdPrefix="button-period"
+            compact
+          />
         </div>
       </div>
 
@@ -343,19 +347,70 @@ export default function Reports() {
       )}
 
       {viewMode === "analytics" && (
-        <>
-          <AnalyticsView
-            totals={totals}
-            categoryBreakdown={categoryBreakdown}
-            incomeBreakdown={incomeBreakdown}
-            monthlyTrend={monthlyTrend}
-            filteredTx={filteredTx}
-          />
-        </>
+        <AnalyticsView
+          totals={totals}
+          categoryBreakdown={categoryBreakdown}
+          incomeBreakdown={incomeBreakdown}
+          monthlyTrend={monthlyTrend}
+          filteredTx={filteredTx}
+          fmt={fmt}
+          dfLocale={dfLocale}
+          t={t}
+        />
       )}
     </div>
-  );
+  )
 }
+
+// ---------- Segmented control ----------
+
+function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  testIdPrefix,
+  compact = false,
+}: {
+  options: Array<{ key: T; label: string; icon?: typeof LayoutDashboard }>
+  value: T
+  onChange: (v: T) => void
+  testIdPrefix: string
+  compact?: boolean
+}) {
+  return (
+    <div
+      role="radiogroup"
+      className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-card p-1"
+    >
+      {options.map((opt) => {
+        const Icon = opt.icon
+        const active = value === opt.key
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(opt.key)}
+            data-testid={`${testIdPrefix}-${opt.key}`}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-md font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+              compact ? "px-3 py-1.5 text-xs" : "px-3.5 py-2 text-sm",
+              active
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+            )}
+          >
+            {Icon && <Icon className="w-3.5 h-3.5" />}
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ---------- Analytics view ----------
 
 function AnalyticsView({
   totals,
@@ -363,464 +418,471 @@ function AnalyticsView({
   incomeBreakdown,
   monthlyTrend,
   filteredTx,
+  fmt,
+  dfLocale,
+  t,
 }: {
-  totals: { income: number; expense: number; net: number; savingsRate: number; txCount: number };
-  categoryBreakdown: { name: string; value: number; percent: number }[];
-  incomeBreakdown: { name: string; value: number; percent: number }[];
-  monthlyTrend: { month: string; إيراد: number; مصروف: number; صافي: number }[];
-  filteredTx: any[];
+  totals: { income: number; expense: number; net: number; savingsRate: number; txCount: number }
+  categoryBreakdown: { name: string; value: number; percent: number }[]
+  incomeBreakdown: { name: string; value: number; percent: number }[]
+  monthlyTrend: { data: Array<Record<string, string | number>>; incomeKey: string; expenseKey: string }
+  filteredTx: any[]
+  fmt: (n: number | string) => string
+  dfLocale: typeof ar | typeof enUS
+  t: any
 }) {
+  const showInsights = filteredTx.length > 0
+
   return (
     <div className="space-y-8">
-
-
       {/* Print-only header */}
       <div className="hidden print:block border-b pb-4">
-        <h2 className="text-2xl font-bold">تقرير مالي - محاسب ذكي</h2>
+        <h2 className="text-2xl font-bold">{t.reportTitle}</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          تاريخ التقرير: {format(new Date(), "d MMMM yyyy", { locale: ar })}
+          {t.reportDate}: {format(new Date(), "d MMMM yyyy", { locale: dfLocale })}
         </p>
       </div>
 
-      {/* KPI cards */}
+      {/* KPI strip — Mercury style: only revenue gets color, expense neutral */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
-          title="إجمالي الإيرادات"
-          value={totals.income}
-          icon={<ArrowUpRight className="w-5 h-5" />}
-          color="emerald"
+        <Stat
+          label={t.kpiIncome}
+          value={fmt(totals.income)}
+          accent="hsl(var(--chart-1))"
           testId="kpi-income"
         />
-        <KpiCard
-          title="إجمالي المصروفات"
-          value={totals.expense}
-          icon={<ArrowDownRight className="w-5 h-5" />}
-          color="rose"
+        <Stat
+          label={t.kpiExpense}
+          value={fmt(totals.expense)}
+          accent="hsl(var(--muted-foreground))"
           testId="kpi-expense"
         />
-        <KpiCard
-          title="صافي الربح"
-          value={totals.net}
-          icon={<Wallet className="w-5 h-5" />}
-          color={totals.net >= 0 ? "blue" : "rose"}
+        <Stat
+          label={t.kpiNet}
+          value={fmt(totals.net)}
+          accent={totals.net >= 0 ? "hsl(var(--chart-1))" : "hsl(var(--chart-4))"}
           testId="kpi-net"
         />
-        <KpiCard
-          title="معدل الادخار"
-          value={totals.savingsRate}
-          icon={<Sparkles className="w-5 h-5" />}
-          color={totals.savingsRate >= 20 ? "emerald" : totals.savingsRate >= 0 ? "amber" : "rose"}
+        <Stat
+          label={t.kpiSavings}
+          value={`${totals.savingsRate.toFixed(1)}%`}
+          accent={totals.savingsRate >= 0 ? "hsl(var(--chart-1))" : "hsl(var(--chart-4))"}
           testId="kpi-savings"
-          isPercent
         />
       </div>
 
-      {/* AI Insights */}
-      {filteredTx.length > 0 && (
-        <Card className="rounded-2xl border-none shadow-lg shadow-black/5 bg-gradient-to-l from-primary/5 via-card to-emerald-500/5">
-          <CardContent className="p-6">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-primary/10 rounded-2xl shrink-0">
-                <Sparkles className="w-6 h-6 text-primary" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <h3 className="text-lg font-bold text-foreground">رؤى ذكية</h3>
-                <ul className="space-y-1.5 text-sm font-medium text-foreground/80">
-                  {totals.net >= 0 ? (
-                    <li className="flex items-center gap-2">
-                      <span className="text-emerald-600">✓</span>
-                      وضعك المالي إيجابي. فائض قدره{" "}
-                      <strong>{totals.net.toLocaleString("ar-SA")} ر.س</strong>.
-                    </li>
-                  ) : (
-                    <li className="flex items-center gap-2">
-                      <span className="text-rose-600">⚠</span>
-                      مصروفاتك تتجاوز إيراداتك بـ{" "}
-                      <strong>{Math.abs(totals.net).toLocaleString("ar-SA")} ر.س</strong>.
-                    </li>
-                  )}
-                  {categoryBreakdown[0] && (
-                    <li className="flex items-center gap-2">
-                      <span className="text-primary">●</span>
-                      أكبر فئة مصروفات: <strong>{categoryBreakdown[0].name}</strong> (
-                      {categoryBreakdown[0].percent.toFixed(0)}% من إجمالي المصروفات)
-                    </li>
-                  )}
-                  <li className="flex items-center gap-2">
-                    <span className="text-primary">●</span>
-                    سجلت <strong>{totals.txCount}</strong> معاملة خلال هذه الفترة.
-                  </li>
-                  {totals.savingsRate >= 20 && (
-                    <li className="flex items-center gap-2">
-                      <span className="text-emerald-600">★</span>
-                      ممتاز! معدل ادخارك <strong>{totals.savingsRate.toFixed(0)}%</strong> فوق
-                      المتوسط الموصى به.
-                    </li>
-                  )}
-                </ul>
-              </div>
+      {/* Smart summary */}
+      {showInsights && (
+        <Card className="rounded-xl">
+          <div className="p-6 flex items-start gap-4">
+            <div className="p-2 rounded-lg bg-muted/60 shrink-0">
+              <Sparkles className="w-4 h-4 text-foreground" />
             </div>
-          </CardContent>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-foreground mb-3">
+                {t.insightsTitle}
+              </h3>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li className="flex items-start gap-2">
+                  <span
+                    className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0"
+                    style={{
+                      background:
+                        totals.net >= 0 ? "hsl(var(--chart-1))" : "hsl(var(--chart-4))",
+                    }}
+                  />
+                  <span className="text-foreground">
+                    {totals.net >= 0
+                      ? t.insPositive(totals.net)
+                      : t.insNegative(Math.abs(totals.net))}
+                  </span>
+                </li>
+                {categoryBreakdown[0] && (
+                  <li className="flex items-start gap-2">
+                    <span
+                      className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0"
+                      style={{ background: "hsl(var(--chart-3))" }}
+                    />
+                    <span>
+                      {t.insTopCat(
+                        categoryBreakdown[0].name,
+                        Math.round(categoryBreakdown[0].percent),
+                      )}
+                    </span>
+                  </li>
+                )}
+                <li className="flex items-start gap-2">
+                  <span
+                    className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0"
+                    style={{ background: "hsl(var(--chart-5))" }}
+                  />
+                  <span>{t.insCount(totals.txCount)}</span>
+                </li>
+                {totals.savingsRate >= 20 && (
+                  <li className="flex items-start gap-2">
+                    <span
+                      className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0"
+                      style={{ background: "hsl(var(--chart-1))" }}
+                    />
+                    <span className="text-foreground">
+                      {t.insMargin(Math.round(totals.savingsRate))}
+                    </span>
+                  </li>
+                )}
+              </ul>
+            </div>
+          </div>
         </Card>
       )}
 
       {/* Monthly trend */}
-      <Card className="rounded-2xl border-none shadow-lg shadow-black/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-3 text-xl font-bold">
-            <div className="p-2 bg-primary/10 rounded-xl">
-              <TrendingUp className="w-5 h-5 text-primary" />
-            </div>
-            الاتجاه الشهري (آخر 6 أشهر)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-72 w-full" data-testid="chart-monthly-trend" dir="ltr">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthlyTrend} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.5} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.5} />
-                    <stop offset="100%" stopColor="#f43f5e" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12, fontFamily: "Cairo" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11, fontFamily: "Cairo" }}
-                  axisLine={false}
-                  tickLine={false}
-                  orientation="right"
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "12px",
-                    fontFamily: "Cairo",
-                    boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
-                  }}
-                  formatter={(v: number) => `${v.toLocaleString("ar-SA")} ر.س`}
-                />
-                <Legend
-                  wrapperStyle={{ fontFamily: "Cairo", fontWeight: 600, paddingTop: "8px" }}
-                  iconType="circle"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="إيراد"
-                  stroke="#10b981"
-                  strokeWidth={3}
-                  fill="url(#incomeGrad)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="مصروف"
-                  stroke="#f43f5e"
-                  strokeWidth={3}
-                  fill="url(#expenseGrad)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
+      <Card className="rounded-xl">
+        <div className="p-6 pb-2">
+          <h3 className="text-sm font-semibold text-foreground">{t.monthlyTrend}</h3>
+        </div>
+        <div className="px-2 pb-4 h-72 w-full" data-testid="chart-monthly-trend" dir="ltr">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={monthlyTrend.data}
+              margin={{ top: 10, right: 16, left: 0, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.32} />
+                  <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(var(--chart-5))" stopOpacity={0.22} />
+                  <stop offset="100%" stopColor="hsl(var(--chart-5))" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="2 4" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis
+                dataKey="month"
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={64}
+                tickFormatter={(v) =>
+                  Intl.NumberFormat(undefined, { notation: "compact" }).format(Number(v))
+                }
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "hsl(var(--popover))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "10px",
+                  fontSize: "12px",
+                }}
+                labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
+                formatter={(v: number) => fmt(v)}
+              />
+              <Area
+                type="monotone"
+                dataKey={monthlyTrend.incomeKey}
+                stroke="hsl(var(--chart-1))"
+                strokeWidth={2}
+                fill="url(#incomeGrad)"
+              />
+              <Area
+                type="monotone"
+                dataKey={monthlyTrend.expenseKey}
+                stroke="hsl(var(--chart-5))"
+                strokeWidth={2}
+                fill="url(#expenseGrad)"
+                strokeDasharray="4 4"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </Card>
 
-      {/* Income vs Expense Bar comparison */}
+      {/* Categories */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="rounded-2xl border-none shadow-lg shadow-black/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3 text-xl font-bold">
-              <div className="p-2 bg-rose-100 text-rose-600 rounded-xl">
-                <TrendingDown className="w-5 h-5" />
-              </div>
-              المصروفات حسب الفئة
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card className="rounded-xl">
+          <div className="p-6 pb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">{t.expensesByCat}</h3>
+            <TrendingDown className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div className="p-6 pt-2">
             {categoryBreakdown.length === 0 ? (
-              <EmptyChart label="لا توجد مصروفات في هذه الفترة" />
+              <EmptyChart label={t.noExpense} />
             ) : (
               <>
-                <div className="h-56 w-full" data-testid="chart-expense-categories" dir="ltr">
+                <div className="h-52 w-full" data-testid="chart-expense-categories" dir="ltr">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={categoryBreakdown}
                         cx="50%"
                         cy="50%"
-                        innerRadius={45}
-                        outerRadius={80}
-                        paddingAngle={3}
+                        innerRadius={48}
+                        outerRadius={82}
+                        paddingAngle={2}
                         dataKey="value"
+                        stroke="hsl(var(--card))"
+                        strokeWidth={2}
                       >
                         {categoryBreakdown.map((_, index) => (
                           <Cell
                             key={`cell-${index}`}
-                            fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
+                            fill={CHART_TOKENS[index % CHART_TOKENS.length]}
                           />
                         ))}
                       </Pie>
                       <Tooltip
                         contentStyle={{
-                          background: "hsl(var(--card))",
+                          background: "hsl(var(--popover))",
                           border: "1px solid hsl(var(--border))",
-                          borderRadius: "12px",
-                          fontFamily: "Cairo",
+                          borderRadius: "10px",
+                          fontSize: "12px",
                         }}
-                        formatter={(v: number) => `${v.toLocaleString("ar-SA")} ر.س`}
+                        formatter={(v: number) => fmt(v)}
                       />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <BreakdownList items={categoryBreakdown} colors={CATEGORY_COLORS} testIdPrefix="row-expense-cat" />
+                <BreakdownList items={categoryBreakdown} fmt={fmt} testIdPrefix="row-expense-cat" />
               </>
             )}
-          </CardContent>
+          </div>
         </Card>
 
-        <Card className="rounded-2xl border-none shadow-lg shadow-black/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3 text-xl font-bold">
-              <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-              الإيرادات حسب الفئة
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card className="rounded-xl">
+          <div className="p-6 pb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">{t.incomeByCat}</h3>
+            <TrendingUp className="w-4 h-4" style={{ color: "hsl(var(--chart-1))" }} />
+          </div>
+          <div className="p-6 pt-2">
             {incomeBreakdown.length === 0 ? (
-              <EmptyChart label="لا توجد إيرادات في هذه الفترة" />
+              <EmptyChart label={t.noIncome} />
             ) : (
               <>
-                <div className="h-56 w-full" data-testid="chart-income-categories" dir="ltr">
+                <div className="h-52 w-full" data-testid="chart-income-categories" dir="ltr">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={incomeBreakdown}
                       layout="vertical"
-                      margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
+                      margin={{ top: 5, right: 16, left: 0, bottom: 0 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                      <CartesianGrid
+                        strokeDasharray="2 4"
+                        stroke="hsl(var(--border))"
+                        horizontal={false}
+                      />
                       <XAxis
                         type="number"
-                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11, fontFamily: "Cairo" }}
+                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                         axisLine={false}
                         tickLine={false}
+                        tickFormatter={(v) =>
+                          Intl.NumberFormat(undefined, { notation: "compact" }).format(Number(v))
+                        }
                       />
                       <YAxis
                         type="category"
                         dataKey="name"
-                        tick={{ fill: "hsl(var(--foreground))", fontSize: 12, fontFamily: "Cairo" }}
+                        tick={{ fill: "hsl(var(--foreground))", fontSize: 12 }}
                         axisLine={false}
                         tickLine={false}
-                        width={80}
+                        width={88}
                       />
                       <Tooltip
                         contentStyle={{
-                          background: "hsl(var(--card))",
+                          background: "hsl(var(--popover))",
                           border: "1px solid hsl(var(--border))",
-                          borderRadius: "12px",
-                          fontFamily: "Cairo",
+                          borderRadius: "10px",
+                          fontSize: "12px",
                         }}
-                        cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }}
-                        formatter={(v: number) => `${v.toLocaleString("ar-SA")} ر.س`}
+                        cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+                        formatter={(v: number) => fmt(v)}
                       />
-                      <Bar dataKey="value" fill="#10b981" radius={[0, 8, 8, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[0, 6, 6, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <BreakdownList items={incomeBreakdown} colors={["#10b981"]} testIdPrefix="row-income-cat" />
+                <BreakdownList
+                  items={incomeBreakdown}
+                  fmt={fmt}
+                  singleAccent="hsl(var(--chart-1))"
+                  testIdPrefix="row-income-cat"
+                />
               </>
             )}
-          </CardContent>
+          </div>
         </Card>
       </div>
 
-      {/* Detailed transactions table */}
-      <Card className="rounded-2xl border-none shadow-lg shadow-black/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-3 text-xl font-bold">
-            <div className="p-2 bg-secondary rounded-xl">
-              <PieChartIcon className="w-5 h-5" />
-            </div>
-            تفاصيل المعاملات ({filteredTx.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {filteredTx.length === 0 ? (
-            <div className="p-12 text-center text-muted-foreground">
-              <p className="font-medium">لا توجد معاملات في هذه الفترة.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/50 text-foreground/80 text-right">
-                    <th className="p-4 font-bold">التاريخ</th>
-                    <th className="p-4 font-bold">النوع</th>
-                    <th className="p-4 font-bold">الفئة</th>
-                    <th className="p-4 font-bold">الوصف</th>
-                    <th className="p-4 font-bold text-left">المبلغ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {filteredTx
-                    .slice()
-                    .sort(
-                      (a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
-                    )
-                    .map((tx) => (
-                      <tr
-                        key={tx.id}
-                        data-testid={`row-report-tx-${tx.id}`}
-                        className="hover:bg-muted/30 transition-colors"
-                      >
-                        <td className="p-4 text-muted-foreground font-medium whitespace-nowrap">
-                          {format(new Date(tx.date || new Date()), "d MMM yyyy", { locale: ar })}
-                        </td>
-                        <td className="p-4">
-                          <span
-                            className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                              tx.type === "income"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-rose-100 text-rose-700"
-                            }`}
-                          >
-                            {tx.type === "income" ? "إيراد" : "مصروف"}
-                          </span>
-                        </td>
-                        <td className="p-4 font-semibold">{tx.category}</td>
-                        <td className="p-4 text-foreground/80">{tx.description}</td>
-                        <td
-                          className={`p-4 text-left font-black tabular-nums ${
-                            tx.type === "income" ? "text-emerald-600" : "text-rose-600"
-                          }`}
+      {/* Detailed transactions table — ledger style */}
+      <Card className="rounded-xl overflow-hidden">
+        <div className="p-6 pb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">
+            {t.txDetails}{" "}
+            <span className="text-muted-foreground font-normal">({filteredTx.length})</span>
+          </h3>
+        </div>
+        {filteredTx.length === 0 ? (
+          <div className="px-6 pb-12 text-center text-muted-foreground text-sm">
+            <Inbox className="w-10 h-10 mx-auto mb-2 opacity-30" />
+            {t.noTx}
+          </div>
+        ) : (
+          <div className="overflow-x-auto border-t border-border/60">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs uppercase tracking-wider text-muted-foreground/80 bg-muted/30">
+                  <th className="px-6 py-3 text-start font-medium">{t.colDate}</th>
+                  <th className="px-6 py-3 text-start font-medium">{t.colType}</th>
+                  <th className="px-6 py-3 text-start font-medium">{t.colCat}</th>
+                  <th className="px-6 py-3 text-start font-medium">{t.colDesc}</th>
+                  <th className="px-6 py-3 text-end font-medium">{t.colAmount}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {filteredTx
+                  .slice()
+                  .sort(
+                    (a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime(),
+                  )
+                  .map((tx) => (
+                    <tr
+                      key={tx.id}
+                      data-testid={`row-report-tx-${tx.id}`}
+                      className="hover:bg-muted/30 transition-colors"
+                    >
+                      <td className="px-6 py-3 text-muted-foreground tabular-nums whitespace-nowrap">
+                        {format(new Date(tx.date || new Date()), "d MMM yyyy", { locale: dfLocale })}
+                      </td>
+                      <td className="px-6 py-3">
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1.5 text-xs",
+                            tx.type === "income" ? "text-foreground" : "text-muted-foreground",
+                          )}
                         >
-                          {tx.type === "income" ? "+" : "-"}
-                          {Number(tx.amount).toLocaleString("ar-SA")} ر.س
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
+                          <span
+                            className="h-1.5 w-1.5 rounded-full"
+                            style={{
+                              background:
+                                tx.type === "income"
+                                  ? "hsl(var(--chart-1))"
+                                  : "hsl(var(--chart-5))",
+                            }}
+                          />
+                          {tx.type === "income" ? t.typeIncome : t.typeExpense}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-foreground/80">{tx.category}</td>
+                      <td className="px-6 py-3 text-foreground">{tx.description}</td>
+                      <td
+                        className={cn(
+                          "px-6 py-3 text-end tabular-nums font-display",
+                          tx.type === "income" ? "" : "text-foreground",
+                        )}
+                        style={
+                          tx.type === "income"
+                            ? { color: "hsl(var(--chart-1))" }
+                            : undefined
+                        }
+                      >
+                        {tx.type === "income" ? "+" : "−"}
+                        {fmt(Number(tx.amount))}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
-  );
+  )
 }
 
-function KpiCard({
-  title,
-  value,
-  icon,
-  color,
-  testId,
-  isPercent = false,
-}: {
-  title: string;
-  value: number;
-  icon: React.ReactNode;
-  color: "blue" | "emerald" | "rose" | "amber";
-  testId: string;
-  isPercent?: boolean;
-}) {
-  const colorMap = {
-    blue: { bg: "bg-blue-100", text: "text-blue-600", value: "text-blue-700" },
-    emerald: { bg: "bg-emerald-100", text: "text-emerald-600", value: "text-emerald-700" },
-    rose: { bg: "bg-rose-100", text: "text-rose-600", value: "text-rose-700" },
-    amber: { bg: "bg-amber-100", text: "text-amber-600", value: "text-amber-700" },
-  } as const;
-  const c = colorMap[color];
+// ---------- Stat ----------
 
+function Stat({
+  label,
+  value,
+  accent,
+  testId,
+}: {
+  label: string
+  value: string
+  accent: string
+  testId: string
+}) {
   return (
     <Card
-      className="rounded-2xl border-none shadow-md shadow-black/5 hover:shadow-lg hover:-translate-y-0.5 transition-all"
+      className="rounded-xl p-5 hover:border-border transition-colors"
       data-testid={`card-${testId}`}
     >
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-bold text-muted-foreground">{title}</span>
-          <div className={`p-2 ${c.bg} ${c.text} rounded-xl`}>{icon}</div>
-        </div>
-        <div className={`text-2xl lg:text-3xl font-black tabular-nums ${c.value}`} data-testid={`text-${testId}`}>
-          {isPercent ? (
-            <>
-              {value.toFixed(1)}
-              <span className="text-base font-bold opacity-80">%</span>
-            </>
-          ) : (
-            <>
-              {value.toLocaleString("ar-SA")}
-              <span className="text-sm font-medium opacity-70 mr-1">ر.س</span>
-            </>
-          )}
-        </div>
-      </CardContent>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+        <span className="text-xs uppercase tracking-wider text-muted-foreground/80">{label}</span>
+      </div>
+      <div
+        className="font-display text-2xl lg:text-3xl tracking-tight tabular-nums text-foreground"
+        data-testid={`text-${testId}`}
+      >
+        {value}
+      </div>
     </Card>
-  );
+  )
 }
 
 function BreakdownList({
   items,
-  colors,
+  fmt,
+  singleAccent,
   testIdPrefix,
 }: {
-  items: { name: string; value: number; percent: number }[];
-  colors: string[];
-  testIdPrefix: string;
+  items: { name: string; value: number; percent: number }[]
+  fmt: (n: number) => string
+  singleAccent?: string
+  testIdPrefix: string
 }) {
   return (
-    <div className="mt-4 space-y-3">
-      {items.slice(0, 5).map((c, i) => (
-        <div key={c.name} className="space-y-1" data-testid={`${testIdPrefix}-${c.name}`}>
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2">
+    <div className="mt-5 space-y-3">
+      {items.slice(0, 5).map((c, i) => {
+        const color = singleAccent ?? CHART_TOKENS[i % CHART_TOKENS.length]
+        return (
+          <div key={c.name} className="space-y-1.5" data-testid={`${testIdPrefix}-${c.name}`}>
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+                <span className="font-medium text-foreground">{c.name}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {c.percent.toFixed(0)}%
+                </span>
+                <span className="font-display text-foreground tabular-nums">{fmt(c.value)}</span>
+              </div>
+            </div>
+            <div className="h-1 bg-muted/60 rounded-full overflow-hidden">
               <div
-                className="w-3 h-3 rounded-full"
-                style={{ background: colors[i % colors.length] }}
+                className="h-full rounded-full transition-all"
+                style={{ width: `${Math.min(100, c.percent)}%`, background: color }}
               />
-              <span className="font-bold text-foreground">{c.name}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-medium">
-                {c.percent.toFixed(0)}%
-              </span>
-              <span className="font-extrabold text-foreground tabular-nums">
-                {c.value.toLocaleString("ar-SA")} ر.س
-              </span>
             </div>
           </div>
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${Math.min(100, c.percent)}%`,
-                background: colors[i % colors.length],
-              }}
-            />
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
-  );
+  )
 }
 
 function EmptyChart({ label }: { label: string }) {
   return (
-    <div className="h-56 flex flex-col items-center justify-center text-muted-foreground">
-      <PieChartIcon className="w-12 h-12 opacity-20 mb-3" />
-      <p className="font-medium text-sm">{label}</p>
+    <div className="h-52 flex flex-col items-center justify-center text-muted-foreground">
+      <Inbox className="w-10 h-10 opacity-25 mb-2" />
+      <p className="text-sm">{label}</p>
     </div>
-  );
+  )
 }

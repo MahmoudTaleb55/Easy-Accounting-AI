@@ -78,17 +78,18 @@ const severityStyle: Record<Alert["severity"], { bg: string; border: string; ico
 
 export default function InsightsPage() {
   return (
-    <div className="container mx-auto p-4 md:p-6 max-w-7xl space-y-6" dir="rtl">
-      <header>
-        <div className="flex items-center gap-3 mb-2">
-          <div className="bg-primary/10 p-2.5 rounded-xl">
-            <Sparkles className="w-7 h-7 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">مركز القرارات</h1>
-            <p className="text-muted-foreground text-sm">رؤى مالية لحظية تحوّل أرقامك إلى قرارات أفضل</p>
-          </div>
-        </div>
+    <div className="space-y-8" data-testid="page-insights">
+      <header className="space-y-2">
+        <div className="eyebrow text-muted-foreground/80">الذكاء</div>
+        <h1
+          className="font-display text-3xl md:text-4xl tracking-tight text-foreground"
+          data-testid="text-page-title"
+        >
+          مركز القرارات
+        </h1>
+        <p className="text-sm text-muted-foreground max-w-xl">
+          رؤى مالية لحظية تحوّل أرقامك إلى قرارات أفضل — صحة، إنذارات، توقعات، ومحاكاة.
+        </p>
       </header>
 
       <Tabs defaultValue="cockpit" className="w-full">
@@ -122,20 +123,62 @@ function CockpitTab() {
   if (isError || !data) return <ErrorState />;
   const k = data.kpis;
   const h = data.health;
-  const scoreColor = h.score >= 75 ? "text-green-600" : h.score >= 50 ? "text-orange-500" : "text-destructive";
-  const scoreBadge = h.score >= 75 ? "ممتاز" : h.score >= 50 ? "متوسط" : "يحتاج اهتمام";
+  const scoreClamped = Math.max(0, Math.min(100, Number(h.score) || 0));
+  const scoreToken =
+    scoreClamped >= 75 ? "hsl(var(--chart-1))" : scoreClamped >= 50 ? "hsl(var(--chart-3))" : "hsl(var(--chart-4))";
+  const scoreBadge = scoreClamped >= 75 ? "ممتاز" : scoreClamped >= 50 ? "متوسط" : "يحتاج اهتمام";
 
   return (
     <div className="space-y-6">
       <div className="grid md:grid-cols-3 gap-4">
-        <Card className="md:col-span-1">
+        <Card className="md:col-span-1 rounded-xl">
           <CardHeader>
-            <CardTitle className="text-base">مؤشر الصحة المالية</CardTitle>
-            <CardDescription>تقييم شامل لوضعك من 100</CardDescription>
+            <div className="eyebrow text-muted-foreground/80">الصحة المالية</div>
+            <CardTitle className="text-base font-semibold">تقييم شامل لوضعك</CardTitle>
+            <CardDescription>من 100</CardDescription>
           </CardHeader>
-          <CardContent className="text-center">
-            <div className={`text-7xl font-bold ${scoreColor}`} data-testid="text-health-score">{h.score}</div>
-            <Badge className="mt-3" variant={h.score >= 75 ? "default" : "secondary"}>{scoreBadge}</Badge>
+          <CardContent className="text-center pb-6">
+            <div
+              className="relative inline-flex items-center justify-center"
+              role="progressbar"
+              aria-valuenow={scoreClamped}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`مؤشر الصحة المالية: ${scoreClamped} من 100 — ${scoreBadge}`}
+            >
+              <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120" aria-hidden="true">
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="52"
+                  fill="none"
+                  stroke="hsl(var(--muted))"
+                  strokeWidth="8"
+                />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="52"
+                  fill="none"
+                  stroke={scoreToken}
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeDasharray={`${(scoreClamped / 100) * 326.7} 326.7`}
+                  className="transition-all duration-700"
+                />
+              </svg>
+              <div
+                className="absolute font-display text-4xl tabular-nums tracking-tight"
+                style={{ color: scoreToken }}
+                data-testid="text-health-score"
+              >
+                {scoreClamped}
+              </div>
+            </div>
+            <div className="mt-4 inline-flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: scoreToken }} />
+              {scoreBadge}
+            </div>
           </CardContent>
         </Card>
         <Card className="md:col-span-2">

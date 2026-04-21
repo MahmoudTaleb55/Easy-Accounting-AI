@@ -93,11 +93,19 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6" data-testid="settings-page">
-      <div className="flex items-center gap-3">
-        <SettingsIcon className="w-7 h-7 text-primary" />
-        <h1 className="text-2xl md:text-3xl font-bold">إعدادات المنشأة</h1>
-      </div>
+    <div className="max-w-3xl mx-auto space-y-8" data-testid="settings-page">
+      <header className="space-y-2">
+        <div className="eyebrow text-muted-foreground/80">الإعدادات</div>
+        <h1
+          className="font-display text-3xl md:text-4xl tracking-tight text-foreground"
+          data-testid="text-page-title"
+        >
+          إعدادات المنشأة
+        </h1>
+        <p className="text-sm text-muted-foreground max-w-xl">
+          الموقع، العملة، الضرائب، والكيانات — كل ما يحدد سلوك دفاترك في مكان واحد.
+        </p>
+      </header>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-6">

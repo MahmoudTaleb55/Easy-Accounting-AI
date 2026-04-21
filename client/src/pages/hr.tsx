@@ -25,14 +25,19 @@ import type { Employee, Leave } from "@shared/schema";
 
 export default function HRPage() {
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6" data-testid="hr-page">
-      <div className="flex items-center gap-3">
-        <Users className="w-7 h-7 text-primary" />
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold">الموارد البشرية والرواتب</h1>
-          <p className="text-sm text-muted-foreground mt-1">إدارة الموظفين، الحضور، الإجازات وكشوف الرواتب — مع تسجيل تلقائي للقيود (IFRS / IAS 19)</p>
-        </div>
-      </div>
+    <div className="space-y-8" data-testid="hr-page">
+      <header className="space-y-2">
+        <div className="eyebrow text-muted-foreground/80">الموارد والأصول</div>
+        <h1
+          className="font-display text-3xl md:text-4xl tracking-tight text-foreground"
+          data-testid="text-page-title"
+        >
+          فريقك ورواتبه — في مكان واحد.
+        </h1>
+        <p className="text-sm text-muted-foreground max-w-xl">
+          الموظفون، الحضور، الإجازات وكشوف الرواتب — مع تسجيل تلقائي للقيود وفق IFRS / IAS 19.
+        </p>
+      </header>
 
       <Tabs defaultValue="employees" className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
