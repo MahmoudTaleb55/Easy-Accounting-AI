@@ -1,146 +1,128 @@
-import { Link, useLocation } from "wouter"
+import { Link, useLocation } from "wouter";
 import {
-  LayoutDashboard,
-  ArrowLeftRight,
-  BookOpen,
-  BookText,
-  BarChart3,
-  Sparkles,
-  Users,
-  Building2,
-  Bot,
-  Settings as SettingsIcon,
-  Menu,
-  type LucideIcon,
-} from "lucide-react"
+  Home, ListOrdered, Bot, Wallet, Menu, BarChart3, BookOpen, BookText,
+  Sparkles, Users, Building2, Settings as SettingsIcon, ChevronLeft, ChevronRight, type LucideIcon,
+} from "lucide-react";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarHeader,
-  SidebarFooter,
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
+  SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter,
   useSidebar,
-} from "@/components/ui/sidebar"
-import { Button } from "@/components/ui/button"
-import { Brand } from "./Brand"
-import { useLocale } from "@/contexts/locale-context"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { useT, type StringKey } from "@/i18n/dict";
+import { useLocale } from "@/contexts/locale-context";
 
-type NavItem = {
-  url: string
-  icon: LucideIcon
-  ar: string
-  en: string
-}
+interface NavItem { key: StringKey; url: string; icon: LucideIcon; }
+interface NavGroup { label: StringKey; items: NavItem[]; }
 
-type NavSection = {
-  ar: string
-  en: string
-  items: NavItem[]
-}
-
-const sections: NavSection[] = [
+const GROUPS: NavGroup[] = [
   {
-    ar: "نظرة عامة",
-    en: "Overview",
+    label: "group_workspace",
     items: [
-      { url: "/app", icon: LayoutDashboard, ar: "الكوكبت", en: "Cockpit" },
-      { url: "/app/insights", icon: Sparkles, ar: "مركز القرارات", en: "Decisions" },
+      { key: "nav_dashboard",    url: "/app",                icon: Home },
+      { key: "nav_transactions", url: "/app/transactions",   icon: ListOrdered },
     ],
   },
   {
-    ar: "الدفاتر",
-    en: "Books",
+    label: "group_books",
     items: [
-      { url: "/app/transactions", icon: ArrowLeftRight, ar: "المعاملات", en: "Transactions" },
-      { url: "/app/journal", icon: BookText, ar: "قيود اليومية", en: "Journal" },
-      { url: "/app/accounts", icon: BookOpen, ar: "دليل الحسابات", en: "Chart of accounts" },
-      { url: "/app/reports", icon: BarChart3, ar: "التقارير المالية", en: "Reports" },
+      { key: "nav_journal",      url: "/app/journal",        icon: BookText },
+      { key: "nav_accounts",     url: "/app/accounts",       icon: BookOpen },
+      { key: "nav_reports",      url: "/app/reports",        icon: BarChart3 },
     ],
   },
   {
-    ar: "الموارد والأصول",
-    en: "People & assets",
+    label: "group_people",
     items: [
-      { url: "/app/hr", icon: Users, ar: "الموارد البشرية", en: "HR & payroll" },
-      { url: "/app/fixed-assets", icon: Building2, ar: "الأصول الثابتة", en: "Fixed assets" },
+      { key: "nav_hr",           url: "/app/hr",             icon: Users },
+      { key: "nav_assets",       url: "/app/fixed-assets",   icon: Building2 },
     ],
   },
   {
-    ar: "النظام",
-    en: "System",
+    label: "group_intelligence",
     items: [
-      { url: "/app/ai-assistant", icon: Bot, ar: "المساعد الذكي", en: "AI assistant" },
-      { url: "/app/settings", icon: SettingsIcon, ar: "الإعدادات", en: "Settings" },
+      { key: "nav_insights",     url: "/app/insights",       icon: Sparkles },
+      { key: "nav_ai",           url: "/app/ai-assistant",   icon: Bot },
     ],
   },
-]
+  {
+    label: "group_settings",
+    items: [
+      { key: "nav_settings",     url: "/app/settings",       icon: SettingsIcon },
+    ],
+  },
+];
 
 export function AppSidebar() {
-  const [location] = useLocation()
-  const { locale, dir } = useLocale()
-  // RTL: sidebar on right, with a left border. LTR: on left, with a right border.
-  const side = dir === "rtl" ? "right" : "left"
-  const borderClass = dir === "rtl" ? "border-l border-sidebar-border" : "border-r border-sidebar-border"
+  const [location] = useLocation();
+  const t = useT();
+  const { dir } = useLocale();
+  const { state, toggleSidebar } = useSidebar();
+  const collapsed = state === "collapsed";
+  const side = dir === "rtl" ? "right" : "left";
+  const ChevronCollapse = dir === "rtl" ? ChevronRight : ChevronLeft;
+  const ChevronExpand = dir === "rtl" ? ChevronLeft : ChevronRight;
 
   return (
-    <Sidebar className={borderClass} side={side}>
-      <SidebarHeader className="px-4 pt-5 pb-4 border-b border-sidebar-border">
-        <Brand size="md" href="/app" />
+    <Sidebar
+      side={side}
+      collapsible="icon"
+      className={`${dir === "rtl" ? "border-l" : "border-r"} border-border bg-sidebar`}
+    >
+      <SidebarHeader className="px-3 py-3 border-b border-sidebar-border">
+        <div className="flex items-center gap-2.5">
+          <div className="bg-primary/10 p-1.5 rounded-md shrink-0">
+            <Wallet className="w-4 h-4 text-primary" />
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold tracking-tight truncate">{t("brand")}</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {dir === "rtl" ? "نظام محاسبي ذكي" : "Intelligent ledger"}
+              </div>
+            </div>
+          )}
+        </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-3">
-        {sections.map((section) => (
-          <SidebarGroup key={section.en} className="mb-1">
-            <SidebarGroupLabel className="eyebrow px-3 pt-3 pb-1.5 text-[10px] text-muted-foreground/70">
-              {locale === "ar" ? section.ar : section.en}
-            </SidebarGroupLabel>
+      <SidebarContent className="py-2">
+        {GROUPS.map((g) => (
+          <SidebarGroup key={g.label} className="px-2 py-1">
+            {!collapsed && (
+              <SidebarGroupLabel className="px-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80 h-6">
+                {t(g.label)}
+              </SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
               <SidebarMenu>
-                {section.items.map((item) => {
-                  const isActive =
-                    location === item.url ||
-                    (item.url !== "/app" && location.startsWith(item.url + "/"))
-                  const Icon = item.icon
+                {g.items.map((item) => {
+                  const isActive = location === item.url;
+                  const label = t(item.key);
                   return (
-                    <SidebarMenuItem key={item.url}>
+                    <SidebarMenuItem key={item.key}>
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
-                        tooltip={locale === "ar" ? item.ar : item.en}
-                        className={cn(
-                          "h-9 rounded-md text-sm font-medium transition-colors",
+                        tooltip={label}
+                        className={`h-9 px-2.5 rounded-md text-sm transition-colors relative ${
                           isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                        )}
-                        data-testid={`link-nav-${item.url.replace(/\//g, "-")}`}
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                        }`}
                       >
-                        <Link href={item.url} className="flex items-center gap-2.5">
-                          <Icon
-                            className={cn(
-                              "w-4 h-4 shrink-0",
-                              isActive ? "text-primary" : "text-muted-foreground"
-                            )}
-                          />
-                          <span className="truncate">{locale === "ar" ? item.ar : item.en}</span>
+                        <Link href={item.url} data-testid={`sidebar-link-${item.key}`}>
                           {isActive && (
                             <span
+                              className={`absolute ${dir === "rtl" ? "right-0" : "left-0"} top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary`}
                               aria-hidden
-                              className={cn(
-                                "ms-auto h-4 w-[2px] rounded-full bg-primary"
-                              )}
                             />
                           )}
+                          <item.icon className={`w-4 h-4 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                          <span>{label}</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  )
+                  );
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -148,35 +130,36 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-md">
-          <span className="relative flex h-2 w-2" aria-hidden>
-            <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 animate-ping" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
-          </span>
-          <span className="text-xs text-muted-foreground font-medium">
-            {locale === "ar" ? "متصل · مزامنة لحظية" : "Connected · live sync"}
-          </span>
-        </div>
+      <SidebarFooter className="border-t border-sidebar-border px-2 py-2">
+        <button
+          onClick={toggleSidebar}
+          className="w-full inline-flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/40 transition-colors"
+          data-testid="button-toggle-sidebar"
+        >
+          {!collapsed && <span>{dir === "rtl" ? "طيّ القائمة" : "Collapse"}</span>}
+          {collapsed ? (
+            <ChevronExpand className="w-4 h-4 mx-auto" />
+          ) : (
+            <ChevronCollapse className="w-4 h-4" />
+          )}
+        </button>
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }
 
 export function MobileHeader() {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar } = useSidebar();
+  const t = useT();
   return (
-    <div className="md:hidden flex items-center justify-between px-4 h-14 bg-background/95 backdrop-blur border-b border-border sticky top-0 z-50">
-      <Brand size="sm" href="/app" />
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={toggleSidebar}
-        data-testid="button-mobile-menu"
-        aria-label="Toggle navigation"
-      >
+    <div className="md:hidden flex items-center justify-between px-4 h-12 bg-card border-b border-border sticky top-0 z-50">
+      <div className="flex items-center gap-2">
+        <Wallet className="w-5 h-5 text-primary" />
+        <h2 className="font-semibold text-sm text-foreground">{t("brand")}</h2>
+      </div>
+      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar}>
         <Menu className="w-5 h-5" />
       </Button>
     </div>
-  )
+  );
 }
