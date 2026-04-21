@@ -13,6 +13,8 @@ interface BrandProps {
   className?: string
   size?: "sm" | "md" | "lg"
   withTagline?: boolean
+  /** Where the wordmark links to. Defaults to "/" (public landing). */
+  href?: string
 }
 
 const sizeMap = {
@@ -21,11 +23,11 @@ const sizeMap = {
   lg: { mark: "text-2xl", tag: "text-xs"  },
 } as const
 
-export function Brand({ className, size = "md", withTagline = false }: BrandProps) {
+export function Brand({ className, size = "md", withTagline = false, href = "/" }: BrandProps) {
   const s = sizeMap[size]
   return (
     <a
-      href="/"
+      href={href}
       data-testid="link-brand"
       className={cn(
         "inline-flex flex-col items-start gap-0.5 group select-none",

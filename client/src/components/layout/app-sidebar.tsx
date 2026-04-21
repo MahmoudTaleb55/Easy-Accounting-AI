@@ -28,7 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 const items = [
-  { title: "الرئيسية", url: "/", icon: Home },
+  { title: "الرئيسية", url: "/dashboard", icon: Home },
   { title: "المعاملات", url: "/transactions", icon: ListOrdered },
   { title: "دليل الحسابات", url: "/accounts", icon: BookOpen },
   { title: "قيود اليومية", url: "/journal", icon: BookText },

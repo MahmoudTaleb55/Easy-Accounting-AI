@@ -1,0 +1,223 @@
+You are not just a developer. You are a world-class product designer, fintech UX strategist, elite SaaS architect, and premium brand builder.
+
+Your mission is to transform this project into the most powerful, comprehensive, and visually impressive AI accounting platform website in the world.
+
+This is not a simple accounting app.
+This must feel like:
+- the future of accounting
+- an intelligent finance operating system
+- a category-defining global SaaS product
+- a premium fintech platform trusted by serious businesses
+- a world-class AI product with unmatched clarity, trust, and power
+
+Core objective:
+Make this product look and feel like the strongest accounting platform on earth in both design and user experience.
+
+The product should communicate:
+- intelligence
+- trust
+- control
+- automation
+- financial precision
+- global scalability
+- enterprise-grade readiness
+- simplicity despite deep power
+
+Important product positioning:
+This is an AI-powered accounting operating system for modern businesses, accountants, finance teams, founders, and enterprises.
+It should feel more advanced than traditional accounting software and more useful than a generic dashboard product.
+
+What I want you to build:
+1. A world-class public homepage at `/`
+2. A premium in-app product experience at `/app`
+3. A unified design language across both
+4. A product identity that feels original, iconic, and investment-grade
+
+CRITICAL RULE:
+Do not create a generic AI-generated SaaS website.
+Do not make it look like a template.
+Do not use repetitive feature cards everywhere.
+Do not overuse gradients.
+Do not create visual clutter.
+Do not make it look like a local software company website.
+Do not make it look like an average admin dashboard.
+
+I want a category-leading product website.
+
+PHASE GOAL:
+Redesign the entire experience so it feels like the most advanced accounting platform in the world.
+
+Design direction:
+- premium fintech SaaS
+- elegant, modern, powerful
+- global product quality
+- strong typography
+- disciplined spacing
+- clean surfaces
+- high trust visual language
+- rich but not noisy
+- futuristic but professional
+- bold but controlled
+- premium motion and interaction details
+- excellent light mode and dark mode
+
+The website and app must communicate these product pillars:
+- AI accounting intelligence
+- automation-first workflows
+- real-time financial control
+- invoicing and billing excellence
+- smart expense management
+- deep reporting and analytics
+- bank reconciliation
+- auditability and trust
+- multi-user collaboration
+- role-based visibility
+- enterprise-grade readiness
+- integrations and scalability
+
+Public homepage requirements for `/`:
+Build a truly world-class SaaS homepage with sections such as:
+- Hero section with a sharp value proposition, powerful product framing, and premium app preview
+- Immediate trust signals
+- “Why this is different” section
+- Core platform capabilities
+- AI accounting assistant section
+- Automation and workflow orchestration section
+- Smart analytics and financial intelligence section
+- Security, trust, and compliance section
+- Use cases by audience: founders, accountants, finance teams, businesses
+- Integrations / ecosystem section
+- Testimonials or proof-style sections
+- FAQ
+- Premium final CTA
+- Professional, rich footer
+
+Homepage rules:
+- The hero must explain what the product is in seconds
+- The headline must be powerful and specific, not generic
+- Include strong proof and trust cues above the fold
+- Use real product-style UI blocks, not empty mockups
+- Every section must have a clear conversion purpose
+- Vary layout rhythm across sections
+- Create a premium visual storytelling flow
+- Make the product feel large, serious, and category-defining
+
+In-app experience requirements for `/app`:
+Redesign the application as a world-class Accounting OS.
+
+The dashboard must feel:
+- precise
+- premium
+- easy to scan
+- operationally powerful
+- deeply useful
+- calm but advanced
+
+Improve:
+- app shell
+- sidebar
+- top navigation
+- KPI cards
+- command center layout
+- reports widgets
+- transaction tables
+- invoices screens
+- expense management views
+- clients/customers area
+- AI assistant workspace
+- search and command behavior
+- empty states
+- loading states
+- error states
+- mobile responsiveness
+
+The app should feel like a premium finance command center, not a generic admin template.
+
+Add product depth through interface concepts such as:
+- financial overview command center
+- real-time smart alerts
+- AI recommendations
+- anomaly detection highlights
+- cash flow insights
+- overdue invoice intelligence
+- reconciliation shortcuts
+- audit log visibility
+- approval workflows
+- role-based views
+- quick actions
+- contextual assistant panel
+
+World-class UX laws you must follow:
+- clarity before decoration
+- trust before creativity
+- hierarchy before density
+- structure before animation
+- usability before visual effects
+- every screen must have one primary purpose
+- every section must answer a user question
+- every major CTA must reduce hesitation
+- the interface must feel premium, not busy
+- no random decorative elements without purpose
+- no weak copy
+- no generic startup slogans
+- no shallow “all-in-one solution” wording
+
+Visual system requirements:
+- build a premium color system for light and dark mode
+- define typography hierarchy clearly
+- use a disciplined spacing system
+- create excellent button styles, cards, forms, tables, badges, tags, and nav states
+- use strong contrast and readability
+- use subtle but premium shadows and borders
+- create a visually refined and original identity
+- establish a design system that can scale
+
+Brand perception target:
+When someone sees this product, they should think:
+“This is not just accounting software.”
+“This looks like the future of financial operations.”
+“This feels like a serious global product.”
+“This looks investable, scalable, and category-defining.”
+
+Content requirements:
+Improve or rewrite weak copy.
+Use world-class SaaS/fintech messaging.
+Make headlines outcome-focused, specific, and premium.
+Explain the product in a way that both accountants and business owners can understand.
+Balance sophistication with clarity.
+
+Technical and workflow rules:
+- preserve working functionality where possible
+- do not break app logic unnecessarily
+- improve structure first, then polish
+- keep code clean and maintainable
+- reuse components intelligently
+- avoid chaotic rewrites
+- if a major structural change is needed, explain it clearly
+- show which files are changed
+- keep routes organized
+- make `/` the public marketing/product website
+- make `/app` the actual application experience
+
+Execution steps:
+1. Audit the current project and identify what makes it feel weak or generic
+2. Propose a high-level redesign structure
+3. Implement the strongest design system needed for a premium fintech accounting product
+4. Build or redesign the homepage at `/`
+5. Upgrade the app experience at `/app`
+6. Polish responsiveness, trust, hierarchy, and micro-interactions
+7. Summarize all major improvements clearly
+
+Success criteria:
+- the product feels like the strongest accounting SaaS website in the world
+- the homepage feels world-class and investor-ready
+- the app feels like a true intelligent accounting operating system
+- the visual quality feels premium and original
+- the UX feels clear, powerful, and smooth
+- the product is memorable, differentiated, and globally competitive
+
+Before making major structural changes, briefly tell me:
+- what you will change
+- which files/routes will be affected
+- what the new experience structure will be
+Then proceed with implementation.

@@ -53,6 +53,25 @@ A premium fintech aesthetic foundation. Source of truth: `client/src/index.css` 
 - **New utilities**: `.eyebrow` (mono uppercase tracked label), `.text-display`/`-lg`/`-xl` (clamp-based marketing display sizes), `.glass-surface` (translucent backdrop-blur), `.hairline` / `.hairline-v` (1px rules). Custom focus ring via global `:where` rule using `--shadow-ring`.
 
 The dashboard widgets (`dashboard.tsx`) and other page-level surfaces still use legacy hardcoded colors (e.g. blue-cyan gradient on the balance card, rose/emerald icon-on-circle treatments). These are out of scope for Phase 1 and will be addressed in Phase 3 (Dashboard & app-shell redesign).
+
+### Public Landing Page (Phase 2 — April 2026)
+
+A new public marketing page lives at `/` (`client/src/pages/landing.tsx`), built fully on the Phase 1 visual system. Authenticated app routes were re-anchored: the dashboard moved from `/` to `/dashboard`, and `client/src/App.tsx` now branches at the route layer — `/` renders **without** `MainLayout` (no sidebar, no company-switcher), while every other route is wrapped in the authenticated app shell. The `Brand` wordmark accepts an `href` prop so it can point at `/` (public) or `/dashboard` (in-app) depending on context.
+
+Eleven sections, deliberately varied in rhythm — no repetition of "three identical feature cards":
+1. **Hero** — asymmetric grid: copy on RTL right + windowed product mockup on the left, with two floating chips (auto-posted entry, profit delta) and a soft dual-glow background.
+2. **Trust strip** — wordmark row + four-up metric band (entries posted, uptime, latency, SOC 2).
+3. **Why different** — editorial intro (display + lede) followed by a 2×2 grid of numbered principles. No icons-in-circles.
+4. **Core capabilities** — 6-column **bento grid**: one large cockpit card (col-span-4 row-span-2), one tall AI card (col-span-2 row-span-2), two wide cards, three small cards. Each card has a distinct internal treatment.
+5. **AI assistant** — split layout, copy on RTL right, full chat-mockup window on the left (achieved via explicit `lg:col-start-1` / `lg:col-start-8` rather than fragile flex `order` swaps, which reverse meaning under RTL).
+6. **Dashboard showcase** — full-width browser-frame mock of the cockpit (sidebar + KPIs + cash-forecast chart + alerts + AI insight callout), with a horizontal feature-toggle strip beneath.
+7. **Automation** — 5-step horizontal flow diagram (chips connected by hairlines + arrows), plus a 3-up case row showing supplier invoice / new employee / fixed asset journey.
+8. **Security** — 4-up dense grid with hairline separators (NOT cards): SOC 2, AES-256/TLS 1.3, immutable IFRS audit trail, MENA data residency.
+9. **Use cases** — accessible WAI-ARIA tab pattern (Founders / Accountants / Teams) with persona quote + outcomes list, RTL-aware arrow-key navigation.
+10. **FAQ** — six Q&A items via shadcn Accordion.
+11. **Final CTA** — full-width bordered band with subtle grid texture and decorative emerald glow, mailto-based primary/secondary CTAs, deep-link to showcase.
+
+Internal landmark sections are linked from the navbar (`#platform`, `#ai`, `#automation`, `#security`, `#use-cases`, `#faq`) and from in-page CTAs (`#cta`, `#showcase`). Self-contained UI primitives (`BrowserFrame`, `MiniKPI`, `SparkChart`, `ChatBubble`, `FloatingChip`, `Metric`, `BentoCard`, `AlertRow`) are defined inside the file to keep the landing page hermetic and easy to evolve without bleeding helpers into the broader component library.
 - **Styling**: Tailwind CSS with CSS variables for theming; Cairo Arabic font loaded via Google Fonts
 - **RTL Layout**: The entire app uses `dir="rtl"` in the main layout wrapper (`main-layout.tsx`), Arabic-first interface
 - **Charts**: Recharts (`PieChart`, `BarChart`) used on the dashboard
