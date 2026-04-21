@@ -102,9 +102,9 @@ export function AppFooter({ columns, tagline, className }: AppFooterProps) {
   const year = new Date().getFullYear()
   const brandName = ar ? "محاسب ذكي" : "Smart Accountant"
   const resolvedTagline = tagline ?? (ar
-    ? "نظام محاسبة ذكي مبني وفق معايير IFRS، عربي أولاً، يمنح الشركة الحديثة مركز قيادة مالي واحد — من الفواتير إلى البصيرة."
+    ? "نظام محاسبيّ ذكيّ، مبنيّ وفق IFRS، عربيّ في الجوهر، يمنح الشركة الحديثة مركز قيادة ماليّ واحداً — من أوّل فاتورة إلى آخر تقرير."
     : "An IFRS-grade, AI-native accounting system that gives the modern business one financial command center — from invoices to insight.")
-  const privacy  = ar ? "سياسة الخصوصية" : "Privacy"
+  const privacy  = ar ? "الخصوصيّة" : "Privacy"
   const terms    = ar ? "الشروط" : "Terms"
   const security = ar ? "الأمان" : "Security"
 

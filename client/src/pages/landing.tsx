@@ -27,62 +27,62 @@ function getCopy(locale: Locale) {
   return {
     ar,
     nav: {
-      platform: ar ? "المنصة" : "Platform",
+      platform: ar ? "المنصّة" : "Platform",
       ai: ar ? "الذكاء" : "Intelligence",
       automation: ar ? "الأتمتة" : "Automation",
       security: ar ? "الأمان" : "Security",
       useCases: ar ? "الاستخدامات" : "Use cases",
       faq: ar ? "الأسئلة" : "FAQ",
       openApp: ar ? "افتح التطبيق" : "Open app",
-      demo: ar ? "طلب عرض" : "Request demo",
+      demo: ar ? "اطلب عرضاً" : "Request demo",
       signIn: ar ? "تسجيل الدخول" : "Sign in",
     },
     hero: {
-      tag: ar ? "الإصدار الجديد · مدعوم بـ GPT-5.2" : "New release · Powered by GPT-5.2",
-      h1a: ar ? "نظام محاسبة ذكي،" : "Intelligent accounting,",
-      h1b: ar ? "مبني للأعمال الحديثة." : "built for modern business.",
+      tag: ar ? "إصدار جديد · بقوّة GPT-5.2" : "New release · Powered by GPT-5.2",
+      h1a: ar ? "محاسبة ذكيّة،" : "Intelligent accounting,",
+      h1b: ar ? "للأعمال التي لا تنتظر." : "built for modern business.",
       sub: ar
-        ? "من الفواتير إلى البصيرة — منصّة محاسبية واحدة وفق معايير IFRS، مدعومة بالذكاء الاصطناعي، تعمل عبر سبع دول وبعملات متعددة."
+        ? "منصّة محاسبيّة واحدة، مبنيّة على معايير IFRS، يقودها ذكاء اصطناعيّ يفهم أرقامك. سبع دول، عدّة عملات، قرار واحد."
         : "From invoices to insight — one IFRS-grade accounting platform, AI-native, running across seven countries and multiple currencies.",
-      subEm: ar ? " عربية أولاً، عالمية بطبعها." : " Arabic-first, global by design.",
+      subEm: ar ? " عربيّة في الجوهر، عالميّة في التصميم." : " Arabic-first, global by design.",
       ctaPrimary: ar ? "افتح التطبيق" : "Open the app",
-      ctaSecondary: ar ? "احجز عرضاً مباشراً" : "Book a live demo",
+      ctaSecondary: ar ? "اطلب عرضاً مباشراً" : "Book a live demo",
       ctaTertiary: ar ? "تسجيل الدخول" : "Sign in",
       bullets: ar
-        ? ["بدون بطاقة ائتمان", "تجربة كاملة ١٤ يوم", "تركيب خلال ٥ دقائق"]
+        ? ["بدون بطاقة ائتمان", "١٤ يوماً مجاناً، بكلّ المزايا", "جاهز خلال ٥ دقائق"]
         : ["No credit card", "Full 14-day trial", "Set up in 5 minutes"],
       mockTitle: ar ? "cockpit · محاسب ذكي" : "cockpit · Smart Accountant",
-      chipAuto: { t: ar ? "قيد آلي مُسجَّل" : "Entry auto-posted", s: ar ? "فاتورة كهرباء · ١٥٠ ر.س" : "Electricity invoice · SAR 150" },
-      chipProfit: { t: ar ? "نسبة الربح ↑ ١٢٪" : "Profit margin ↑ 12%", s: ar ? "الربع الحالي" : "Current quarter" },
+      chipAuto: { t: ar ? "قيد سُجِّل تلقائيّاً" : "Entry auto-posted", s: ar ? "فاتورة كهرباء · ١٥٠ ر.س" : "Electricity invoice · SAR 150" },
+      chipProfit: { t: ar ? "هامش الربح ↑ ١٢٪" : "Profit margin ↑ 12%", s: ar ? "هذا الربع" : "Current quarter" },
       kpis: {
         revenue: ar ? "الإيرادات" : "Revenue",
         expenses: ar ? "المصروفات" : "Expenses",
-        netCash: ar ? "صافي التدفق" : "Net cash",
+        netCash: ar ? "صافي التدفّق" : "Net cash",
       },
       band: {
-        eyebrow: ar ? "آخر ٣٠ يوم" : "Last 30 days",
-        title: ar ? "التدفق النقدي" : "Cash flow",
+        eyebrow: ar ? "آخر ٣٠ يوماً" : "Last 30 days",
+        title: ar ? "التدفّق النقديّ" : "Cash flow",
         ticks: ar ? ["د", "أ", "ش", "س"] : ["D", "J", "F", "M"],
       },
       entry: {
         title: ar ? "آخر قيد · #٢٤٧٨" : "Latest entry · #2478",
         balanced: ar ? "متوازن" : "Balanced",
-        marketing: ar ? "مصروفات تسويق" : "Marketing expense",
-        cash: ar ? "النقدية" : "Cash",
+        marketing: ar ? "مصروف تسويق" : "Marketing expense",
+        cash: ar ? "النقديّة" : "Cash",
         amount: ar ? "١٢٠٠.٠٠" : "1,200.00",
       },
     },
     trust: {
       eyebrow: ar ? "يثق بنا" : "Trusted by",
       headline: ar ? "٢٠٠٠+" : "2,000+",
-      sub1: ar ? "شركة وفريق مالي" : "businesses & finance teams",
-      sub2: ar ? "عبر" : "across",
+      sub1: ar ? "شركة وفريق ماليّ" : "businesses & finance teams",
+      sub2: ar ? "في" : "across",
       sub3: ar ? "٧ دول" : "7 countries",
       metrics: [
-        { v: ar ? "٢.٤ مليار+" : "$2.4B+",  l: ar ? "ر.س قيود مُسجَّلة" : "in posted entries" },
-        { v: ar ? "٩٩.٩٩٪"     : "99.99%",  l: ar ? "جاهزية المنصة" : "platform uptime" },
+        { v: ar ? "٢.٤ مليار+" : "$2.4B+",  l: ar ? "قيمة قيود مُسجَّلة" : "in posted entries" },
+        { v: ar ? "٩٩.٩٩٪"     : "99.99%",  l: ar ? "جاهزيّة المنصّة" : "platform uptime" },
         { v: "< 120ms",                       l: ar ? "زمن استجابة API" : "API latency" },
-        { v: "SOC 2",                         l: ar ? "Type II معتمد" : "Type II audited", mono: true },
+        { v: "SOC 2",                         l: ar ? "Type II · معتمد" : "Type II audited", mono: true },
       ],
     },
     why: {
@@ -90,16 +90,16 @@ function getCopy(locale: Locale) {
       title1: ar ? "المحاسبة لم تتغيّر منذ خمسين عاماً." : "Accounting hasn't changed in fifty years.",
       title2: ar ? "حتى الآن." : "Until now.",
       lead: ar
-        ? "معظم برامج المحاسبة ورقة إلكترونية: تكتب فيها ما كنت ستكتبه على ورق. نحن نبدأ من السؤال الآخر — ماذا لو فهم النظام معاملاتك، وكتب القيود نيابةً عنك، وأخبرك بما يجب فعله غداً؟"
+        ? "معظم برامج المحاسبة مجرّد دفتر إلكترونيّ: تكتب فيه ما كنت ستكتبه على الورق. نحن بدأنا من سؤال آخر — ماذا لو فَهِمَ النظام معاملاتك، وسجّل قيودك بنفسه، وأخبرك بما ينبغي فعله غداً؟"
         : "Most accounting software is just a digital ledger: you type what you'd otherwise write on paper. We started from a different question — what if the system understood your transactions, posted the entries for you, and told you what to do tomorrow?",
       sub: ar
-        ? "الإجابة هي محاسب ذكي: نظام محاسبة كامل، مُتوافق مع IFRS، مع طبقة ذكاء اصطناعي تعمل من الجذور — لا فوقها."
+        ? "الجواب هو محاسب ذكي: نظام محاسبيّ متكامل وفق IFRS، يعمل فيه الذكاء الاصطناعيّ من الأساس — لا كإضافة سطحيّة."
         : "The answer is Smart Accountant: a complete IFRS-compliant accounting system with an AI layer that works from the roots — not bolted on top.",
       principles: ar ? [
-        { n: "01", t: "ذكاء حقيقي، لا واجهة عليه ملصق", b: "الـ AI ليس ميزة جانبية. هو يقرأ فاتورتك، يصنّفها، يقترح القيد المحاسبي الصحيح وفق IFRS، ويتعلّم من تصحيحاتك. تكتب «دفعت ١٢٠ للمورد» ويسجّل القيد كاملاً." },
-        { n: "02", t: "محلّي حيث يجب، عالمي حيث ينبغي", b: "ضريبة القيمة المضافة، الزكاة، التأمينات، نهاية الخدمة، عُطل العمل، تقويم رمضان — مدمجة لسبع دول. والقاعدة دائماً IFRS، فحساباتك تُقرأ من المُدقّق في الرياض ومن المستثمر في لندن بنفس اللغة." },
-        { n: "03", t: "أرقام يمكن الاعتماد عليها", b: "كل قيد مزدوج، متوازن، له سند رقمي وأثر تدقيق غير قابل للتعديل. المعادلات تتحقق آنياً. لا حقول حرة، لا أرقام «تقريبية»، لا مفاجآت في نهاية السنة." },
-        { n: "04", t: "مبني للقرار، لا للتسجيل فقط", b: "كوكبت قرار حيّ يقيس صحة عملك، يتنبّأ بالتدفق النقدي، يحاكي «ماذا لو؟»، ويصلك بصياغة عربية واضحة من مساعد ذكي يفهم سياقك المالي." },
+        { n: "01", t: "ذكاء حقيقيّ، لا مجرّد واجهة", b: "الذكاء الاصطناعيّ هنا ليس ميزة مضافة، بل قلب النظام. يقرأ الفاتورة، يصنّفها، يقترح القيد الصحيح وفق IFRS، ويتعلّم من تعديلاتك. تكتب «دفعت ١٢٠ للمورّد»، فيكتمل القيد بنفسه." },
+        { n: "02", t: "محلّيّ بعمق، عالميّ بمعيار", b: "ضريبة القيمة المضافة، الزكاة، التأمينات، مكافأة نهاية الخدمة، إجازات العمل، التقويم الهجريّ — جاهزة في سبع دول. والأساس دائماً IFRS، فدفاترك يقرأها المدقّق في الرياض والمستثمر في لندن بالمنطق نفسه." },
+        { n: "03", t: "أرقام تستحقّ الثقة", b: "كلّ قيد مزدوج، متوازن، مرتبط بمستند، له أثر تدقيق لا يُمسّ. المعادلات تُراجَع لحظيّاً. لا حقول مفتوحة، ولا أرقام «تقريبيّة»، ولا مفاجآت في آخر السنة." },
+        { n: "04", t: "أداة قرار، لا مجرّد دفتر", b: "مركز قيادة حيّ يقيس صحّة شركتك، يتوقّع تدفّقك النقديّ، يحاكي سيناريوهات «ماذا لو؟»، ويُحدّثك بعربيّة واضحة عبر مساعد ذكيّ يفهم سياقك الماليّ." },
       ] : [
         { n: "01", t: "Real intelligence, not a sticker on top", b: "AI isn't a side feature. It reads your invoice, classifies it, proposes the correct IFRS entry, and learns from your corrections. Type \"paid 120 to vendor\" and the full entry posts itself." },
         { n: "02", t: "Local where it matters, global by design", b: "VAT, Zakat, social insurance, end-of-service, work calendars, Ramadan — built in for seven countries. The base is always IFRS, so your books read the same to an auditor in Riyadh and an investor in London." },
@@ -108,149 +108,149 @@ function getCopy(locale: Locale) {
       ],
     },
     capabilities: {
-      eyebrow: ar ? "القدرات الأساسية" : "Core capabilities",
-      title: ar ? "كل ما تحتاجه لإدارة المالية. لا شيء غير ذلك." : "Everything you need to run finance. Nothing you don't.",
+      eyebrow: ar ? "القدرات الجوهريّة" : "Core capabilities",
+      title: ar ? "كلّ ما تحتاجه لإدارة ماليّتك. ولا شيء سوى ذلك." : "Everything you need to run finance. Nothing you don't.",
       lead: ar
-        ? "من الفاتورة الأولى حتى القائمة المالية المُدقَّقة. سبع دول. أربع عملات. معايير IFRS من الجذر."
+        ? "من أوّل فاتورة إلى آخر قائمة ماليّة جاهزة للتدقيق. سبع دول. أربع عملات. IFRS من الجذور."
         : "From the first invoice to audit-ready financials. Seven countries. Four currencies. IFRS at the core.",
       cockpit: {
         tag: ar ? "المركز" : "Center",
-        title: ar ? "كوكبت القرار" : "Decision cockpit",
+        title: ar ? "مركز القرار" : "Decision cockpit",
         body: ar
-          ? "مؤشرات الصحة المالية، التنبؤ النقدي، محاكي «ماذا لو»، والتنبيهات الذكية — في مكان واحد."
+          ? "صحّة الشركة، توقّعات النقد، محاكي «ماذا لو»، والتنبيهات الذكيّة — في شاشة واحدة."
           : "Financial health, cash forecast, what-if simulator, and smart alerts — in one place.",
         kpis: [
-          { label: ar ? "نقاط الصحة" : "Health score", value: ar ? "٨٤" : "84",     delta: "+6", positive: true, compact: true },
+          { label: ar ? "نقاط الصحّة" : "Health score", value: ar ? "٨٤" : "84",     delta: "+6", positive: true, compact: true },
           { label: ar ? "السيولة"      : "Liquidity",   value: ar ? "٢.٣x" : "2.3x", delta: "+0.2", positive: true, compact: true },
-          { label: ar ? "التنبيهات"   : "Alerts",       value: ar ? "٣" : "3",       delta: ar ? "جديدة" : "new", warning: true, compact: true },
+          { label: ar ? "تنبيهات"     : "Alerts",       value: ar ? "٣" : "3",       delta: ar ? "جديدة" : "new", warning: true, compact: true },
         ],
       },
       ai: {
         tag: ar ? "الذكاء" : "AI",
-        title: ar ? "المساعد المحاسبي" : "Accounting assistant",
-        body: ar ? "تحدّث بالعربية. صوّر فاتورتك. اطلب تقريراً." : "Talk in your language. Snap an invoice. Ask for a report.",
-        chat1: ar ? "سجّل ١٢٠٠ ر.س مصروفات تسويق نقداً" : "Post 1,200 marketing expense in cash",
+        title: ar ? "المساعد المحاسبيّ" : "Accounting assistant",
+        body: ar ? "اكتب بالعربيّة. صوّر فاتورتك. اطلب تقريرك." : "Talk in your language. Snap an invoice. Ask for a report.",
+        chat1: ar ? "سجّل ١٢٠٠ ر.س تسويقاً نقديّاً" : "Post 1,200 marketing expense in cash",
         chat2: ar
-          ? "تم. القيد #٢٤٧٨ متوازن، رصيد التسويق هذا الشهر ٤,١٠٠ ر.س."
+          ? "تمّ. القيد #٢٤٧٨ متوازن، وإجمالي التسويق هذا الشهر ٤,١٠٠ ر.س."
           : "Done. Entry #2478 is balanced; marketing this month is 4,100.",
       },
       local: {
-        title: ar ? "سبع دول، حزمة محلية لكل واحدة" : "Seven countries, a local pack for each",
+        title: ar ? "سبع دول، حزمة محلّيّة لكلّ منها" : "Seven countries, a local pack for each",
         body: ar
-          ? "ضريبة القيمة المضافة، الزكاة، التأمينات الاجتماعية، صيغ نهاية الخدمة، عُطل العمل والتقويم الهجري — مُهيّأة لكل دولة."
+          ? "ضريبة القيمة المضافة، الزكاة، التأمينات الاجتماعيّة، حساب نهاية الخدمة، إجازات العمل والتقويم الهجريّ — جاهزة في كلّ دولة."
           : "VAT, Zakat, social insurance, end-of-service formulas, work calendars and the Hijri calendar — preconfigured per country.",
         chips: ar
-          ? ["السعودية", "الإمارات", "مصر", "الكويت", "قطر", "الأردن", "International"]
+          ? ["السعوديّة", "الإمارات", "مصر", "الكويت", "قطر", "الأردنّ", "International"]
           : ["Saudi Arabia", "UAE", "Egypt", "Kuwait", "Qatar", "Jordan", "International"],
       },
       assets: {
-        title: ar ? "الأصول الثابتة بمعايير IFRS" : "Fixed assets, IFRS-grade",
+        title: ar ? "الأصول الثابتة بمعيار IFRS" : "Fixed assets, IFRS-grade",
         body: ar
-          ? "دورة حياة كاملة: اقتناء، إهلاك، إعادة تقييم، اضمحلال، تخلّص. جدولة آلية وأثر تدقيق غير قابل للتعديل."
+          ? "دورة حياة كاملة: اقتناء، إهلاك، إعادة تقييم، انخفاض قيمة، استبعاد. جداول آليّة وأثر تدقيق لا يُمسّ."
           : "Full lifecycle: acquisition, depreciation, revaluation, impairment, disposal. Automated schedules and an immutable audit trail.",
         m1: ar ? "طريقة الإهلاك" : "Method",
         m1v: ar ? "قسط ثابت" : "Straight line",
         m2: ar ? "العمر النافع" : "Useful life",
-        m2v: ar ? "٦٠ شهر" : "60 months",
-        m3: ar ? "القيمة المتبقية" : "Salvage",
+        m2v: ar ? "٦٠ شهراً" : "60 months",
+        m3: ar ? "القيمة المتبقّية" : "Salvage",
         m3v: ar ? "٥,٠٠٠" : "5,000",
       },
       payroll: {
-        title: ar ? "الرواتب والموارد البشرية" : "Payroll & HR",
-        body: ar ? "IAS 19. تأمينات. مخصص نهاية الخدمة. قيد آلي شهري." : "IAS 19. Social insurance. EOSB accrual. Auto monthly entry.",
+        title: ar ? "الرواتب والموارد البشريّة" : "Payroll & HR",
+        body: ar ? "IAS 19. تأمينات. مخصّص نهاية الخدمة. قيد شهريّ آليّ." : "IAS 19. Social insurance. EOSB accrual. Auto monthly entry.",
       },
       reports: {
-        title: ar ? "القوائم المالية" : "Financial statements",
-        body: ar ? "الميزانية، الدخل، التدفقات النقدية — وفق IFRS فوراً." : "Balance sheet, income, cash flow — IFRS, instant.",
+        title: ar ? "القوائم الماليّة" : "Financial statements",
+        body: ar ? "الميزانيّة، الدخل، التدفّقات النقديّة — وفق IFRS، فوراً." : "Balance sheet, income, cash flow — IFRS, instant.",
       },
       multi: {
-        title: ar ? "شركات وعملات متعددة" : "Multi-entity & currency",
-        body: ar ? "توحيد، تحويل، عرض موحّد للمجموعة." : "Consolidate, translate, group view.",
+        title: ar ? "شركات وعملات متعدّدة" : "Multi-entity & currency",
+        body: ar ? "توحيد، تحويل، نظرة واحدة لكامل المجموعة." : "Consolidate, translate, group view.",
       },
     },
     aiSection: {
-      tag: ar ? "المساعد المحاسبي" : "Accounting assistant",
-      h1: ar ? "تحدّث بالعربية،" : "Speak naturally,",
-      h2: ar ? "يفهم محاسبتك." : "it understands your books.",
+      tag: ar ? "المساعد المحاسبيّ" : "Accounting assistant",
+      h1: ar ? "تحدّث بلغتك،" : "Speak naturally,",
+      h2: ar ? "يفهم دفاترك." : "it understands your books.",
       lead: ar
-        ? "مساعد ذكي مدرّب على معايير IFRS وعلى محاسبة عملك بالذات. يُسجّل القيود من نص أو صورة، يجيبك عن أسئلتك المالية، ويتنبّأ بما يجب فعله."
+        ? "مساعد ذكيّ مدرَّب على معايير IFRS وعلى دفاتر شركتك أنت. يُسجّل القيود من نصّ أو صورة، يُجيب عن أسئلتك الماليّة، ويتوقّع ما يستحقّ فعله."
         : "An assistant trained on IFRS and on your own books. It posts entries from text or images, answers your financial questions, and anticipates what's next.",
       bullets: ar ? [
-        ["قيود من اللغة الطبيعية", "اكتب «دفعت ٣٠٠ مقابل قهوة» — يصنّف ويسجّل."],
-        ["تحليل من الصور", "ارفع فاتورة، يستخرج البيانات ويُنشئ القيد."],
-        ["محاكاة آنية", "اسأل «ماذا لو زادت الرواتب ١٠٪؟» — تحصل على الجواب فوراً."],
-        ["شفافية كاملة", "كل اقتراح له سند: حساب، معيار IFRS، أو سياسة الشركة."],
+        ["قيود من لغة عاديّة", "اكتب «دفعت ٣٠٠ ثمن قهوة» — يصنّف ويسجّل."],
+        ["قراءة من الصور", "ارفع فاتورة، يستخرج بياناتها وينشئ القيد."],
+        ["محاكاة لحظيّة", "اسأل «ماذا لو ارتفعت الرواتب ١٠٪؟» — يصلك الجواب في ثوانٍ."],
+        ["شفافيّة تامّة", "كلّ اقتراح له سند: رقم حساب، أو معيار IFRS، أو سياسة الشركة."],
       ] : [
         ["Natural-language entries", "Type \"paid 300 for coffee\" — it classifies and posts."],
         ["Read from images", "Upload an invoice; it extracts data and posts the entry."],
         ["Live simulation", "Ask \"what if salaries rise 10%?\" — answer in seconds."],
         ["Full transparency", "Every suggestion is sourced: account, IFRS standard, or company policy."],
       ],
-      cta: ar ? "جرّب المساعد الآن" : "Try the assistant",
+      cta: ar ? "جرّب المساعد" : "Try the assistant",
       mockTitle: ar ? "assistant · محاسب ذكي" : "assistant · Smart Accountant",
       chat: {
         u1: ar
-          ? "ارفقت صورة فاتورة كهرباء بمبلغ ٤٥٠ ر.س. سجّلها وقل لي أين نقف من ميزانية المرافق."
+          ? "أرفقت فاتورة كهرباء بـ ٤٥٠ ر.س. سجّلها، وقل لي أين نقف من ميزانيّة المرافق."
           : "I uploaded a 450 utility invoice. Post it and tell me where we stand against the utilities budget.",
-        a1Pre: ar ? "تم. أنشأت القيد " : "Done. Created entry ",
+        a1Pre: ar ? "تمّ. أنشأتُ القيد " : "Done. Created entry ",
         a1Num: ar ? "#٢٤٨١" : "#2481",
-        utilities: ar ? "مصروفات مرافق" : "Utilities expense",
-        payable: ar ? "دائنون" : "Accounts payable",
+        utilities: ar ? "مصروف مرافق" : "Utilities expense",
+        payable: ar ? "ذمم دائنة" : "Accounts payable",
         amount: ar ? "٤٥٠.٠٠" : "450.00",
         budget: ar
-          ? ["ميزانية المرافق هذا الشهر:", "١,٨٢٠ / ٢,٥٠٠", "· متبقّي ٢٧٪."]
+          ? ["ميزانيّة المرافق هذا الشهر:", "١,٨٢٠ / ٢,٥٠٠", "· المتبقّي ٢٧٪."]
           : ["Utilities budget this month:", "1,820 / 2,500", "· 27% left."],
-        u2: ar ? "احسب لي تأثير زيادة الرواتب ١٠٪ على التدفق النقدي." : "Show me the impact of a 10% salary raise on cash flow.",
+        u2: ar ? "احسب أثر رفع الرواتب ١٠٪ على التدفّق النقديّ." : "Show me the impact of a 10% salary raise on cash flow.",
       },
     },
     showcase: {
-      eyebrow: ar ? "منتج حقيقي. ليس عرضاً." : "A real product. Not a mockup.",
-      title: ar ? "مركز قيادة مالي واحد" : "One financial command center",
+      eyebrow: ar ? "منتج حقيقيّ. لا مجرّد واجهة." : "A real product. Not a mockup.",
+      title: ar ? "مركز قيادة ماليّ واحد" : "One financial command center",
       lead: ar
-        ? "كل ما يحدث في عملك المالي — مرئي، مفهوم، قابل للقرار في ثوانٍ."
+        ? "كلّ ما يجري في ماليّة شركتك — واضح، مفهوم، جاهز للقرار في ثوانٍ."
         : "Everything happening in your finances — visible, understood, decision-ready in seconds.",
       mockTitle: ar ? "cockpit · محاسب ذكي · Default Company" : "cockpit · Smart Accountant · Default Company",
       sidebar: ar
-        ? ["الرئيسية", "المعاملات", "القيود", "التقارير", "الكوكبت", "الموارد البشرية", "الأصول", "الإعدادات"]
+        ? ["الرئيسيّة", "المعاملات", "القيود", "التقارير", "مركز القرار", "الموارد البشريّة", "الأصول", "الإعدادات"]
         : ["Home", "Transactions", "Entries", "Reports", "Cockpit", "HR", "Assets", "Settings"],
       kpis: {
         revenue: ar ? "الإيرادات" : "Revenue",
         expenses: ar ? "المصروفات" : "Expenses",
-        netCash: ar ? "صافي التدفق" : "Net cash",
-        health: ar ? "نقاط الصحة" : "Health",
+        netCash: ar ? "صافي التدفّق" : "Net cash",
+        health: ar ? "الصحّة" : "Health",
         healthVal: ar ? "٨٤/١٠٠" : "84/100",
         healthDelta: ar ? "ممتاز" : "Excellent",
       },
       cash: {
-        eyebrow: ar ? "تدفق نقدي · توقّع ٩٠ يوم" : "Cash flow · 90-day forecast",
+        eyebrow: ar ? "التدفّق النقديّ · توقّعات ٩٠ يوماً" : "Cash flow · 90-day forecast",
         title: ar ? "المسار الأرجح" : "Most likely path",
         delta: ar ? "+١٤.٦٪" : "+14.6%",
       },
       alerts: {
         title: ar ? "تنبيهات" : "Alerts",
-        late: { l: ar ? "فاتورة متأخرة" : "Overdue invoice", d: ar ? "مورد ٣ · ٤,٥٠٠ ر.س" : "Vendor 3 · 4,500" },
-        gosi: { l: ar ? "موعد تأمينات" : "GOSI due", d: ar ? "بعد ٧ أيام" : "in 7 days" },
-        budget: { l: ar ? "تحقّق ميزانية" : "Budget check", d: ar ? "تسويق · ضمن الحد" : "Marketing · on budget" },
+        late: { l: ar ? "فاتورة متأخّرة" : "Overdue invoice", d: ar ? "المورّد ٣ · ٤,٥٠٠ ر.س" : "Vendor 3 · 4,500" },
+        gosi: { l: ar ? "استحقاق التأمينات" : "GOSI due", d: ar ? "خلال ٧ أيّام" : "in 7 days" },
+        budget: { l: ar ? "متابعة الميزانيّة" : "Budget check", d: ar ? "التسويق · ضمن الحدّ" : "Marketing · on budget" },
       },
       coachLabel: ar ? "رؤية المساعد: " : "Assistant insight: ",
       coachBody: ar
-        ? "مصروفات السفر تجاوزت الميزانية الشهرية بنسبة ١٨٪. اقترح مراجعة سياسة الموافقات للقيم فوق ٢,٠٠٠ ر.س."
+        ? "تجاوزت مصروفات السفر الميزانيّة الشهريّة بنسبة ١٨٪. أقترح مراجعة سياسة الموافقات على المبالغ فوق ٢,٠٠٠ ر.س."
         : "Travel spend is 18% over the monthly budget. Suggest reviewing the approval policy for items above 2,000.",
       legend: ["Cash Forecast", "Health Score", "What-If Simulator", "Smart Alerts", "AI Coach"],
     },
     automation: {
       eyebrow: ar ? "الأتمتة" : "Automation",
-      title: ar ? "مهام تستهلك يومك. تختفي." : "The tasks that drain your day. Gone.",
+      title: ar ? "المهامّ التي تستنزف يومك — تختفي." : "The tasks that drain your day. Gone.",
       lead: ar
-        ? "من اللحظة التي تصل فيها فاتورة إلى صندوقك، حتى ظهور الأثر في تقريرك المالي — لا خطوة يدوية واحدة في الوسط."
+        ? "من لحظة وصول الفاتورة إلى بريدك، حتى ظهور أثرها في تقريرك الماليّ — بلا خطوة يدويّة واحدة بينهما."
         : "From the moment an invoice hits your inbox to its impact showing up in your reports — not one manual step in between.",
       flow: ar
-        ? ["ارفع الفاتورة", "AI يقرأ ويُصنّف", "يُنشئ القيد", "يُحدّث الميزانية", "التقرير حيّ"]
+        ? ["ارفع الفاتورة", "الذكاء يقرأ ويصنّف", "يُسجّل القيد", "يُحدّث الميزانيّة", "التقرير حيّ"]
         : ["Drop the invoice", "AI reads & classifies", "Posts the entry", "Updates the budget", "Live report"],
       cases: ar ? [
-        { t: "فاتورة مورّد", d: "صورة → استخراج → قيد دائن/مدين متوازن في حسابك الصحيح، بدون نقرة واحدة.", m: "5210 / 2110 · ٤٥٠.٠٠" },
-        { t: "موظف جديد", d: "ادخل البيانات مرة. الراتب الشهري، التأمينات (موظف/شركة)، ومخصص نهاية الخدمة كلها تُحتسب آلياً وفق IAS 19.", m: "6010 / 6011 / 6012" },
-        { t: "أصل ثابت", d: "اقتنِ الأصل، حدد العمر النافع، يُجدول الإهلاك حتى آخر شهر تلقائياً وفق IFRS.", m: "1500 → 5500 / 1510" },
+        { t: "فاتورة مورّد", d: "صورة ← استخراج ← قيد مدين/دائن متوازن في الحساب الصحيح، بلا نقرة واحدة.", m: "5210 / 2110 · ٤٥٠.٠٠" },
+        { t: "موظّف جديد", d: "أدخل البيانات مرّة واحدة. الراتب الشهريّ، التأمينات (الموظّف والشركة)، ومخصّص نهاية الخدمة — تُحسب آليّاً وفق IAS 19.", m: "6010 / 6011 / 6012" },
+        { t: "أصل ثابت", d: "اشترِ الأصل، حدّد عمره النافع، فيُجدوَل الإهلاك حتى آخر شهر تلقائيّاً وفق IFRS.", m: "1500 → 5500 / 1510" },
       ] : [
         { t: "Vendor invoice", d: "Image → extraction → balanced debit/credit posted to the right account, no clicks.", m: "5210 / 2110 · 450.00" },
         { t: "New hire", d: "Enter data once. Monthly salary, social insurance (employee/employer), and EOSB are computed automatically per IAS 19.", m: "6010 / 6011 / 6012" },
@@ -259,15 +259,15 @@ function getCopy(locale: Locale) {
     },
     security: {
       eyebrow: ar ? "الأمان والثقة" : "Security & trust",
-      title: ar ? "بياناتك المالية — مُؤمَّنة بمعايير المؤسسات." : "Your financial data — secured to enterprise standards.",
+      title: ar ? "بياناتك الماليّة — محميّة بمعايير المؤسّسات." : "Your financial data — secured to enterprise standards.",
       lead: ar
-        ? "لا اختصارات في الأمان. كل ما يلمسه الذكاء الاصطناعي يبقى ضمن بيئتك، غير مُتاح لتدريب نماذج خارجية."
+        ? "لا تنازل في الأمان. كلّ ما يلمسه الذكاء الاصطناعيّ يبقى داخل بيئتك، ولا يُستخدم لتدريب أيّ نموذج خارجيّ."
         : "No shortcuts on security. Everything the AI touches stays in your tenant — never used to train external models.",
       items: ar ? [
-        { t: "SOC 2 Type II", d: "تدقيق مستقلّ سنوي على ضوابط الأمان والتوفّر والسرية.", m: "Audited · Q1 2026" },
-        { t: "تشفير من طرف لطرف", d: "AES-256 للبيانات الساكنة، TLS 1.3 للبيانات أثناء النقل.", m: "AES-256 · TLS 1.3" },
-        { t: "أثر تدقيق وفق IFRS", d: "كل قيد له ختم زمني، مُستخدم، وسبب — غير قابل للتعديل.", m: "Immutable ledger" },
-        { t: "بيانات مُقيمة في المنطقة", d: "خوادم في الرياض ودبي. ملكية البيانات لك، تصدير في أيّ وقت.", m: "RUH · DXB · Bahrain" },
+        { t: "SOC 2 Type II", d: "تدقيق مستقلّ سنويّ على ضوابط الأمان والتوفّر والسرّيّة.", m: "Audited · Q1 2026" },
+        { t: "تشفير من الطرف إلى الطرف", d: "AES-256 للبيانات الساكنة، وTLS 1.3 لها أثناء النقل.", m: "AES-256 · TLS 1.3" },
+        { t: "أثر تدقيق وفق IFRS", d: "كلّ قيد له ختم زمنيّ، ومستخدم، وسبب — لا يقبل التعديل.", m: "Immutable ledger" },
+        { t: "بيانات مقيمة في المنطقة", d: "خوادم في الرياض ودبيّ. الملكيّة لك، والتصدير متاح في أيّ لحظة.", m: "RUH · DXB · Bahrain" },
       ] : [
         { t: "SOC 2 Type II", d: "Annual independent audit of security, availability, and confidentiality controls.", m: "Audited · Q1 2026" },
         { t: "End-to-end encryption", d: "AES-256 at rest, TLS 1.3 in transit.", m: "AES-256 · TLS 1.3" },
@@ -277,43 +277,43 @@ function getCopy(locale: Locale) {
     },
     useCases: {
       eyebrow: ar ? "من يستخدم محاسب ذكي" : "Who uses Smart Accountant",
-      title: ar ? "منتج واحد. ثلاثة فِرق. نتيجة واحدة: وضوح." : "One product. Three teams. One outcome: clarity.",
+      title: ar ? "منتج واحد. ثلاث فرق. نتيجة واحدة: الوضوح." : "One product. Three teams. One outcome: clarity.",
       tabsAria: ar ? "فئات المستخدمين" : "User segments",
       outcomes: ar ? "النتائج" : "Outcomes",
       personas: ar ? [
         {
           key: "founder", tab: "للمؤسّسين",
-          headline: "تعرف رقم شركتك بدقّة، في أي لحظة.",
-          quote: "«قبل محاسب ذكي، كنت أنتظر نهاية الشهر لأعرف هل ربحت أم خسرت. الآن أعرفها قبل أن أوافق على المصروف.»",
-          author: "هاني الشمري · مؤسس، شركة لوجستيات",
+          headline: "اعرف أرقام شركتك بدقّة، في أيّ لحظة.",
+          quote: "«قبل محاسب ذكي، كنت أنتظر نهاية الشهر لأعرف: ربحنا أم خسرنا؟ اليوم أعرف الجواب قبل أن أوافق على المصروف.»",
+          author: "هاني الشمريّ · مؤسّس شركة لوجستيّات",
           outcomes: [
-            "نقاط صحة مالية محدّثة يومياً",
-            "تنبؤ تدفق نقدي لـ ٩٠ يوماً قادمة",
-            "محاكاة قرار قبل اتخاذه: «ماذا لو وظّفت ٣ مهندسين؟»",
-            "ملخّص تنفيذي بالعربية يصلك كل أسبوع",
+            "نقاط صحّة ماليّة تتجدّد يوميّاً",
+            "توقّع تدفّق نقديّ لـ ٩٠ يوماً قادمة",
+            "محاكاة القرار قبل اتّخاذه: «ماذا لو وظّفت ٣ مهندسين؟»",
+            "ملخّص تنفيذيّ بالعربيّة يصلك كلّ أسبوع",
           ],
         },
         {
           key: "accountant", tab: "للمحاسبين",
           headline: "وقتك للقرار، لا للترحيل.",
-          quote: "«الـ AI يكتب القيود، أنا أراجع. وفّرت ١٢ ساعة في الأسبوع. والقوائم تخرج مُتوازنة من المرة الأولى.»",
-          author: "د. سارة العتيبي · CPA، مكتب محاسبة",
+          quote: "«الذكاء يكتب القيود، وأنا أراجع. وفّرت ١٢ ساعة في الأسبوع، والقوائم تخرج متوازنة من أوّل مرّة.»",
+          author: "د. سارة العتيبيّ · CPA · مكتب محاسبة",
           outcomes: [
-            "قيود مزدوجة آلية قابلة للمراجعة",
-            "تطابق فوري بين الأستاذ العام والقوائم",
-            "أثر تدقيق كامل لكل قيد ولكل تعديل",
-            "تصدير مباشر للهيئة، ZATCA-ready",
+            "قيود مزدوجة آليّة، قابلة للمراجعة",
+            "تطابق فوريّ بين الأستاذ العامّ والقوائم",
+            "أثر تدقيق كامل لكلّ قيد ولكلّ تعديل",
+            "تصدير مباشر للهيئة · ZATCA-ready",
           ],
         },
         {
-          key: "team", tab: "للفرق المالية",
+          key: "team", tab: "للفِرق الماليّة",
           headline: "فريق واحد. نظام واحد. مصدر حقيقة واحد.",
-          quote: "«كنا نعمل في خمسة ملفات Excel. الآن CFO يفتح نفس الكوكبت الذي يفتحه المحلل المالي ومسؤول الرواتب.»",
-          author: "نورة العلي · CFO، شركة تقنية",
+          quote: "«كنّا نعمل على خمسة ملفّات Excel. اليوم يفتح المدير الماليّ الشاشة نفسها التي يفتحها المحلّل ومسؤول الرواتب.»",
+          author: "نورة العليّ · CFO · شركة تقنيّة",
           outcomes: [
-            "صلاحيات بحسب الدور (RBAC) مع سجل أنشطة",
+            "صلاحيّات بحسب الدور (RBAC) مع سجلّ نشاط",
             "موافقات متعدّدة المستويات على المدفوعات",
-            "توحيد متعدد الشركات والعملات",
+            "توحيد متعدّد الشركات والعملات",
             "تقارير IFRS جاهزة للتدقيق فوراً",
           ],
         },
@@ -358,14 +358,14 @@ function getCopy(locale: Locale) {
     },
     faq: {
       eyebrow: ar ? "الأسئلة الشائعة" : "Frequently asked",
-      title: ar ? "سؤال صريح، إجابة صريحة." : "Straight question, straight answer.",
+      title: ar ? "سؤال مباشر، إجابة مباشرة." : "Straight question, straight answer.",
       qs: ar ? [
-        { q: "هل النظام مُتوافق فعلاً مع IFRS؟", a: "نعم. النظام مبني على الأساس وفق IFRS: قيد مزدوج إجباري، شجرة حسابات قياسية، اعتراف بالإيراد، إهلاك الأصول، مخصص نهاية الخدمة (IAS 19)، وقوائم مالية تُولَّد آلياً. كل دولة لها حزمة محلية فوق هذا الأساس." },
-        { q: "هل بياناتي تُستخدم لتدريب نماذج الذكاء الاصطناعي؟", a: "لا. بياناتك ملكك. الذكاء الاصطناعي يعمل ضمن بيئتك ولا يُشارك أيّ معلومة مع نماذج خارجية لأغراض تدريب. هذا مكتوب في عقد الخدمة وقابل للتدقيق." },
-        { q: "ما الدول المدعومة؟", a: "حالياً: السعودية، الإمارات، مصر، الكويت، قطر، الأردن، وحزمة International. كل حزمة تشمل: العملة، ضريبة القيمة المضافة، الزكاة (حيث تنطبق)، التأمينات، صيغة نهاية الخدمة، عُطل العمل، والتقويم." },
-        { q: "كم يستغرق التركيب؟", a: "أقل من خمس دقائق للحساب الأول. اختر الدولة، أنشئ الشركة، وستجد شجرة الحسابات IFRS جاهزة. الفِرق الكبيرة عادةً تستكمل الإعداد الكامل (ربط البنوك، استيراد البيانات، الصلاحيات) خلال يومين." },
-        { q: "هل يُمكن استيراد بياناتي من نظام آخر؟", a: "نعم. نستورد من Excel، QuickBooks، Xero، Zoho Books، وSAP. خلال الاستيراد، الـ AI يفحص الترميز ويقترح المطابقات لشجرة الحسابات IFRS لديك." },
-        { q: "هل النظام يدعم التدقيق الخارجي؟", a: "نعم. الأثر التدقيقي كامل وغير قابل للتعديل، مع إمكانية إنشاء حساب «مدقّق خارجي» بصلاحيات قراءة فقط لكامل القيود والمستندات الداعمة." },
+        { q: "هل النظام متوافق فعلاً مع IFRS؟", a: "نعم. النظام مبنيّ من الأساس وفق IFRS: قيد مزدوج إلزاميّ، دليل حسابات قياسيّ، اعتراف بالإيراد، إهلاك الأصول، مخصّص نهاية الخدمة (IAS 19)، وقوائم ماليّة تُولَّد آليّاً. ولكلّ دولة حزمة محلّيّة فوق هذا الأساس." },
+        { q: "هل تُستخدم بياناتي لتدريب نماذج الذكاء الاصطناعيّ؟", a: "لا. بياناتك ملكك وحدك. يعمل الذكاء الاصطناعيّ داخل بيئتك، ولا يُشارَك منها شيء مع أيّ نموذج خارجيّ لأغراض التدريب. هذا منصوص عليه في عقد الخدمة، وقابل للتدقيق." },
+        { q: "ما الدول المدعومة؟", a: "حاليّاً: السعوديّة، الإمارات، مصر، الكويت، قطر، الأردنّ، وحزمة International. تشمل كلّ حزمة: العملة، ضريبة القيمة المضافة، الزكاة (حيث تنطبق)، التأمينات، صيغة نهاية الخدمة، إجازات العمل، والتقويم المحلّيّ." },
+        { q: "كم يستغرق الإعداد؟", a: "أقلّ من خمس دقائق للحساب الأوّل. اختر الدولة، أنشئ الشركة، وستجد دليل الحسابات وفق IFRS جاهزاً. الفرق الكبيرة عادةً تُكمل الإعداد الشامل (ربط البنوك، استيراد البيانات، الصلاحيّات) في يومين." },
+        { q: "هل يمكن استيراد بياناتي من نظام آخر؟", a: "نعم. نستورد من Excel وQuickBooks وXero وZoho Books وSAP. أثناء الاستيراد، يفحص الذكاء الاصطناعيّ الترميز ويقترح المطابقات لدليل حساباتك وفق IFRS." },
+        { q: "هل يدعم النظام التدقيق الخارجيّ؟", a: "نعم. أثر التدقيق كامل، ولا يقبل التعديل. يمكنك إنشاء حساب «مدقّق خارجيّ» بصلاحيّات قراءة فقط على كلّ القيود والمستندات الداعمة." },
       ] : [
         { q: "Is the system genuinely IFRS-compliant?", a: "Yes. It's built IFRS-first: enforced double-entry, a standard chart of accounts, revenue recognition, asset depreciation, end-of-service provision (IAS 19), and auto-generated statements. Each country adds a local pack on top." },
         { q: "Do you train AI models on my data?", a: "No. Your data is yours. The AI runs in your tenant and never shares anything with external models for training. It's written in your service agreement and auditable." },
@@ -376,13 +376,13 @@ function getCopy(locale: Locale) {
       ],
     },
     finalCta: {
-      h1: ar ? "ابدأ بإدارة ماليتك" : "Start running your finances",
-      h2: ar ? "بطريقة تستحقّها." : "the way they deserve.",
-      sub: ar ? "١٤ يوماً مجاناً. كل المميزات. بدون بطاقة. ألغِ في أي لحظة." : "14 days free. Every feature. No card. Cancel anytime.",
+      h1: ar ? "ابدأ بإدارة ماليّتك" : "Start running your finances",
+      h2: ar ? "كما تستحقّ." : "the way they deserve.",
+      sub: ar ? "١٤ يوماً مجاناً. كلّ المزايا. بدون بطاقة. ألغِ متى شئت." : "14 days free. Every feature. No card. Cancel anytime.",
       cta: ar ? "افتح التطبيق" : "Open the app",
-      ctaDemo: ar ? "تحدّث مع المبيعات" : "Talk to sales",
+      ctaDemo: ar ? "تحدّث إلى المبيعات" : "Talk to sales",
       orWatch: ar ? "أو شاهد" : "Or watch",
-      orLink: ar ? "عرضاً مدّته ٣ دقائق" : "a 3-minute tour",
+      orLink: ar ? "جولة في ٣ دقائق" : "a 3-minute tour",
       orWatchSuffix: ".",
     },
   }
