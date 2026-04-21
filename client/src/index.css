@@ -1,127 +1,301 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+  ============================================================================
+  محاسب ذكي — Visual Design System v2  (Phase 1)
+  ----------------------------------------------------------------------------
+  Premium fintech aesthetic. Restrained palette built on warm off-white
+  paper + ink, with a single deep emerald as the brand action color.
+  Hairline borders, true tabular numerals, generous spacing.
+  ============================================================================
+*/
+
 @layer base {
   :root {
-    --font-cairo: 'Cairo', sans-serif;
+    /* — Typography stack — */
+    --font-arabic: 'IBM Plex Sans Arabic', 'Tajawal', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-sans:   'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display:'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono:   'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-    /* Friendly, clean, trustworthy palette */
-    --background: 210 40% 98%; /* Very light slate/blueish background */
-    --foreground: 222 47% 11%;
-    
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    
-    --primary: 221 83% 53%; /* Bright trustworthy blue */
-    --primary-foreground: 210 40% 98%;
-    
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
-    
-    --destructive: 348 83% 47%; /* Rose red for expenses/delete */
-    --destructive-foreground: 210 40% 98%;
+    /* — Surface & ink (light) — */
+    --background:           36 14% 98%;      /* warm paper */
+    --foreground:           222 24% 11%;     /* deep ink */
+    --card:                 0 0% 100%;
+    --card-foreground:      222 24% 11%;
+    --card-border:          220 14% 92%;
+    --popover:              0 0% 100%;
+    --popover-foreground:   222 24% 11%;
+    --popover-border:       220 14% 90%;
 
-    --success: 142 71% 45%; /* Emerald green for income */
-    --success-foreground: 210 40% 98%;
-    
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
-    
-    --radius: 1rem; /* Very rounded, friendly corners */
+    /* — Brand action: deep emerald — */
+    --primary:              158 64% 28%;
+    --primary-foreground:   36 14% 98%;
+    --primary-border:       158 64% 22%;
 
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* — Secondary fill (neutral) — */
+    --secondary:            220 14% 96%;
+    --secondary-foreground: 222 24% 11%;
+    --secondary-border:     220 14% 90%;
+
+    /* — Muted (subdued text & subtle fills) — */
+    --muted:                220 14% 96%;
+    --muted-foreground:     220 10% 44%;
+    --muted-border:         220 14% 90%;
+
+    /* — Accent (faint brand tint, used for hovers / highlights) — */
+    --accent:               158 50% 96%;
+    --accent-foreground:    158 64% 18%;
+    --accent-border:        158 30% 88%;
+
+    /* — Status — */
+    --destructive:          4 72% 48%;
+    --destructive-foreground: 36 14% 98%;
+    --destructive-border:   4 72% 40%;
+
+    --success:              158 64% 32%;
+    --success-foreground:   36 14% 98%;
+
+    --warning:              32 92% 46%;
+    --warning-foreground:   36 14% 98%;
+
+    --info:                 212 72% 46%;
+    --info-foreground:      36 14% 98%;
+
+    /* — Lines, fields, focus — */
+    --border:               220 14% 92%;
+    --input:                220 14% 90%;
+    --ring:                 158 64% 28%;
+
+    /* — Component outlines (used by Button / Badge variants) — */
+    --button-outline:       hsl(var(--border));
+    --badge-outline:        hsl(var(--border));
+
+    /* — Radii: refined fintech, not consumer-rounded — */
+    --radius:               0.625rem;        /* 10px base */
+
+    /* — Shadow tokens (soft, premium, not heavy) — */
+    --shadow-xs: 0 1px 0 rgb(15 23 42 / 0.04);
+    --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05), 0 1px 1px rgb(15 23 42 / 0.03);
+    --shadow-md: 0 4px 12px rgb(15 23 42 / 0.06), 0 2px 4px rgb(15 23 42 / 0.04);
+    --shadow-lg: 0 12px 32px rgb(15 23 42 / 0.08), 0 4px 8px rgb(15 23 42 / 0.04);
+    --shadow-xl: 0 24px 56px rgb(15 23 42 / 0.10), 0 8px 16px rgb(15 23 42 / 0.05);
+    --shadow-ring: 0 0 0 4px hsl(var(--primary) / 0.12);
+
+    /* — Semantic spacing rhythm — */
+    --space-section: 6rem;     /* 96px between major page sections */
+    --space-block:   4rem;     /* 64px between blocks within a section */
+    --space-card:    1.5rem;   /* 24px internal card padding (default) */
+    --space-tight:   0.75rem;  /* 12px between related items */
+
+    /* — Chart palette: harmonious, earthy, fintech-considered — */
+    --chart-1: 158 50% 38%;    /* emerald */
+    --chart-2: 218 42% 32%;    /* ink-blue */
+    --chart-3: 32 72% 50%;     /* ochre */
+    --chart-4: 12 62% 56%;     /* warm coral */
+    --chart-5: 218 12% 58%;    /* slate */
+
+    /* — Sidebar (light) — */
+    --sidebar:                       0 0% 100%;
+    --sidebar-foreground:            222 24% 22%;
+    --sidebar-primary:               158 64% 28%;
+    --sidebar-primary-foreground:    36 14% 98%;
+    --sidebar-primary-border:        158 64% 22%;
+    --sidebar-accent:                158 50% 96%;
+    --sidebar-accent-foreground:     158 64% 18%;
+    --sidebar-accent-border:         158 30% 88%;
+    --sidebar-border:                220 14% 92%;
+    --sidebar-ring:                  158 64% 28%;
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
-    
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 11%;
-    
-    --secondary: 217 32% 17%;
-    --secondary-foreground: 210 40% 98%;
-    
-    --muted: 217 32% 17%;
-    --muted-foreground: 215 20.2% 65.1%;
-    
-    --accent: 217 32% 17%;
-    --accent-foreground: 210 40% 98%;
-    
-    --destructive: 342 75% 54%;
-    --destructive-foreground: 210 40% 98%;
+    /* — Surface & ink (dark) — Linear-style true black with hint of blue — */
+    --background:           220 18% 7%;
+    --foreground:           60 8% 96%;
+    --card:                 220 14% 10%;
+    --card-foreground:      60 8% 96%;
+    --card-border:          220 12% 16%;
+    --popover:              220 14% 10%;
+    --popover-foreground:   60 8% 96%;
+    --popover-border:       220 12% 18%;
 
-    --success: 142 71% 45%;
-    --success-foreground: 210 40% 98%;
-    
-    --border: 217 32% 17%;
-    --input: 217 32% 17%;
-    --ring: 212.7 26.8% 83.9%;
+    --primary:              158 56% 52%;
+    --primary-foreground:   220 18% 8%;
+    --primary-border:       158 56% 60%;
+
+    --secondary:            220 14% 14%;
+    --secondary-foreground: 60 8% 96%;
+    --secondary-border:     220 12% 20%;
+
+    --muted:                220 14% 14%;
+    --muted-foreground:     220 8% 64%;
+    --muted-border:         220 12% 18%;
+
+    --accent:               158 36% 16%;
+    --accent-foreground:    158 56% 78%;
+    --accent-border:        158 30% 22%;
+
+    --destructive:          4 78% 58%;
+    --destructive-foreground: 60 8% 96%;
+    --destructive-border:   4 78% 50%;
+
+    --success:              158 56% 52%;
+    --success-foreground:   220 18% 8%;
+
+    --warning:              32 90% 56%;
+    --warning-foreground:   220 18% 8%;
+
+    --info:                 212 80% 60%;
+    --info-foreground:      220 18% 8%;
+
+    --border:               220 12% 18%;
+    --input:                220 12% 20%;
+    --ring:                 158 56% 52%;
+
+    --button-outline:       hsl(var(--border));
+    --badge-outline:        hsl(var(--border));
+
+    --shadow-xs: 0 1px 0 rgb(0 0 0 / 0.4);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 12px rgb(0 0 0 / 0.5), 0 2px 4px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.55), 0 4px 8px rgb(0 0 0 / 0.3);
+    --shadow-xl: 0 24px 56px rgb(0 0 0 / 0.6), 0 8px 16px rgb(0 0 0 / 0.35);
+    --shadow-ring: 0 0 0 4px hsl(var(--primary) / 0.18);
+
+    --chart-1: 158 56% 56%;
+    --chart-2: 218 56% 64%;
+    --chart-3: 32 80% 60%;
+    --chart-4: 12 70% 64%;
+    --chart-5: 218 12% 70%;
+
+    --sidebar:                       220 18% 7%;
+    --sidebar-foreground:            60 8% 80%;
+    --sidebar-primary:               158 56% 52%;
+    --sidebar-primary-foreground:    220 18% 8%;
+    --sidebar-primary-border:        158 56% 60%;
+    --sidebar-accent:                158 36% 14%;
+    --sidebar-accent-foreground:     158 56% 78%;
+    --sidebar-accent-border:         158 30% 22%;
+    --sidebar-border:                220 12% 16%;
+    --sidebar-ring:                  158 56% 52%;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
+  * { @apply border-border; }
+
+  html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family: var(--font-cairo);
-    direction: rtl; /* Enforce Arabic layout globally */
+    @apply bg-background text-foreground;
+    font-family: var(--font-arabic);
+    font-feature-settings: "ss01", "cv11", "cv02";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
-  
+
+  /* Latin glyphs inside Arabic content render in Inter for harmony */
+  body, button, input, select, textarea {
+    font-family: var(--font-arabic);
+  }
+
+  /* Headings: tighter tracking, deliberate weight */
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-cairo);
-    @apply font-bold tracking-tight;
+    font-family: var(--font-arabic);
+    @apply text-foreground tracking-tight;
+    font-weight: 600;
   }
+  h1 { @apply text-4xl leading-tight; letter-spacing: -0.02em; }
+  h2 { @apply text-3xl leading-snug; letter-spacing: -0.015em; }
+  h3 { @apply text-2xl leading-snug; letter-spacing: -0.01em; }
+  h4 { @apply text-xl leading-snug; }
+  h5 { @apply text-lg leading-snug; }
+  h6 { @apply text-base leading-snug; }
+
+  /* All numerals are tabular by default — accounting demands aligned columns */
+  .tabular-nums, td, th, .num, [data-num] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+  }
+
+  /* Mono utility for codes, account numbers, KPIs */
+  .font-mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
+
+  /* Selection */
+  ::selection { background: hsl(var(--primary) / 0.18); color: hsl(var(--foreground)); }
+
+  /* Refined focus ring (replaces shadcn's harsh default) */
+  :where(button, [role="button"], a, input, select, textarea):focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-ring);
+    border-radius: calc(var(--radius) - 2px);
+  }
+
+  /* Scrollbar — slim, premium */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+    border: 2px solid hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.4); }
 }
 
-/* Elevate system for buttons and cards */
 @layer utilities {
+  /* — Shadow utilities mapped to token system — */
+  .shadow-xs { box-shadow: var(--shadow-xs); }
+  .shadow-sm { box-shadow: var(--shadow-sm); }
+  .shadow-md { box-shadow: var(--shadow-md); }
+  .shadow-lg { box-shadow: var(--shadow-lg); }
+  .shadow-xl { box-shadow: var(--shadow-xl); }
+  .shadow-ring { box-shadow: var(--shadow-ring); }
+
+  /* — Hairline rule, used to delimit sections without weight — */
+  .hairline { background: hsl(var(--border)); height: 1px; width: 100%; }
+  .hairline-v { background: hsl(var(--border)); width: 1px; height: 100%; }
+
+  /* — Eyebrow label: small uppercase tracked label, used above section titles — */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;          /* 11px */
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
+  }
+
+  /* — Display heading scale (for marketing surfaces, not app chrome) — */
+  .text-display-xl { font-size: clamp(3rem, 6vw, 4.5rem); line-height: 1.02; letter-spacing: -0.035em; font-weight: 600; }
+  .text-display-lg { font-size: clamp(2.25rem, 4.5vw, 3.5rem); line-height: 1.05; letter-spacing: -0.03em; font-weight: 600; }
+  .text-display    { font-size: clamp(1.875rem, 3.5vw, 2.5rem); line-height: 1.1; letter-spacing: -0.025em; font-weight: 600; }
+
+  /* — Refined hover/active interactions (replaces translate-Y "lift" with subtle bg shift + shadow) — */
   .hover-elevate {
-    @apply transition-all duration-300 ease-out;
+    transition: background-color 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
   }
   .hover-elevate:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+    background-color: hsl(var(--accent) / 0.6);
   }
   .active-elevate-2:active {
-    transform: translateY(1px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+    background-color: hsl(var(--accent));
   }
-  
-  /* Hide scrollbar for chat */
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
+
+  /* — Subtle backdrop blur for sticky surfaces (navbar) — */
+  .glass-surface {
+    background: hsl(var(--background) / 0.72);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
   }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
+
+  /* — Hide scrollbars on demand — */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* — Status dot — */
+  .status-dot { @apply inline-block w-2 h-2 rounded-full; }
 }

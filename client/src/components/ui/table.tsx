@@ -2,25 +2,51 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-const Table = React.forwardRef<
-  HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
-    <table
-      ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
-      {...props}
-    />
-  </div>
-))
+/**
+ * Table — refined for accounting / financial data.
+ * - Headers: small, uppercase, tracked, muted (eyebrow style)
+ * - Numbers: tabular figures globally (set via :where rule in index.css)
+ * - Rows: hairline separators, very subtle hover
+ * - Density: compact by default; pass `density="comfortable"` for breathable layouts
+ */
+
+type Density = "compact" | "comfortable"
+
+interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
+  density?: Density
+}
+
+const Table = React.forwardRef<HTMLTableElement, TableProps>(
+  ({ className, density = "compact", ...props }, ref) => (
+    <div className="relative w-full overflow-auto">
+      <table
+        ref={ref}
+        data-density={density}
+        className={cn(
+          "w-full caption-bottom text-sm tabular-nums",
+          "[&[data-density=compact]_td]:py-2.5 [&[data-density=compact]_th]:py-2.5",
+          "[&[data-density=comfortable]_td]:py-4 [&[data-density=comfortable]_th]:py-3",
+          className
+        )}
+        {...props}
+      />
+    </div>
+  )
+)
 Table.displayName = "Table"
 
 const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />
+  <thead
+    ref={ref}
+    className={cn(
+      "border-b border-border bg-muted/30 [&_tr]:border-0",
+      className
+    )}
+    {...props}
+  />
 ))
 TableHeader.displayName = "TableHeader"
 
@@ -43,7 +69,7 @@ const TableFooter = React.forwardRef<
   <tfoot
     ref={ref}
     className={cn(
-      "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+      "border-t border-border bg-muted/40 font-medium text-foreground [&>tr]:last:border-b-0",
       className
     )}
     {...props}
@@ -58,7 +84,8 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      "border-b border-border/70 transition-colors",
+      "hover:bg-accent/40 data-[state=selected]:bg-accent/60",
       className
     )}
     {...props}
@@ -73,7 +100,9 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      // Eyebrow-style header: small, uppercase, tracked, muted
+      "px-4 text-start align-middle text-2xs font-medium uppercase tracking-widest text-muted-foreground",
+      "[&:has([role=checkbox])]:pr-0",
       className
     )}
     {...props}
@@ -87,7 +116,10 @@ const TableCell = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <td
     ref={ref}
-    className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)}
+    className={cn(
+      "px-4 align-middle text-foreground/90 [&:has([role=checkbox])]:pr-0",
+      className
+    )}
     {...props}
   />
 ))

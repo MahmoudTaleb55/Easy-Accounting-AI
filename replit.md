@@ -37,7 +37,22 @@ Preferred communication style: Simple, everyday language.
 - **Framework**: React (with Vite as the bundler)
 - **Routing**: `wouter` (lightweight client-side router)
 - **State/Data fetching**: TanStack React Query (v5) for server state management, with optimistic updates on mutations
-- **UI Components**: shadcn/ui (New York style) built on Radix UI primitives
+- **UI Components**: shadcn/ui (New York style) built on Radix UI primitives — refined under the v2 visual design system (see "Visual Design System" section below).
+
+### Visual Design System (Phase 1 — April 2026)
+
+A premium fintech aesthetic foundation. Source of truth: `client/src/index.css` (tokens) + `tailwind.config.ts` (mapping).
+
+- **Typography stack**: IBM Plex Sans Arabic (primary, RTL), Inter (Latin pairing), JetBrains Mono (tabular figures, codes, KPIs). Loaded non-blocking from `client/index.html`. Cairo retained as fallback only. All numerals are tabular by default (`font-variant-numeric: tabular-nums` applied globally to `td`, `th`, `.tabular-nums`, `[data-num]`).
+- **Color palette**: warm off-white paper (`36 14% 98%`) + deep ink foreground (`222 24% 11%`) on light; near-black (`220 18% 7%`) + warm white on dark. Single brand action color = deep emerald (`158 64% 28%` light / `158 56% 52%` dark). Earthy 5-color chart palette (emerald / ink-blue / ochre / coral / slate). No generic SaaS blue, no purple gradients, no rainbow charts.
+- **Radii**: `--radius: 0.625rem` (10px) base, with Tailwind's `xl`/`lg`/`md`/`sm`/`xs` mapped relatively (14/10/8/6/4 px). The previous 1rem (16px) "very rounded friendly corners" is gone — refined fintech, not consumer-app.
+- **Shadow tokens**: `--shadow-xs/sm/md/lg/xl` (soft, premium, low-opacity slate) + `--shadow-ring` for focus states. Replaces the `translate-Y` "lift" hover with a subtler `bg-accent` hover transition.
+- **Spacing rhythm tokens**: `--space-section` (96px), `--space-block` (64px), `--space-card` (24px), `--space-tight` (12px). Use these to keep section/block spacing consistent across pages.
+- **Refined primitives**: `Button` (added `subtle`, `link` variants and `xl`, `icon-sm` sizes; brand emerald default with hairline darker border), `Card` (variants: `default`, `flat`, `raised`, `ghost`), `Input` (refined hairline border, tabular numerals, focus uses brand color), `Badge` (tonal status pills: `success`, `warning`, `info`, `destructive`, `brand`, `muted` + `sm`/`md`/`lg` sizes), `Table` (eyebrow-style uppercase headers, tabular figures, density `compact`/`comfortable`).
+- **Layout shells**: `client/src/components/layout/Brand.tsx` (typographic wordmark — no icon-in-circle), `AppNavbar.tsx` (sticky, glass-on-scroll, hairline, restrained), `AppFooter.tsx` (multi-column, eyebrow labels, hairline meta bar). Standalone, ready for Phase 2 landing page and Phase 3 app-shell consumption.
+- **New utilities**: `.eyebrow` (mono uppercase tracked label), `.text-display`/`-lg`/`-xl` (clamp-based marketing display sizes), `.glass-surface` (translucent backdrop-blur), `.hairline` / `.hairline-v` (1px rules). Custom focus ring via global `:where` rule using `--shadow-ring`.
+
+The dashboard widgets (`dashboard.tsx`) and other page-level surfaces still use legacy hardcoded colors (e.g. blue-cyan gradient on the balance card, rose/emerald icon-on-circle treatments). These are out of scope for Phase 1 and will be addressed in Phase 3 (Dashboard & app-shell redesign).
 - **Styling**: Tailwind CSS with CSS variables for theming; Cairo Arabic font loaded via Google Fonts
 - **RTL Layout**: The entire app uses `dir="rtl"` in the main layout wrapper (`main-layout.tsx`), Arabic-first interface
 - **Charts**: Recharts (`PieChart`, `BarChart`) used on the dashboard
