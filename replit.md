@@ -54,6 +54,24 @@ A premium fintech aesthetic foundation. Source of truth: `client/src/index.css` 
 
 The dashboard widgets (`dashboard.tsx`) and other page-level surfaces still use legacy hardcoded colors (e.g. blue-cyan gradient on the balance card, rose/emerald icon-on-circle treatments). These are out of scope for Phase 1 and will be addressed in Phase 3 (Dashboard & app-shell redesign).
 
+### App Shell & Cockpit Redesign (Phase 3 — April 2026)
+
+The authenticated product shell at `/app/*` was rewritten to match the public surface. Three files changed:
+
+- `client/src/components/layout/app-sidebar.tsx` — replaced the legacy Wallet-icon-in-circle header and tall `py-6 rounded-xl` items with the typographic `<Brand>` wordmark, dense `h-9` items grouped by section (Overview / Books / People & assets / System) with eyebrow labels and a 2px primary active-indicator. Labels are bilingual via `useLocale`. RTL-aware: `side="right"` + left border in RTL, `side="left"` + right border in LTR. Footer carries a pulsing "متصل · مزامنة لحظية" / "Connected · live sync" status pill. `MobileHeader` now uses `<Brand size="sm">`.
+
+- `client/src/components/layout/main-layout.tsx` — new `<TopBar>` with `<SidebarTrigger>`, a ⌘K-style global-search placeholder (cosmetic), the company switcher, language/theme/notifications buttons, and a sticky `top-0` glass background. Sidebar width tightened (`18rem → 16rem`), main content widened (`max-w-7xl → max-w-[1400px]`).
+
+- `client/src/pages/dashboard.tsx` — full rewrite as the **Cockpit**. Uses `useLocale` for bilingual copy, `useFormatMoney` for currency, and design-system tokens throughout. Layout:
+  - **Header** — eyebrow + display title + subtitle + outline "open ledger" / primary "new entry" actions (arrow icons mirror under RTL).
+  - **KPI band (4-up)** — one dark inverse hero KPI for Net balance (background = `foreground`, text = `background`) plus three flat siblings (Revenue / Expenses / Margin). Each KPI carries an eyebrow label, a tabular-numeric value, an optional hint, and a delta pill colored by `--success` / `--expense`. No icon-on-circle treatments.
+  - **Cash flow** — 30-day cumulative area chart drawn in `--chart-1` over a soft gradient with a reference line at 0; chart container is forced `dir="ltr"` so the time axis flows naturally even in RTL pages.
+  - **Top spending categories** — horizontal mini-bars (`h-1.5` track, `--chart-1..5` per-rank fill, share labels via `font-numeric tabular-nums`).
+  - **AI insight banner** — a dynamic sentence built from the top expense category, including a "reduce by 10% would free X/month" projection. Bilingual.
+  - **Recent activity** — hairline-divided list with subtle `bg-success/10` / `bg-expense/10` icon chips, eyebrow category label, mono date, and right-aligned signed amount in `font-numeric tabular-nums`.
+
+The Phase 1 visual system tokens (`--chart-1..5`, `--income/--expense/--success/--warning`, `--sidebar-*`, `--shadow-*`) are now exercised end-to-end on the most-trafficked surface.
+
 ### Public Landing Page (Phase 2 — April 2026)
 
 A new public marketing page lives at `/` (`client/src/pages/landing.tsx`), built fully on the Phase 1 visual system. Authenticated app routes were re-anchored: the dashboard moved from `/` to `/dashboard`, and `client/src/App.tsx` now branches at the route layer — `/` renders **without** `MainLayout` (no sidebar, no company-switcher), while every other route is wrapped in the authenticated app shell. The `Brand` wordmark accepts an `href` prop so it can point at `/` (public) or `/dashboard` (in-app) depending on context.

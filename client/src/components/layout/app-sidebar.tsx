@@ -1,18 +1,18 @@
-import { Link, useLocation } from "wouter";
-import { 
-  Home, 
-  ListOrdered, 
-  Bot,
-  Wallet,
-  Menu,
-  BarChart3,
+import { Link, useLocation } from "wouter"
+import {
+  LayoutDashboard,
+  ArrowLeftRight,
   BookOpen,
   BookText,
+  BarChart3,
   Sparkles,
   Users,
   Building2,
-  Settings as SettingsIcon
-} from "lucide-react";
+  Bot,
+  Settings as SettingsIcon,
+  Menu,
+  type LucideIcon,
+} from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -23,82 +23,160 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
-  useSidebar
-} from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
+  SidebarFooter,
+  useSidebar,
+} from "@/components/ui/sidebar"
+import { Button } from "@/components/ui/button"
+import { Brand } from "./Brand"
+import { useLocale } from "@/contexts/locale-context"
+import { cn } from "@/lib/utils"
 
-const items = [
-  { title: "الرئيسية", url: "/app", icon: Home },
-  { title: "المعاملات", url: "/app/transactions", icon: ListOrdered },
-  { title: "دليل الحسابات", url: "/app/accounts", icon: BookOpen },
-  { title: "قيود اليومية", url: "/app/journal", icon: BookText },
-  { title: "التقرير المالي", url: "/app/reports", icon: BarChart3 },
-  { title: "مركز القرارات", url: "/app/insights", icon: Sparkles },
-  { title: "الموارد البشرية", url: "/app/hr", icon: Users },
-  { title: "الأصول الثابتة", url: "/app/fixed-assets", icon: Building2 },
-  { title: "المساعد الذكي", url: "/app/ai-assistant", icon: Bot },
-  { title: "الإعدادات", url: "/app/settings", icon: SettingsIcon },
-];
+type NavItem = {
+  url: string
+  icon: LucideIcon
+  ar: string
+  en: string
+}
+
+type NavSection = {
+  ar: string
+  en: string
+  items: NavItem[]
+}
+
+const sections: NavSection[] = [
+  {
+    ar: "نظرة عامة",
+    en: "Overview",
+    items: [
+      { url: "/app", icon: LayoutDashboard, ar: "الكوكبت", en: "Cockpit" },
+      { url: "/app/insights", icon: Sparkles, ar: "مركز القرارات", en: "Decisions" },
+    ],
+  },
+  {
+    ar: "الدفاتر",
+    en: "Books",
+    items: [
+      { url: "/app/transactions", icon: ArrowLeftRight, ar: "المعاملات", en: "Transactions" },
+      { url: "/app/journal", icon: BookText, ar: "قيود اليومية", en: "Journal" },
+      { url: "/app/accounts", icon: BookOpen, ar: "دليل الحسابات", en: "Chart of accounts" },
+      { url: "/app/reports", icon: BarChart3, ar: "التقارير المالية", en: "Reports" },
+    ],
+  },
+  {
+    ar: "الموارد والأصول",
+    en: "People & assets",
+    items: [
+      { url: "/app/hr", icon: Users, ar: "الموارد البشرية", en: "HR & payroll" },
+      { url: "/app/fixed-assets", icon: Building2, ar: "الأصول الثابتة", en: "Fixed assets" },
+    ],
+  },
+  {
+    ar: "النظام",
+    en: "System",
+    items: [
+      { url: "/app/ai-assistant", icon: Bot, ar: "المساعد الذكي", en: "AI assistant" },
+      { url: "/app/settings", icon: SettingsIcon, ar: "الإعدادات", en: "Settings" },
+    ],
+  },
+]
 
 export function AppSidebar() {
-  const [location] = useLocation();
+  const [location] = useLocation()
+  const { locale, dir } = useLocale()
+  // RTL: sidebar on right, with a left border. LTR: on left, with a right border.
+  const side = dir === "rtl" ? "right" : "left"
+  const borderClass = dir === "rtl" ? "border-l border-sidebar-border" : "border-r border-sidebar-border"
 
   return (
-    <Sidebar className="border-l" side="right">
-      <SidebarHeader className="p-4 border-b border-border/50">
-        <div className="flex items-center gap-3 text-primary">
-          <div className="bg-primary/10 p-2 rounded-xl">
-            <Wallet className="w-6 h-6 text-primary" />
-          </div>
-          <h2 className="font-bold text-xl tracking-tight">محاسب ذكي</h2>
-        </div>
+    <Sidebar className={borderClass} side={side}>
+      <SidebarHeader className="px-4 pt-5 pb-4 border-b border-sidebar-border">
+        <Brand size="md" href="/app" />
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-muted-foreground font-medium text-sm px-4 py-2 mt-4 mb-2">القائمة الرئيسية</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => {
-                const isActive = location === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
-                      isActive={isActive}
-                      tooltip={item.title}
-                      className={`
-                        py-6 rounded-xl mx-2 my-1 hover-elevate transition-all
-                        ${isActive ? 'bg-primary/10 text-primary font-bold shadow-sm' : 'text-foreground/70 hover:text-foreground hover:bg-secondary'}
-                      `}
-                    >
-                      <Link href={item.url} className="flex items-center gap-3">
-                        <item.icon className={`w-5 h-5 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
-                        <span className="text-base">{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+
+      <SidebarContent className="px-2 py-3">
+        {sections.map((section) => (
+          <SidebarGroup key={section.en} className="mb-1">
+            <SidebarGroupLabel className="eyebrow px-3 pt-3 pb-1.5 text-[10px] text-muted-foreground/70">
+              {locale === "ar" ? section.ar : section.en}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {section.items.map((item) => {
+                  const isActive =
+                    location === item.url ||
+                    (item.url !== "/app" && location.startsWith(item.url + "/"))
+                  const Icon = item.icon
+                  return (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        tooltip={locale === "ar" ? item.ar : item.en}
+                        className={cn(
+                          "h-9 rounded-md text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        )}
+                        data-testid={`link-nav-${item.url.replace(/\//g, "-")}`}
+                      >
+                        <Link href={item.url} className="flex items-center gap-2.5">
+                          <Icon
+                            className={cn(
+                              "w-4 h-4 shrink-0",
+                              isActive ? "text-primary" : "text-muted-foreground"
+                            )}
+                          />
+                          <span className="truncate">{locale === "ar" ? item.ar : item.en}</span>
+                          {isActive && (
+                            <span
+                              aria-hidden
+                              className={cn(
+                                "ms-auto h-4 w-[2px] rounded-full bg-primary"
+                              )}
+                            />
+                          )}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
+
+      <SidebarFooter className="border-t border-sidebar-border p-3">
+        <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-md">
+          <span className="relative flex h-2 w-2" aria-hidden>
+            <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 animate-ping" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
+          </span>
+          <span className="text-xs text-muted-foreground font-medium">
+            {locale === "ar" ? "متصل · مزامنة لحظية" : "Connected · live sync"}
+          </span>
+        </div>
+      </SidebarFooter>
     </Sidebar>
-  );
+  )
 }
 
 export function MobileHeader() {
-  const { toggleSidebar } = useSidebar();
-  
+  const { toggleSidebar } = useSidebar()
   return (
-    <div className="md:hidden flex items-center justify-between p-4 bg-card border-b sticky top-0 z-50 shadow-sm">
-      <div className="flex items-center gap-2">
-        <Wallet className="w-6 h-6 text-primary" />
-        <h2 className="font-bold text-lg text-foreground">محاسب ذكي</h2>
-      </div>
-      <Button variant="ghost" size="icon" onClick={toggleSidebar}>
-        <Menu className="w-6 h-6" />
+    <div className="md:hidden flex items-center justify-between px-4 h-14 bg-background/95 backdrop-blur border-b border-border sticky top-0 z-50">
+      <Brand size="sm" href="/app" />
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={toggleSidebar}
+        data-testid="button-mobile-menu"
+        aria-label="Toggle navigation"
+      >
+        <Menu className="w-5 h-5" />
       </Button>
     </div>
-  );
+  )
 }
