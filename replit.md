@@ -72,6 +72,20 @@ The authenticated product shell at `/app/*` was rewritten to match the public su
 
 The Phase 1 visual system tokens (`--chart-1..5`, `--income/--expense/--success/--warning`, `--sidebar-*`, `--shadow-*`) are now exercised end-to-end on the most-trafficked surface.
 
+### Inner-page polish (Phase 4 — April 2026)
+
+Four high-traffic inner pages were rewritten to share the cockpit's language. All use `useLocale` for AR/EN copy and `useFormatMoney` for currency; legacy patterns (`rounded-2xl/3xl`, `font-extrabold/black`, gradient CTAs, `bg-emerald-100`/`bg-rose-100` icon circles, hardcoded `ر.س`, oversized `h-12/h-14` controls, `shadow-lg shadow-primary/20`) were removed.
+
+- `client/src/pages/transactions.tsx` — eyebrow + display title header, single primary CTA, segmented filter pills (`bg-muted/50` with `bg-background` selected state), Card-as-table with hairline-divided rows. Each row carries a small token-colored icon chip (`bg-success/10` or `bg-expense/10` with matching border), uppercase eyebrow category, mono date, and right-aligned signed amount in `font-numeric tabular-nums`. Income amounts are the only colored values (Mercury convention); expenses stay foreground.
+
+- `client/src/pages/ai-assistant.tsx` — full chat-surface rewrite. Pulsing-dot eyebrow, big bilingual title ("اوصف معاملتك. سأكتب القيد." / "Describe a transaction. I'll write the entry."), welcome bubble with bullet hints. New `<Bubble>` component: user bubbles use `bg-foreground text-background` (dark inverse), assistant bubbles use `bg-muted/60` with hairline border, both with asymmetric corner radius for direction. Composer is a single sticky strip — `ImagePlus` ghost icon, plain `Input`, `ArrowUp` send button — plus an inline image-preview chip. Quick-prompt suggestions render as bordered cards instead of gradient pills.
+
+- `client/src/pages/chart-of-accounts.tsx` — eyebrow + IFRS-aligned display title. Five account-type buckets each render in a Card with a 1px×14px accent bar mapped to a `--chart-N` token (assets→chart-1, liabilities→chart-3, equity→chart-5, revenue→chart-2, expenses→chart-4) and a small count chip. Account rows are hairline-divided list items with a fixed-width `font-numeric` code column, Arabic name in foreground, English name in muted (right-aligned). Header rows use `bg-muted/30` and reduced indentation.
+
+- `client/src/pages/journal-entries.tsx` — eyebrow + display title ("كل قيد، متوازن، مرحَّل."). Each entry renders as a Card with a metadata header (reference chip, memo, date · source · total) followed by a real ledger-style table: `<thead>` with uppercase tracked column labels, debit/credit columns right-aligned in `font-numeric tabular-nums`, source badge for manual/auto/AI. The "new entry" dialog has a trimmed table with `h-9` controls, an outline "add line" button, and a `--success`/`--warning` balance indicator that shows the live difference until the entry zeros out.
+
+All four pages share the same header pattern (Eyebrow → display title → subtitle → primary CTA right-aligned in LTR / left-aligned in RTL) and the same Card variants from `client/src/components/ui/card.tsx`. The `bg-rose-100` / `bg-emerald-100` icon-circle pattern is now extinct from the high-traffic surfaces.
+
 ### Public Landing Page (Phase 2 — April 2026)
 
 A new public marketing page lives at `/` (`client/src/pages/landing.tsx`), built fully on the Phase 1 visual system. Authenticated app routes were re-anchored: the dashboard moved from `/` to `/dashboard`, and `client/src/App.tsx` now branches at the route layer — `/` renders **without** `MainLayout` (no sidebar, no company-switcher), while every other route is wrapped in the authenticated app shell. The `Brand` wordmark accepts an `href` prop so it can point at `/` (public) or `/dashboard` (in-app) depending on context.

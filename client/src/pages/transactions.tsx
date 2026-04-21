@@ -1,10 +1,12 @@
-import { useState, useMemo } from "react";
-import { format } from "date-fns";
-import { ar } from "date-fns/locale";
-import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions";
-import { TransactionForm } from "@/components/transactions/transaction-form";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useState, useMemo } from "react"
+import { format } from "date-fns"
+import { ar, enUS } from "date-fns/locale"
+import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions"
+import { TransactionForm } from "@/components/transactions/transaction-form"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -12,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,193 +25,295 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Plus, ArrowDownRight, ArrowUpRight, Trash2, ReceiptText, Calendar, Search } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/ui/alert-dialog"
+import {
+  Plus,
+  ArrowDownRight,
+  ArrowUpRight,
+  Trash2,
+  Search,
+  Inbox,
+} from "lucide-react"
+import { useLocale } from "@/contexts/locale-context"
+import { useFormatMoney } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
-type Filter = "all" | "income" | "expense";
+type Filter = "all" | "income" | "expense"
 
 export default function Transactions() {
-  const { data: transactions, isLoading } = useTransactions();
-  const deleteMutation = useDeleteTransaction();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const { locale } = useLocale()
+  const fmt = useFormatMoney()
+  const dfLocale = locale === "ar" ? ar : enUS
+  const { data: transactions, isLoading } = useTransactions()
+  const deleteMutation = useDeleteTransaction()
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const [filter, setFilter] = useState<Filter>("all")
+
+  const t = useMemo(
+    () => ({
+      eyebrow: locale === "ar" ? "المعاملات" : "Transactions",
+      title: locale === "ar" ? "كل دخل ومصروف، في مكان واحد." : "Every dollar in and out, in one place.",
+      subtitle:
+        locale === "ar"
+          ? "ابحث وفلتر وأضف معاملات بسرعة. كل قيد ينشأ تلقائياً في اليومية."
+          : "Search, filter, and add entries fast. Every record auto-posts to the journal.",
+      add: locale === "ar" ? "معاملة جديدة" : "New transaction",
+      addDialogTitle: locale === "ar" ? "إضافة معاملة" : "Add transaction",
+      addDialogDesc:
+        locale === "ar"
+          ? "أدخل تفاصيل المعاملة لحفظها وترحيلها إلى دفتر اليومية."
+          : "Enter details to save and post this entry to the journal.",
+      searchPh:
+        locale === "ar"
+          ? "ابحث بالوصف أو الفئة أو المبلغ…"
+          : "Search description, category, or amount…",
+      filterAll: locale === "ar" ? "الكل" : "All",
+      filterIncome: locale === "ar" ? "إيرادات" : "Revenue",
+      filterExpense: locale === "ar" ? "مصروفات" : "Expenses",
+      emptyTitleHas: locale === "ar" ? "لا نتائج" : "No results",
+      emptyTitleNone: locale === "ar" ? "لا توجد معاملات بعد" : "No transactions yet",
+      emptyBodyHas:
+        locale === "ar"
+          ? "حاول تعديل البحث أو إزالة الفلتر."
+          : "Try adjusting your search or clearing the filter.",
+      emptyBodyNone:
+        locale === "ar"
+          ? "أضف أول معاملة من الزر أعلاه أو من المساعد الذكي."
+          : "Add your first transaction with the button above or the AI assistant.",
+      delTitle: locale === "ar" ? "حذف المعاملة؟" : "Delete this transaction?",
+      delDesc:
+        locale === "ar"
+          ? "هذا الإجراء لا يمكن التراجع عنه. سيتم إلغاء القيد المقابل في اليومية."
+          : "This cannot be undone. The matching journal entry will be reversed.",
+      delCancel: locale === "ar" ? "إلغاء" : "Cancel",
+      delConfirm: locale === "ar" ? "نعم، احذف" : "Yes, delete",
+      count: locale === "ar" ? "معاملة" : "transactions",
+    }),
+    [locale]
+  )
 
   const filtered = useMemo(() => {
-    if (!transactions) return [];
-    const q = search.trim().toLowerCase();
+    if (!transactions) return []
+    const q = search.trim().toLowerCase()
     return [...transactions]
-      .filter((t) => filter === "all" || t.type === filter)
+      .filter((tx) => filter === "all" || tx.type === filter)
       .filter(
-        (t) =>
+        (tx) =>
           !q ||
-          t.description.toLowerCase().includes(q) ||
-          t.category.toLowerCase().includes(q) ||
-          String(t.amount).includes(q)
+          tx.description.toLowerCase().includes(q) ||
+          tx.category.toLowerCase().includes(q) ||
+          String(tx.amount).includes(q)
       )
-      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
-  }, [transactions, search, filter]);
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+  }, [transactions, search, filter])
+
+  const filterTabs: { key: Filter; label: string }[] = [
+    { key: "all", label: t.filterAll },
+    { key: "income", label: t.filterIncome },
+    { key: "expense", label: t.filterExpense },
+  ]
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">إدارة المعاملات</h1>
-          <p className="text-muted-foreground mt-2 font-medium">سجل وتتبع جميع إيراداتك ومصروفاتك بسهولة.</p>
+    <div className="space-y-8" data-testid="page-transactions">
+      <header className="flex items-start justify-between gap-6 flex-wrap">
+        <div className="space-y-2 max-w-2xl">
+          <div className="eyebrow text-muted-foreground/80">{t.eyebrow}</div>
+          <h1
+            className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
+            data-testid="text-page-title"
+          >
+            {t.title}
+          </h1>
+          <p className="text-sm text-muted-foreground">{t.subtitle}</p>
         </div>
-        
+
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="h-12 px-6 rounded-xl font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 hover:shadow-xl hover:-translate-y-0.5 transition-all">
-              <Plus className="w-5 h-5 ml-2" />
-              إضافة معاملة جديدة
+            <Button data-testid="button-add-transaction">
+              <Plus className="w-4 h-4" />
+              {t.add}
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px] p-6 rounded-3xl border-none shadow-2xl" dir="rtl">
-            <DialogHeader className="mb-6">
-              <DialogTitle className="text-2xl font-extrabold">إضافة معاملة</DialogTitle>
-              <DialogDescription className="text-base mt-2">
-                أدخل تفاصيل المعاملة الجديدة لحفظها في سجلاتك.
-              </DialogDescription>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>{t.addDialogTitle}</DialogTitle>
+              <DialogDescription>{t.addDialogDesc}</DialogDescription>
             </DialogHeader>
             <TransactionForm onSuccess={() => setIsDialogOpen(false)} />
           </DialogContent>
         </Dialog>
-      </div>
+      </header>
 
-      {/* Search & Filters */}
+      {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ابحث عن معاملة، فئة، أو مبلغ..."
-            className="h-12 rounded-2xl bg-card border-2 pr-12 focus:border-primary/40 transition-all font-medium"
+            placeholder={t.searchPh}
+            className="ps-9 h-10"
             data-testid="input-search"
           />
         </div>
-        <div className="flex gap-2 bg-card rounded-2xl p-1.5 border border-border/50">
-          {([
-            { key: "all", label: "الكل" },
-            { key: "income", label: "إيرادات" },
-            { key: "expense", label: "مصروفات" },
-          ] as { key: Filter; label: string }[]).map((opt) => (
-            <button
-              key={opt.key}
-              onClick={() => setFilter(opt.key)}
-              data-testid={`button-filter-${opt.key}`}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                filter === opt.key
-                  ? opt.key === "income"
-                    ? "bg-emerald-500 text-white shadow-md"
-                    : opt.key === "expense"
-                    ? "bg-rose-500 text-white shadow-md"
-                    : "bg-primary text-primary-foreground shadow-md"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div
+          role="tablist"
+          aria-label={t.eyebrow}
+          className="inline-flex items-center gap-0.5 bg-muted/50 border border-border rounded-md p-0.5 h-10"
+        >
+          {filterTabs.map((opt) => {
+            const selected = filter === opt.key
+            return (
+              <button
+                key={opt.key}
+                role="tab"
+                type="button"
+                aria-selected={selected}
+                onClick={() => setFilter(opt.key)}
+                data-testid={`button-filter-${opt.key}`}
+                className={cn(
+                  "px-3.5 h-full text-xs font-medium rounded transition-colors",
+                  selected
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        {isLoading ? (
-          Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="bg-card rounded-2xl p-6 shadow-sm border border-border/50 flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <Skeleton className="w-12 h-12 rounded-xl" />
+      {/* Count */}
+      {!isLoading && filtered.length > 0 && (
+        <div className="text-xs text-muted-foreground -mt-4">
+          <span className="font-numeric tabular-nums font-medium text-foreground">
+            {filtered.length}
+          </span>{" "}
+          {t.count}
+        </div>
+      )}
+
+      {/* List */}
+      {isLoading ? (
+        <Card variant="default" className="p-0 overflow-hidden">
+          <div className="divide-y divide-border">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="px-6 py-4 flex items-center justify-between">
                 <div className="space-y-2">
-                  <Skeleton className="w-40 h-5" />
-                  <Skeleton className="w-24 h-4" />
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-3 w-28" />
                 </div>
-              </div>
-              <Skeleton className="w-24 h-8 rounded-lg" />
-            </div>
-          ))
-        ) : filtered.length === 0 ? (
-          <div className="bg-card rounded-3xl p-16 text-center shadow-sm border border-border/50 flex flex-col items-center justify-center">
-            <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mb-4">
-              <ReceiptText className="w-10 h-10 text-primary/50" />
-            </div>
-            <h3 className="text-2xl font-bold text-foreground mb-2">
-              {search || filter !== "all" ? "لا توجد نتائج" : "سجلك المالي فارغ"}
-            </h3>
-            <p className="text-muted-foreground max-w-sm text-lg">
-              {search || filter !== "all"
-                ? "جرب تعديل البحث أو إزالة التصفية."
-                : "لم تقم بإضافة أي معاملات بعد. اضغط على الزر أعلاه للبدء."}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filtered.map((tx) => (
-              <div 
-                key={tx.id} 
-                className="bg-card hover:bg-muted/10 rounded-2xl p-4 sm:p-6 shadow-sm shadow-black/5 border border-border/50 hover:shadow-md transition-all group flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-              >
-                <div className="flex items-center gap-4">
-                  <div className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center transition-transform group-hover:rotate-6 ${
-                    tx.type === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
-                  }`}>
-                    {tx.type === 'income' ? <ArrowUpRight className="w-7 h-7" /> : <ArrowDownRight className="w-7 h-7" />}
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-foreground text-xl mb-1">{tx.description}</h3>
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground font-medium">
-                      <span className="px-2.5 py-1 bg-secondary rounded-lg text-secondary-foreground font-bold">
-                        {tx.category}
-                      </span>
-                      <span className="flex items-center gap-1.5 opacity-80">
-                        <Calendar className="w-4 h-4" />
-                        {format(new Date(tx.date || new Date()), 'd MMMM yyyy - h:mm a', { locale: ar })}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto border-t sm:border-0 pt-4 sm:pt-0 border-border/50">
-                  <div className={`font-black text-2xl tracking-tight flex items-center gap-1.5 ${
-                    tx.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
-                  }`}>
-                    {tx.type === 'income' ? '+' : '-'}
-                    {Number(tx.amount).toLocaleString('ar-SA')}
-                    <span className="text-base font-bold opacity-70">ر.س</span>
-                  </div>
-                  
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-colors">
-                        <Trash2 className="w-5 h-5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="rounded-3xl border-none shadow-2xl p-6" dir="rtl">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="text-2xl font-bold">هل أنت متأكد من الحذف؟</AlertDialogTitle>
-                        <AlertDialogDescription className="text-base font-medium mt-2 text-foreground/70">
-                          هذا الإجراء لا يمكن التراجع عنه. سيتم حذف المعاملة "{tx.description}" نهائياً من سجلاتك.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter className="mt-6 flex gap-3 sm:gap-0">
-                        <AlertDialogCancel className="h-12 rounded-xl font-bold">إلغاء</AlertDialogCancel>
-                        <AlertDialogAction 
-                          onClick={() => deleteMutation.mutate(tx.id)}
-                          className="h-12 rounded-xl font-bold bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          نعم، احذف
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
+                <Skeleton className="h-4 w-24" />
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card variant="default" className="px-6 py-16 text-center">
+          <div className="mx-auto w-10 h-10 rounded-md bg-muted flex items-center justify-center mb-4">
+            <Inbox className="w-5 h-5 text-muted-foreground" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground mb-1.5">
+            {search || filter !== "all" ? t.emptyTitleHas : t.emptyTitleNone}
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+            {search || filter !== "all" ? t.emptyBodyHas : t.emptyBodyNone}
+          </p>
+        </Card>
+      ) : (
+        <Card variant="default" className="p-0 overflow-hidden">
+          <ul className="divide-y divide-border" data-testid="list-transactions">
+            {filtered.map((tx) => {
+              const isIncome = tx.type === "income"
+              return (
+                <li
+                  key={tx.id}
+                  className="px-5 sm:px-6 py-3.5 flex items-center justify-between gap-4 hover:bg-muted/40 transition-colors"
+                  data-testid={`row-transaction-${tx.id}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={cn(
+                        "inline-flex items-center justify-center w-7 h-7 rounded-md border shrink-0",
+                        isIncome
+                          ? "bg-success/10 border-success/20 text-success"
+                          : "bg-expense/10 border-expense/20 text-expense"
+                      )}
+                      aria-hidden
+                    >
+                      {isIncome ? (
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      ) : (
+                        <ArrowDownRight className="w-3.5 h-3.5" />
+                      )}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {tx.description}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+                        <span className="uppercase tracking-wider font-medium text-muted-foreground/80">
+                          {tx.category}
+                        </span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className="font-numeric tabular-nums">
+                          {format(new Date(tx.date || new Date()), "d MMM yyyy", { locale: dfLocale })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div
+                      className={cn(
+                        "text-sm font-semibold font-numeric tabular-nums",
+                        isIncome ? "text-success" : "text-foreground"
+                      )}
+                    >
+                      {isIncome ? "+" : "−"} {fmt(Number(tx.amount))}
+                    </div>
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          data-testid={`button-delete-${tx.id}`}
+                          aria-label={t.delConfirm}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>{t.delTitle}</AlertDialogTitle>
+                          <AlertDialogDescription>{t.delDesc}</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel data-testid="button-cancel-delete">
+                            {t.delCancel}
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteMutation.mutate(tx.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            data-testid="button-confirm-delete"
+                          >
+                            {t.delConfirm}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </Card>
+      )}
     </div>
-  );
+  )
 }

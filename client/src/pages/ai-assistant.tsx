@@ -1,175 +1,228 @@
-import { useState, useRef, useEffect } from "react";
-import { useChatMessages, useSendMessage } from "@/hooks/use-chat";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { useToast } from "@/hooks/use-toast";
-import { Bot, User, Send, Sparkles, Loader2, ImagePlus, X, Receipt, Wand2 } from "lucide-react";
-
-const QUICK_PROMPTS = [
-  { label: "صرفت 50 ر.س على القهوة", icon: "☕" },
-  { label: "استلمت راتب 8000 ر.س", icon: "💰" },
-  { label: "فاتورة كهرباء 320 ر.س", icon: "💡" },
-  { label: "ما هو رصيدي الحالي؟", icon: "📊" },
-];
+import { useState, useRef, useEffect, useMemo } from "react"
+import { useChatMessages, useSendMessage } from "@/hooks/use-chat"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Card } from "@/components/ui/card"
+import { useToast } from "@/hooks/use-toast"
+import {
+  Send,
+  Sparkles,
+  Loader2,
+  ImagePlus,
+  X,
+  Receipt,
+  ArrowUp,
+} from "lucide-react"
+import { useLocale } from "@/contexts/locale-context"
+import { cn } from "@/lib/utils"
 
 export default function AiAssistant() {
-  const { data: messages, isLoading } = useChatMessages();
-  const sendMessage = useSendMessage();
-  const { toast } = useToast();
-  const [input, setInput] = useState("");
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { locale } = useLocale()
+  const { data: messages, isLoading } = useChatMessages()
+  const sendMessage = useSendMessage()
+  const { toast } = useToast()
+  const [input, setInput] = useState("")
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const t = useMemo(
+    () => ({
+      eyebrow: locale === "ar" ? "المساعد الذكي" : "AI assistant",
+      title:
+        locale === "ar"
+          ? "اوصف معاملتك. سأكتب القيد."
+          : "Describe a transaction. I'll write the entry.",
+      subtitle:
+        locale === "ar"
+          ? "اكتب بلغتك الطبيعية أو ارفع صورة فاتورة. سأستخرج التفاصيل وأرحّل القيد إلى اليومية."
+          : "Type in plain language or upload a receipt. I'll extract the details and post the entry.",
+      welcome:
+        locale === "ar"
+          ? "مرحباً. أستطيع تسجيل معاملاتك من جملة واحدة، أو من صورة فاتورة، والإجابة على أسئلتك المالية."
+          : "Hi. I can record your transactions from a single sentence or a receipt photo, and answer your financial questions.",
+      welcomeBullets:
+        locale === "ar"
+          ? [
+              "صرفت ١٥٠ ر.س على البقالة اليوم",
+              "ارفع صورة فاتورة → استخرج المبلغ والمورّد تلقائياً",
+              "ما رصيدي؟ ما أكبر فئة إنفاقاً هذا الشهر؟",
+            ]
+          : [
+              "Spent $150 on groceries today",
+              "Upload a receipt → I extract amount and vendor",
+              "What's my balance? My top expense category?",
+            ],
+      tryThese: locale === "ar" ? "جرّب أحد الاقتراحات" : "Try one of these",
+      placeholder:
+        locale === "ar"
+          ? "اكتب رسالتك… مثل: استلمت دفعة 3,500 من العميل"
+          : "Type your message… e.g. Received a $3,500 payment from client",
+      placeholderWithImage:
+        locale === "ar"
+          ? "أضف ملاحظة (اختياري)…"
+          : "Add a note (optional)…",
+      sizeError: locale === "ar" ? "حجم كبير جداً" : "File too large",
+      sizeErrorDesc:
+        locale === "ar" ? "الحد الأقصى ١٠ ميجابايت." : "Maximum size is 10MB.",
+      typeError: locale === "ar" ? "نوع غير مدعوم" : "Unsupported type",
+      typeErrorDesc:
+        locale === "ar" ? "الرجاء اختيار صورة فقط." : "Please choose an image file.",
+      footnote:
+        locale === "ar"
+          ? "كل قيد يظهر هنا يُرحَّل تلقائياً إلى اليومية. راجع الدفاتر دائماً."
+          : "Every entry posted here flows into the journal. Always review your books.",
+      uploadAria: locale === "ar" ? "ارفع صورة فاتورة" : "Upload a receipt image",
+      sendAria: locale === "ar" ? "إرسال" : "Send",
+      receipt: locale === "ar" ? "فاتورة" : "Receipt",
+    }),
+    [locale]
+  )
+
+  const QUICK_PROMPTS = useMemo(
+    () =>
+      locale === "ar"
+        ? [
+            "صرفت ٥٠ ر.س على القهوة",
+            "استلمت راتب ٨٠٠٠ ر.س",
+            "فاتورة كهرباء ٣٢٠ ر.س",
+            "ما رصيدي الحالي؟",
+          ]
+        : [
+            "Spent $50 on coffee",
+            "Received $8,000 salary",
+            "Electric bill $320",
+            "What's my current balance?",
+          ],
+    [locale]
+  )
 
   useEffect(() => {
     if (scrollRef.current) {
-      const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
-      if (viewport) viewport.scrollTop = viewport.scrollHeight;
-      else scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const viewport = scrollRef.current.querySelector(
+        "[data-radix-scroll-area-viewport]"
+      ) as HTMLElement | null
+      if (viewport) viewport.scrollTop = viewport.scrollHeight
+      else scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, sendMessage.isPending]);
+  }, [messages, sendMessage.isPending])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+    const file = e.target.files?.[0]
+    if (!file) return
     if (!file.type.startsWith("image/")) {
-      toast({ title: "نوع غير مدعوم", description: "الرجاء اختيار صورة فقط.", variant: "destructive" });
-      return;
+      toast({ title: t.typeError, description: t.typeErrorDesc, variant: "destructive" })
+      return
     }
-
     if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "حجم كبير جداً", description: "الحد الأقصى 10 ميجابايت.", variant: "destructive" });
-      return;
+      toast({ title: t.sizeError, description: t.sizeErrorDesc, variant: "destructive" })
+      return
     }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImagePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+    const reader = new FileReader()
+    reader.onload = () => setImagePreview(reader.result as string)
+    reader.readAsDataURL(file)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if ((!input.trim() && !imagePreview) || sendMessage.isPending) return;
-
+    e.preventDefault()
+    if ((!input.trim() && !imagePreview) || sendMessage.isPending) return
     sendMessage.mutate({
       content: input.trim(),
       imageData: imagePreview || undefined,
-    });
-    setInput("");
-    setImagePreview(null);
-  };
+    })
+    setInput("")
+    setImagePreview(null)
+  }
 
   const handleQuickPrompt = (prompt: string) => {
-    if (sendMessage.isPending) return;
-    sendMessage.mutate({ content: prompt });
-  };
+    if (sendMessage.isPending) return
+    sendMessage.mutate({ content: prompt })
+  }
 
-  const showQuickPrompts = !isLoading && (!messages || messages.length <= 1);
+  const showQuickPrompts = !isLoading && (!messages || messages.length <= 1)
 
   return (
-    <div className="h-[calc(100vh-6rem)] md:h-[calc(100vh-5rem)] flex flex-col animate-in fade-in zoom-in-95 duration-500">
-      <div className="mb-6">
-        <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3" data-testid="text-assistant-title">
-          <div className="p-2 bg-primary/10 rounded-2xl">
-            <Bot className="w-7 h-7 text-primary" />
+    <div className="h-[calc(100vh-9rem)] md:h-[calc(100vh-8rem)] flex flex-col" data-testid="page-ai-assistant">
+      {/* Header */}
+      <header className="mb-5 flex items-end justify-between gap-4 flex-wrap">
+        <div className="space-y-2 max-w-2xl">
+          <div className="eyebrow text-muted-foreground/80 flex items-center gap-2">
+            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            {t.eyebrow}
           </div>
-          المساعد الذكي
-          <span className="text-xs font-bold bg-gradient-to-l from-primary to-emerald-500 text-white px-3 py-1 rounded-full shadow-sm">AI</span>
-        </h1>
-        <p className="text-muted-foreground mt-2 font-medium">
-          صف معاملتك بكلماتك أو ارفع صورة فاتورة، وسأسجلها لك تلقائياً.
-        </p>
-      </div>
+          <h1
+            className="text-2xl md:text-[28px] font-semibold tracking-tight text-foreground leading-tight"
+            data-testid="text-assistant-title"
+          >
+            {t.title}
+          </h1>
+          <p className="text-sm text-muted-foreground">{t.subtitle}</p>
+        </div>
+      </header>
 
-      <div className="flex-1 bg-card border border-border/50 rounded-3xl shadow-xl shadow-black/5 overflow-hidden flex flex-col relative">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
-
-        <ScrollArea className="flex-1 p-4 sm:p-6" ref={scrollRef}>
-          <div className="space-y-6 max-w-3xl mx-auto relative z-10 pb-4">
-            {/* Welcome */}
-            <div className="flex gap-4 flex-row-reverse" data-testid="message-welcome">
-              <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-                <Bot className="w-6 h-6 text-primary" />
-              </div>
-              <div className="bg-secondary text-secondary-foreground rounded-2xl rounded-tr-sm px-5 py-4 max-w-[85%] shadow-sm">
-                <p className="text-base font-medium leading-relaxed">
-                  مرحباً! أنا مساعدك المحاسبي الذكي. 💼✨<br /><br />
-                  يمكنك:
-                  <br />• كتابة معاملة بالعربية: "صرفت 150 ر.س على البقالة"
-                  <br />• رفع صورة فاتورة وسأستخرج التفاصيل تلقائياً 📸
-                  <br />• سؤالي عن رصيدك أو ملخص حساباتك
-                </p>
-              </div>
-            </div>
+      {/* Chat surface */}
+      <Card variant="default" className="flex-1 flex flex-col overflow-hidden p-0 min-h-0">
+        <ScrollArea className="flex-1" ref={scrollRef}>
+          <div className="px-4 sm:px-6 py-6 space-y-5 max-w-3xl mx-auto">
+            {/* Welcome bubble */}
+            <Bubble role="assistant" data-testid="message-welcome">
+              <p className="text-sm leading-relaxed text-foreground">{t.welcome}</p>
+              <ul className="mt-3 space-y-1.5">
+                {t.welcomeBullets.map((b, i) => (
+                  <li
+                    key={i}
+                    className="text-[13px] text-muted-foreground flex items-start gap-2"
+                  >
+                    <span className="mt-1.5 inline-block h-1 w-1 rounded-full bg-primary shrink-0" />
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+            </Bubble>
 
             {isLoading ? (
-              <div className="flex justify-center py-10">
-                <Loader2 className="w-8 h-8 animate-spin text-primary/50" />
+              <div className="flex justify-center py-6">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
             ) : (
               messages?.map((msg) => (
-                <div
+                <Bubble
                   key={msg.id}
+                  role={msg.role as "user" | "assistant"}
                   data-testid={`message-${msg.role}-${msg.id}`}
-                  className={`flex gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300 ${msg.role === 'user' ? '' : 'flex-row-reverse'}`}
                 >
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
-                    msg.role === 'user' ? 'bg-foreground text-background' : 'bg-primary/10 text-primary'
-                  }`}>
-                    {msg.role === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-6 h-6" />}
-                  </div>
-
-                  <div className={`rounded-3xl px-6 py-4 max-w-[85%] shadow-sm ${
-                    msg.role === 'user'
-                      ? 'bg-gradient-to-bl from-primary to-primary/90 text-primary-foreground rounded-tl-sm'
-                      : 'bg-card border border-border/60 text-foreground rounded-tr-sm'
-                  }`}>
-                    <p className="text-base font-medium leading-relaxed whitespace-pre-wrap">
-                      {msg.content}
-                    </p>
-                  </div>
-                </div>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                    {msg.content}
+                  </p>
+                </Bubble>
               ))
             )}
 
             {sendMessage.isPending && (
-              <div className="flex gap-4 flex-row-reverse animate-in fade-in" data-testid="status-thinking">
-                <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-                  <Sparkles className="w-5 h-5 text-primary animate-pulse" />
+              <Bubble role="assistant" data-testid="status-thinking">
+                <div className="flex gap-1.5 items-center h-4" aria-label="thinking">
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
                 </div>
-                <div className="bg-secondary/50 rounded-2xl rounded-tr-sm px-6 py-4">
-                  <div className="flex gap-1.5 items-center h-6">
-                    <div className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                </div>
-              </div>
+              </Bubble>
             )}
 
-            {/* Quick prompt suggestions */}
             {showQuickPrompts && (
-              <div className="pt-4 animate-in fade-in duration-700">
-                <p className="text-sm font-bold text-muted-foreground mb-3 flex items-center gap-2">
-                  <Wand2 className="w-4 h-4 text-primary" />
-                  جرّب أحد الاقتراحات:
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="pt-2">
+                <div className="eyebrow text-muted-foreground/80 mb-2.5">{t.tryThese}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {QUICK_PROMPTS.map((p) => (
                     <button
-                      key={p.label}
+                      key={p}
                       type="button"
-                      onClick={() => handleQuickPrompt(p.label)}
-                      data-testid={`button-suggestion-${p.label}`}
-                      className="text-right p-4 rounded-2xl bg-secondary/50 hover:bg-primary/10 hover:border-primary/30 border border-border/50 transition-all hover:-translate-y-0.5 hover:shadow-md group"
+                      onClick={() => handleQuickPrompt(p)}
+                      data-testid={`button-suggestion-${p}`}
+                      className="text-start px-3.5 py-2.5 rounded-md border border-border bg-card hover:border-foreground/30 hover:bg-muted/40 transition-colors text-[13px] text-foreground"
                     >
-                      <span className="text-2xl ml-2">{p.icon}</span>
-                      <span className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">{p.label}</span>
+                      {p}
                     </button>
                   ))}
                 </div>
@@ -178,33 +231,38 @@ export default function AiAssistant() {
           </div>
         </ScrollArea>
 
-        <div className="p-4 sm:p-6 bg-card border-t border-border/50 z-10 relative">
-          {/* Image preview */}
+        {/* Composer */}
+        <div className="border-t border-border bg-background/60 backdrop-blur px-4 sm:px-6 py-3">
           {imagePreview && (
-            <div className="max-w-3xl mx-auto mb-3 animate-in fade-in slide-in-from-bottom-2">
+            <div className="max-w-3xl mx-auto mb-2.5">
               <div className="relative inline-block">
                 <img
                   src={imagePreview}
-                  alt="معاينة الإيصال"
-                  className="h-24 w-24 object-cover rounded-2xl border-2 border-primary/30 shadow-md"
+                  alt={t.receipt}
+                  className="h-20 w-20 object-cover rounded-md border border-border"
                   data-testid="img-receipt-preview"
                 />
                 <button
                   type="button"
                   onClick={() => setImagePreview(null)}
-                  className="absolute -top-2 -left-2 bg-destructive text-destructive-foreground rounded-full p-1 shadow-lg hover:scale-110 transition-transform"
+                  className="absolute -top-1.5 -end-1.5 w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center hover:opacity-90"
                   data-testid="button-remove-image"
+                  aria-label="Remove"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3 h-3" />
                 </button>
-                <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-2 py-0.5 rounded-md backdrop-blur-sm flex items-center gap-1">
-                  <Receipt className="w-3 h-3" /> فاتورة
-                </div>
+                <span className="absolute bottom-1 start-1 inline-flex items-center gap-1 bg-background/90 text-foreground text-[10px] px-1.5 py-0.5 rounded border border-border">
+                  <Receipt className="w-2.5 h-2.5" /> {t.receipt}
+                </span>
               </div>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="flex gap-2 sm:gap-3 max-w-3xl mx-auto">
+          <form
+            onSubmit={handleSubmit}
+            className="max-w-3xl mx-auto flex items-center gap-2"
+            data-testid="form-composer"
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -216,22 +274,23 @@ export default function AiAssistant() {
             />
             <Button
               type="button"
-              size="icon"
-              variant="outline"
+              variant="ghost"
+              size="icon-sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={sendMessage.isPending}
-              className="h-14 w-14 rounded-2xl shrink-0 border-2 border-dashed border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary text-primary"
+              className="text-muted-foreground hover:text-foreground shrink-0"
               data-testid="button-upload-image"
-              title="ارفع صورة فاتورة"
+              aria-label={t.uploadAria}
+              title={t.uploadAria}
             >
-              <ImagePlus className="w-6 h-6" />
+              <ImagePlus className="w-4 h-4" />
             </Button>
 
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={imagePreview ? "أضف ملاحظة (اختياري)..." : "اكتب رسالتك أو ارفع فاتورة..."}
-              className="flex-1 h-14 rounded-2xl bg-secondary/50 border-transparent focus:bg-background focus:border-primary/30 focus:ring-primary/20 transition-all text-base font-medium px-6"
+              placeholder={imagePreview ? t.placeholderWithImage : t.placeholder}
+              className="flex-1 h-10"
               disabled={sendMessage.isPending}
               data-testid="input-chat-message"
             />
@@ -239,20 +298,56 @@ export default function AiAssistant() {
             <Button
               type="submit"
               size="icon"
-              className="h-14 w-14 rounded-2xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 hover:shadow-xl hover:-translate-y-0.5 transition-all shrink-0 disabled:opacity-50"
+              className={cn(
+                "h-10 w-10 shrink-0",
+                (!input.trim() && !imagePreview) && "opacity-60"
+              )}
               disabled={(!input.trim() && !imagePreview) || sendMessage.isPending}
               data-testid="button-send-message"
+              aria-label={t.sendAria}
             >
-              <Send className="w-6 h-6 -ml-1 rtl:rotate-180" />
+              <ArrowUp className="w-4 h-4" />
             </Button>
           </form>
 
-          <p className="text-center text-xs text-muted-foreground mt-3 font-medium">
-            <Sparkles className="w-3 h-3 inline ml-1 text-primary" />
-            مدعوم بالذكاء الاصطناعي. راجع المعاملات المسجلة دائماً.
+          <p className="text-center text-[11px] text-muted-foreground/80 mt-2.5 flex items-center justify-center gap-1.5">
+            <Sparkles className="w-3 h-3" />
+            {t.footnote}
           </p>
         </div>
+      </Card>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Bubble                                                               */
+/* ------------------------------------------------------------------ */
+
+function Bubble({
+  role,
+  children,
+  ...rest
+}: {
+  role: "user" | "assistant"
+  children: React.ReactNode
+} & React.HTMLAttributes<HTMLDivElement>) {
+  const isUser = role === "user"
+  return (
+    <div
+      className={cn("flex", isUser ? "justify-end" : "justify-start")}
+      {...rest}
+    >
+      <div
+        className={cn(
+          "max-w-[88%] sm:max-w-[80%] px-4 py-2.5 rounded-xl",
+          isUser
+            ? "bg-foreground text-background rounded-br-sm rtl:rounded-br-xl rtl:rounded-bl-sm"
+            : "bg-muted/60 border border-border text-foreground rounded-bl-sm rtl:rounded-bl-xl rtl:rounded-br-sm"
+        )}
+      >
+        {children}
       </div>
     </div>
-  );
+  )
 }
