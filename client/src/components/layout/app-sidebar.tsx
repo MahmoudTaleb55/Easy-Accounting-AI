@@ -28,16 +28,16 @@ import {
 import { Button } from "@/components/ui/button";
 
 const items = [
-  { title: "الرئيسية", url: "/dashboard", icon: Home },
-  { title: "المعاملات", url: "/transactions", icon: ListOrdered },
-  { title: "دليل الحسابات", url: "/accounts", icon: BookOpen },
-  { title: "قيود اليومية", url: "/journal", icon: BookText },
-  { title: "التقرير المالي", url: "/reports", icon: BarChart3 },
-  { title: "مركز القرارات", url: "/insights", icon: Sparkles },
-  { title: "الموارد البشرية", url: "/hr", icon: Users },
-  { title: "الأصول الثابتة", url: "/fixed-assets", icon: Building2 },
-  { title: "المساعد الذكي", url: "/ai-assistant", icon: Bot },
-  { title: "الإعدادات", url: "/settings", icon: SettingsIcon },
+  { title: "الرئيسية", url: "/app", icon: Home },
+  { title: "المعاملات", url: "/app/transactions", icon: ListOrdered },
+  { title: "دليل الحسابات", url: "/app/accounts", icon: BookOpen },
+  { title: "قيود اليومية", url: "/app/journal", icon: BookText },
+  { title: "التقرير المالي", url: "/app/reports", icon: BarChart3 },
+  { title: "مركز القرارات", url: "/app/insights", icon: Sparkles },
+  { title: "الموارد البشرية", url: "/app/hr", icon: Users },
+  { title: "الأصول الثابتة", url: "/app/fixed-assets", icon: Building2 },
+  { title: "المساعد الذكي", url: "/app/ai-assistant", icon: Bot },
+  { title: "الإعدادات", url: "/app/settings", icon: SettingsIcon },
 ];
 
 export function AppSidebar() {

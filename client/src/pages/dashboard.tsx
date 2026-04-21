@@ -337,7 +337,7 @@ export default function Dashboard() {
             <h2 className="text-2xl font-bold">أحدث المعاملات</h2>
           </div>
           <Link
-            href="/transactions"
+            href="/app/transactions"
             className="text-sm font-bold text-primary hover:text-primary/80 transition-colors"
             data-testid="link-view-all"
           >

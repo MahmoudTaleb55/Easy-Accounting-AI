@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
-import { Moon, Sun, ChevronDown } from "lucide-react"
+import { Moon, Sun, ChevronDown, Languages } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Brand } from "./Brand"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/contexts/locale-context"
 
 /**
  * AppNavbar — premium top bar.
@@ -25,6 +26,8 @@ interface AppNavbarProps {
   ctaHref?: string
   secondaryLabel?: string
   secondaryHref?: string
+  tertiaryLabel?: string
+  tertiaryHref?: string
   className?: string
 }
 
@@ -38,14 +41,20 @@ const DEFAULT_LINKS: NavLink[] = [
 
 export function AppNavbar({
   links = DEFAULT_LINKS,
-  ctaLabel = "ابدأ مجاناً",
-  ctaHref = "/signup",
-  secondaryLabel = "تسجيل الدخول",
-  secondaryHref = "/login",
+  ctaLabel,
+  ctaHref = "/app",
+  secondaryLabel,
+  secondaryHref = "/demo",
+  tertiaryLabel,
+  tertiaryHref = "/app",
   className,
 }: AppNavbarProps) {
   const [scrolled, setScrolled] = useState(false)
   const [isDark, setIsDark] = useState(false)
+  const { locale, toggleLocale } = useLocale()
+  const resolvedCta = ctaLabel ?? (locale === "ar" ? "افتح التطبيق" : "Open app")
+  const resolvedSecondary = secondaryLabel ?? (locale === "ar" ? "طلب عرض" : "Request demo")
+  const resolvedTertiary = tertiaryLabel ?? (locale === "ar" ? "تسجيل الدخول" : "Sign in")
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -110,6 +119,16 @@ export function AppNavbar({
             <Button
               variant="ghost"
               size="icon-sm"
+              onClick={toggleLocale}
+              aria-label={locale === "ar" ? "Switch to English" : "التحويل إلى العربية"}
+              data-testid="button-locale-toggle"
+              title={locale === "ar" ? "EN" : "AR"}
+            >
+              <Languages />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={toggleTheme}
               aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
               data-testid="button-theme-toggle"
@@ -118,15 +137,22 @@ export function AppNavbar({
             </Button>
 
             <a
+              href={tertiaryHref}
+              data-testid="link-sign-in"
+              className="hidden md:inline-flex h-9 items-center px-3 text-sm text-foreground/75 hover:text-foreground transition-colors"
+            >
+              {resolvedTertiary}
+            </a>
+            <a
               href={secondaryHref}
-              data-testid="link-login"
+              data-testid="link-secondary-cta"
               className="hidden sm:inline-flex h-9 items-center px-3 text-sm text-foreground/75 hover:text-foreground transition-colors"
             >
-              {secondaryLabel}
+              {resolvedSecondary}
             </a>
 
             <Button asChild size="default" data-testid="button-cta-primary">
-              <a href={ctaHref}>{ctaLabel}</a>
+              <a href={ctaHref}>{resolvedCta}</a>
             </Button>
           </div>
         </div>

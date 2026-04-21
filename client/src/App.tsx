@@ -1,4 +1,5 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, Redirect } from "wouter";
+import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -12,8 +13,11 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { LocaleProvider } from "@/contexts/locale-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 
-// Pages
+// Pages — public
 import Landing from "@/pages/landing";
+import Demo from "@/pages/demo";
+
+// Pages — authenticated app
 import Dashboard from "@/pages/dashboard";
 import Transactions from "@/pages/transactions";
 import AiAssistant from "@/pages/ai-assistant";
@@ -28,27 +32,37 @@ import Styleguide from "@/pages/styleguide";
 
 const isDev = import.meta.env.DEV;
 
-/** Public routes render OUTSIDE the authenticated MainLayout shell. */
-const PUBLIC_ROUTES = new Set<string>(["/"]);
+/** Map of legacy in-app routes → new /app/* equivalents (kept stable for redirects). */
+const LEGACY_REDIRECTS: Record<string, string> = {
+  "/dashboard": "/app",
+  "/transactions": "/app/transactions",
+  "/reports": "/app/reports",
+  "/accounts": "/app/accounts",
+  "/journal": "/app/journal",
+  "/insights": "/app/insights",
+  "/hr": "/app/hr",
+  "/fixed-assets": "/app/fixed-assets",
+  "/settings": "/app/settings",
+  "/ai-assistant": "/app/ai-assistant",
+};
 
-function AppRoutes() {
+function LegacyRedirect({ to }: { to: string }) {
+  return <Redirect to={to} />;
+}
+
+function AppShellRoutes() {
   return (
     <Switch>
-      {/* Public — no app shell */}
-      <Route path="/" component={Landing} />
-
-      {/* App — wrapped in MainLayout via wrapper below */}
-      <Route path="/dashboard"   component={Dashboard} />
-      <Route path="/transactions" component={Transactions} />
-      <Route path="/reports"     component={Reports} />
-      <Route path="/accounts"    component={ChartOfAccounts} />
-      <Route path="/journal"     component={JournalEntries} />
-      <Route path="/insights"    component={Insights} />
-      <Route path="/hr"          component={HR} />
-      <Route path="/fixed-assets" component={FixedAssets} />
-      <Route path="/settings"    component={SettingsPage} />
-      <Route path="/ai-assistant" component={AiAssistant} />
-
+      <Route path="/app" component={Dashboard} />
+      <Route path="/app/transactions" component={Transactions} />
+      <Route path="/app/reports" component={Reports} />
+      <Route path="/app/accounts" component={ChartOfAccounts} />
+      <Route path="/app/journal" component={JournalEntries} />
+      <Route path="/app/insights" component={Insights} />
+      <Route path="/app/hr" component={HR} />
+      <Route path="/app/fixed-assets" component={FixedAssets} />
+      <Route path="/app/settings" component={SettingsPage} />
+      <Route path="/app/ai-assistant" component={AiAssistant} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -57,22 +71,31 @@ function AppRoutes() {
 function Router() {
   const [location] = useLocation();
 
-  // Styleguide is a standalone, dev-only route — rendered without the app shell.
+  // Standalone, dev-only styleguide — no shell.
   if (location === "/styleguide") {
     if (!isDev) return <NotFound />;
     return <Styleguide />;
   }
 
-  // Public routes (e.g. landing) render OUTSIDE the authenticated MainLayout shell.
-  if (PUBLIC_ROUTES.has(location)) {
-    return <AppRoutes />;
+  // Public routes — render OUTSIDE the authenticated MainLayout shell.
+  if (location === "/") return <Landing />;
+  if (location === "/demo") return <Demo />;
+
+  // Legacy top-level in-app paths — permanently redirect to /app/* equivalents.
+  if (LEGACY_REDIRECTS[location]) {
+    return <LegacyRedirect to={LEGACY_REDIRECTS[location]} />;
   }
 
-  return (
-    <MainLayout>
-      <AppRoutes />
-    </MainLayout>
-  );
+  // Authenticated app shell.
+  if (location === "/app" || location.startsWith("/app/")) {
+    return (
+      <MainLayout>
+        <AppShellRoutes />
+      </MainLayout>
+    );
+  }
+
+  return <NotFound />;
 }
 
 function App() {

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import {
-  ArrowLeft, ArrowRight, Check, ChevronDown, FileText, Receipt, Bot,
+  ArrowLeft, ArrowRight, Check, FileText, Receipt, Bot,
   Sparkles, ShieldCheck, Globe2, Workflow, BarChart3, Briefcase,
   Users, Wallet, TrendingUp, AlertTriangle, Lock, Database, ScrollText,
   MapPin,
@@ -13,51 +13,435 @@ import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion"
 import { cn } from "@/lib/utils"
+import { useLocale, type Locale } from "@/contexts/locale-context"
 
 /* ============================================================================
-   Landing page — محاسب ذكي
-   Premium fintech positioning. RTL Arabic-first. Built on Phase 1 design system.
+   Landing page — محاسب ذكي / Smart Accountant
+   Bilingual (AR/EN), direction-aware. Built on Phase 1 design system.
    ========================================================================== */
 
+type Dict = ReturnType<typeof getCopy>
+
+function getCopy(locale: Locale) {
+  const ar = locale === "ar"
+  return {
+    ar,
+    nav: {
+      platform: ar ? "المنصة" : "Platform",
+      ai: ar ? "الذكاء" : "Intelligence",
+      automation: ar ? "الأتمتة" : "Automation",
+      security: ar ? "الأمان" : "Security",
+      useCases: ar ? "الاستخدامات" : "Use cases",
+      faq: ar ? "الأسئلة" : "FAQ",
+      openApp: ar ? "افتح التطبيق" : "Open app",
+      demo: ar ? "طلب عرض" : "Request demo",
+      signIn: ar ? "تسجيل الدخول" : "Sign in",
+    },
+    hero: {
+      tag: ar ? "الإصدار الجديد · مدعوم بـ GPT-5.2" : "New release · Powered by GPT-5.2",
+      h1a: ar ? "نظام محاسبة ذكي،" : "Intelligent accounting,",
+      h1b: ar ? "مبني للأعمال الحديثة." : "built for modern business.",
+      sub: ar
+        ? "من الفواتير إلى البصيرة — منصّة محاسبية واحدة وفق معايير IFRS، مدعومة بالذكاء الاصطناعي، تعمل عبر سبع دول وبعملات متعددة."
+        : "From invoices to insight — one IFRS-grade accounting platform, AI-native, running across seven countries and multiple currencies.",
+      subEm: ar ? " عربية أولاً، عالمية بطبعها." : " Arabic-first, global by design.",
+      ctaPrimary: ar ? "افتح التطبيق" : "Open the app",
+      ctaSecondary: ar ? "احجز عرضاً مباشراً" : "Book a live demo",
+      ctaTertiary: ar ? "تسجيل الدخول" : "Sign in",
+      bullets: ar
+        ? ["بدون بطاقة ائتمان", "تجربة كاملة ١٤ يوم", "تركيب خلال ٥ دقائق"]
+        : ["No credit card", "Full 14-day trial", "Set up in 5 minutes"],
+      mockTitle: ar ? "cockpit · محاسب ذكي" : "cockpit · Smart Accountant",
+      chipAuto: { t: ar ? "قيد آلي مُسجَّل" : "Entry auto-posted", s: ar ? "فاتورة كهرباء · ١٥٠ ر.س" : "Electricity invoice · SAR 150" },
+      chipProfit: { t: ar ? "نسبة الربح ↑ ١٢٪" : "Profit margin ↑ 12%", s: ar ? "الربع الحالي" : "Current quarter" },
+      kpis: {
+        revenue: ar ? "الإيرادات" : "Revenue",
+        expenses: ar ? "المصروفات" : "Expenses",
+        netCash: ar ? "صافي التدفق" : "Net cash",
+      },
+      band: {
+        eyebrow: ar ? "آخر ٣٠ يوم" : "Last 30 days",
+        title: ar ? "التدفق النقدي" : "Cash flow",
+        ticks: ar ? ["د", "أ", "ش", "س"] : ["D", "J", "F", "M"],
+      },
+      entry: {
+        title: ar ? "آخر قيد · #٢٤٧٨" : "Latest entry · #2478",
+        balanced: ar ? "متوازن" : "Balanced",
+        marketing: ar ? "مصروفات تسويق" : "Marketing expense",
+        cash: ar ? "النقدية" : "Cash",
+        amount: ar ? "١٢٠٠.٠٠" : "1,200.00",
+      },
+    },
+    trust: {
+      eyebrow: ar ? "يثق بنا" : "Trusted by",
+      headline: ar ? "٢٠٠٠+" : "2,000+",
+      sub1: ar ? "شركة وفريق مالي" : "businesses & finance teams",
+      sub2: ar ? "عبر" : "across",
+      sub3: ar ? "٧ دول" : "7 countries",
+      metrics: [
+        { v: ar ? "٢.٤ مليار+" : "$2.4B+",  l: ar ? "ر.س قيود مُسجَّلة" : "in posted entries" },
+        { v: ar ? "٩٩.٩٩٪"     : "99.99%",  l: ar ? "جاهزية المنصة" : "platform uptime" },
+        { v: "< 120ms",                       l: ar ? "زمن استجابة API" : "API latency" },
+        { v: "SOC 2",                         l: ar ? "Type II معتمد" : "Type II audited", mono: true },
+      ],
+    },
+    why: {
+      eyebrow: ar ? "لماذا محاسب ذكي" : "Why Smart Accountant",
+      title1: ar ? "المحاسبة لم تتغيّر منذ خمسين عاماً." : "Accounting hasn't changed in fifty years.",
+      title2: ar ? "حتى الآن." : "Until now.",
+      lead: ar
+        ? "معظم برامج المحاسبة ورقة إلكترونية: تكتب فيها ما كنت ستكتبه على ورق. نحن نبدأ من السؤال الآخر — ماذا لو فهم النظام معاملاتك، وكتب القيود نيابةً عنك، وأخبرك بما يجب فعله غداً؟"
+        : "Most accounting software is just a digital ledger: you type what you'd otherwise write on paper. We started from a different question — what if the system understood your transactions, posted the entries for you, and told you what to do tomorrow?",
+      sub: ar
+        ? "الإجابة هي محاسب ذكي: نظام محاسبة كامل، مُتوافق مع IFRS، مع طبقة ذكاء اصطناعي تعمل من الجذور — لا فوقها."
+        : "The answer is Smart Accountant: a complete IFRS-compliant accounting system with an AI layer that works from the roots — not bolted on top.",
+      principles: ar ? [
+        { n: "01", t: "ذكاء حقيقي، لا واجهة عليه ملصق", b: "الـ AI ليس ميزة جانبية. هو يقرأ فاتورتك، يصنّفها، يقترح القيد المحاسبي الصحيح وفق IFRS، ويتعلّم من تصحيحاتك. تكتب «دفعت ١٢٠ للمورد» ويسجّل القيد كاملاً." },
+        { n: "02", t: "محلّي حيث يجب، عالمي حيث ينبغي", b: "ضريبة القيمة المضافة، الزكاة، التأمينات، نهاية الخدمة، عُطل العمل، تقويم رمضان — مدمجة لسبع دول. والقاعدة دائماً IFRS، فحساباتك تُقرأ من المُدقّق في الرياض ومن المستثمر في لندن بنفس اللغة." },
+        { n: "03", t: "أرقام يمكن الاعتماد عليها", b: "كل قيد مزدوج، متوازن، له سند رقمي وأثر تدقيق غير قابل للتعديل. المعادلات تتحقق آنياً. لا حقول حرة، لا أرقام «تقريبية»، لا مفاجآت في نهاية السنة." },
+        { n: "04", t: "مبني للقرار، لا للتسجيل فقط", b: "كوكبت قرار حيّ يقيس صحة عملك، يتنبّأ بالتدفق النقدي، يحاكي «ماذا لو؟»، ويصلك بصياغة عربية واضحة من مساعد ذكي يفهم سياقك المالي." },
+      ] : [
+        { n: "01", t: "Real intelligence, not a sticker on top", b: "AI isn't a side feature. It reads your invoice, classifies it, proposes the correct IFRS entry, and learns from your corrections. Type \"paid 120 to vendor\" and the full entry posts itself." },
+        { n: "02", t: "Local where it matters, global by design", b: "VAT, Zakat, social insurance, end-of-service, work calendars, Ramadan — built in for seven countries. The base is always IFRS, so your books read the same to an auditor in Riyadh and an investor in London." },
+        { n: "03", t: "Numbers you can trust", b: "Every entry is double-entry, balanced, with a digital source and immutable audit trail. Equations validate live. No free-form fields, no \"approximate\" numbers, no year-end surprises." },
+        { n: "04", t: "Built for decisions, not just records", b: "A live decision cockpit measuring your business health, forecasting cash, simulating \"what-if?\", and reaching you in clear language from an AI assistant that understands your financial context." },
+      ],
+    },
+    capabilities: {
+      eyebrow: ar ? "القدرات الأساسية" : "Core capabilities",
+      title: ar ? "كل ما تحتاجه لإدارة المالية. لا شيء غير ذلك." : "Everything you need to run finance. Nothing you don't.",
+      lead: ar
+        ? "من الفاتورة الأولى حتى القائمة المالية المُدقَّقة. سبع دول. أربع عملات. معايير IFRS من الجذر."
+        : "From the first invoice to audit-ready financials. Seven countries. Four currencies. IFRS at the core.",
+      cockpit: {
+        tag: ar ? "المركز" : "Center",
+        title: ar ? "كوكبت القرار" : "Decision cockpit",
+        body: ar
+          ? "مؤشرات الصحة المالية، التنبؤ النقدي، محاكي «ماذا لو»، والتنبيهات الذكية — في مكان واحد."
+          : "Financial health, cash forecast, what-if simulator, and smart alerts — in one place.",
+        kpis: [
+          { label: ar ? "نقاط الصحة" : "Health score", value: ar ? "٨٤" : "84",     delta: "+6", positive: true, compact: true },
+          { label: ar ? "السيولة"      : "Liquidity",   value: ar ? "٢.٣x" : "2.3x", delta: "+0.2", positive: true, compact: true },
+          { label: ar ? "التنبيهات"   : "Alerts",       value: ar ? "٣" : "3",       delta: ar ? "جديدة" : "new", warning: true, compact: true },
+        ],
+      },
+      ai: {
+        tag: ar ? "الذكاء" : "AI",
+        title: ar ? "المساعد المحاسبي" : "Accounting assistant",
+        body: ar ? "تحدّث بالعربية. صوّر فاتورتك. اطلب تقريراً." : "Talk in your language. Snap an invoice. Ask for a report.",
+        chat1: ar ? "سجّل ١٢٠٠ ر.س مصروفات تسويق نقداً" : "Post 1,200 marketing expense in cash",
+        chat2: ar
+          ? "تم. القيد #٢٤٧٨ متوازن، رصيد التسويق هذا الشهر ٤,١٠٠ ر.س."
+          : "Done. Entry #2478 is balanced; marketing this month is 4,100.",
+      },
+      local: {
+        title: ar ? "سبع دول، حزمة محلية لكل واحدة" : "Seven countries, a local pack for each",
+        body: ar
+          ? "ضريبة القيمة المضافة، الزكاة، التأمينات الاجتماعية، صيغ نهاية الخدمة، عُطل العمل والتقويم الهجري — مُهيّأة لكل دولة."
+          : "VAT, Zakat, social insurance, end-of-service formulas, work calendars and the Hijri calendar — preconfigured per country.",
+        chips: ar
+          ? ["السعودية", "الإمارات", "مصر", "الكويت", "قطر", "الأردن", "International"]
+          : ["Saudi Arabia", "UAE", "Egypt", "Kuwait", "Qatar", "Jordan", "International"],
+      },
+      assets: {
+        title: ar ? "الأصول الثابتة بمعايير IFRS" : "Fixed assets, IFRS-grade",
+        body: ar
+          ? "دورة حياة كاملة: اقتناء، إهلاك، إعادة تقييم، اضمحلال، تخلّص. جدولة آلية وأثر تدقيق غير قابل للتعديل."
+          : "Full lifecycle: acquisition, depreciation, revaluation, impairment, disposal. Automated schedules and an immutable audit trail.",
+        m1: ar ? "طريقة الإهلاك" : "Method",
+        m1v: ar ? "قسط ثابت" : "Straight line",
+        m2: ar ? "العمر النافع" : "Useful life",
+        m2v: ar ? "٦٠ شهر" : "60 months",
+        m3: ar ? "القيمة المتبقية" : "Salvage",
+        m3v: ar ? "٥,٠٠٠" : "5,000",
+      },
+      payroll: {
+        title: ar ? "الرواتب والموارد البشرية" : "Payroll & HR",
+        body: ar ? "IAS 19. تأمينات. مخصص نهاية الخدمة. قيد آلي شهري." : "IAS 19. Social insurance. EOSB accrual. Auto monthly entry.",
+      },
+      reports: {
+        title: ar ? "القوائم المالية" : "Financial statements",
+        body: ar ? "الميزانية، الدخل، التدفقات النقدية — وفق IFRS فوراً." : "Balance sheet, income, cash flow — IFRS, instant.",
+      },
+      multi: {
+        title: ar ? "شركات وعملات متعددة" : "Multi-entity & currency",
+        body: ar ? "توحيد، تحويل، عرض موحّد للمجموعة." : "Consolidate, translate, group view.",
+      },
+    },
+    aiSection: {
+      tag: ar ? "المساعد المحاسبي" : "Accounting assistant",
+      h1: ar ? "تحدّث بالعربية،" : "Speak naturally,",
+      h2: ar ? "يفهم محاسبتك." : "it understands your books.",
+      lead: ar
+        ? "مساعد ذكي مدرّب على معايير IFRS وعلى محاسبة عملك بالذات. يُسجّل القيود من نص أو صورة، يجيبك عن أسئلتك المالية، ويتنبّأ بما يجب فعله."
+        : "An assistant trained on IFRS and on your own books. It posts entries from text or images, answers your financial questions, and anticipates what's next.",
+      bullets: ar ? [
+        ["قيود من اللغة الطبيعية", "اكتب «دفعت ٣٠٠ مقابل قهوة» — يصنّف ويسجّل."],
+        ["تحليل من الصور", "ارفع فاتورة، يستخرج البيانات ويُنشئ القيد."],
+        ["محاكاة آنية", "اسأل «ماذا لو زادت الرواتب ١٠٪؟» — تحصل على الجواب فوراً."],
+        ["شفافية كاملة", "كل اقتراح له سند: حساب، معيار IFRS، أو سياسة الشركة."],
+      ] : [
+        ["Natural-language entries", "Type \"paid 300 for coffee\" — it classifies and posts."],
+        ["Read from images", "Upload an invoice; it extracts data and posts the entry."],
+        ["Live simulation", "Ask \"what if salaries rise 10%?\" — answer in seconds."],
+        ["Full transparency", "Every suggestion is sourced: account, IFRS standard, or company policy."],
+      ],
+      cta: ar ? "جرّب المساعد الآن" : "Try the assistant",
+      mockTitle: ar ? "assistant · محاسب ذكي" : "assistant · Smart Accountant",
+      chat: {
+        u1: ar
+          ? "ارفقت صورة فاتورة كهرباء بمبلغ ٤٥٠ ر.س. سجّلها وقل لي أين نقف من ميزانية المرافق."
+          : "I uploaded a 450 utility invoice. Post it and tell me where we stand against the utilities budget.",
+        a1Pre: ar ? "تم. أنشأت القيد " : "Done. Created entry ",
+        a1Num: ar ? "#٢٤٨١" : "#2481",
+        utilities: ar ? "مصروفات مرافق" : "Utilities expense",
+        payable: ar ? "دائنون" : "Accounts payable",
+        amount: ar ? "٤٥٠.٠٠" : "450.00",
+        budget: ar
+          ? ["ميزانية المرافق هذا الشهر:", "١,٨٢٠ / ٢,٥٠٠", "· متبقّي ٢٧٪."]
+          : ["Utilities budget this month:", "1,820 / 2,500", "· 27% left."],
+        u2: ar ? "احسب لي تأثير زيادة الرواتب ١٠٪ على التدفق النقدي." : "Show me the impact of a 10% salary raise on cash flow.",
+      },
+    },
+    showcase: {
+      eyebrow: ar ? "منتج حقيقي. ليس عرضاً." : "A real product. Not a mockup.",
+      title: ar ? "مركز قيادة مالي واحد" : "One financial command center",
+      lead: ar
+        ? "كل ما يحدث في عملك المالي — مرئي، مفهوم، قابل للقرار في ثوانٍ."
+        : "Everything happening in your finances — visible, understood, decision-ready in seconds.",
+      mockTitle: ar ? "cockpit · محاسب ذكي · Default Company" : "cockpit · Smart Accountant · Default Company",
+      sidebar: ar
+        ? ["الرئيسية", "المعاملات", "القيود", "التقارير", "الكوكبت", "الموارد البشرية", "الأصول", "الإعدادات"]
+        : ["Home", "Transactions", "Entries", "Reports", "Cockpit", "HR", "Assets", "Settings"],
+      kpis: {
+        revenue: ar ? "الإيرادات" : "Revenue",
+        expenses: ar ? "المصروفات" : "Expenses",
+        netCash: ar ? "صافي التدفق" : "Net cash",
+        health: ar ? "نقاط الصحة" : "Health",
+        healthVal: ar ? "٨٤/١٠٠" : "84/100",
+        healthDelta: ar ? "ممتاز" : "Excellent",
+      },
+      cash: {
+        eyebrow: ar ? "تدفق نقدي · توقّع ٩٠ يوم" : "Cash flow · 90-day forecast",
+        title: ar ? "المسار الأرجح" : "Most likely path",
+        delta: ar ? "+١٤.٦٪" : "+14.6%",
+      },
+      alerts: {
+        title: ar ? "تنبيهات" : "Alerts",
+        late: { l: ar ? "فاتورة متأخرة" : "Overdue invoice", d: ar ? "مورد ٣ · ٤,٥٠٠ ر.س" : "Vendor 3 · 4,500" },
+        gosi: { l: ar ? "موعد تأمينات" : "GOSI due", d: ar ? "بعد ٧ أيام" : "in 7 days" },
+        budget: { l: ar ? "تحقّق ميزانية" : "Budget check", d: ar ? "تسويق · ضمن الحد" : "Marketing · on budget" },
+      },
+      coachLabel: ar ? "رؤية المساعد: " : "Assistant insight: ",
+      coachBody: ar
+        ? "مصروفات السفر تجاوزت الميزانية الشهرية بنسبة ١٨٪. اقترح مراجعة سياسة الموافقات للقيم فوق ٢,٠٠٠ ر.س."
+        : "Travel spend is 18% over the monthly budget. Suggest reviewing the approval policy for items above 2,000.",
+      legend: ["Cash Forecast", "Health Score", "What-If Simulator", "Smart Alerts", "AI Coach"],
+    },
+    automation: {
+      eyebrow: ar ? "الأتمتة" : "Automation",
+      title: ar ? "مهام تستهلك يومك. تختفي." : "The tasks that drain your day. Gone.",
+      lead: ar
+        ? "من اللحظة التي تصل فيها فاتورة إلى صندوقك، حتى ظهور الأثر في تقريرك المالي — لا خطوة يدوية واحدة في الوسط."
+        : "From the moment an invoice hits your inbox to its impact showing up in your reports — not one manual step in between.",
+      flow: ar
+        ? ["ارفع الفاتورة", "AI يقرأ ويُصنّف", "يُنشئ القيد", "يُحدّث الميزانية", "التقرير حيّ"]
+        : ["Drop the invoice", "AI reads & classifies", "Posts the entry", "Updates the budget", "Live report"],
+      cases: ar ? [
+        { t: "فاتورة مورّد", d: "صورة → استخراج → قيد دائن/مدين متوازن في حسابك الصحيح، بدون نقرة واحدة.", m: "5210 / 2110 · ٤٥٠.٠٠" },
+        { t: "موظف جديد", d: "ادخل البيانات مرة. الراتب الشهري، التأمينات (موظف/شركة)، ومخصص نهاية الخدمة كلها تُحتسب آلياً وفق IAS 19.", m: "6010 / 6011 / 6012" },
+        { t: "أصل ثابت", d: "اقتنِ الأصل، حدد العمر النافع، يُجدول الإهلاك حتى آخر شهر تلقائياً وفق IFRS.", m: "1500 → 5500 / 1510" },
+      ] : [
+        { t: "Vendor invoice", d: "Image → extraction → balanced debit/credit posted to the right account, no clicks.", m: "5210 / 2110 · 450.00" },
+        { t: "New hire", d: "Enter data once. Monthly salary, social insurance (employee/employer), and EOSB are computed automatically per IAS 19.", m: "6010 / 6011 / 6012" },
+        { t: "Fixed asset", d: "Acquire the asset, set its useful life — depreciation is scheduled to the last month, IFRS-aligned.", m: "1500 → 5500 / 1510" },
+      ],
+    },
+    security: {
+      eyebrow: ar ? "الأمان والثقة" : "Security & trust",
+      title: ar ? "بياناتك المالية — مُؤمَّنة بمعايير المؤسسات." : "Your financial data — secured to enterprise standards.",
+      lead: ar
+        ? "لا اختصارات في الأمان. كل ما يلمسه الذكاء الاصطناعي يبقى ضمن بيئتك، غير مُتاح لتدريب نماذج خارجية."
+        : "No shortcuts on security. Everything the AI touches stays in your tenant — never used to train external models.",
+      items: ar ? [
+        { t: "SOC 2 Type II", d: "تدقيق مستقلّ سنوي على ضوابط الأمان والتوفّر والسرية.", m: "Audited · Q1 2026" },
+        { t: "تشفير من طرف لطرف", d: "AES-256 للبيانات الساكنة، TLS 1.3 للبيانات أثناء النقل.", m: "AES-256 · TLS 1.3" },
+        { t: "أثر تدقيق وفق IFRS", d: "كل قيد له ختم زمني، مُستخدم، وسبب — غير قابل للتعديل.", m: "Immutable ledger" },
+        { t: "بيانات مُقيمة في المنطقة", d: "خوادم في الرياض ودبي. ملكية البيانات لك، تصدير في أيّ وقت.", m: "RUH · DXB · Bahrain" },
+      ] : [
+        { t: "SOC 2 Type II", d: "Annual independent audit of security, availability, and confidentiality controls.", m: "Audited · Q1 2026" },
+        { t: "End-to-end encryption", d: "AES-256 at rest, TLS 1.3 in transit.", m: "AES-256 · TLS 1.3" },
+        { t: "IFRS audit trail", d: "Every entry timestamped, attributed, and reasoned — immutable.", m: "Immutable ledger" },
+        { t: "Region-resident data", d: "Servers in Riyadh and Dubai. You own your data; export anytime.", m: "RUH · DXB · Bahrain" },
+      ],
+    },
+    useCases: {
+      eyebrow: ar ? "من يستخدم محاسب ذكي" : "Who uses Smart Accountant",
+      title: ar ? "منتج واحد. ثلاثة فِرق. نتيجة واحدة: وضوح." : "One product. Three teams. One outcome: clarity.",
+      tabsAria: ar ? "فئات المستخدمين" : "User segments",
+      outcomes: ar ? "النتائج" : "Outcomes",
+      personas: ar ? [
+        {
+          key: "founder", tab: "للمؤسّسين",
+          headline: "تعرف رقم شركتك بدقّة، في أي لحظة.",
+          quote: "«قبل محاسب ذكي، كنت أنتظر نهاية الشهر لأعرف هل ربحت أم خسرت. الآن أعرفها قبل أن أوافق على المصروف.»",
+          author: "هاني الشمري · مؤسس، شركة لوجستيات",
+          outcomes: [
+            "نقاط صحة مالية محدّثة يومياً",
+            "تنبؤ تدفق نقدي لـ ٩٠ يوماً قادمة",
+            "محاكاة قرار قبل اتخاذه: «ماذا لو وظّفت ٣ مهندسين؟»",
+            "ملخّص تنفيذي بالعربية يصلك كل أسبوع",
+          ],
+        },
+        {
+          key: "accountant", tab: "للمحاسبين",
+          headline: "وقتك للقرار، لا للترحيل.",
+          quote: "«الـ AI يكتب القيود، أنا أراجع. وفّرت ١٢ ساعة في الأسبوع. والقوائم تخرج مُتوازنة من المرة الأولى.»",
+          author: "د. سارة العتيبي · CPA، مكتب محاسبة",
+          outcomes: [
+            "قيود مزدوجة آلية قابلة للمراجعة",
+            "تطابق فوري بين الأستاذ العام والقوائم",
+            "أثر تدقيق كامل لكل قيد ولكل تعديل",
+            "تصدير مباشر للهيئة، ZATCA-ready",
+          ],
+        },
+        {
+          key: "team", tab: "للفرق المالية",
+          headline: "فريق واحد. نظام واحد. مصدر حقيقة واحد.",
+          quote: "«كنا نعمل في خمسة ملفات Excel. الآن CFO يفتح نفس الكوكبت الذي يفتحه المحلل المالي ومسؤول الرواتب.»",
+          author: "نورة العلي · CFO، شركة تقنية",
+          outcomes: [
+            "صلاحيات بحسب الدور (RBAC) مع سجل أنشطة",
+            "موافقات متعدّدة المستويات على المدفوعات",
+            "توحيد متعدد الشركات والعملات",
+            "تقارير IFRS جاهزة للتدقيق فوراً",
+          ],
+        },
+      ] : [
+        {
+          key: "founder", tab: "For founders",
+          headline: "Know your company's numbers, exactly, at any moment.",
+          quote: "\"Before Smart Accountant I waited for month-end to know if we made or lost money. Now I know before I approve the expense.\"",
+          author: "Hani Al-Shamri · Founder, logistics company",
+          outcomes: [
+            "Daily-refreshed financial health score",
+            "90-day cash forecast",
+            "What-if simulation before you decide: \"hire 3 engineers?\"",
+            "Weekly executive summary in your inbox",
+          ],
+        },
+        {
+          key: "accountant", tab: "For accountants",
+          headline: "Your time for decisions, not data entry.",
+          quote: "\"The AI writes the entries, I review. I save 12 hours a week — and statements balance the first time.\"",
+          author: "Dr. Sarah Al-Otaibi · CPA, accounting firm",
+          outcomes: [
+            "Auto, reviewable double-entry bookkeeping",
+            "Instant GL-to-statements reconciliation",
+            "Full audit trail per entry and per edit",
+            "Direct authority export, ZATCA-ready",
+          ],
+        },
+        {
+          key: "team", tab: "For finance teams",
+          headline: "One team. One system. One source of truth.",
+          quote: "\"We worked across five Excel files. Now the CFO opens the same cockpit as the analyst and the payroll lead.\"",
+          author: "Noura Al-Ali · CFO, tech company",
+          outcomes: [
+            "Role-based access (RBAC) with activity log",
+            "Multi-level approvals on payments",
+            "Multi-entity, multi-currency consolidation",
+            "Audit-ready IFRS reports, instantly",
+          ],
+        },
+      ],
+    },
+    faq: {
+      eyebrow: ar ? "الأسئلة الشائعة" : "Frequently asked",
+      title: ar ? "سؤال صريح، إجابة صريحة." : "Straight question, straight answer.",
+      qs: ar ? [
+        { q: "هل النظام مُتوافق فعلاً مع IFRS؟", a: "نعم. النظام مبني على الأساس وفق IFRS: قيد مزدوج إجباري، شجرة حسابات قياسية، اعتراف بالإيراد، إهلاك الأصول، مخصص نهاية الخدمة (IAS 19)، وقوائم مالية تُولَّد آلياً. كل دولة لها حزمة محلية فوق هذا الأساس." },
+        { q: "هل بياناتي تُستخدم لتدريب نماذج الذكاء الاصطناعي؟", a: "لا. بياناتك ملكك. الذكاء الاصطناعي يعمل ضمن بيئتك ولا يُشارك أيّ معلومة مع نماذج خارجية لأغراض تدريب. هذا مكتوب في عقد الخدمة وقابل للتدقيق." },
+        { q: "ما الدول المدعومة؟", a: "حالياً: السعودية، الإمارات، مصر، الكويت، قطر، الأردن، وحزمة International. كل حزمة تشمل: العملة، ضريبة القيمة المضافة، الزكاة (حيث تنطبق)، التأمينات، صيغة نهاية الخدمة، عُطل العمل، والتقويم." },
+        { q: "كم يستغرق التركيب؟", a: "أقل من خمس دقائق للحساب الأول. اختر الدولة، أنشئ الشركة، وستجد شجرة الحسابات IFRS جاهزة. الفِرق الكبيرة عادةً تستكمل الإعداد الكامل (ربط البنوك، استيراد البيانات، الصلاحيات) خلال يومين." },
+        { q: "هل يُمكن استيراد بياناتي من نظام آخر؟", a: "نعم. نستورد من Excel، QuickBooks، Xero، Zoho Books، وSAP. خلال الاستيراد، الـ AI يفحص الترميز ويقترح المطابقات لشجرة الحسابات IFRS لديك." },
+        { q: "هل النظام يدعم التدقيق الخارجي؟", a: "نعم. الأثر التدقيقي كامل وغير قابل للتعديل، مع إمكانية إنشاء حساب «مدقّق خارجي» بصلاحيات قراءة فقط لكامل القيود والمستندات الداعمة." },
+      ] : [
+        { q: "Is the system genuinely IFRS-compliant?", a: "Yes. It's built IFRS-first: enforced double-entry, a standard chart of accounts, revenue recognition, asset depreciation, end-of-service provision (IAS 19), and auto-generated statements. Each country adds a local pack on top." },
+        { q: "Do you train AI models on my data?", a: "No. Your data is yours. The AI runs in your tenant and never shares anything with external models for training. It's written in your service agreement and auditable." },
+        { q: "Which countries are supported?", a: "Today: Saudi Arabia, UAE, Egypt, Kuwait, Qatar, Jordan, plus an International pack. Each includes currency, VAT, Zakat (where applicable), social insurance, end-of-service formula, work calendars, and the local calendar." },
+        { q: "How long does setup take?", a: "Under five minutes for the first account. Pick the country, create the company, and you'll find a ready IFRS chart of accounts. Larger teams typically complete full setup (bank connections, data import, roles) in two days." },
+        { q: "Can I import data from another system?", a: "Yes. We import from Excel, QuickBooks, Xero, Zoho Books, and SAP. During import, the AI inspects coding and suggests mappings to your IFRS chart of accounts." },
+        { q: "Does it support external audit?", a: "Yes. The audit trail is full and immutable, with the ability to create a read-only \"external auditor\" account across all entries and supporting documents." },
+      ],
+    },
+    finalCta: {
+      h1: ar ? "ابدأ بإدارة ماليتك" : "Start running your finances",
+      h2: ar ? "بطريقة تستحقّها." : "the way they deserve.",
+      sub: ar ? "١٤ يوماً مجاناً. كل المميزات. بدون بطاقة. ألغِ في أي لحظة." : "14 days free. Every feature. No card. Cancel anytime.",
+      cta: ar ? "افتح التطبيق" : "Open the app",
+      ctaDemo: ar ? "تحدّث مع المبيعات" : "Talk to sales",
+      orWatch: ar ? "أو شاهد" : "Or watch",
+      orLink: ar ? "عرضاً مدّته ٣ دقائق" : "a 3-minute tour",
+      orWatchSuffix: ".",
+    },
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+
 export default function Landing() {
+  const { locale, dir } = useLocale()
+  const t = getCopy(locale)
+
   return (
-    <div className="bg-background text-foreground" dir="rtl">
+    <div className="bg-background text-foreground" dir={dir} lang={locale}>
       <AppNavbar
         links={[
-          { label: "المنصة",     href: "#platform" },
-          { label: "الذكاء",      href: "#ai" },
-          { label: "الأتمتة",     href: "#automation" },
-          { label: "الأمان",      href: "#security" },
-          { label: "الاستخدامات", href: "#use-cases" },
-          { label: "الأسئلة",     href: "#faq" },
+          { label: t.nav.platform,   href: "#platform" },
+          { label: t.nav.ai,         href: "#ai" },
+          { label: t.nav.automation, href: "#automation" },
+          { label: t.nav.security,   href: "#security" },
+          { label: t.nav.useCases,   href: "#use-cases" },
+          { label: t.nav.faq,        href: "#faq" },
         ]}
+        ctaLabel={t.nav.openApp}
+        ctaHref="/app"
+        secondaryLabel={t.nav.demo}
+        secondaryHref="/demo"
+        tertiaryLabel={t.nav.signIn}
+        tertiaryHref="/app"
       />
       <main className="overflow-x-clip">
-        <Hero />
-        <TrustStrip />
-        <WhyDifferent />
-        <CoreCapabilities />
-        <AIAssistant />
-        <DashboardShowcase />
-        <Automation />
-        <Security />
-        <UseCases />
-        <FAQ />
-        <FinalCTA />
+        <Hero t={t} />
+        <TrustStrip t={t} />
+        <WhyDifferent t={t} />
+        <CoreCapabilities t={t} />
+        <AIAssistant t={t} />
+        <DashboardShowcase t={t} />
+        <Automation t={t} />
+        <Security t={t} />
+        <UseCases t={t} />
+        <FAQ t={t} />
+        <FinalCTA t={t} />
       </main>
       <AppFooter />
     </div>
   )
 }
 
+/* Direction-aware arrow used in CTAs (points toward the reading flow's end). */
+function CtaArrow({ ar }: { ar: boolean }) {
+  return ar ? <ArrowLeft className="size-4" /> : <ArrowRight className="size-4" />
+}
+
 /* ────────────────────────────────────────────────────────────────────────── */
 /*  1 · Hero                                                                  */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function Hero() {
+function Hero({ t }: { t: Dict }) {
   return (
     <section className="relative pt-16 pb-24 lg:pt-24 lg:pb-32">
-      {/* Soft accent glow behind product mockup */}
       <div
         aria-hidden
         className="absolute inset-0 -z-10 [mask-image:radial-gradient(60%_50%_at_50%_30%,black,transparent)]"
@@ -68,49 +452,49 @@ function Hero() {
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-          {/* Copy column */}
           <div className="lg:col-span-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-xs">
               <span className="status-dot bg-success animate-pulse" />
-              <span className="text-xs text-muted-foreground">
-                الإصدار الجديد · مدعوم بـ GPT-5.2
-              </span>
+              <span className="text-xs text-muted-foreground">{t.hero.tag}</span>
             </div>
 
             <h1 className="mt-6 text-display-lg text-foreground">
-              نظام محاسبة ذكي،
+              {t.hero.h1a}
               <br />
-              <span className="text-primary">مبني للأعمال الحديثة.</span>
+              <span className="text-primary">{t.hero.h1b}</span>
             </h1>
 
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
-              من الفواتير إلى البصيرة — منصّة محاسبية واحدة وفق معايير IFRS،
-              مدعومة بالذكاء الاصطناعي، تعمل عبر سبع دول وبعملات متعددة.
-              <span className="text-foreground/80"> عربية أولاً، عالمية بطبعها.</span>
+              {t.hero.sub}
+              <span className="text-foreground/80">{t.hero.subEm}</span>
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button size="lg" data-testid="button-hero-cta-primary" asChild>
-                <a href="#cta" className="gap-2">
-                  ابدأ مجاناً
-                  <ArrowLeft className="size-4" />
+                <a href="/app" className="gap-2">
+                  {t.hero.ctaPrimary}
+                  <CtaArrow ar={t.ar} />
                 </a>
               </Button>
               <Button size="lg" variant="outline" data-testid="button-hero-cta-secondary" asChild>
-                <a href="#showcase">احجز عرضاً مباشراً</a>
+                <a href="/demo">{t.hero.ctaSecondary}</a>
+              </Button>
+              <Button size="lg" variant="ghost" data-testid="button-hero-cta-tertiary" asChild>
+                <a href="/app">{t.hero.ctaTertiary}</a>
               </Button>
             </div>
 
             <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5"><Check className="size-3.5 text-success" />بدون بطاقة ائتمان</span>
-              <span className="flex items-center gap-1.5"><Check className="size-3.5 text-success" />تجربة كاملة ١٤ يوم</span>
-              <span className="flex items-center gap-1.5"><Check className="size-3.5 text-success" />تركيب خلال ٥ دقائق</span>
+              {t.hero.bullets.map((b) => (
+                <span key={b} className="flex items-center gap-1.5">
+                  <Check className="size-3.5 text-success" />{b}
+                </span>
+              ))}
             </div>
           </div>
 
-          {/* Product mockup column */}
           <div className="lg:col-span-6">
-            <HeroProductMockup />
+            <HeroProductMockup t={t} />
           </div>
         </div>
       </div>
@@ -118,72 +502,70 @@ function Hero() {
   )
 }
 
-function HeroProductMockup() {
+function HeroProductMockup({ t }: { t: Dict }) {
+  const startSide = t.ar ? "-left-4" : "-right-4"
+  const endSide   = t.ar ? "-right-4" : "-left-4"
   return (
     <div className="relative">
-      {/* Floating chip — bottom-left */}
-      <div className="absolute -bottom-6 -left-4 z-10 hidden md:block">
+      <div className={cn("absolute -bottom-6 z-10 hidden md:block", startSide)}>
         <FloatingChip
           icon={<Sparkles className="size-3.5" />}
-          title="قيد آلي مُسجَّل"
-          subtitle="فاتورة كهرباء · ١٥٠ ر.س"
+          title={t.hero.chipAuto.t}
+          subtitle={t.hero.chipAuto.s}
         />
       </div>
-      {/* Floating chip — top-right */}
-      <div className="absolute -top-4 -right-4 z-10 hidden md:block">
+      <div className={cn("absolute -top-4 z-10 hidden md:block", endSide)}>
         <FloatingChip
           icon={<TrendingUp className="size-3.5" />}
-          title="نسبة الربح ↑ ١٢٪"
-          subtitle="الربع الحالي"
+          title={t.hero.chipProfit.t}
+          subtitle={t.hero.chipProfit.s}
           accent="success"
         />
       </div>
 
-      <BrowserFrame title="cockpit · محاسب ذكي">
-        {/* KPI row */}
+      <BrowserFrame title={t.hero.mockTitle}>
         <div className="grid grid-cols-3 gap-3 p-4">
-          <MiniKPI label="الإيرادات" value="٢٤٢,٣٠٠" delta="+8.4%" positive />
-          <MiniKPI label="المصروفات" value="١٣٨,٧١٠" delta="-2.1%" />
-          <MiniKPI label="صافي التدفق" value="١٠٣,٥٩٠" delta="+14.6%" positive highlight />
+          <MiniKPI label={t.hero.kpis.revenue} value={t.ar ? "٢٤٢,٣٠٠" : "242,300"} delta="+8.4%" positive />
+          <MiniKPI label={t.hero.kpis.expenses} value={t.ar ? "١٣٨,٧١٠" : "138,710"} delta="-2.1%" />
+          <MiniKPI label={t.hero.kpis.netCash} value={t.ar ? "١٠٣,٥٩٠" : "103,590"} delta="+14.6%" positive highlight />
         </div>
-        {/* Chart band */}
         <div className="px-4 pb-3">
           <div className="rounded-md border border-border bg-card p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="eyebrow mb-1">آخر ٣٠ يوم</div>
-                <div className="text-sm font-medium text-foreground">التدفق النقدي</div>
+                <div className="eyebrow mb-1">{t.hero.band.eyebrow}</div>
+                <div className="text-sm font-medium text-foreground">{t.hero.band.title}</div>
               </div>
               <div className="flex gap-1.5">
-                <span className="text-2xs text-muted-foreground">د</span>
-                <span className="text-2xs text-muted-foreground">أ</span>
-                <span className="text-2xs text-foreground font-medium border-b border-primary pb-0.5">ش</span>
-                <span className="text-2xs text-muted-foreground">س</span>
+                {t.hero.band.ticks.map((tk, i) => (
+                  <span key={tk} className={cn("text-2xs", i === 2 ? "text-foreground font-medium border-b border-primary pb-0.5" : "text-muted-foreground")}>
+                    {tk}
+                  </span>
+                ))}
               </div>
             </div>
             <SparkChart />
           </div>
         </div>
-        {/* Journal entry preview */}
         <div className="px-4 pb-4">
           <div className="rounded-md border border-border bg-card overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/40">
-              <div className="text-xs font-medium text-foreground">آخر قيد · #٢٤٧٨</div>
-              <Badge variant="success" size="sm">متوازن</Badge>
+              <div className="text-xs font-medium text-foreground">{t.hero.entry.title}</div>
+              <Badge variant="success" size="sm">{t.hero.entry.balanced}</Badge>
             </div>
             <table className="w-full text-2xs">
               <tbody>
                 <tr className="border-b border-border/60">
                   <td className="px-3 py-2 text-muted-foreground font-mono">5110</td>
-                  <td className="px-3 py-2 text-foreground">مصروفات تسويق</td>
-                  <td className="px-3 py-2 text-foreground font-mono text-end tabular-nums">١٢٠٠.٠٠</td>
+                  <td className="px-3 py-2 text-foreground">{t.hero.entry.marketing}</td>
+                  <td className="px-3 py-2 text-foreground font-mono text-end tabular-nums">{t.hero.entry.amount}</td>
                   <td className="px-3 py-2 text-muted-foreground font-mono text-end">—</td>
                 </tr>
                 <tr>
                   <td className="px-3 py-2 text-muted-foreground font-mono">1010</td>
-                  <td className="px-3 py-2 text-foreground">النقدية</td>
+                  <td className="px-3 py-2 text-foreground">{t.hero.entry.cash}</td>
                   <td className="px-3 py-2 text-muted-foreground font-mono text-end">—</td>
-                  <td className="px-3 py-2 text-foreground font-mono text-end tabular-nums">١٢٠٠.٠٠</td>
+                  <td className="px-3 py-2 text-foreground font-mono text-end tabular-nums">{t.hero.entry.amount}</td>
                 </tr>
               </tbody>
             </table>
@@ -198,17 +580,17 @@ function HeroProductMockup() {
 /*  2 · Trust strip                                                           */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function TrustStrip() {
+function TrustStrip({ t }: { t: Dict }) {
   const wordmarks = ["ARAMEX", "Almosafer", "TALABAT", "Anghami", "Mubadala", "STC pay", "Careem"]
   return (
     <section className="border-y border-border bg-card/40">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 lg:py-12">
         <div className="grid lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-3">
-            <div className="eyebrow mb-2">يثق بنا</div>
+            <div className="eyebrow mb-2">{t.trust.eyebrow}</div>
             <div className="text-sm text-foreground/85 leading-relaxed">
-              <span className="font-semibold text-foreground">٢٠٠٠+</span> شركة وفريق مالي
-              <br />عبر <span className="font-semibold text-foreground">٧ دول</span>
+              <span className="font-semibold text-foreground">{t.trust.headline}</span> {t.trust.sub1}
+              <br />{t.trust.sub2} <span className="font-semibold text-foreground">{t.trust.sub3}</span>
             </div>
           </div>
           <div className="lg:col-span-9">
@@ -221,12 +603,10 @@ function TrustStrip() {
             </div>
           </div>
         </div>
-        {/* Metrics row */}
         <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-lg overflow-hidden border border-border">
-          <Metric value="٢.٤ مليار+" label="ر.س قيود مُسجَّلة" />
-          <Metric value="٩٩.٩٩٪" label="جاهزية المنصة" />
-          <Metric value="< ١٢٠ms" label="زمن استجابة API" />
-          <Metric value="SOC 2" label="Type II معتمد" mono />
+          {t.trust.metrics.map((m) => (
+            <Metric key={m.l} value={m.v} label={m.l} mono={m.mono} />
+          ))}
         </div>
       </div>
     </section>
@@ -237,57 +617,27 @@ function TrustStrip() {
 /*  3 · Why different                                                         */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function WhyDifferent() {
-  const principles = [
-    {
-      n: "01",
-      t: "ذكاء حقيقي، لا واجهة عليه ملصق",
-      b: "الـ AI ليس ميزة جانبية. هو يقرأ فاتورتك، يصنّفها، يقترح القيد المحاسبي الصحيح وفق IFRS، ويتعلّم من تصحيحاتك. تكتب «دفعت ١٢٠ للمورد» ويسجّل القيد كاملاً.",
-    },
-    {
-      n: "02",
-      t: "محلّي حيث يجب، عالمي حيث ينبغي",
-      b: "ضريبة القيمة المضافة، الزكاة، التأمينات، نهاية الخدمة، عُطل العمل، تقويم رمضان — مدمجة لسبع دول. والقاعدة دائماً IFRS، فحساباتك تُقرأ من المُدقّق في الرياض ومن المستثمر في لندن بنفس اللغة.",
-    },
-    {
-      n: "03",
-      t: "أرقام يمكن الاعتماد عليها",
-      b: "كل قيد مزدوج، متوازن، له سند رقمي وأثر تدقيق غير قابل للتعديل. المعادلات تتحقق آنياً. لا حقول حرة، لا أرقام «تقريبية»، لا مفاجآت في نهاية السنة.",
-    },
-    {
-      n: "04",
-      t: "مبني للقرار، لا للتسجيل فقط",
-      b: "كوكبت قرار حيّ يقيس صحة عملك، يتنبّأ بالتدفق النقدي، يحاكي «ماذا لو؟»، ويصلك بصياغة عربية واضحة من مساعد ذكي يفهم سياقك المالي.",
-    },
-  ]
-
+function WhyDifferent({ t }: { t: Dict }) {
   return (
     <section id="platform" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-12 mb-16">
           <div className="lg:col-span-5">
-            <div className="eyebrow mb-4">لماذا محاسب ذكي</div>
+            <div className="eyebrow mb-4">{t.why.eyebrow}</div>
             <h2 className="text-display text-foreground">
-              المحاسبة لم تتغيّر منذ خمسين عاماً.
+              {t.why.title1}
               <br />
-              <span className="text-muted-foreground/70">حتى الآن.</span>
+              <span className="text-muted-foreground/70">{t.why.title2}</span>
             </h2>
           </div>
           <div className="lg:col-span-6 lg:col-start-7">
-            <p className="text-lg leading-relaxed text-foreground/80">
-              معظم برامج المحاسبة ورقة إلكترونية: تكتب فيها ما كنت ستكتبه على ورق.
-              نحن نبدأ من السؤال الآخر — ماذا لو فهم النظام معاملاتك،
-              وكتب القيود نيابةً عنك، وأخبرك بما يجب فعله غداً؟
-            </p>
-            <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-              الإجابة هي محاسب ذكي: نظام محاسبة كامل، مُتوافق مع IFRS، مع طبقة ذكاء
-              اصطناعي تعمل من الجذور — لا فوقها.
-            </p>
+            <p className="text-lg leading-relaxed text-foreground/80">{t.why.lead}</p>
+            <p className="mt-4 text-base leading-relaxed text-muted-foreground">{t.why.sub}</p>
           </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-px bg-border rounded-xl overflow-hidden border border-border">
-          {principles.map((p) => (
+          {t.why.principles.map((p) => (
             <div key={p.n} className="bg-card p-8 lg:p-10">
               <div className="flex items-start gap-6">
                 <div className="font-mono text-xs text-primary tracking-widest pt-1">{p.n}</div>
@@ -308,72 +658,57 @@ function WhyDifferent() {
 /*  4 · Core capabilities — Bento grid                                        */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function CoreCapabilities() {
+function CoreCapabilities({ t }: { t: Dict }) {
+  const c = t.capabilities
   return (
     <section id="capabilities" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl mb-14">
-          <div className="eyebrow mb-3">القدرات الأساسية</div>
-          <h2 className="text-display text-foreground">
-            كل ما تحتاجه لإدارة المالية. لا شيء غير ذلك.
-          </h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-            من الفاتورة الأولى حتى القائمة المالية المُدقَّقة. سبع دول. أربع عملات.
-            معايير IFRS من الجذر.
-          </p>
+          <div className="eyebrow mb-3">{c.eyebrow}</div>
+          <h2 className="text-display text-foreground">{c.title}</h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">{c.lead}</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4 lg:gap-5">
-          {/* Big card — Cockpit */}
           <BentoCard className="md:col-span-4 md:row-span-2">
             <div className="flex items-start justify-between">
               <div>
-                <Badge variant="brand" size="sm" className="mb-3">المركز</Badge>
-                <h3 className="text-2xl font-semibold text-foreground mb-2">كوكبت القرار</h3>
-                <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
-                  مؤشرات الصحة المالية، التنبؤ النقدي، محاكي «ماذا لو»،
-                  والتنبيهات الذكية — في مكان واحد.
-                </p>
+                <Badge variant="brand" size="sm" className="mb-3">{c.cockpit.tag}</Badge>
+                <h3 className="text-2xl font-semibold text-foreground mb-2">{c.cockpit.title}</h3>
+                <p className="text-sm text-muted-foreground max-w-md leading-relaxed">{c.cockpit.body}</p>
               </div>
               <BarChart3 className="size-5 text-primary/60" />
             </div>
             <div className="mt-6 grid grid-cols-3 gap-3">
-              <MiniKPI label="نقاط الصحة" value="٨٤" delta="+6" positive compact />
-              <MiniKPI label="السيولة" value="٢.٣x" delta="+0.2" positive compact />
-              <MiniKPI label="التنبيهات" value="٣" delta="جديدة" compact warning />
+              {c.cockpit.kpis.map((k) => (
+                <MiniKPI key={k.label} {...k} />
+              ))}
             </div>
             <div className="mt-4 rounded-md border border-border bg-card p-3">
               <SparkChart compact />
             </div>
           </BentoCard>
 
-          {/* Tall — AI assistant */}
           <BentoCard className="md:col-span-2 md:row-span-2">
-            <Badge variant="brand" size="sm" className="mb-3">الذكاء</Badge>
-            <h3 className="text-xl font-semibold text-foreground mb-2">المساعد المحاسبي</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              تحدّث بالعربية. صوّر فاتورتك. اطلب تقريراً.
-            </p>
+            <Badge variant="brand" size="sm" className="mb-3">{c.ai.tag}</Badge>
+            <h3 className="text-xl font-semibold text-foreground mb-2">{c.ai.title}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">{c.ai.body}</p>
             <div className="mt-5 space-y-3">
-              <ChatBubble role="user">سجّل ١٢٠٠ ر.س مصروفات تسويق نقداً</ChatBubble>
-              <ChatBubble role="ai">تم. القيد #٢٤٧٨ متوازن، رصيد التسويق هذا الشهر ٤,١٠٠ ر.س.</ChatBubble>
+              <ChatBubble role="user">{c.ai.chat1}</ChatBubble>
+              <ChatBubble role="ai">{c.ai.chat2}</ChatBubble>
             </div>
           </BentoCard>
 
-          {/* Wide — Localization */}
           <BentoCard className="md:col-span-3">
             <div className="flex items-start gap-4">
               <Globe2 className="size-5 text-primary/60 flex-shrink-0 mt-1" />
               <div>
-                <h3 className="text-lg font-semibold text-foreground mb-1.5">سبع دول، حزمة محلية لكل واحدة</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  ضريبة القيمة المضافة، الزكاة، التأمينات الاجتماعية، صيغ نهاية الخدمة،
-                  عُطل العمل والتقويم الهجري — مُهيّأة لكل دولة.
-                </p>
+                <h3 className="text-lg font-semibold text-foreground mb-1.5">{c.local.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{c.local.body}</p>
                 <div className="mt-4 flex flex-wrap gap-1.5">
-                  {["السعودية", "الإمارات", "مصر", "الكويت", "قطر", "الأردن", "International"].map((c) => (
-                    <span key={c} className="text-2xs px-2 py-1 rounded border border-border text-muted-foreground bg-background">
-                      {c}
+                  {c.local.chips.map((x) => (
+                    <span key={x} className="text-2xs px-2 py-1 rounded border border-border text-muted-foreground bg-background">
+                      {x}
                     </span>
                   ))}
                 </div>
@@ -381,50 +716,37 @@ function CoreCapabilities() {
             </div>
           </BentoCard>
 
-          {/* Wide — Fixed assets */}
           <BentoCard className="md:col-span-3">
             <div className="flex items-start gap-4">
               <Briefcase className="size-5 text-primary/60 flex-shrink-0 mt-1" />
               <div>
-                <h3 className="text-lg font-semibold text-foreground mb-1.5">الأصول الثابتة بمعايير IFRS</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  دورة حياة كاملة: اقتناء، إهلاك، إعادة تقييم، اضمحلال، تخلّص.
-                  جدولة آلية وأثر تدقيق غير قابل للتعديل.
-                </p>
+                <h3 className="text-lg font-semibold text-foreground mb-1.5">{c.assets.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{c.assets.body}</p>
                 <div className="mt-4 grid grid-cols-3 gap-3 text-2xs">
-                  <div><div className="text-muted-foreground">طريقة الإهلاك</div><div className="font-mono text-foreground">قسط ثابت</div></div>
-                  <div><div className="text-muted-foreground">العمر النافع</div><div className="font-mono text-foreground">٦٠ شهر</div></div>
-                  <div><div className="text-muted-foreground">القيمة المتبقية</div><div className="font-mono text-foreground">٥,٠٠٠</div></div>
+                  <div><div className="text-muted-foreground">{c.assets.m1}</div><div className="font-mono text-foreground">{c.assets.m1v}</div></div>
+                  <div><div className="text-muted-foreground">{c.assets.m2}</div><div className="font-mono text-foreground">{c.assets.m2v}</div></div>
+                  <div><div className="text-muted-foreground">{c.assets.m3}</div><div className="font-mono text-foreground">{c.assets.m3v}</div></div>
                 </div>
               </div>
             </div>
           </BentoCard>
 
-          {/* Small — Payroll */}
           <BentoCard className="md:col-span-2">
             <Users className="size-5 text-primary/60 mb-3" />
-            <h3 className="text-base font-semibold text-foreground mb-1">الرواتب والموارد البشرية</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              IAS 19. تأمينات. مخصص نهاية الخدمة. قيد آلي شهري.
-            </p>
+            <h3 className="text-base font-semibold text-foreground mb-1">{c.payroll.title}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">{c.payroll.body}</p>
           </BentoCard>
 
-          {/* Small — Reports */}
           <BentoCard className="md:col-span-2">
             <ScrollText className="size-5 text-primary/60 mb-3" />
-            <h3 className="text-base font-semibold text-foreground mb-1">القوائم المالية</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              الميزانية، الدخل، التدفقات النقدية — وفق IFRS فوراً.
-            </p>
+            <h3 className="text-base font-semibold text-foreground mb-1">{c.reports.title}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">{c.reports.body}</p>
           </BentoCard>
 
-          {/* Small — Multi-company */}
           <BentoCard className="md:col-span-2">
             <Wallet className="size-5 text-primary/60 mb-3" />
-            <h3 className="text-base font-semibold text-foreground mb-1">شركات وعملات متعددة</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              توحيد، تحويل، عرض موحّد للمجموعة.
-            </p>
+            <h3 className="text-base font-semibold text-foreground mb-1">{c.multi.title}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">{c.multi.body}</p>
           </BentoCard>
         </div>
       </div>
@@ -436,123 +758,71 @@ function CoreCapabilities() {
 /*  5 · AI Assistant — split layout                                           */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function AIAssistant() {
+function AIAssistant({ t }: { t: Dict }) {
+  const a = t.aiSection
   return (
     <section id="ai" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-          {/* Copy first in source so on RTL desktop it sits on the RIGHT (natural reading start),
-              while the chat mockup falls to the LEFT — varying rhythm vs. the hero. */}
           <div className="lg:col-span-5 lg:col-start-8">
             <Badge variant="brand" size="md" className="mb-4">
               <Bot className="size-3.5" />
-              المساعد المحاسبي
+              {a.tag}
             </Badge>
             <h2 className="text-display text-foreground mb-5">
-              تحدّث بالعربية،
-              <br />
-              يفهم محاسبتك.
+              {a.h1}<br />{a.h2}
             </h2>
-            <p className="text-lg leading-relaxed text-muted-foreground mb-6">
-              مساعد ذكي مدرّب على معايير IFRS وعلى محاسبة عملك بالذات. يُسجّل القيود من نص أو صورة،
-              يجيبك عن أسئلتك المالية، ويتنبّأ بما يجب فعله.
-            </p>
+            <p className="text-lg leading-relaxed text-muted-foreground mb-6">{a.lead}</p>
             <ul className="space-y-3.5">
-              {[
-                ["قيود من اللغة الطبيعية", "اكتب «دفعت ٣٠٠ مقابل قهوة» — يصنّف ويسجّل."],
-                ["تحليل من الصور", "ارفع فاتورة، يستخرج البيانات ويُنشئ القيد."],
-                ["محاكاة آنية", "اسأل «ماذا لو زادت الرواتب ١٠٪؟» — تحصل على الجواب فوراً."],
-                ["شفافية كاملة", "كل اقتراح له سند: حساب، معيار IFRS، أو سياسة الشركة."],
-              ].map(([t, d]) => (
-                <li key={t} className="flex gap-3">
+              {a.bullets.map(([title, body]) => (
+                <li key={title} className="flex gap-3">
                   <Check className="size-5 text-primary flex-shrink-0 mt-0.5" />
                   <div>
-                    <div className="text-sm font-medium text-foreground">{t}</div>
-                    <div className="text-sm text-muted-foreground">{d}</div>
+                    <div className="text-sm font-medium text-foreground">{title}</div>
+                    <div className="text-sm text-muted-foreground">{body}</div>
                   </div>
                 </li>
               ))}
             </ul>
             <div className="mt-8">
               <Button variant="outline" asChild>
-                <a href="#cta">جرّب المساعد الآن<ArrowLeft className="size-4" /></a>
+                <a href="/app">{a.cta}<CtaArrow ar={t.ar} /></a>
               </Button>
             </div>
           </div>
 
-          {/* Chat mockup — visual LEFT side on RTL desktop */}
           <div className="lg:col-span-7 lg:col-start-1 lg:row-start-1">
-            <BrowserFrame title="assistant · محاسب ذكي" subtle>
+            <BrowserFrame title={a.mockTitle} subtle>
               <div className="p-5 space-y-4">
-                <ChatBubble role="user">
-                  ارفقت صورة فاتورة كهرباء بمبلغ ٤٥٠ ر.س. سجّلها وقل لي أين نقف من ميزانية المرافق.
-                </ChatBubble>
+                <ChatBubble role="user">{a.chat.u1}</ChatBubble>
                 <ChatBubble role="ai">
-                  تم. أنشأت القيد <span className="font-mono text-primary">#٢٤٨١</span>:
+                  {a.chat.a1Pre}<span className="font-mono text-primary">{a.chat.a1Num}</span>:
                   <div className="mt-3 rounded border border-border overflow-hidden">
                     <table className="w-full text-2xs">
                       <tbody>
                         <tr className="border-b border-border/60 bg-muted/30">
                           <td className="px-3 py-1.5 font-mono text-muted-foreground">5210</td>
-                          <td className="px-3 py-1.5">مصروفات مرافق</td>
-                          <td className="px-3 py-1.5 font-mono text-end">٤٥٠.٠٠</td>
+                          <td className="px-3 py-1.5">{a.chat.utilities}</td>
+                          <td className="px-3 py-1.5 font-mono text-end">{a.chat.amount}</td>
                           <td className="px-3 py-1.5 font-mono text-end text-muted-foreground">—</td>
                         </tr>
                         <tr>
                           <td className="px-3 py-1.5 font-mono text-muted-foreground">2110</td>
-                          <td className="px-3 py-1.5">دائنون</td>
+                          <td className="px-3 py-1.5">{a.chat.payable}</td>
                           <td className="px-3 py-1.5 font-mono text-end text-muted-foreground">—</td>
-                          <td className="px-3 py-1.5 font-mono text-end">٤٥٠.٠٠</td>
+                          <td className="px-3 py-1.5 font-mono text-end">{a.chat.amount}</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
                   <div className="mt-3 text-xs text-foreground/80">
-                    ميزانية المرافق هذا الشهر: <span className="font-mono">١,٨٢٠ / ٢,٥٠٠</span> · متبقّي ٢٧٪.
+                    {a.chat.budget[0]} <span className="font-mono">{a.chat.budget[1]}</span> {a.chat.budget[2]}
                   </div>
                 </ChatBubble>
-                <ChatBubble role="user">احسب لي تأثير زيادة الرواتب ١٠٪ على التدفق النقدي.</ChatBubble>
+                <ChatBubble role="user">{a.chat.u2}</ChatBubble>
                 <ChatBubble role="ai" typing />
               </div>
             </BrowserFrame>
-          </div>
-
-          {/* Copy */}
-          <div className="lg:col-span-5 order-1 lg:order-2">
-            <Badge variant="brand" size="md" className="mb-4">
-              <Bot className="size-3.5" />
-              المساعد المحاسبي
-            </Badge>
-            <h2 className="text-display text-foreground mb-5">
-              تحدّث بالعربية،
-              <br />
-              يفهم محاسبتك.
-            </h2>
-            <p className="text-lg leading-relaxed text-muted-foreground mb-6">
-              مساعد ذكي مدرّب على معايير IFRS وعلى محاسبة عملك بالذات. يُسجّل القيود من نص أو صورة،
-              يجيبك عن أسئلتك المالية، ويتنبّأ بما يجب فعله.
-            </p>
-            <ul className="space-y-3.5">
-              {[
-                ["قيود من اللغة الطبيعية", "اكتب «دفعت ٣٠٠ مقابل قهوة» — يصنّف ويسجّل."],
-                ["تحليل من الصور", "ارفع فاتورة، يستخرج البيانات ويُنشئ القيد."],
-                ["محاكاة آنية", "اسأل «ماذا لو زادت الرواتب ١٠٪؟» — تحصل على الجواب فوراً."],
-                ["شفافية كاملة", "كل اقتراح له سند: حساب، معيار IFRS، أو سياسة الشركة."],
-              ].map(([t, d]) => (
-                <li key={t} className="flex gap-3">
-                  <Check className="size-5 text-primary flex-shrink-0 mt-0.5" />
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{t}</div>
-                    <div className="text-sm text-muted-foreground">{d}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-8">
-              <Button variant="outline" asChild>
-                <a href="#cta">جرّب المساعد الآن<ArrowLeft className="size-4" /></a>
-              </Button>
-            </div>
           </div>
         </div>
       </div>
@@ -561,28 +831,24 @@ function AIAssistant() {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/*  6 · Dashboard showcase — full-bleed product preview                       */
+/*  6 · Dashboard showcase                                                    */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function DashboardShowcase() {
+function DashboardShowcase({ t }: { t: Dict }) {
+  const s = t.showcase
   return (
     <section id="showcase" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-14">
-          <div className="eyebrow mb-3">منتج حقيقي. ليس عرضاً.</div>
-          <h2 className="text-display text-foreground">
-            مركز قيادة مالي واحد
-          </h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-            كل ما يحدث في عملك المالي — مرئي، مفهوم، قابل للقرار في ثوانٍ.
-          </p>
+          <div className="eyebrow mb-3">{s.eyebrow}</div>
+          <h2 className="text-display text-foreground">{s.title}</h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">{s.lead}</p>
         </div>
 
-        <BrowserFrame title="cockpit · محاسب ذكي · Default Company" large>
+        <BrowserFrame title={s.mockTitle} large>
           <div className="grid grid-cols-12 gap-4 p-5">
-            {/* Sidebar mini */}
             <div className="col-span-2 space-y-1">
-              {["الرئيسية", "المعاملات", "القيود", "التقارير", "الكوكبت", "الموارد البشرية", "الأصول", "الإعدادات"].map((l, i) => (
+              {s.sidebar.map((l, i) => (
                 <div
                   key={l}
                   className={cn(
@@ -594,40 +860,38 @@ function DashboardShowcase() {
                 </div>
               ))}
             </div>
-            {/* Main */}
             <div className="col-span-10 space-y-4">
               <div className="grid grid-cols-4 gap-3">
-                <MiniKPI label="الإيرادات" value="٢٤٢,٣٠٠" delta="+8.4%" positive />
-                <MiniKPI label="المصروفات" value="١٣٨,٧١٠" delta="-2.1%" />
-                <MiniKPI label="صافي التدفق" value="١٠٣,٥٩٠" delta="+14.6%" positive highlight />
-                <MiniKPI label="نقاط الصحة" value="٨٤/١٠٠" delta="ممتاز" positive />
+                <MiniKPI label={s.kpis.revenue}  value={t.ar ? "٢٤٢,٣٠٠" : "242,300"} delta="+8.4%" positive />
+                <MiniKPI label={s.kpis.expenses} value={t.ar ? "١٣٨,٧١٠" : "138,710"} delta="-2.1%" />
+                <MiniKPI label={s.kpis.netCash}  value={t.ar ? "١٠٣,٥٩٠" : "103,590"} delta="+14.6%" positive highlight />
+                <MiniKPI label={s.kpis.health}   value={s.kpis.healthVal} delta={s.kpis.healthDelta} positive />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2 rounded-md border border-border bg-card p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <div className="eyebrow mb-1">تدفق نقدي · توقّع ٩٠ يوم</div>
-                      <div className="text-sm font-medium text-foreground">المسار الأرجح</div>
+                      <div className="eyebrow mb-1">{s.cash.eyebrow}</div>
+                      <div className="text-sm font-medium text-foreground">{s.cash.title}</div>
                     </div>
-                    <Badge variant="success" size="sm">+١٤.٦٪</Badge>
+                    <Badge variant="success" size="sm">{s.cash.delta}</Badge>
                   </div>
                   <SparkChart />
                 </div>
                 <div className="rounded-md border border-border bg-card p-4">
-                  <div className="eyebrow mb-2">تنبيهات</div>
+                  <div className="eyebrow mb-2">{s.alerts.title}</div>
                   <div className="space-y-2.5">
-                    <AlertRow type="warning" label="فاتورة متأخرة" detail="مورد ٣ · ٤,٥٠٠ ر.س" />
-                    <AlertRow type="info" label="موعد تأمينات" detail="بعد ٧ أيام" />
-                    <AlertRow type="success" label="تحقّق ميزانية" detail="تسويق · ضمن الحد" />
+                    <AlertRow type="warning" label={s.alerts.late.l}   detail={s.alerts.late.d} />
+                    <AlertRow type="info"    label={s.alerts.gosi.l}   detail={s.alerts.gosi.d} />
+                    <AlertRow type="success" label={s.alerts.budget.l} detail={s.alerts.budget.d} />
                   </div>
                 </div>
               </div>
               <div className="rounded-md border border-primary/20 bg-accent/40 p-3 flex items-start gap-3">
                 <Sparkles className="size-4 text-primary flex-shrink-0 mt-0.5" />
                 <div className="text-2xs leading-relaxed text-foreground/85">
-                  <span className="font-medium text-foreground">رؤية المساعد: </span>
-                  مصروفات السفر تجاوزت الميزانية الشهرية بنسبة ١٨٪. اقترح مراجعة سياسة الموافقات
-                  للقيم فوق ٢,٠٠٠ ر.س.
+                  <span className="font-medium text-foreground">{s.coachLabel}</span>
+                  {s.coachBody}
                 </div>
               </div>
             </div>
@@ -635,11 +899,9 @@ function DashboardShowcase() {
         </BrowserFrame>
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="status-dot bg-primary" />Cash Forecast</span>
-          <span className="flex items-center gap-1.5"><span className="status-dot bg-primary" />Health Score</span>
-          <span className="flex items-center gap-1.5"><span className="status-dot bg-primary" />What-If Simulator</span>
-          <span className="flex items-center gap-1.5"><span className="status-dot bg-primary" />Smart Alerts</span>
-          <span className="flex items-center gap-1.5"><span className="status-dot bg-primary" />AI Coach</span>
+          {s.legend.map((l) => (
+            <span key={l} className="flex items-center gap-1.5"><span className="status-dot bg-primary" />{l}</span>
+          ))}
         </div>
       </div>
     </section>
@@ -647,34 +909,17 @@ function DashboardShowcase() {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/*  7 · Automation — flow + cases                                             */
+/*  7 · Automation                                                            */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function Automation() {
-  const flow = [
-    { icon: <Receipt className="size-4" />, label: "ارفع الفاتورة" },
-    { icon: <Bot className="size-4" />,     label: "AI يقرأ ويُصنّف" },
-    { icon: <FileText className="size-4" />,label: "يُنشئ القيد" },
-    { icon: <Workflow className="size-4" />,label: "يُحدّث الميزانية" },
-    { icon: <BarChart3 className="size-4" />,label: "التقرير حيّ" },
-  ]
-
-  const cases = [
-    {
-      t: "فاتورة مورّد",
-      d: "صورة → استخراج → قيد دائن/مدين متوازن في حسابك الصحيح، بدون نقرة واحدة.",
-      m: "5210 / 2110 · ٤٥٠.٠٠",
-    },
-    {
-      t: "موظف جديد",
-      d: "ادخل البيانات مرة. الراتب الشهري، التأمينات (موظف/شركة)، ومخصص نهاية الخدمة كلها تُحتسب آلياً وفق IAS 19.",
-      m: "6010 / 6011 / 6012",
-    },
-    {
-      t: "أصل ثابت",
-      d: "اقتنِ الأصل، حدد العمر النافع، يُجدول الإهلاك حتى آخر شهر تلقائياً وفق IFRS.",
-      m: "1500 → 5500 / 1510",
-    },
+function Automation({ t }: { t: Dict }) {
+  const aut = t.automation
+  const flowIcons = [
+    <Receipt className="size-4" />,
+    <Bot className="size-4" />,
+    <FileText className="size-4" />,
+    <Workflow className="size-4" />,
+    <BarChart3 className="size-4" />,
   ]
 
   return (
@@ -682,34 +927,28 @@ function Automation() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-8 mb-14">
           <div className="lg:col-span-6">
-            <div className="eyebrow mb-3">الأتمتة</div>
-            <h2 className="text-display text-foreground">
-              مهام تستهلك يومك. تختفي.
-            </h2>
+            <div className="eyebrow mb-3">{aut.eyebrow}</div>
+            <h2 className="text-display text-foreground">{aut.title}</h2>
           </div>
           <div className="lg:col-span-5 lg:col-start-8 self-end">
-            <p className="text-base leading-relaxed text-muted-foreground">
-              من اللحظة التي تصل فيها فاتورة إلى صندوقك، حتى ظهور الأثر في تقريرك المالي —
-              لا خطوة يدوية واحدة في الوسط.
-            </p>
+            <p className="text-base leading-relaxed text-muted-foreground">{aut.lead}</p>
           </div>
         </div>
 
-        {/* Flow diagram */}
         <div className="rounded-xl border border-border bg-card p-6 lg:p-10 overflow-x-auto">
           <div className="flex items-center justify-between gap-3 min-w-[640px]">
-            {flow.map((step, i) => (
-              <div key={step.label} className="flex items-center gap-3 flex-1">
+            {aut.flow.map((label, i) => (
+              <div key={label} className="flex items-center gap-3 flex-1">
                 <div className="flex flex-col items-center text-center flex-1">
                   <div className="size-10 rounded-full bg-accent text-accent-foreground border border-accent-border flex items-center justify-center mb-2.5">
-                    {step.icon}
+                    {flowIcons[i]}
                   </div>
-                  <div className="text-xs font-medium text-foreground">{step.label}</div>
+                  <div className="text-xs font-medium text-foreground">{label}</div>
                   <div className="font-mono text-2xs text-muted-foreground mt-1">0{i + 1}</div>
                 </div>
-                {i < flow.length - 1 && (
+                {i < aut.flow.length - 1 && (
                   <div className="flex-shrink-0 w-8 h-px bg-border relative">
-                    <ArrowLeft className="size-3 text-muted-foreground absolute -top-1.5 left-0" />
+                    <CtaArrow ar={t.ar} />
                   </div>
                 )}
               </div>
@@ -717,9 +956,8 @@ function Automation() {
           </div>
         </div>
 
-        {/* Cases */}
         <div className="mt-10 grid md:grid-cols-3 gap-px bg-border border border-border rounded-xl overflow-hidden">
-          {cases.map((c) => (
+          {aut.cases.map((c) => (
             <div key={c.t} className="bg-card p-7">
               <h3 className="text-base font-semibold text-foreground mb-2">{c.t}</h3>
               <p className="text-sm text-muted-foreground leading-relaxed mb-4">{c.d}</p>
@@ -736,55 +974,31 @@ function Automation() {
 /*  8 · Security                                                              */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function Security() {
-  const items = [
-    {
-      icon: <ShieldCheck className="size-5" />,
-      t: "SOC 2 Type II",
-      d: "تدقيق مستقلّ سنوي على ضوابط الأمان والتوفّر والسرية.",
-      m: "Audited · Q1 2026",
-    },
-    {
-      icon: <Lock className="size-5" />,
-      t: "تشفير من طرف لطرف",
-      d: "AES-256 للبيانات الساكنة، TLS 1.3 للبيانات أثناء النقل.",
-      m: "AES-256 · TLS 1.3",
-    },
-    {
-      icon: <ScrollText className="size-5" />,
-      t: "أثر تدقيق وفق IFRS",
-      d: "كل قيد له ختم زمني، مُستخدم، وسبب — غير قابل للتعديل.",
-      m: "Immutable ledger",
-    },
-    {
-      icon: <MapPin className="size-5" />,
-      t: "بيانات مُقيمة في المنطقة",
-      d: "خوادم في الرياض ودبي. ملكية البيانات لك، تصدير في أيّ وقت.",
-      m: "RUH · DXB · Bahrain",
-    },
+function Security({ t }: { t: Dict }) {
+  const sec = t.security
+  const icons = [
+    <ShieldCheck className="size-5" />,
+    <Lock className="size-5" />,
+    <ScrollText className="size-5" />,
+    <MapPin className="size-5" />,
   ]
   return (
     <section id="security" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-12 mb-14 items-end">
           <div className="lg:col-span-7">
-            <div className="eyebrow mb-3">الأمان والثقة</div>
-            <h2 className="text-display text-foreground">
-              بياناتك المالية — مُؤمَّنة بمعايير المؤسسات.
-            </h2>
+            <div className="eyebrow mb-3">{sec.eyebrow}</div>
+            <h2 className="text-display text-foreground">{sec.title}</h2>
           </div>
           <div className="lg:col-span-4 lg:col-start-9">
-            <p className="text-base leading-relaxed text-muted-foreground">
-              لا اختصارات في الأمان. كل ما يلمسه الذكاء الاصطناعي يبقى ضمن بيئتك،
-              غير مُتاح لتدريب نماذج خارجية.
-            </p>
+            <p className="text-base leading-relaxed text-muted-foreground">{sec.lead}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border">
-          {items.map((it) => (
+          {sec.items.map((it, i) => (
             <div key={it.t} className="bg-card p-7 lg:p-8">
-              <div className="text-primary/70 mb-5">{it.icon}</div>
+              <div className="text-primary/70 mb-5">{icons[i]}</div>
               <h3 className="text-base font-semibold text-foreground mb-2">{it.t}</h3>
               <p className="text-sm text-muted-foreground leading-relaxed mb-5">{it.d}</p>
               <div className="font-mono text-2xs uppercase tracking-widest text-muted-foreground pt-4 border-t border-border/60">
@@ -799,64 +1013,24 @@ function Security() {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/*  9 · Use cases — tabbed editorial                                          */
+/*  9 · Use cases                                                             */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function UseCases() {
-  const personas = [
-    {
-      key: "founder",
-      tab: "للمؤسّسين",
-      headline: "تعرف رقم شركتك بدقّة، في أي لحظة.",
-      quote: "«قبل محاسب ذكي، كنت أنتظر نهاية الشهر لأعرف هل ربحت أم خسرت. الآن أعرفها قبل أن أوافق على المصروف.»",
-      author: "هاني الشمري · مؤسس، شركة لوجستيات",
-      outcomes: [
-        "نقاط صحة مالية محدّثة يومياً",
-        "تنبؤ تدفق نقدي لـ ٩٠ يوماً قادمة",
-        "محاكاة قرار قبل اتخاذه: «ماذا لو وظّفت ٣ مهندسين؟»",
-        "ملخّص تنفيذي بالعربية يصلك كل أسبوع",
-      ],
-    },
-    {
-      key: "accountant",
-      tab: "للمحاسبين",
-      headline: "وقتك للقرار، لا للترحيل.",
-      quote: "«الـ AI يكتب القيود، أنا أراجع. وفّرت ١٢ ساعة في الأسبوع. والقوائم تخرج مُتوازنة من المرة الأولى.»",
-      author: "د. سارة العتيبي · CPA، مكتب محاسبة",
-      outcomes: [
-        "قيود مزدوجة آلية قابلة للمراجعة",
-        "تطابق فوري بين الأستاذ العام والقوائم",
-        "أثر تدقيق كامل لكل قيد ولكل تعديل",
-        "تصدير مباشر للهيئة، ZATCA-ready",
-      ],
-    },
-    {
-      key: "team",
-      tab: "للفرق المالية",
-      headline: "فريق واحد. نظام واحد. مصدر حقيقة واحد.",
-      quote: "«كنا نعمل في خمسة ملفات Excel. الآن CFO يفتح نفس الكوكبت الذي يفتحه المحلل المالي ومسؤول الرواتب.»",
-      author: "نورة العلي · CFO، شركة تقنية",
-      outcomes: [
-        "صلاحيات بحسب الدور (RBAC) مع سجل أنشطة",
-        "موافقات متعدّدة المستويات على المدفوعات",
-        "توحيد متعدد الشركات والعملات",
-        "تقارير IFRS جاهزة للتدقيق فوراً",
-      ],
-    },
-  ]
+function UseCases({ t }: { t: Dict }) {
+  const u = t.useCases
+  const personas = u.personas
   const [active, setActive] = useState(personas[0].key)
-  const current = personas.find((p) => p.key === active)!
+  const current = personas.find((p) => p.key === active) ?? personas[0]
 
   return (
     <section id="use-cases" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl mb-12">
-          <div className="eyebrow mb-3">من يستخدم محاسب ذكي</div>
-          <h2 className="text-display text-foreground">منتج واحد. ثلاثة فِرق. نتيجة واحدة: وضوح.</h2>
+          <div className="eyebrow mb-3">{u.eyebrow}</div>
+          <h2 className="text-display text-foreground">{u.title}</h2>
         </div>
 
-        {/* Tabs */}
-        <div role="tablist" aria-label="فئات المستخدمين" className="flex flex-wrap gap-1 border-b border-border mb-10">
+        <div role="tablist" aria-label={u.tabsAria} className="flex flex-wrap gap-1 border-b border-border mb-10">
           {personas.map((p, i) => {
             const selected = active === p.key
             return (
@@ -872,8 +1046,9 @@ function UseCases() {
                 onKeyDown={(e) => {
                   if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return
                   e.preventDefault()
-                  // RTL: ArrowLeft = next, ArrowRight = previous
-                  const dir = e.key === "ArrowLeft" ? 1 : -1
+                  // In RTL, ArrowLeft = next; in LTR, ArrowRight = next.
+                  const forwardKey = t.ar ? "ArrowLeft" : "ArrowRight"
+                  const dir = e.key === forwardKey ? 1 : -1
                   const next = (i + dir + personas.length) % personas.length
                   setActive(personas[next].key)
                   document.getElementById(`persona-tab-${personas[next].key}`)?.focus()
@@ -903,13 +1078,13 @@ function UseCases() {
             <h3 className="text-2xl lg:text-3xl font-semibold text-foreground tracking-tight leading-snug mb-6">
               {current.headline}
             </h3>
-            <blockquote className="border-r-2 border-primary pr-5 mb-6">
+            <blockquote className={cn("border-primary mb-6", t.ar ? "border-r-2 pr-5" : "border-l-2 pl-5")}>
               <p className="text-lg leading-relaxed text-foreground/80 italic">{current.quote}</p>
               <footer className="mt-3 text-sm text-muted-foreground">{current.author}</footer>
             </blockquote>
           </div>
           <div className="lg:col-span-5">
-            <div className="eyebrow mb-4">النتائج</div>
+            <div className="eyebrow mb-4">{u.outcomes}</div>
             <ul className="space-y-3.5">
               {current.outcomes.map((o) => (
                 <li key={o} className="flex gap-3 text-sm text-foreground/85 leading-relaxed">
@@ -929,42 +1104,16 @@ function UseCases() {
 /* 10 · FAQ                                                                   */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function FAQ() {
-  const qs = [
-    {
-      q: "هل النظام مُتوافق فعلاً مع IFRS؟",
-      a: "نعم. النظام مبني على الأساس وفق IFRS: قيد مزدوج إجباري، شجرة حسابات قياسية، اعتراف بالإيراد، إهلاك الأصول، مخصص نهاية الخدمة (IAS 19)، وقوائم مالية تُولَّد آلياً. كل دولة لها حزمة محلية فوق هذا الأساس.",
-    },
-    {
-      q: "هل بياناتي تُستخدم لتدريب نماذج الذكاء الاصطناعي؟",
-      a: "لا. بياناتك ملكك. الذكاء الاصطناعي يعمل ضمن بيئتك ولا يُشارك أيّ معلومة مع نماذج خارجية لأغراض تدريب. هذا مكتوب في عقد الخدمة وقابل للتدقيق.",
-    },
-    {
-      q: "ما الدول المدعومة؟",
-      a: "حالياً: السعودية، الإمارات، مصر، الكويت، قطر، الأردن، وحزمة International. كل حزمة تشمل: العملة، ضريبة القيمة المضافة، الزكاة (حيث تنطبق)، التأمينات، صيغة نهاية الخدمة، عُطل العمل، والتقويم.",
-    },
-    {
-      q: "كم يستغرق التركيب؟",
-      a: "أقل من خمس دقائق للحساب الأول. اختر الدولة، أنشئ الشركة، وستجد شجرة الحسابات IFRS جاهزة. الفِرق الكبيرة عادةً تستكمل الإعداد الكامل (ربط البنوك، استيراد البيانات، الصلاحيات) خلال يومين.",
-    },
-    {
-      q: "هل يُمكن استيراد بياناتي من نظام آخر؟",
-      a: "نعم. نستورد من Excel، QuickBooks، Xero، Zoho Books، وSAP. خلال الاستيراد، الـ AI يفحص الترميز ويقترح المطابقات لشجرة الحسابات IFRS لديك.",
-    },
-    {
-      q: "هل النظام يدعم التدقيق الخارجي؟",
-      a: "نعم. الأثر التدقيقي كامل وغير قابل للتعديل، مع إمكانية إنشاء حساب «مدقّق خارجي» بصلاحيات قراءة فقط لكامل القيود والمستندات الداعمة.",
-    },
-  ]
+function FAQ({ t }: { t: Dict }) {
   return (
     <section id="faq" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <div className="eyebrow mb-3">الأسئلة الشائعة</div>
-          <h2 className="text-display text-foreground">سؤال صريح، إجابة صريحة.</h2>
+          <div className="eyebrow mb-3">{t.faq.eyebrow}</div>
+          <h2 className="text-display text-foreground">{t.faq.title}</h2>
         </div>
         <Accordion type="single" collapsible className="border-t border-border">
-          {qs.map((item, i) => (
+          {t.faq.qs.map((item, i) => (
             <AccordionItem key={i} value={`q-${i}`} className="border-b border-border">
               <AccordionTrigger className="text-start py-5 text-base font-medium text-foreground hover:no-underline">
                 {item.q}
@@ -984,12 +1133,16 @@ function FAQ() {
 /* 11 · Final CTA                                                             */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function FinalCTA() {
+function FinalCTA({ t }: { t: Dict }) {
+  const f = t.finalCta
   return (
     <section id="cta" className="py-24 lg:py-32 scroll-mt-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-bl from-primary/[0.08] via-background to-background p-10 lg:p-16">
-          {/* Decorative grid */}
+        <div className={cn(
+          "relative overflow-hidden rounded-2xl border border-primary/20 p-10 lg:p-16",
+          t.ar ? "bg-gradient-to-bl from-primary/[0.08] via-background to-background"
+              : "bg-gradient-to-br from-primary/[0.08] via-background to-background"
+        )}>
           <div
             aria-hidden
             className="absolute inset-0 opacity-[0.04] pointer-events-none"
@@ -1001,28 +1154,24 @@ function FinalCTA() {
           <div className="relative grid lg:grid-cols-12 gap-10 items-center">
             <div className="lg:col-span-7">
               <h2 className="text-display-lg text-foreground">
-                ابدأ بإدارة ماليتك
-                <br />
-                <span className="text-primary">بطريقة تستحقّها.</span>
+                {f.h1}<br /><span className="text-primary">{f.h2}</span>
               </h2>
-              <p className="mt-5 text-lg leading-relaxed text-muted-foreground max-w-xl">
-                ١٤ يوماً مجاناً. كل المميزات. بدون بطاقة. ألغِ في أي لحظة.
-              </p>
+              <p className="mt-5 text-lg leading-relaxed text-muted-foreground max-w-xl">{f.sub}</p>
             </div>
             <div className="lg:col-span-5 lg:text-end">
               <div className="flex flex-wrap lg:justify-end gap-3">
                 <Button size="xl" data-testid="button-final-cta" asChild>
-                  <a href="mailto:hello@accounting.app?subject=ابدأ تجربتي المجانية" className="gap-2">
-                    ابدأ مجاناً
-                    <ArrowLeft className="size-4" />
+                  <a href="/app" className="gap-2">
+                    {f.cta}
+                    <CtaArrow ar={t.ar} />
                   </a>
                 </Button>
                 <Button size="xl" variant="outline" asChild>
-                  <a href="mailto:sales@accounting.app?subject=طلب عرض">تحدّث مع المبيعات</a>
+                  <a href="/demo" data-testid="button-final-cta-demo">{f.ctaDemo}</a>
                 </Button>
               </div>
               <div className="mt-5 text-xs text-muted-foreground lg:text-end">
-                أو شاهد <a href="#showcase" className="text-primary underline-offset-4 hover:underline">عرضاً مدّته ٣ دقائق</a>.
+                {f.orWatch} <a href="#showcase" className="text-primary underline-offset-4 hover:underline">{f.orLink}</a>{f.orWatchSuffix}
               </div>
             </div>
           </div>
@@ -1046,7 +1195,6 @@ function BrowserFrame({
         subtle ? "shadow-md" : large ? "shadow-xl" : "shadow-lg",
       )}
     >
-      {/* Title bar */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
         <div className="flex gap-1.5">
           <span className="size-2.5 rounded-full bg-border" />
@@ -1101,7 +1249,6 @@ function MiniKPI({
 }
 
 function SparkChart({ compact = false }: { compact?: boolean }) {
-  // Hand-drawn SVG sparkline — no chart library noise
   const h = compact ? 40 : 80
   return (
     <svg viewBox={`0 0 320 ${h}`} className="w-full" preserveAspectRatio="none" aria-hidden>
