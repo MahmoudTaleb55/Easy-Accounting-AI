@@ -26,6 +26,9 @@ const Table = React.forwardRef<HTMLTableElement, TableProps>(
           "w-full caption-bottom text-sm tabular-nums",
           "[&[data-density=compact]_td]:py-2.5 [&[data-density=compact]_th]:py-2.5",
           "[&[data-density=comfortable]_td]:py-4 [&[data-density=comfortable]_th]:py-3",
+          // Numeric column helper — opt in via `.numeric` on td/th
+          "[&_td.numeric]:font-numeric [&_td.numeric]:text-end",
+          "[&_th.numeric]:font-numeric [&_th.numeric]:text-end",
           className
         )}
         {...props}

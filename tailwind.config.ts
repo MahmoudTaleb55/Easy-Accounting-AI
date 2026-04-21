@@ -66,6 +66,14 @@ export default {
           DEFAULT: "hsl(var(--info) / <alpha-value>)",
           foreground: "hsl(var(--info-foreground) / <alpha-value>)",
         },
+        income: {
+          DEFAULT: "hsl(var(--income) / <alpha-value>)",
+          foreground: "hsl(var(--income-foreground) / <alpha-value>)",
+        },
+        expense: {
+          DEFAULT: "hsl(var(--expense) / <alpha-value>)",
+          foreground: "hsl(var(--expense-foreground) / <alpha-value>)",
+        },
         chart: {
           "1": "hsl(var(--chart-1) / <alpha-value>)",
           "2": "hsl(var(--chart-2) / <alpha-value>)",
@@ -102,6 +110,7 @@ export default {
         latin:   ["var(--font-sans)"],
         display: ["var(--font-display)"],
         mono:    ["var(--font-mono)"],
+        numeric: ["var(--font-mono)"],
       },
       fontSize: {
         "2xs": ["0.6875rem", { lineHeight: "1rem" }],   /* 11px */

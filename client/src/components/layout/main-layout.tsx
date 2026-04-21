@@ -1,6 +1,7 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar, MobileHeader } from "./app-sidebar";
 import { CompanyProvider, useCompany } from "@/contexts/company-context";
+import { useLocale } from "@/contexts/locale-context";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2 } from "lucide-react";
 
@@ -23,6 +24,7 @@ function CompanySwitcher() {
 }
 
 export function MainLayout({ children }: { children: React.ReactNode }) {
+  const { dir } = useLocale();
   const style = {
     "--sidebar-width": "18rem",
     "--sidebar-width-icon": "4.5rem",
@@ -31,7 +33,7 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <CompanyProvider>
       <SidebarProvider style={style}>
-        <div className="flex min-h-screen w-full bg-background font-sans text-foreground" dir="rtl">
+        <div className="flex min-h-screen w-full bg-background font-sans text-foreground" dir={dir}>
           <AppSidebar />
           <div className="flex flex-col flex-1 w-full relative">
             <MobileHeader />

@@ -23,6 +23,9 @@ const badgeVariants = cva(
         destructive: "bg-destructive/10 text-destructive border-destructive/20",
         brand:       "bg-accent text-accent-foreground border-accent-border",
         muted:       "bg-muted text-muted-foreground border-muted-border",
+        // Accounting semantics
+        income:      "bg-income/10 text-income border-income/20",
+        expense:     "bg-expense/10 text-expense border-expense/20",
       },
       size: {
         sm: "h-5 px-1.5 text-2xs gap-1 [&_svg]:size-3",

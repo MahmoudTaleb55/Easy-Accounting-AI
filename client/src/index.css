@@ -64,6 +64,12 @@
     --info:                 212 72% 46%;
     --info-foreground:      36 14% 98%;
 
+    /* Accounting semantics — income (deep emerald) / expense (warm coral) */
+    --income:               158 64% 32%;
+    --income-foreground:    36 14% 98%;
+    --expense:              4 72% 48%;
+    --expense-foreground:   36 14% 98%;
+
     /* — Lines, fields, focus — */
     --border:               220 14% 92%;
     --input:                220 14% 90%;
@@ -150,6 +156,11 @@
     --info:                 212 80% 60%;
     --info-foreground:      220 18% 8%;
 
+    --income:               158 56% 52%;
+    --income-foreground:    220 18% 8%;
+    --expense:              4 78% 58%;
+    --expense-foreground:   220 18% 8%;
+
     --border:               220 12% 18%;
     --input:                220 12% 20%;
     --ring:                 158 56% 52%;
@@ -223,6 +234,9 @@
 
   /* Mono utility for codes, account numbers, KPIs */
   .font-mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
+  .font-numeric { font-family: var(--font-mono); font-feature-settings: "tnum" 1; font-variant-numeric: tabular-nums; }
+  .text-income  { color: hsl(var(--income)); }
+  .text-expense { color: hsl(var(--expense)); }
 
   /* Selection */
   ::selection { background: hsl(var(--primary) / 0.18); color: hsl(var(--foreground)); }

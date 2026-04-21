@@ -8,6 +8,10 @@ import NotFound from "@/pages/not-found";
 // Layout
 import { MainLayout } from "@/components/layout/main-layout";
 
+// Providers
+import { LocaleProvider } from "@/contexts/locale-context";
+import { ThemeProvider } from "@/contexts/theme-context";
+
 // Pages
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -20,6 +24,9 @@ import Insights from "@/pages/insights";
 import HR from "@/pages/hr";
 import FixedAssets from "@/pages/fixed-assets";
 import SettingsPage from "@/pages/settings";
+import Styleguide from "@/pages/styleguide";
+
+const isDev = import.meta.env.DEV;
 
 /** Public routes render OUTSIDE the authenticated MainLayout shell. */
 const PUBLIC_ROUTES = new Set<string>(["/"]);
@@ -49,11 +56,18 @@ function AppRoutes() {
 
 function Router() {
   const [location] = useLocation();
-  const isPublic = PUBLIC_ROUTES.has(location);
 
-  if (isPublic) {
+  // Styleguide is a standalone, dev-only route — rendered without the app shell.
+  if (location === "/styleguide") {
+    if (!isDev) return <NotFound />;
+    return <Styleguide />;
+  }
+
+  // Public routes (e.g. landing) render OUTSIDE the authenticated MainLayout shell.
+  if (PUBLIC_ROUTES.has(location)) {
     return <AppRoutes />;
   }
+
   return (
     <MainLayout>
       <AppRoutes />
@@ -64,10 +78,14 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <ThemeProvider defaultTheme="light">
+        <LocaleProvider defaultLocale="ar">
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </LocaleProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
