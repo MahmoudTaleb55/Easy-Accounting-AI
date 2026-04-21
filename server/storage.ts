@@ -12,6 +12,33 @@ import {
   leaves,
   payrollRuns,
   payrollLines,
+  companies,
+  fxRates,
+  assetCategories,
+  fixedAssets,
+  assetComponents,
+  depreciationSchedule,
+  depreciationRuns,
+  depreciationPostings,
+  impairmentEvents,
+  revaluationEvents,
+  disposals,
+  type Company,
+  type InsertCompany,
+  type FxRate,
+  type InsertFxRate,
+  type AssetCategory,
+  type InsertAssetCategory,
+  type FixedAsset,
+  type InsertFixedAsset,
+  type AssetComponent,
+  type InsertAssetComponent,
+  type DepreciationRun,
+  type DepreciationPosting,
+  type DepreciationScheduleRow,
+  type ImpairmentEvent,
+  type RevaluationEvent,
+  type Disposal,
   type Transaction,
   type InsertTransaction,
   type ChatMessage,
@@ -364,6 +391,308 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLeave(id: number): Promise<void> {
     await db.delete(leaves).where(eq(leaves.id, id));
+  }
+
+  // ----- Companies -----
+  async getCompanies(): Promise<Company[]> {
+    return await db.select().from(companies).orderBy(companies.name);
+  }
+  async createCompany(input: InsertCompany): Promise<Company> {
+    if (input.isDefault) {
+      await db.update(companies).set({ isDefault: false });
+    }
+    const [c] = await db.insert(companies).values(input).returning();
+    return c;
+  }
+  async updateCompany(id: number, input: Partial<InsertCompany>): Promise<Company> {
+    if (input.isDefault) {
+      await db.update(companies).set({ isDefault: false });
+    }
+    const [u] = await db.update(companies).set(input).where(eq(companies.id, id)).returning();
+    return u;
+  }
+
+  // ----- FX Rates -----
+  async getFxRates(companyId?: number): Promise<FxRate[]> {
+    if (companyId) {
+      return await db.select().from(fxRates).where(eq(fxRates.companyId, companyId)).orderBy(desc(fxRates.rateDate));
+    }
+    return await db.select().from(fxRates).orderBy(desc(fxRates.rateDate));
+  }
+  async createFxRate(input: InsertFxRate): Promise<FxRate> {
+    const [c] = await db.insert(fxRates).values({ ...input, rate: String(input.rate) }).returning();
+    return c;
+  }
+  async deleteFxRate(id: number): Promise<void> {
+    await db.delete(fxRates).where(eq(fxRates.id, id));
+  }
+
+  // ----- Asset Categories -----
+  async getAssetCategories(companyId?: number): Promise<AssetCategory[]> {
+    if (companyId) {
+      return await db.select().from(assetCategories).where(eq(assetCategories.companyId, companyId)).orderBy(assetCategories.name);
+    }
+    return await db.select().from(assetCategories).orderBy(assetCategories.name);
+  }
+  async createAssetCategory(input: InsertAssetCategory): Promise<AssetCategory> {
+    const [c] = await db.insert(assetCategories).values(input).returning();
+    return c;
+  }
+  async updateAssetCategory(id: number, input: Partial<InsertAssetCategory>): Promise<AssetCategory> {
+    const [u] = await db.update(assetCategories).set(input).where(eq(assetCategories.id, id)).returning();
+    return u;
+  }
+
+  // ----- Fixed Assets -----
+  async getFixedAssets(companyId?: number): Promise<FixedAsset[]> {
+    if (companyId) {
+      return await db.select().from(fixedAssets).where(eq(fixedAssets.companyId, companyId)).orderBy(fixedAssets.code);
+    }
+    return await db.select().from(fixedAssets).orderBy(fixedAssets.code);
+  }
+  async getFixedAsset(id: number): Promise<FixedAsset | undefined> {
+    const [a] = await db.select().from(fixedAssets).where(eq(fixedAssets.id, id));
+    return a;
+  }
+  async createFixedAsset(input: Omit<InsertFixedAsset, "customSchedule"> & { cost: number; customSchedule?: string | null }): Promise<FixedAsset> {
+    const [c] = await db
+      .insert(fixedAssets)
+      .values({
+        ...input,
+        txCost: String(input.txCost),
+        fxRate: String(input.fxRate ?? 1),
+        residual: String(input.residual ?? 0),
+        cost: String(input.cost),
+        unitsTotal: input.unitsTotal != null ? String(input.unitsTotal) : null,
+        customSchedule: input.customSchedule ?? null,
+      })
+      .returning();
+    return c;
+  }
+  async updateFixedAssetBalances(
+    id: number,
+    patch: Partial<{
+      cost: number;
+      accumDepreciation: number;
+      accumImpairment: number;
+      revalSurplus: number;
+      accumDepNoImpairment: number;
+      accumRevalLoss: number;
+      lastDepreciatedPeriod: string;
+      status: string;
+    }>
+  ): Promise<FixedAsset> {
+    const set: Record<string, string | undefined> = {};
+    if (patch.cost !== undefined) set.cost = String(patch.cost);
+    if (patch.accumDepreciation !== undefined) set.accumDepreciation = String(patch.accumDepreciation);
+    if (patch.accumImpairment !== undefined) set.accumImpairment = String(patch.accumImpairment);
+    if (patch.revalSurplus !== undefined) set.revalSurplus = String(patch.revalSurplus);
+    if (patch.accumDepNoImpairment !== undefined) set.accumDepNoImpairment = String(patch.accumDepNoImpairment);
+    if (patch.accumRevalLoss !== undefined) set.accumRevalLoss = String(patch.accumRevalLoss);
+    if (patch.lastDepreciatedPeriod !== undefined) set.lastDepreciatedPeriod = patch.lastDepreciatedPeriod;
+    if (patch.status !== undefined) set.status = patch.status;
+    const [u] = await db.update(fixedAssets).set(set).where(eq(fixedAssets.id, id)).returning();
+    return u;
+  }
+  async deleteFixedAsset(id: number): Promise<void> {
+    await db.delete(assetComponents).where(eq(assetComponents.assetId, id));
+    await db.delete(depreciationSchedule).where(eq(depreciationSchedule.assetId, id));
+    await db.delete(depreciationPostings).where(eq(depreciationPostings.assetId, id));
+    await db.delete(impairmentEvents).where(eq(impairmentEvents.assetId, id));
+    await db.delete(revaluationEvents).where(eq(revaluationEvents.assetId, id));
+    await db.delete(disposals).where(eq(disposals.assetId, id));
+    await db.delete(fixedAssets).where(eq(fixedAssets.id, id));
+  }
+
+  // ----- Asset Components -----
+  async getAssetComponents(assetId: number): Promise<AssetComponent[]> {
+    return await db.select().from(assetComponents).where(eq(assetComponents.assetId, assetId));
+  }
+  async createAssetComponent(input: InsertAssetComponent): Promise<AssetComponent> {
+    const [c] = await db
+      .insert(assetComponents)
+      .values({
+        ...input,
+        cost: String(input.cost),
+        residual: String(input.residual ?? 0),
+        unitsTotal: input.unitsTotal != null ? String(input.unitsTotal) : null,
+      })
+      .returning();
+    return c;
+  }
+
+  // ----- Depreciation -----
+  async getDepreciationRuns(companyId?: number): Promise<DepreciationRun[]> {
+    if (companyId) {
+      return await db.select().from(depreciationRuns).where(eq(depreciationRuns.companyId, companyId)).orderBy(desc(depreciationRuns.year), desc(depreciationRuns.month));
+    }
+    return await db.select().from(depreciationRuns).orderBy(desc(depreciationRuns.year), desc(depreciationRuns.month));
+  }
+  async getDepreciationRun(id: number): Promise<DepreciationRun | undefined> {
+    const [r] = await db.select().from(depreciationRuns).where(eq(depreciationRuns.id, id));
+    return r;
+  }
+  async findPostedRun(companyId: number, year: number, month: number): Promise<DepreciationRun | undefined> {
+    const rows = await db
+      .select()
+      .from(depreciationRuns)
+      .where(
+        and(
+          eq(depreciationRuns.companyId, companyId),
+          eq(depreciationRuns.year, year),
+          eq(depreciationRuns.month, month),
+          eq(depreciationRuns.status, "posted")
+        )
+      );
+    return rows[0];
+  }
+  async createDepreciationRun(input: { companyId: number; year: number; month: number; postings: { assetId: number; componentId?: number | null; amount: number }[] }): Promise<DepreciationRun> {
+    const total = input.postings.reduce((s, p) => s + p.amount, 0);
+    const [run] = await db.insert(depreciationRuns).values({
+      companyId: input.companyId, year: input.year, month: input.month,
+      status: "draft", totalAmount: String(total),
+    }).returning();
+    if (input.postings.length > 0) {
+      await db.insert(depreciationPostings).values(input.postings.map((p) => ({
+        runId: run.id, assetId: p.assetId, componentId: p.componentId ?? null, amount: String(p.amount),
+      })));
+    }
+    return run;
+  }
+  async getDepreciationPostings(runId: number): Promise<DepreciationPosting[]> {
+    return await db.select().from(depreciationPostings).where(eq(depreciationPostings.runId, runId));
+  }
+  async markRunPosted(runId: number, journalEntryId: number): Promise<DepreciationRun> {
+    const [u] = await db.update(depreciationRuns)
+      .set({ status: "posted", journalEntryId, postedAt: new Date() })
+      .where(eq(depreciationRuns.id, runId))
+      .returning();
+    return u;
+  }
+  async deleteDepreciationRun(runId: number): Promise<void> {
+    await db.delete(depreciationPostings).where(eq(depreciationPostings.runId, runId));
+    await db.delete(depreciationRuns).where(eq(depreciationRuns.id, runId));
+  }
+
+  // ----- Schedule (planned rows) -----
+  async getSchedule(assetId: number): Promise<DepreciationScheduleRow[]> {
+    return await db.select().from(depreciationSchedule).where(eq(depreciationSchedule.assetId, assetId));
+  }
+  async replaceSchedule(assetId: number, rows: { periodYear: number; periodMonth: number; plannedAmount: number; componentId?: number | null }[]): Promise<void> {
+    await db.delete(depreciationSchedule).where(and(eq(depreciationSchedule.assetId, assetId), eq(depreciationSchedule.status, "planned")));
+    if (rows.length === 0) return;
+    await db.insert(depreciationSchedule).values(rows.map((r) => ({
+      assetId,
+      componentId: r.componentId ?? null,
+      periodYear: r.periodYear,
+      periodMonth: r.periodMonth,
+      plannedAmount: String(r.plannedAmount),
+      status: "planned",
+    })));
+  }
+  async markScheduledPosted(
+    runId: number,
+    period: { year: number; month: number },
+    items: { assetId: number; componentId?: number | null; amount: number }[],
+  ): Promise<void> {
+    for (const it of items) {
+      const compCond = it.componentId == null
+        ? sql`${depreciationSchedule.componentId} is null`
+        : eq(depreciationSchedule.componentId, it.componentId);
+      const existing = await db.select().from(depreciationSchedule).where(
+        and(
+          eq(depreciationSchedule.assetId, it.assetId),
+          eq(depreciationSchedule.periodYear, period.year),
+          eq(depreciationSchedule.periodMonth, period.month),
+          compCond,
+        ),
+      );
+      if (existing.length > 0) {
+        await db.update(depreciationSchedule).set({
+          status: "posted",
+          runId,
+          plannedAmount: String(it.amount),
+        }).where(eq(depreciationSchedule.id, existing[0].id));
+      } else {
+        await db.insert(depreciationSchedule).values({
+          assetId: it.assetId,
+          componentId: it.componentId ?? null,
+          periodYear: period.year,
+          periodMonth: period.month,
+          plannedAmount: String(it.amount),
+          status: "posted",
+          runId,
+        });
+      }
+    }
+  }
+  async getDepreciationPostingsByAsset(assetId: number): Promise<Array<{ runId: number; year: number; month: number; amount: number; journalEntryId: number | null }>> {
+    const rows = await db
+      .select({
+        runId: depreciationPostings.runId,
+        amount: depreciationPostings.amount,
+        year: depreciationRuns.year,
+        month: depreciationRuns.month,
+        journalEntryId: depreciationRuns.journalEntryId,
+      })
+      .from(depreciationPostings)
+      .innerJoin(depreciationRuns, eq(depreciationPostings.runId, depreciationRuns.id))
+      .where(eq(depreciationPostings.assetId, assetId));
+    return rows.map((r) => ({ runId: r.runId, year: r.year, month: r.month, amount: Number(r.amount), journalEntryId: r.journalEntryId }));
+  }
+
+  // ----- Impairment / Revaluation / Disposal events -----
+  async getImpairmentEvents(assetId?: number): Promise<ImpairmentEvent[]> {
+    if (assetId) return await db.select().from(impairmentEvents).where(eq(impairmentEvents.assetId, assetId)).orderBy(desc(impairmentEvents.eventDate));
+    return await db.select().from(impairmentEvents).orderBy(desc(impairmentEvents.eventDate));
+  }
+  async createImpairmentEvent(input: { assetId: number; componentId?: number | null; eventDate: string; recoverableAmount: number; lossAmount: number; journalEntryId?: number | null; notes?: string }): Promise<ImpairmentEvent> {
+    const [c] = await db.insert(impairmentEvents).values({
+      assetId: input.assetId,
+      componentId: input.componentId ?? null,
+      eventDate: input.eventDate,
+      recoverableAmount: String(input.recoverableAmount),
+      lossAmount: String(input.lossAmount),
+      journalEntryId: input.journalEntryId ?? null,
+      notes: input.notes ?? "",
+    }).returning();
+    return c;
+  }
+
+  async getRevaluationEvents(assetId?: number): Promise<RevaluationEvent[]> {
+    if (assetId) return await db.select().from(revaluationEvents).where(eq(revaluationEvents.assetId, assetId)).orderBy(desc(revaluationEvents.eventDate));
+    return await db.select().from(revaluationEvents).orderBy(desc(revaluationEvents.eventDate));
+  }
+  async createRevaluationEvent(input: { assetId: number; eventDate: string; fairValue: number; method: string; surplusDelta: number; plImpact: number; journalEntryId?: number | null; notes?: string }): Promise<RevaluationEvent> {
+    const [c] = await db.insert(revaluationEvents).values({
+      assetId: input.assetId,
+      eventDate: input.eventDate,
+      fairValue: String(input.fairValue),
+      method: input.method,
+      surplusDelta: String(input.surplusDelta),
+      plImpact: String(input.plImpact),
+      journalEntryId: input.journalEntryId ?? null,
+      notes: input.notes ?? "",
+    }).returning();
+    return c;
+  }
+
+  async getDisposals(assetId?: number): Promise<Disposal[]> {
+    if (assetId) return await db.select().from(disposals).where(eq(disposals.assetId, assetId)).orderBy(desc(disposals.eventDate));
+    return await db.select().from(disposals).orderBy(desc(disposals.eventDate));
+  }
+  async createDisposal(input: { assetId: number; eventDate: string; proceeds: number; method: string; gainLoss: number; surplusTransferred: number; journalEntryId?: number | null; notes?: string }): Promise<Disposal> {
+    const [c] = await db.insert(disposals).values({
+      assetId: input.assetId,
+      eventDate: input.eventDate,
+      proceeds: String(input.proceeds),
+      method: input.method,
+      gainLoss: String(input.gainLoss),
+      surplusTransferred: String(input.surplusTransferred),
+      journalEntryId: input.journalEntryId ?? null,
+      notes: input.notes ?? "",
+    }).returning();
+    return c;
   }
 }
 

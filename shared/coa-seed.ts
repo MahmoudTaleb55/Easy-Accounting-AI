@@ -120,6 +120,42 @@ export const SOCIAL_INSURANCE_PAYABLE_CODE = "2150";      // added below
 export const ACCRUED_LEAVE_LIABILITY_CODE = "2160";       // added below
 export const EOS_LIABILITY_CODE = "2220";                 // added below
 
+// Fixed-Asset (IAS 16) account codes
+export const FA_ASSET_COST_CODE = "1210";                  // existing PPE base
+export const FA_ACCUM_DEP_CODE = "1290";                   // existing accumulated depreciation
+export const FA_ACCUM_IMP_CODE = "1295";                   // added below
+export const FA_DEP_EXPENSE_CODE = "6110";                 // existing depreciation expense
+export const FA_IMP_LOSS_CODE = "6120";                    // added below
+export const FA_REVAL_SURPLUS_CODE = "3040";               // added below
+export const FA_GAIN_LOSS_DISPOSAL_CODE = "4080";          // added below (revenue side – may be gain or loss)
+
+// Per-class default cost & contra accounts for category seeding
+export const FA_CATEGORY_DEFAULTS: Array<{
+  name: string;
+  assetCostCode: string;
+  accumDepCode: string;
+  defaultUsefulLifeMonths: number;
+}> = [
+  { name: "أثاث ومعدات / Furniture & Equipment", assetCostCode: "1210", accumDepCode: "1291", defaultUsefulLifeMonths: 60 },
+  { name: "مركبات / Vehicles", assetCostCode: "1220", accumDepCode: "1292", defaultUsefulLifeMonths: 60 },
+  { name: "مباني / Buildings", assetCostCode: "1230", accumDepCode: "1293", defaultUsefulLifeMonths: 480 },
+];
+
+// Extra Fixed-Asset accounts to merge into seed at startup (in init-coa).
+export const FIXED_ASSETS_EXTRA_ACCOUNTS = [
+  // Per-class accumulated depreciation contra-asset accounts
+  { code: "1291", nameAr: "مجمع إهلاك الأثاث والمعدات", nameEn: "Accum. Dep — Furniture & Equipment", type: "asset", subtype: "contra_asset", parentCode: "1200" },
+  { code: "1292", nameAr: "مجمع إهلاك المركبات", nameEn: "Accum. Dep — Vehicles", type: "asset", subtype: "contra_asset", parentCode: "1200" },
+  { code: "1293", nameAr: "مجمع إهلاك المباني", nameEn: "Accum. Dep — Buildings", type: "asset", subtype: "contra_asset", parentCode: "1200" },
+  { code: "1295", nameAr: "مجمع خسائر الانخفاض في القيمة", nameEn: "Accumulated Impairment", type: "asset", subtype: "contra_asset", parentCode: "1200" },
+  // Equity / OCI surplus
+  { code: "3040", nameAr: "فائض إعادة التقييم (الدخل الشامل الآخر)", nameEn: "Revaluation Surplus (OCI)", type: "equity", subtype: "oci", parentCode: "3000" },
+  // Gains/losses on disposal — as other income (gains positive, losses negative)
+  { code: "4080", nameAr: "أرباح / خسائر بيع أصول ثابتة", nameEn: "Gain/Loss on Disposal of PPE", type: "revenue", subtype: "other_income", parentCode: "4000" },
+  // Impairment loss expense
+  { code: "6120", nameAr: "خسائر الانخفاض في قيمة الأصول", nameEn: "Impairment Loss", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+];
+
 // Extra payroll-related accounts to merge into seed at startup (in init-coa).
 export const PAYROLL_EXTRA_ACCOUNTS = [
   { code: "6011", nameAr: "اشتراكات التأمينات الاجتماعية", nameEn: "Social Insurance Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },

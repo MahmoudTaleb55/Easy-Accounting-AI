@@ -17,6 +17,7 @@ import ChartOfAccounts from "@/pages/chart-of-accounts";
 import JournalEntries from "@/pages/journal-entries";
 import Insights from "@/pages/insights";
 import HR from "@/pages/hr";
+import FixedAssets from "@/pages/fixed-assets";
 import SettingsPage from "@/pages/settings";
 
 function Router() {
@@ -30,6 +31,7 @@ function Router() {
         <Route path="/journal" component={JournalEntries}/>
         <Route path="/insights" component={Insights}/>
         <Route path="/hr" component={HR}/>
+        <Route path="/fixed-assets" component={FixedAssets}/>
         <Route path="/settings" component={SettingsPage}/>
         <Route path="/ai-assistant" component={AiAssistant}/>
         <Route component={NotFound} />

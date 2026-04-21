@@ -271,6 +271,249 @@ export const payrollLines = pgTable("payroll_lines", {
 export type PayrollLine = typeof payrollLines.$inferSelect;
 
 // ============================================================================
+// Multi-company & FX (used by Fixed Assets module)
+// ============================================================================
+
+export const companies = pgTable("companies", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  functionalCurrency: text("functional_currency").notNull().default("USD"),
+  currencySymbol: text("currency_symbol").notNull().default("$"),
+  isDefault: boolean("is_default").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true });
+export type Company = typeof companies.$inferSelect;
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+
+export const fxRates = pgTable("fx_rates", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  fromCurrency: text("from_currency").notNull(),
+  toCurrency: text("to_currency").notNull(), // typically the company's functional currency
+  rateDate: text("rate_date").notNull(), // YYYY-MM-DD
+  rate: numeric("rate", { precision: 18, scale: 8 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertFxRateSchema = createInsertSchema(fxRates).omit({ id: true, createdAt: true }).extend({
+  rate: z.coerce.number().positive(),
+});
+export type FxRate = typeof fxRates.$inferSelect;
+export type InsertFxRate = z.infer<typeof insertFxRateSchema>;
+
+// ============================================================================
+// Fixed Assets (IAS 16 / IAS 36)
+// ============================================================================
+
+// Depreciation methods supported by the engine
+export const DEPRECIATION_METHODS = [
+  "straight_line",
+  "declining_balance",
+  "double_declining",
+  "syd",
+  "units_of_production",
+  "custom",
+] as const;
+export type DepreciationMethod = (typeof DEPRECIATION_METHODS)[number];
+
+export const MEASUREMENT_MODELS = ["cost", "revaluation"] as const;
+export type MeasurementModel = (typeof MEASUREMENT_MODELS)[number];
+
+export const assetCategories = pgTable("asset_categories", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  name: text("name").notNull(),
+  measurementModel: text("measurement_model").notNull().default("cost"),
+  defaultUsefulLifeMonths: integer("default_useful_life_months").notNull().default(60),
+  defaultMethod: text("default_method").notNull().default("straight_line"),
+  // GL account mappings (account ids)
+  assetCostAccountId: integer("asset_cost_account_id").notNull(),
+  accumulatedDepAccountId: integer("accumulated_dep_account_id").notNull(),
+  depExpenseAccountId: integer("dep_expense_account_id").notNull(),
+  accumulatedImpAccountId: integer("accumulated_imp_account_id").notNull(),
+  impLossAccountId: integer("imp_loss_account_id").notNull(),
+  revalSurplusAccountId: integer("reval_surplus_account_id").notNull(),
+  gainLossDisposalAccountId: integer("gain_loss_disposal_account_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertAssetCategorySchema = createInsertSchema(assetCategories).omit({ id: true, createdAt: true });
+export type AssetCategory = typeof assetCategories.$inferSelect;
+export type InsertAssetCategory = z.infer<typeof insertAssetCategorySchema>;
+
+export const fixedAssets = pgTable("fixed_assets", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  categoryId: integer("category_id").notNull(),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  acquisitionDate: text("acquisition_date").notNull(),
+  inServiceDate: text("in_service_date").notNull(),
+  // Original cost in transaction currency
+  currency: text("currency").notNull(),
+  txCost: numeric("tx_cost", { precision: 18, scale: 2 }).notNull(),
+  fxRate: numeric("fx_rate", { precision: 18, scale: 8 }).notNull().default("1"),
+  // Functional-currency cost (cost * fxRate)
+  cost: numeric("cost", { precision: 18, scale: 2 }).notNull(),
+  residual: numeric("residual", { precision: 18, scale: 2 }).notNull().default("0"),
+  usefulLifeMonths: integer("useful_life_months").notNull(),
+  method: text("method").notNull().default("straight_line"),
+  unitsTotal: numeric("units_total", { precision: 18, scale: 2 }), // for units_of_production
+  // For custom-schedule depreciation: JSON-encoded array of monthly amounts
+  // in chronological order from inServiceDate.
+  customSchedule: text("custom_schedule"),
+  measurementModel: text("measurement_model").notNull().default("cost"),
+  status: text("status").notNull().default("active"), // active|disposed|fully_depreciated
+  location: text("location").default(""),
+  custodian: text("custodian").default(""),
+  // Cached running balances (functional currency)
+  accumDepreciation: numeric("accum_depreciation", { precision: 18, scale: 2 }).notNull().default("0"),
+  accumImpairment: numeric("accum_impairment", { precision: 18, scale: 2 }).notNull().default("0"),
+  revalSurplus: numeric("reval_surplus", { precision: 18, scale: 2 }).notNull().default("0"),
+  // Hypothetical accumulated depreciation as if no impairment had ever occurred
+  // (IAS 36: cap on impairment reversal = carrying amount that would have existed
+  // had no impairment been recognised, net of depreciation).
+  accumDepNoImpairment: numeric("accum_dep_no_impairment", { precision: 18, scale: 2 }).notNull().default("0"),
+  // Cumulative revaluation losses charged to P&L (used by IAS 16 to reverse to
+  // P&L first on subsequent upward revaluations).
+  accumRevalLoss: numeric("accum_reval_loss", { precision: 18, scale: 2 }).notNull().default("0"),
+  // Last period the asset was depreciated for: YYYY-MM
+  lastDepreciatedPeriod: text("last_depreciated_period"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertFixedAssetSchema = createInsertSchema(fixedAssets)
+  .omit({ id: true, createdAt: true, accumDepreciation: true, accumImpairment: true, revalSurplus: true, accumDepNoImpairment: true, accumRevalLoss: true, lastDepreciatedPeriod: true, cost: true, customSchedule: true })
+  .extend({
+    txCost: z.coerce.number().positive(),
+    fxRate: z.coerce.number().positive().default(1),
+    residual: z.coerce.number().nonnegative().default(0),
+    usefulLifeMonths: z.coerce.number().int().positive(),
+    unitsTotal: z.coerce.number().positive().optional().nullable(),
+    method: z.enum(DEPRECIATION_METHODS),
+    measurementModel: z.enum(MEASUREMENT_MODELS).default("cost"),
+    customSchedule: z.array(z.coerce.number().nonnegative()).optional().nullable(),
+  });
+export type FixedAsset = typeof fixedAssets.$inferSelect;
+export type InsertFixedAsset = z.infer<typeof insertFixedAssetSchema>;
+
+export const assetComponents = pgTable("asset_components", {
+  id: serial("id").primaryKey(),
+  assetId: integer("asset_id").notNull(),
+  name: text("name").notNull(),
+  cost: numeric("cost", { precision: 18, scale: 2 }).notNull(),
+  residual: numeric("residual", { precision: 18, scale: 2 }).notNull().default("0"),
+  usefulLifeMonths: integer("useful_life_months").notNull(),
+  method: text("method").notNull().default("straight_line"),
+  unitsTotal: numeric("units_total", { precision: 18, scale: 2 }),
+  accumDepreciation: numeric("accum_depreciation", { precision: 18, scale: 2 }).notNull().default("0"),
+  accumImpairment: numeric("accum_impairment", { precision: 18, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertAssetComponentSchema = createInsertSchema(assetComponents)
+  .omit({ id: true, createdAt: true, accumDepreciation: true, accumImpairment: true })
+  .extend({
+    cost: z.coerce.number().positive(),
+    residual: z.coerce.number().nonnegative().default(0),
+    usefulLifeMonths: z.coerce.number().int().positive(),
+    unitsTotal: z.coerce.number().positive().optional().nullable(),
+    method: z.enum(DEPRECIATION_METHODS),
+  });
+export type AssetComponent = typeof assetComponents.$inferSelect;
+export type InsertAssetComponent = z.infer<typeof insertAssetComponentSchema>;
+
+export const depreciationSchedule = pgTable("depreciation_schedule", {
+  id: serial("id").primaryKey(),
+  assetId: integer("asset_id").notNull(),
+  componentId: integer("component_id"),
+  periodYear: integer("period_year").notNull(),
+  periodMonth: integer("period_month").notNull(),
+  plannedAmount: numeric("planned_amount", { precision: 18, scale: 2 }).notNull(),
+  status: text("status").notNull().default("planned"), // planned|posted
+  runId: integer("run_id"),
+});
+export type DepreciationScheduleRow = typeof depreciationSchedule.$inferSelect;
+
+export const depreciationRuns = pgTable("depreciation_runs", {
+  id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  status: text("status").notNull().default("draft"), // draft|posted
+  totalAmount: numeric("total_amount", { precision: 18, scale: 2 }).notNull().default("0"),
+  journalEntryId: integer("journal_entry_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  postedAt: timestamp("posted_at"),
+});
+export type DepreciationRun = typeof depreciationRuns.$inferSelect;
+
+export const depreciationPostings = pgTable("depreciation_postings", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull(),
+  assetId: integer("asset_id").notNull(),
+  componentId: integer("component_id"),
+  amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+});
+export type DepreciationPosting = typeof depreciationPostings.$inferSelect;
+
+// Recorded usage for units-of-production assets, per period.
+export const assetUsagePeriods = pgTable("asset_usage_periods", {
+  id: serial("id").primaryKey(),
+  assetId: integer("asset_id").notNull(),
+  componentId: integer("component_id"),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  units: numeric("units", { precision: 18, scale: 2 }).notNull(),
+});
+export const insertAssetUsageSchema = createInsertSchema(assetUsagePeriods).omit({ id: true }).extend({
+  units: z.coerce.number().nonnegative(),
+});
+export type AssetUsagePeriod = typeof assetUsagePeriods.$inferSelect;
+export type InsertAssetUsagePeriod = z.infer<typeof insertAssetUsageSchema>;
+
+export const impairmentEvents = pgTable("impairment_events", {
+  id: serial("id").primaryKey(),
+  assetId: integer("asset_id").notNull(),
+  componentId: integer("component_id"),
+  eventDate: text("event_date").notNull(),
+  recoverableAmount: numeric("recoverable_amount", { precision: 18, scale: 2 }).notNull(),
+  // positive = loss; negative = reversal
+  lossAmount: numeric("loss_amount", { precision: 18, scale: 2 }).notNull(),
+  journalEntryId: integer("journal_entry_id"),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type ImpairmentEvent = typeof impairmentEvents.$inferSelect;
+
+export const revaluationEvents = pgTable("revaluation_events", {
+  id: serial("id").primaryKey(),
+  assetId: integer("asset_id").notNull(),
+  componentId: integer("component_id"),
+  eventDate: text("event_date").notNull(),
+  fairValue: numeric("fair_value", { precision: 18, scale: 2 }).notNull(),
+  method: text("method").notNull().default("elimination"), // elimination|proportional
+  surplusDelta: numeric("surplus_delta", { precision: 18, scale: 2 }).notNull().default("0"), // change to OCI surplus
+  plImpact: numeric("pl_impact", { precision: 18, scale: 2 }).notNull().default("0"), // change recorded in P&L (negative for loss)
+  journalEntryId: integer("journal_entry_id"),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type RevaluationEvent = typeof revaluationEvents.$inferSelect;
+
+export const disposals = pgTable("disposals", {
+  id: serial("id").primaryKey(),
+  assetId: integer("asset_id").notNull(),
+  eventDate: text("event_date").notNull(),
+  proceeds: numeric("proceeds", { precision: 18, scale: 2 }).notNull().default("0"),
+  method: text("method").notNull().default("sale"), // sale|scrap|writeoff
+  gainLoss: numeric("gain_loss", { precision: 18, scale: 2 }).notNull().default("0"),
+  surplusTransferred: numeric("surplus_transferred", { precision: 18, scale: 2 }).notNull().default("0"),
+  journalEntryId: integer("journal_entry_id"),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type Disposal = typeof disposals.$inferSelect;
+
+// ============================================================================
 // Chat
 // ============================================================================
 

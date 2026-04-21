@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { accounts, journalEntries, journalLines, transactions } from "@shared/schema";
-import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode, PAYROLL_EXTRA_ACCOUNTS } from "@shared/coa-seed";
+import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode, PAYROLL_EXTRA_ACCOUNTS, FIXED_ASSETS_EXTRA_ACCOUNTS, FA_CATEGORY_DEFAULTS, FA_ACCUM_IMP_CODE, FA_DEP_EXPENSE_CODE, FA_IMP_LOSS_CODE, FA_REVAL_SURPLUS_CODE, FA_GAIN_LOSS_DISPOSAL_CODE } from "@shared/coa-seed";
+import { companies, assetCategories } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 
 export async function initChartOfAccounts(): Promise<void> {
@@ -15,7 +16,7 @@ export async function initChartOfAccounts(): Promise<void> {
   const fullExisting = await db.select().from(accounts);
   fullExisting.forEach((a) => codeToId.set(a.code, a.id));
 
-  const allSeed = [...DEFAULT_COA, ...PAYROLL_EXTRA_ACCOUNTS];
+  const allSeed = [...DEFAULT_COA, ...PAYROLL_EXTRA_ACCOUNTS, ...FIXED_ASSETS_EXTRA_ACCOUNTS];
   for (const seed of allSeed) {
     if (existingCodes.has(seed.code)) continue;
     const parentId = seed.parentCode ? codeToId.get(seed.parentCode) ?? null : null;
@@ -28,7 +29,7 @@ export async function initChartOfAccounts(): Promise<void> {
         type: seed.type,
         subtype: seed.subtype,
         parentId: parentId ?? undefined,
-        isHeader: seed.isHeader ?? false,
+        isHeader: ("isHeader" in seed ? seed.isHeader : false) ?? false,
       })
       .returning();
     codeToId.set(created.code, created.id);
@@ -95,7 +96,56 @@ export async function backfillJournalForLegacyTransactions(): Promise<void> {
   }
 }
 
+export async function ensureDefaultCompanyAndCategories(): Promise<void> {
+  const existingCompanies = await db.select().from(companies);
+  let companyId: number;
+  if (existingCompanies.length === 0) {
+    const [created] = await db
+      .insert(companies)
+      .values({ name: "Default Company", functionalCurrency: "USD", currencySymbol: "$", isDefault: true, isActive: true })
+      .returning();
+    companyId = created.id;
+  } else {
+    companyId = (existingCompanies.find((c) => c.isDefault) ?? existingCompanies[0]).id;
+  }
+
+  const existingCats = await db.select().from(assetCategories).where(eq(assetCategories.companyId, companyId));
+  if (existingCats.length > 0) return;
+
+  const allAccounts = await db.select().from(accounts);
+  const codeToId = new Map(allAccounts.map((a) => [a.code, a.id]));
+  const get = (code: string) => codeToId.get(code);
+
+  const depExpense = get(FA_DEP_EXPENSE_CODE);
+  const accumImp = get(FA_ACCUM_IMP_CODE);
+  const impLoss = get(FA_IMP_LOSS_CODE);
+  const revalSurplus = get(FA_REVAL_SURPLUS_CODE);
+  const gainLoss = get(FA_GAIN_LOSS_DISPOSAL_CODE);
+  if (!depExpense || !accumImp || !impLoss || !revalSurplus || !gainLoss) return;
+
+  for (const def of FA_CATEGORY_DEFAULTS) {
+    const cost = get(def.assetCostCode);
+    const accDep = get(def.accumDepCode);
+    if (!cost || !accDep) continue;
+    await db.insert(assetCategories).values({
+      companyId,
+      name: def.name,
+      measurementModel: "cost",
+      defaultUsefulLifeMonths: def.defaultUsefulLifeMonths,
+      defaultMethod: "straight_line",
+      assetCostAccountId: cost,
+      accumulatedDepAccountId: accDep,
+      depExpenseAccountId: depExpense,
+      accumulatedImpAccountId: accumImp,
+      impLossAccountId: impLoss,
+      revalSurplusAccountId: revalSurplus,
+      gainLossDisposalAccountId: gainLoss,
+    });
+  }
+}
+
 export async function ensureIfrsBootstrap(): Promise<void> {
   await initChartOfAccounts();
   await backfillJournalForLegacyTransactions();
+  await ensureDefaultCompanyAndCategories();
 }

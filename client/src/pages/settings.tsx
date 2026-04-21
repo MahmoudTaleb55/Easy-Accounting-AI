@@ -11,8 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings as SettingsIcon, Save, Globe } from "lucide-react";
+import { Settings as SettingsIcon, Save, Globe, Building2 } from "lucide-react";
 import type { OrgSettings } from "@/lib/format";
+import { CompaniesPanel, FxPanel } from "@/pages/fixed-assets";
+import { useCompany } from "@/contexts/company-context";
 
 interface LocalizationPack {
   code: string;
@@ -39,6 +41,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const { data: settings } = useQuery<OrgSettings>({ queryKey: ["/api/settings"] });
   const { data: packs } = useQuery<LocalizationPack[]>({ queryKey: ["/api/localization/packs"] });
+  const { activeCompany } = useCompany();
 
   const form = useForm<FormVals>({
     resolver: zodResolver(formSchema),
@@ -188,6 +191,28 @@ export default function SettingsPage() {
           </Button>
         </form>
       </Form>
+
+      <Card data-testid="card-settings-companies">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Building2 className="w-5 h-5" />الشركات (متعدد الكيانات)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CompaniesPanel />
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-settings-fx">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Globe className="w-5 h-5" />أسعار الصرف</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {activeCompany ? (
+            <FxPanel company={activeCompany} />
+          ) : (
+            <div className="text-sm text-muted-foreground">لا توجد شركة نشطة. أضف شركة أولاً ثم اخترها من شريط العلوي.</div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

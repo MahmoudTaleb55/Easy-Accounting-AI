@@ -10,6 +10,7 @@ import {
   BookText,
   Sparkles,
   Users,
+  Building2,
   Settings as SettingsIcon
 } from "lucide-react";
 import {
@@ -34,6 +35,7 @@ const items = [
   { title: "التقرير المالي", url: "/reports", icon: BarChart3 },
   { title: "مركز القرارات", url: "/insights", icon: Sparkles },
   { title: "الموارد البشرية", url: "/hr", icon: Users },
+  { title: "الأصول الثابتة", url: "/fixed-assets", icon: Building2 },
   { title: "المساعد الذكي", url: "/ai-assistant", icon: Bot },
   { title: "الإعدادات", url: "/settings", icon: SettingsIcon },
 ];
