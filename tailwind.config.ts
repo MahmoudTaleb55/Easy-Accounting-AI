@@ -74,6 +74,14 @@ export default {
           DEFAULT: "hsl(var(--expense) / <alpha-value>)",
           foreground: "hsl(var(--expense-foreground) / <alpha-value>)",
         },
+        loss: {
+          DEFAULT: "hsl(var(--loss) / <alpha-value>)",
+          foreground: "hsl(var(--loss-foreground) / <alpha-value>)",
+        },
+        gain: {
+          DEFAULT: "hsl(var(--gain) / <alpha-value>)",
+          foreground: "hsl(var(--gain-foreground) / <alpha-value>)",
+        },
         chart: {
           "1": "hsl(var(--chart-1) / <alpha-value>)",
           "2": "hsl(var(--chart-2) / <alpha-value>)",

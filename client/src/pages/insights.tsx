@@ -93,14 +93,16 @@ export default function InsightsPage() {
       </header>
 
       <Tabs defaultValue="cockpit" className="w-full">
-        <TabsList className="grid grid-cols-3 md:grid-cols-6 w-full h-auto">
-          <TabsTrigger value="cockpit" data-testid="tab-cockpit"><Activity className="w-4 h-4 ml-2" />القيادة</TabsTrigger>
-          <TabsTrigger value="alerts"  data-testid="tab-alerts"><AlertTriangle className="w-4 h-4 ml-2" />الإنذارات</TabsTrigger>
-          <TabsTrigger value="cash"    data-testid="tab-cash"><TrendingUp className="w-4 h-4 ml-2" />تنبؤ النقد</TabsTrigger>
-          <TabsTrigger value="sim"     data-testid="tab-sim"><Calculator className="w-4 h-4 ml-2" />المحاكي</TabsTrigger>
-          <TabsTrigger value="budget"  data-testid="tab-budget"><Target className="w-4 h-4 ml-2" />الميزانية</TabsTrigger>
-          <TabsTrigger value="coach"   data-testid="tab-coach"><Sparkles className="w-4 h-4 ml-2" />المستشار</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto no-scrollbar">
+          <TabsList className="ledger-tabs">
+            <TabsTrigger value="cockpit" data-testid="tab-cockpit"><Activity   className="w-3.5 h-3.5 ms-1.5" />القيادة</TabsTrigger>
+            <TabsTrigger value="alerts"  data-testid="tab-alerts"> <AlertTriangle className="w-3.5 h-3.5 ms-1.5" />الإنذارات</TabsTrigger>
+            <TabsTrigger value="cash"    data-testid="tab-cash">   <TrendingUp className="w-3.5 h-3.5 ms-1.5" />تنبؤ النقد</TabsTrigger>
+            <TabsTrigger value="sim"     data-testid="tab-sim">    <Calculator className="w-3.5 h-3.5 ms-1.5" />المحاكي</TabsTrigger>
+            <TabsTrigger value="budget"  data-testid="tab-budget"> <Target     className="w-3.5 h-3.5 ms-1.5" />الميزانية</TabsTrigger>
+            <TabsTrigger value="coach"   data-testid="tab-coach">  <Sparkles   className="w-3.5 h-3.5 ms-1.5" />المستشار</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="cockpit" className="mt-6"><CockpitTab /></TabsContent>
         <TabsContent value="alerts"  className="mt-6"><AlertsTab /></TabsContent>
@@ -243,9 +245,9 @@ function KpiCard({ label, value, sub, positive }: { label: string; value: string
   return (
     <Card data-testid={`card-kpi-${label}`}>
       <CardContent className="p-4">
-        <div className="text-xs text-muted-foreground mb-1">{label}</div>
-        <div className={`text-2xl font-bold ${positive === false ? "text-destructive" : ""}`}>{value}</div>
-        {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
+        <div className="eyebrow mb-2">{label}</div>
+        <div className={`font-display text-2xl font-semibold tabular-nums tracking-tight ${positive === false ? "text-loss" : "text-foreground"}`}>{value}</div>
+        {sub && <div className="text-xs text-muted-foreground mt-1.5">{sub}</div>}
       </CardContent>
     </Card>
   );

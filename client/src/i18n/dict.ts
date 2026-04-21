@@ -27,6 +27,12 @@ export const STRINGS = {
   // Top bar
   search_placeholder:  { ar: "ابحث أو نفّذ أمراً…", en: "Search or run a command…" },
   quick_create:        { ar: "إنشاء", en: "Create" },
+  start_first_tx:      { ar: "ابدأ بأول معاملة", en: "Start with your first transaction" },
+  start_first_tx_hint: { ar: "ستظهر مؤشراتك هنا فور تسجيل عملية واحدة.", en: "Metrics appear the moment you log one." },
+  language_label:      { ar: "اللغة", en: "Language" },
+  appearance_label:    { ar: "المظهر", en: "Appearance" },
+  light_mode:          { ar: "نهاري", en: "Light" },
+  dark_mode:           { ar: "ليلي",  en: "Dark" },
   quick_create_tx:     { ar: "معاملة جديدة", en: "New transaction" },
   quick_create_je:     { ar: "قيد يومية جديد", en: "New journal entry" },
   quick_create_account:{ ar: "حساب جديد", en: "New account" },
