@@ -15,6 +15,7 @@ import {
 } from "@shared/schema";
 import { authBizStorage, hashPassword, verifyPassword } from "./storage";
 import { authStorage } from "../replit_integrations/auth/storage";
+import { sendInvitationEmail, sendPasswordResetEmail } from "./email";
 import {
   requireAuth,
   loadMembership,
@@ -75,6 +76,55 @@ const inviteAcceptLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "Too many invitation attempts. Please try again later." },
 });
+
+/**
+ * Send an invitation email; if the transport is not configured or the
+ * send fails, log the link so an admin can recover it. Never throws.
+ */
+async function sendInvitationOrLog(
+  inv: { email: string; role: string; companyId: number; invitedByUserId: string },
+  link: string,
+): Promise<{ ok: boolean }> {
+  try {
+    const [company, inviter] = await Promise.all([
+      authBizStorage.getCompanyById(inv.companyId).catch(() => undefined),
+      authStorage.getUser(inv.invitedByUserId).catch(() => undefined),
+    ]);
+    const inviterName = inviter
+      ? [inviter.firstName, inviter.lastName].filter(Boolean).join(" ").trim() || inviter.email || null
+      : null;
+    const result = await sendInvitationEmail({
+      to: inv.email,
+      link,
+      role: inv.role,
+      companyName: company?.name ?? null,
+      inviterName,
+    });
+    if (!result.ok) {
+      // Never log the tokenized invitation link in production — it would
+      // let anyone with log access claim a workspace seat. Only emit
+      // generic metadata in production; full link only in dev.
+      if (process.env.NODE_ENV === "production") {
+        if (result.reason === "not_configured") {
+          console.error("[auth] invitation email not sent: transport not configured");
+        } else {
+          console.error(`[auth] invitation email send failed (${result.error ?? "unknown"})`);
+        }
+      } else {
+        if (result.reason === "not_configured") {
+          console.warn(`[auth] email transport not configured; invitation link for ${inv.email}: ${link}`);
+        } else {
+          console.error(`[auth] failed to send invitation to ${inv.email}: ${result.error}`);
+        }
+      }
+      return { ok: false };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error(`[auth] invitation email error for ${inv.email}:`, err);
+    return { ok: false };
+  }
+}
 
 function handleZod(err: unknown, res: Response): boolean {
   if (err instanceof z.ZodError) {
@@ -181,13 +231,37 @@ export function registerLocalAuthRoutes(app: Express) {
       const { email } = requestResetSchema.parse(req.body);
       const user = await authBizStorage.getUserByEmail(email);
       // Always return ok to prevent email enumeration.
+      const isProd = process.env.NODE_ENV === "production";
       if (user && user.provider === "local") {
         const { token } = await authBizStorage.createPasswordResetToken(user.id);
-        // No email transport configured. Surface the reset URL in dev so the user can copy it.
         const link = `${req.protocol}://${req.get("host")}/reset-password/${token}`;
-        if (process.env.NODE_ENV !== "production") {
-          console.log(`[auth] password reset link for ${email}: ${link}`);
-          return res.json({ ok: true, devResetLink: link });
+
+        // Try to send a real branded email when a transport is configured.
+        const result = await sendPasswordResetEmail({
+          to: user.email!,
+          link,
+          firstName: user.firstName ?? null,
+        });
+
+        if (!result.ok) {
+          // Never log the tokenized link in production — it grants account
+          // takeover to anyone with log access. Only emit generic metadata.
+          if (isProd) {
+            if (result.reason === "not_configured") {
+              console.error("[auth] password reset email not sent: transport not configured");
+            } else {
+              console.error(`[auth] password reset email send failed (${result.error ?? "unknown"})`);
+            }
+          } else {
+            if (result.reason === "not_configured") {
+              console.warn(
+                `[auth] email transport not configured; password reset link for ${email}: ${link}`,
+              );
+            } else {
+              console.error(`[auth] failed to send password reset email to ${email}: ${result.error}`);
+            }
+            return res.json({ ok: true, devResetLink: link });
+          }
         }
       }
       res.json({ ok: true });
@@ -373,10 +447,8 @@ export function registerLocalAuthRoutes(app: Express) {
         role: input.role as Role,
       });
       const link = `${req.protocol}://${req.get("host")}/accept-invitation/${inv.token}`;
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`[auth] invitation link for ${input.email}: ${link}`);
-      }
-      res.status(201).json({ invitation: inv, link });
+      const emailResult = await sendInvitationOrLog(inv, link);
+      res.status(201).json({ invitation: inv, link, emailSent: emailResult.ok });
     } catch (err) {
       if (handleZod(err, res)) return;
       next(err);
@@ -386,10 +458,8 @@ export function registerLocalAuthRoutes(app: Express) {
   app.post("/api/auth/invitations/:id/resend", requireAuth, requireRole("admin"), async (req, res) => {
     const inv = await authBizStorage.resendInvitation(String(req.params.id));
     const link = `${req.protocol}://${req.get("host")}/accept-invitation/${inv.token}`;
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`[auth] invitation resent for ${inv.email}: ${link}`);
-    }
-    res.json({ invitation: inv, link });
+    const emailResult = await sendInvitationOrLog(inv, link);
+    res.json({ invitation: inv, link, emailSent: emailResult.ok });
   });
 
   app.delete("/api/auth/invitations/:id", requireAuth, requireRole("admin"), async (req, res) => {

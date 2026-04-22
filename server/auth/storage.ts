@@ -240,6 +240,11 @@ export const authBizStorage = {
   },
 
   // ---------- companies (workspace bootstrap) ----------
+  async getCompanyById(id: number): Promise<typeof companies.$inferSelect | undefined> {
+    const [c] = await db.select().from(companies).where(eq(companies.id, id));
+    return c;
+  },
+
   async createCompanyForOwner(ownerUserId: string, name: string): Promise<typeof companies.$inferSelect> {
     const [c] = await db
       .insert(companies)
