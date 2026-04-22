@@ -15,6 +15,8 @@ function userCtx(_req: Request): AuditContext {
 import { api } from "@shared/routes";
 import { z } from "zod";
 import OpenAI from "openai";
+import { ASSISTANT_TOOLS, executeTool, type ToolArtifact } from "./services/assistant-tools";
+import { readFile as readGeneratedFile } from "./services/assistant-files";
 import { db } from "./db";
 import { assetComponents, type AssetComponent } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -746,39 +748,52 @@ export async function registerRoutes(
   app.post(api.chat.message.path, async (req, res) => {
     try {
       const input = api.chat.message.input.parse(req.body);
+      const companyId = cid(req);
 
-      // Save user message (mark if image attached)
+      // Save user message
       const userContentForDb = input.imageData
         ? (input.content?.trim() || "📎 تم إرفاق فاتورة / إيصال")
         : input.content;
+      await storage.createChatMessage({ companyId, role: "user", content: userContentForDb });
 
-      await storage.createChatMessage({
-        companyId: cid(req),
-        role: "user",
-        content: userContentForDb,
-      });
+      // Resolve workspace currency for tool execution + system prompt
+      let currency = "USD";
+      try {
+        const settings = await (storage as any).getSettings?.(companyId);
+        if (settings?.currencyCode) currency = settings.currencyCode;
+      } catch { /* settings optional */ }
 
-      const systemPrompt = `أنت مساعد محاسبي ذكي ذو شخصية ودودة تتحدث العربية الفصحى البسيطة. مهمتك مساعدة الأشخاص غير المحاسبين على تسجيل وفهم معاملاتهم المالية.
+      const systemPrompt = `أنت مساعد محاسبي خبير لمنصة "محاسب" — يتحدث العربية الفصحى البسيطة ويفهم الإنجليزية.
+مهمتك: تنفيذ العمليات المالية والمحاسبية الكاملة للمستخدم، وليس فقط الإجابة على الأسئلة.
 
-إذا أخبرك المستخدم عن مصروف أو إيراد، أو أرسل لك صورة فاتورة / إيصال:
-1. استخرج: المبلغ الإجمالي، نوع المعاملة (مصروف/إيراد)، وصف مختصر مفيد، وفئة مناسبة (طعام، مواصلات، فواتير، تسوق، صحة، ترفيه، رواتب، مبيعات، ...).
-2. أجب برسالة قصيرة ودافئة مؤكداً تسجيل المعاملة (مثلاً: "تم تسجيل مصروف 120 ر.س على البقالة ✅").
-3. ثم أرفق في نهاية الرسالة كتلة JSON بالشكل التالي تماماً:
-\`\`\`json
-{
-  "action": "add_transaction",
-  "type": "expense" | "income",
-  "amount": <number>,
-  "description": "<string قصير>",
-  "category": "<string>"
-}
-\`\`\`
+عندك أدوات حقيقية:
+• add_quick_transaction — لتسجيل مصروف أو إيراد بسيط من جملة واحدة.
+• create_journal_entry — لقيد مزدوج كامل (يتطلب accountId من list_accounts).
+• list_accounts — لجلب دليل الحسابات قبل أي قيد محاسبي.
+• get_financial_summary — لمعرفة الرصيد والإيرادات/المصروفات.
+• generate_report — لتوليد تقرير قابل للتنزيل (Excel أو PDF) من: ميزان المراجعة، قائمة الدخل، الميزانية.
 
-إذا كانت الصورة فاتورة فيها عدة بنود، استخدم المجموع النهائي وضع الوصف باسم المتجر إن وُجد.
-إذا لم تستطع استخراج المعاملة (الصورة غير واضحة أو الرسالة مجرد سؤال)، أجب بشكل مساعد دون كتلة JSON.
-لا تستخدم كتلة JSON إلا عندما تريد إضافة معاملة فعلية.`;
+قواعد التنفيذ:
+1. عندما يصف المستخدم معاملة بسيطة ("صرفت ١٥٠ على البقالة") → استخدم add_quick_transaction مباشرة.
+2. عندما يطلب قيداً محاسبياً صريحاً (مدين/دائن لحسابات محددة) → استدعِ list_accounts أولاً ثم create_journal_entry.
+3. عندما يطلب تقريراً ("اطبع لي ميزان مراجعة Excel") → استدعِ generate_report فوراً.
+4. لا تَعِد بفعل شيء — نَفِّذه. لا تكتب JSON يدوياً، استخدم الأدوات.
+5. بعد أي أداة، أكِّد ما حدث برسالة قصيرة (سطر واحد) باللهجة المناسبة، وعند توليد ملف اذكر اسمه فقط — الواجهة تعرض زر التنزيل تلقائياً.
+6. العملة الحالية لمساحة العمل: ${currency}. استخدمها في كل ردودك.
+7. إذا كانت الصورة فاتورة → استخرج المبلغ والمورّد ثم استدعِ add_quick_transaction.`;
 
-      // Build user message - either text or multimodal (text + image)
+      // Build initial messages — include short history for continuity
+      const history = await storage.getChatMessages(companyId);
+      const recent = history.slice(-10);
+      const messages: any[] = [{ role: "system", content: systemPrompt }];
+      for (const m of recent) {
+        if (m.role === "user" || m.role === "assistant") {
+          // strip our embedded artifact marker from prior assistant messages
+          const c = String(m.content || "").replace(/<<ARTIFACTS>>[\s\S]*?<<END>>/g, "").trim();
+          if (c) messages.push({ role: m.role, content: c });
+        }
+      }
+
       let userMessage: any;
       if (input.imageData) {
         const textPart = input.content?.trim() || "هذه صورة فاتورة، استخرج منها تفاصيل المعاملة وسجلها.";
@@ -792,55 +807,54 @@ export async function registerRoutes(
       } else {
         userMessage = { role: "user", content: input.content };
       }
+      messages.push(userMessage);
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-5.2",
-        messages: [
-          { role: "system", content: systemPrompt },
-          userMessage,
-        ],
-      });
+      // Function-calling loop — up to 6 iterations (tool → result → tool → …)
+      const artifacts: ToolArtifact[] = [];
+      let finalText = "";
+      const MAX_ITERS = 6;
 
-      const aiContent = response.choices[0]?.message?.content || "عذراً، لم أتمكن من معالجة طلبك.";
+      for (let iter = 0; iter < MAX_ITERS; iter++) {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-5.2",
+          messages,
+          tools: ASSISTANT_TOOLS as any,
+        });
+        const choice = completion.choices[0]?.message;
+        if (!choice) break;
+        messages.push(choice as any);
 
-      // Validate AI action JSON with strict Zod schema before creating transaction
-      const aiActionSchema = z.object({
-        action: z.literal("add_transaction"),
-        type: z.enum(["income", "expense"]),
-        amount: z
-          .union([z.number(), z.string()])
-          .transform((v) => Number(v))
-          .refine((n) => Number.isFinite(n) && n > 0, "amount must be positive"),
-        description: z.string().min(1).max(200).default("معاملة"),
-        category: z.string().min(1).max(50).default("أخرى"),
-      });
-
-      const jsonMatch = aiContent.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        try {
-          const raw = JSON.parse(jsonMatch[1]);
-          const parsed = aiActionSchema.safeParse(raw);
-          if (parsed.success) {
-            await storage.createTransaction(cid(req), {
-              type: parsed.data.type,
-              amount: parsed.data.amount,
-              description: parsed.data.description,
-              category: parsed.data.category,
-            }, { source: "ai", actor: "AI assistant" });
-          } else {
-            console.warn("AI action JSON failed validation:", parsed.error.format());
-          }
-        } catch (e) {
-          console.error("Failed to parse AI action JSON", e);
+        const toolCalls = choice.tool_calls || [];
+        if (toolCalls.length === 0) {
+          finalText = (choice.content || "").trim();
+          break;
         }
+
+        // Execute every tool call (parallel)
+        const results = await Promise.all(toolCalls.map(async (tc: any) => {
+          let parsed: any = {};
+          try { parsed = tc.function?.arguments ? JSON.parse(tc.function.arguments) : {}; } catch {}
+          const result = await executeTool(tc.function.name, parsed, { companyId, currency });
+          if (result.artifact) artifacts.push(result.artifact);
+          return {
+            role: "tool" as const,
+            tool_call_id: tc.id,
+            content: JSON.stringify(result.modelResult),
+          };
+        }));
+        messages.push(...results);
       }
 
-      // Save assistant message (strip the JSON block from displayed content)
-      const cleanContent = aiContent.replace(/```json\s*[\s\S]*?\s*```/g, "").trim();
+      if (!finalText) finalText = artifacts.length ? "تم ✅" : "تمام.";
+
+      const serialized = artifacts.length
+        ? `${finalText}\n\n<<ARTIFACTS>>${JSON.stringify(artifacts)}<<END>>`
+        : finalText;
+
       const assistantMessage = await storage.createChatMessage({
-        companyId: cid(req),
+        companyId,
         role: "assistant",
-        content: cleanContent || "تم! ✅",
+        content: serialized,
       });
 
       res.json(assistantMessage);
@@ -864,6 +878,21 @@ export async function registerRoutes(
         return res.status(500).json({ message: "حدث خطأ في معالجة الطلب" });
       }
     }
+  });
+
+  // ============================================================================
+  // Generated file downloads (assistant artifacts — Excel/PDF reports)
+  // ============================================================================
+  app.get("/api/files/:fileId/download", (req, res) => {
+    const file = readGeneratedFile(req.params.fileId, cid(req));
+    if (!file) return res.status(404).json({ message: "File not found or expired" });
+    res.setHeader("Content-Type", file.mime);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(file.filename)}"`
+    );
+    res.setHeader("Content-Length", String(file.buffer.length));
+    res.end(file.buffer);
   });
 
   // ============================================================================

@@ -13,6 +13,11 @@ import {
   X,
   Receipt,
   ArrowUp,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  CheckCircle2,
+  BookOpen,
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
 import { cn } from "@/lib/utils"
@@ -187,17 +192,29 @@ export default function AiAssistant() {
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              messages?.map((msg) => (
-                <Bubble
-                  key={msg.id}
-                  role={msg.role as "user" | "assistant"}
-                  data-testid={`message-${msg.role}-${msg.id}`}
-                >
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {msg.content}
-                  </p>
-                </Bubble>
-              ))
+              messages?.map((msg) => {
+                const { text, artifacts } = parseAssistantContent(msg.content)
+                return (
+                  <Bubble
+                    key={msg.id}
+                    role={msg.role as "user" | "assistant"}
+                    data-testid={`message-${msg.role}-${msg.id}`}
+                  >
+                    {text && (
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {text}
+                      </p>
+                    )}
+                    {artifacts.length > 0 && (
+                      <div className={cn("space-y-2", text && "mt-3")}>
+                        {artifacts.map((a, i) => (
+                          <ArtifactCard key={i} artifact={a} locale={locale} />
+                        ))}
+                      </div>
+                    )}
+                  </Bubble>
+                )
+              })
             )}
 
             {sendMessage.isPending && (
@@ -316,6 +333,128 @@ export default function AiAssistant() {
           </p>
         </div>
       </Card>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Artifact parsing + rendering                                         */
+/* ------------------------------------------------------------------ */
+
+type Artifact =
+  | { kind: "transaction"; type: "income" | "expense"; amount: number; description: string; category: string }
+  | { kind: "journal_entry"; id: number; description: string; totalDebit: number; totalCredit: number; lines: number }
+  | { kind: "file"; fileId: string; filename: string; mime: string; sizeKB: number; report: string; format: string }
+
+function parseAssistantContent(content: string): { text: string; artifacts: Artifact[] } {
+  if (!content) return { text: "", artifacts: [] }
+  const m = content.match(/<<ARTIFACTS>>([\s\S]*?)<<END>>/)
+  if (!m) return { text: content.trim(), artifacts: [] }
+  let artifacts: Artifact[] = []
+  try {
+    const parsed = JSON.parse(m[1])
+    if (Array.isArray(parsed)) artifacts = parsed as Artifact[]
+  } catch {
+    /* ignore malformed */
+  }
+  const text = content.replace(/<<ARTIFACTS>>[\s\S]*?<<END>>/, "").trim()
+  return { text, artifacts }
+}
+
+function ArtifactCard({ artifact, locale }: { artifact: Artifact; locale: string }) {
+  const isAr = locale === "ar"
+  if (artifact.kind === "file") {
+    const isExcel = artifact.format === "excel"
+    const Icon = isExcel ? FileSpreadsheet : FileText
+    const reportLabel =
+      artifact.report === "trial_balance"
+        ? isAr ? "ميزان المراجعة" : "Trial Balance"
+        : artifact.report === "profit_loss"
+        ? isAr ? "قائمة الدخل" : "Profit & Loss"
+        : isAr ? "قائمة المركز المالي" : "Balance Sheet"
+    return (
+      <a
+        href={`/api/files/${artifact.fileId}/download`}
+        download={artifact.filename}
+        data-testid={`link-download-${artifact.fileId}`}
+        className="flex items-center gap-3 rounded-md border border-border bg-background hover:border-primary/40 hover:bg-primary/[0.03] transition-colors p-3 group"
+      >
+        <div
+          className={cn(
+            "shrink-0 grid place-items-center w-10 h-10 rounded-md",
+            isExcel
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+          )}
+        >
+          <Icon className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-medium text-foreground truncate">{reportLabel}</div>
+          <div className="text-[11px] text-muted-foreground truncate">
+            {artifact.filename} · {artifact.sizeKB} KB · {isExcel ? "Excel" : "PDF"}
+          </div>
+        </div>
+        <Download className="w-4 h-4 text-muted-foreground group-hover:text-foreground shrink-0" />
+      </a>
+    )
+  }
+
+  if (artifact.kind === "transaction") {
+    const isIncome = artifact.type === "income"
+    return (
+      <div
+        data-testid={`card-tx-${artifact.description}`}
+        className="flex items-center gap-3 rounded-md border border-border bg-background p-3"
+      >
+        <div
+          className={cn(
+            "shrink-0 grid place-items-center w-10 h-10 rounded-md",
+            isIncome
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+          )}
+        >
+          <CheckCircle2 className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-medium text-foreground truncate">
+            {artifact.description}
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            {artifact.category} · {isAr ? (isIncome ? "إيراد" : "مصروف") : (isIncome ? "Income" : "Expense")}
+          </div>
+        </div>
+        <div
+          className={cn(
+            "text-[14px] font-semibold tabular-nums shrink-0",
+            isIncome ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+          )}
+        >
+          {isIncome ? "+" : "−"}
+          {artifact.amount.toLocaleString()}
+        </div>
+      </div>
+    )
+  }
+
+  // journal_entry
+  return (
+    <div
+      data-testid={`card-je-${artifact.id}`}
+      className="flex items-center gap-3 rounded-md border border-border bg-background p-3"
+    >
+      <div className="shrink-0 grid place-items-center w-10 h-10 rounded-md bg-primary/10 text-primary">
+        <BookOpen className="w-5 h-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-medium text-foreground truncate">
+          {isAr ? `قيد #${artifact.id}` : `Journal Entry #${artifact.id}`} — {artifact.description}
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          {artifact.lines} {isAr ? "سطر" : "lines"} · {isAr ? "مدين" : "Dr"} {artifact.totalDebit.toLocaleString()} = {isAr ? "دائن" : "Cr"} {artifact.totalCredit.toLocaleString()}
+        </div>
+      </div>
     </div>
   )
 }
