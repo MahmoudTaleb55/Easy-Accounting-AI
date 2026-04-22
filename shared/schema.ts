@@ -1,4 +1,5 @@
-import { pgTable, text, serial, numeric, timestamp, integer, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, numeric, timestamp, integer, boolean, index, jsonb } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -575,3 +576,30 @@ export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ i
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+
+// ============================================================================
+// Audit Log — tracks who changed what across major entities
+// ============================================================================
+
+// entityType: transaction|journal_entry|account|fixed_asset|employee|attendance|leave
+// action: create|update|delete|post
+// source: user|ai|integration|system
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: serial("id").primaryKey(),
+    entityType: text("entity_type").notNull(),
+    entityId: integer("entity_id").notNull(),
+    action: text("action").notNull(),
+    actor: text("actor"),
+    source: text("source").notNull().default("user"),
+    changes: jsonb("changes").notNull().default(sql`'[]'::jsonb`),
+    occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    entityIdx: index("audit_log_entity_idx").on(t.entityType, t.entityId),
+  }),
+);
+
+export type AuditChange = { field: string; from?: unknown; to?: unknown };
+export type AuditLogEntry = typeof auditLog.$inferSelect;

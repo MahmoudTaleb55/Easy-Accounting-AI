@@ -1,6 +1,17 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage } from "./storage";
+import { storage, isAuditEntityType, type AuditContext } from "./storage";
+import type { Request } from "express";
+
+// Build an AuditContext for user-initiated mutations. Until authentication is
+// wired up, we intentionally do not derive `actor` from any client-controlled
+// input (e.g. request headers/body) — that would let any caller spoof who
+// performed an action and undermine the audit log. The drawer falls back to
+// "Actor unavailable" when actor is null. When auth lands, populate `actor`
+// from the verified session/JWT principal here.
+function userCtx(_req: Request): AuditContext {
+  return { source: "user", actor: null };
+}
 import { api } from "@shared/routes";
 import { z } from "zod";
 import OpenAI from "openai";
@@ -28,7 +39,7 @@ export async function registerRoutes(
   app.post(api.transactions.create.path, async (req, res) => {
     try {
       const input = api.transactions.create.input.parse(req.body);
-      const transaction = await storage.createTransaction(input);
+      const transaction = await storage.createTransaction(input, userCtx(req));
       res.status(201).json(transaction);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -46,7 +57,7 @@ export async function registerRoutes(
     if (isNaN(id)) {
       return res.status(400).json({ message: "Invalid ID" });
     }
-    await storage.deleteTransaction(id);
+    await storage.deleteTransaction(id, userCtx(req));
     res.status(204).send();
   });
 
@@ -167,7 +178,7 @@ export async function registerRoutes(
   app.post(api.accounts.create.path, async (req, res) => {
     try {
       const input = api.accounts.create.input.parse(req.body);
-      const created = await storage.createAccount(input);
+      const created = await storage.createAccount(input, userCtx(req));
       res.status(201).json(created);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -189,7 +200,7 @@ export async function registerRoutes(
   app.post(api.journal.create.path, async (req, res) => {
     try {
       const input = api.journal.create.input.parse(req.body);
-      const created = await storage.createJournalEntry(input);
+      const created = await storage.createJournalEntry(input, userCtx(req));
       res.status(201).json(created);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -206,8 +217,22 @@ export async function registerRoutes(
   app.delete(api.journal.delete.path, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    await storage.deleteJournalEntry(id);
+    await storage.deleteJournalEntry(id, userCtx(req));
     res.status(204).send();
+  });
+
+  // ----- Audit log -----
+  app.get(api.audit.list.path, async (req, res) => {
+    const entityType = String(req.params.entityType || "");
+    const id = Number(req.params.id);
+    if (!isAuditEntityType(entityType)) {
+      return res.status(400).json({ message: "Unsupported entity type" });
+    }
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: "Invalid id" });
+    }
+    const events = await storage.getAuditLog(entityType, id);
+    res.json(events);
   });
 
   // ----- Reports: Trial Balance -----
@@ -358,7 +383,7 @@ export async function registerRoutes(
   app.post("/api/hr/employees", async (req, res) => {
     try {
       const input = insertEmployeeSchema.parse(req.body);
-      res.status(201).json(await storage.createEmployee(input));
+      res.status(201).json(await storage.createEmployee(input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر حفظ الموظف" });
@@ -367,7 +392,7 @@ export async function registerRoutes(
   app.patch("/api/hr/employees/:id", async (req, res) => {
     try {
       const input = insertEmployeeSchema.partial().parse(req.body);
-      res.json(await storage.updateEmployee(Number(req.params.id), input));
+      res.json(await storage.updateEmployee(Number(req.params.id), input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر التحديث" });
@@ -386,7 +411,7 @@ export async function registerRoutes(
           message: "لا يمكن حذف الموظف لأنه مرتبط بكشوف رواتب سابقة. يمكنك تعطيله بدلاً من ذلك.",
         });
       }
-      await storage.deleteEmployee(id);
+      await storage.deleteEmployee(id, userCtx(req));
       res.status(204).send();
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "تعذر الحذف" });
@@ -401,7 +426,7 @@ export async function registerRoutes(
   app.post("/api/hr/attendance", async (req, res) => {
     try {
       const input = insertAttendanceSchema.parse(req.body);
-      res.status(201).json(await storage.upsertAttendance(input));
+      res.status(201).json(await storage.upsertAttendance(input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر حفظ الحضور" });
@@ -415,14 +440,14 @@ export async function registerRoutes(
   app.post("/api/hr/leaves", async (req, res) => {
     try {
       const input = insertLeaveSchema.parse(req.body);
-      res.status(201).json(await storage.createLeave(input));
+      res.status(201).json(await storage.createLeave(input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر حفظ الإجازة" });
     }
   });
   app.delete("/api/hr/leaves/:id", async (req, res) => {
-    await storage.deleteLeave(Number(req.params.id));
+    await storage.deleteLeave(Number(req.params.id), userCtx(req));
     res.status(204).send();
   });
 
@@ -710,7 +735,7 @@ export async function registerRoutes(
               amount: parsed.data.amount,
               description: parsed.data.description,
               category: parsed.data.category,
-            });
+            }, { source: "ai", actor: "AI assistant" });
           } else {
             console.warn("AI action JSON failed validation:", parsed.error.format());
           }
@@ -917,7 +942,7 @@ async function registerFixedAssetRoutes(app: Express) {
         ...rest,
         cost,
         customSchedule: customSchedule ? JSON.stringify(customSchedule) : null,
-      });
+      }, userCtx(req));
 
       for (const comp of components || []) {
         await storage.createAssetComponent({ ...comp, assetId: created.id });
@@ -938,7 +963,7 @@ async function registerFixedAssetRoutes(app: Express) {
   });
 
   app.delete("/api/fixed-assets/:id", async (req, res) => {
-    await storage.deleteFixedAsset(Number(req.params.id));
+    await storage.deleteFixedAsset(Number(req.params.id), userCtx(req));
     res.status(204).send();
   });
 
@@ -1096,7 +1121,7 @@ async function registerFixedAssetRoutes(app: Express) {
         entryDate: new Date(`${periodStr}-28`),
         source: "manual",
         lines: built.lines,
-      });
+      }, userCtx(req));
 
       const run = await storage.createDepreciationRun({ companyId: body.companyId, year: body.year, month: body.month, postings });
       const posted = await storage.markRunPosted(run.id, je.id);
@@ -1126,7 +1151,7 @@ async function registerFixedAssetRoutes(app: Express) {
           accumDepreciation: Number(a.accumDepreciation) + d.accumDep,
           accumDepNoImpairment: Number(a.accumDepNoImpairment) + d.noImp,
           lastDepreciatedPeriod: periodStr,
-        });
+        }, userCtx(req));
       }
       res.status(201).json({ ...posted, journalEntryId: je.id });
     } catch (err: any) {
@@ -1179,7 +1204,7 @@ async function registerFixedAssetRoutes(app: Express) {
         entryDate: new Date(body.eventDate),
         source: "manual",
         lines: built.lines,
-      });
+      }, userCtx(req));
       const event = await storage.createImpairmentEvent({
         assetId: id,
         eventDate: body.eventDate,
@@ -1190,7 +1215,7 @@ async function registerFixedAssetRoutes(app: Express) {
       });
       const signedDelta = isReversal ? -amount : amount;
       const newAccumImp = Number(asset.accumImpairment) + signedDelta;
-      await storage.updateFixedAssetBalances(id, { accumImpairment: newAccumImp });
+      await storage.updateFixedAssetBalances(id, { accumImpairment: newAccumImp }, userCtx(req));
 
       // Propagate impairment to components proportionally to current carrying
       // amount, so that future component-level depreciation reflects the
@@ -1270,7 +1295,7 @@ async function registerFixedAssetRoutes(app: Express) {
         entryDate: new Date(body.eventDate),
         source: "manual",
         lines: built.lines,
-      });
+      }, userCtx(req));
       const event = await storage.createRevaluationEvent({
         assetId: id,
         eventDate: body.eventDate,
@@ -1294,7 +1319,7 @@ async function registerFixedAssetRoutes(app: Express) {
         accumImpairment: result.newAccumImp,
         revalSurplus: Number(asset.revalSurplus) + result.surplusDelta,
         accumRevalLoss: newAccumRevalLoss,
-      });
+      }, userCtx(req));
       res.status(201).json({ event, journalEntryId: je.id, preview });
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -1333,7 +1358,7 @@ async function registerFixedAssetRoutes(app: Express) {
         entryDate: new Date(body.eventDate),
         source: "manual",
         lines: built.lines,
-      });
+      }, userCtx(req));
       const event = await storage.createDisposal({
         assetId: id,
         eventDate: body.eventDate,
@@ -1347,7 +1372,7 @@ async function registerFixedAssetRoutes(app: Express) {
       await storage.updateFixedAssetBalances(id, {
         status: "disposed",
         revalSurplus: Number(asset.revalSurplus) - result.surplusTransferred,
-      });
+      }, userCtx(req));
       res.status(201).json({ event, journalEntryId: je.id, preview });
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });

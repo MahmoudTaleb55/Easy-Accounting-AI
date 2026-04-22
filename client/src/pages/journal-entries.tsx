@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2, Scale, History } from "lucide-react"
-import { HistoryDrawer, type HistoryEvent, type HistorySource } from "@/components/audit/history-drawer"
+import { HistoryDrawer } from "@/components/audit/history-drawer"
 import { EmptyState } from "@/components/feedback/empty-state"
 import { ErrorState } from "@/components/feedback/error-state"
 import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
@@ -475,39 +475,8 @@ export default function JournalEntriesPage() {
         onOpenChange={(o) => { if (!o) setHistoryEntry(null) }}
         title={historyEntry?.description || ""}
         reference={historyEntry?.reference}
-        partialAudit
-        events={
-          historyEntry
-            ? [
-                {
-                  id: `${historyEntry.id}-posted`,
-                  at: historyEntry.createdAt || historyEntry.entryDate,
-                  source: (historyEntry.source === "ai"
-                    ? "ai"
-                    : historyEntry.source === "transaction"
-                    ? "system"
-                    : "user") as HistorySource,
-                  action:
-                    historyEntry.source === "transaction"
-                      ? (locale === "ar" ? "تم الترحيل تلقائياً من معاملة" : "Auto-posted from a transaction")
-                      : historyEntry.source === "ai"
-                      ? (locale === "ar" ? "تم الإنشاء عبر المساعد الذكي" : "Created by the AI assistant")
-                      : (locale === "ar" ? "تم تسجيل القيد يدوياً" : "Entry posted manually"),
-                  changes: historyEntry.lines.map((l) => ({
-                    field: `${l.account?.code || ""} ${l.account?.nameAr || ""}`.trim(),
-                    to:
-                      Number(l.debit) > 0
-                        ? `${locale === "ar" ? "مدين" : "Dr"} ${fmt(Number(l.debit))}`
-                        : `${locale === "ar" ? "دائن" : "Cr"} ${fmt(Number(l.credit))}`,
-                  })),
-                  note:
-                    locale === "ar"
-                      ? "كل قيد محفوظ بمرجع فريد ولا يمكن تعديله بعد الترحيل."
-                      : "Every entry is stored with a unique reference and is immutable after posting.",
-                } as HistoryEvent,
-              ]
-            : []
-        }
+        entityType="journal_entry"
+        entityId={historyEntry?.id}
       />
     </div>
   )

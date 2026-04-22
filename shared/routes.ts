@@ -179,6 +179,15 @@ export const api = {
       },
     },
   },
+  audit: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/audit/:entityType/:id' as const,
+      responses: {
+        200: z.array(z.any()),
+      },
+    },
+  },
   chat: {
     list: {
       method: 'GET' as const,

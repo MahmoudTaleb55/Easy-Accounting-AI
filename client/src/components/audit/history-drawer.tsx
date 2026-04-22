@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Clock, User, Bot, Cog, History } from "lucide-react";
@@ -8,6 +9,16 @@ import { ar, enUS } from "date-fns/locale";
 
 export type HistorySource = "user" | "ai" | "integration" | "system";
 type SheetSide = "top" | "bottom" | "left" | "right";
+type HistoryAction = "create" | "update" | "delete" | "post";
+
+export type HistoryEntityType =
+  | "transaction"
+  | "journal_entry"
+  | "account"
+  | "fixed_asset"
+  | "employee"
+  | "attendance"
+  | "leave";
 
 export interface HistoryEvent {
   id: string | number;
@@ -15,8 +26,19 @@ export interface HistoryEvent {
   source: HistorySource;
   actor?: string;
   action: string;
-  changes?: Array<{ field: string; from?: string | number | null; to?: string | number | null }>;
+  changes?: Array<{ field: string; from?: unknown; to?: unknown }>;
   note?: string;
+}
+
+interface AuditRow {
+  id: number;
+  entityType: string;
+  entityId: number;
+  action: HistoryAction | string;
+  actor: string | null;
+  source: HistorySource | string;
+  changes: Array<{ field: string; from?: unknown; to?: unknown }> | null;
+  occurredAt: string;
 }
 
 interface HistoryDrawerProps {
@@ -24,15 +46,8 @@ interface HistoryDrawerProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   reference?: string;
-  events: HistoryEvent[];
-  loading?: boolean;
-  /**
-   * When true, an explicit notice is shown after the event list explaining
-   * that ongoing edit/delete history is not yet recorded for this entity.
-   * Use this when the only event in `events` is the original creation
-   * snapshot and a dedicated audit log table is not yet wired.
-   */
-  partialAudit?: boolean;
+  entityType?: HistoryEntityType;
+  entityId?: number;
 }
 
 const SOURCE_META: Record<
@@ -45,29 +60,80 @@ const SOURCE_META: Record<
   system:      { icon: Cog,  ar: "النظام", en: "System", tone: "text-muted-foreground" },
 };
 
+function formatPrimitive(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
 export function HistoryDrawer({
   open,
   onOpenChange,
   title,
   reference,
-  events,
-  loading,
-  partialAudit,
+  entityType,
+  entityId,
 }: HistoryDrawerProps) {
   const { locale, dir } = useLocale();
   const dfLocale = locale === "ar" ? ar : enUS;
   const labels = {
     title: locale === "ar" ? "السجل والتغييرات" : "History & changes",
     none: locale === "ar" ? "لا يوجد سجل بعد لهذا العنصر." : "No history yet for this item.",
-    from: locale === "ar" ? "من" : "from",
-    to: locale === "ar" ? "إلى" : "to",
     loading: locale === "ar" ? "جارٍ التحميل…" : "Loading…",
-    partial:
+    error:
       locale === "ar"
-        ? "يعرض هذا السجل لحظة الإنشاء فقط. تتبّع التعديلات اللاحقة سيتفعل عند تشغيل سجل المراجعة المخصّص."
-        : "Only the original creation snapshot is recorded. Edit-level audit history will appear once the dedicated audit log is enabled.",
+        ? "تعذّر جلب السجل. حاول لاحقاً."
+        : "Could not load history. Try again shortly.",
+    create: locale === "ar" ? "تم الإنشاء" : "Created",
+    update: locale === "ar" ? "تم التعديل" : "Updated",
+    delete: locale === "ar" ? "تم الحذف" : "Deleted",
+    post: locale === "ar" ? "تم الترحيل" : "Posted",
+    actorUnavailable: locale === "ar" ? "المنفّذ غير متوفر" : "Actor unavailable",
   };
   const side: SheetSide = dir === "rtl" ? "left" : "right";
+
+  const enabled = open && !!entityType && !!entityId && entityId > 0;
+  const { data, isLoading, isError } = useQuery<AuditRow[]>({
+    queryKey: ["/api/audit", entityType, entityId],
+    enabled,
+  });
+
+  const events: HistoryEvent[] = React.useMemo(() => {
+    if (!data) return [];
+    const actionLabel = (a: string) =>
+      a === "create"
+        ? labels.create
+        : a === "update"
+        ? labels.update
+        : a === "delete"
+        ? labels.delete
+        : a === "post"
+        ? labels.post
+        : a;
+    return data.map((row) => {
+      const src = (["user", "ai", "integration", "system"].includes(row.source)
+        ? row.source
+        : "system") as HistorySource;
+      return {
+        id: row.id,
+        at: row.occurredAt,
+        source: src,
+        actor: row.actor || undefined,
+        action: actionLabel(row.action),
+        changes: (row.changes || []).map((c) => ({
+          field: c.field,
+          from: c.from === undefined ? undefined : formatPrimitive(c.from),
+          to: c.to === undefined ? undefined : formatPrimitive(c.to),
+        })),
+      } satisfies HistoryEvent;
+    });
+  }, [data, labels.create, labels.update, labels.delete, labels.post]);
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -92,9 +158,13 @@ export function HistoryDrawer({
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="px-5 py-12 text-center text-sm text-muted-foreground">
+          {isLoading ? (
+            <div className="px-5 py-12 text-center text-sm text-muted-foreground" data-testid="history-loading">
               {labels.loading}
+            </div>
+          ) : isError ? (
+            <div className="px-5 py-12 text-center text-sm text-muted-foreground" data-testid="history-error">
+              {labels.error}
             </div>
           ) : events.length === 0 ? (
             <div className="px-6 py-16 text-center" data-testid="history-empty">
@@ -141,7 +211,7 @@ export function HistoryDrawer({
                         {locale === "ar" ? meta.ar : meta.en}
                       </Badge>
                       <span className="truncate" data-testid="text-history-actor">
-                        {ev.actor || (locale === "ar" ? "المنفّذ غير متوفر" : "Actor unavailable")}
+                        {ev.actor || labels.actorUnavailable}
                       </span>
                     </div>
                     {ev.changes && ev.changes.length > 0 && (
@@ -154,8 +224,8 @@ export function HistoryDrawer({
                                 {String(c.from)}
                               </span>
                             )}
-                            {c.from !== undefined && c.to !== undefined && " → "}
-                            {c.to !== undefined && c.to !== null && (
+                            {c.from !== undefined && c.from !== null && c.from !== "" && c.to !== undefined && c.to !== null && c.to !== "" && " → "}
+                            {c.to !== undefined && c.to !== null && c.to !== "" && (
                               <span className="text-foreground font-numeric tabular-nums">
                                 {String(c.to)}
                               </span>
@@ -173,14 +243,6 @@ export function HistoryDrawer({
                 );
               })}
             </ol>
-          )}
-          {!loading && events.length > 0 && partialAudit && (
-            <div
-              className="mx-5 mb-5 mt-1 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground leading-relaxed"
-              data-testid="history-partial-notice"
-            >
-              {labels.partial}
-            </div>
           )}
         </div>
       </SheetContent>

@@ -38,7 +38,7 @@ import {
 import { useLocale } from "@/contexts/locale-context"
 import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { HistoryDrawer, type HistoryEvent } from "@/components/audit/history-drawer"
+import { HistoryDrawer } from "@/components/audit/history-drawer"
 import { EmptyState } from "@/components/feedback/empty-state"
 import { ErrorState } from "@/components/feedback/error-state"
 import { ListSkeleton } from "@/components/feedback/list-skeleton"
@@ -331,30 +331,8 @@ export default function Transactions() {
         onOpenChange={(o) => { if (!o) setHistoryTx(null) }}
         title={historyTx?.description || ""}
         reference={historyTx ? `TX-${historyTx.id}` : undefined}
-        partialAudit
-        events={
-          historyTx
-            ? [
-                {
-                  id: `${historyTx.id}-created`,
-                  at: historyTx.date || new Date(),
-                  source: "user",
-                  action:
-                    locale === "ar"
-                      ? `تم إنشاء معاملة ${historyTx.type === "income" ? "إيراد" : "مصروف"}`
-                      : `Created ${historyTx.type} transaction`,
-                  changes: [
-                    { field: locale === "ar" ? "المبلغ" : "Amount", to: fmt(Number(historyTx.amount)) },
-                    { field: locale === "ar" ? "الفئة" : "Category", to: historyTx.category },
-                  ],
-                  note:
-                    locale === "ar"
-                      ? "نُشِر تلقائياً إلى دفتر اليومية كقيد مزدوج."
-                      : "Auto-posted to the journal as a double-entry record.",
-                } as HistoryEvent,
-              ]
-            : []
-        }
+        entityType="transaction"
+        entityId={historyTx?.id}
       />
     </div>
   )

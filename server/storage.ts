@@ -23,6 +23,9 @@ import {
   impairmentEvents,
   revaluationEvents,
   disposals,
+  auditLog,
+  type AuditLogEntry,
+  type AuditChange,
   type Company,
   type InsertCompany,
   type FxRate,
@@ -70,11 +73,38 @@ export interface JournalEntryWithLines extends JournalEntry {
   lines: (JournalLine & { account?: Account })[];
 }
 
+// ============================================================================
+// Audit log types
+// ============================================================================
+
+export type AuditSource = "user" | "ai" | "integration" | "system";
+
+export interface AuditContext {
+  source?: AuditSource;
+  actor?: string | null;
+}
+
+export const AUDIT_ENTITY_TYPES = [
+  "transaction",
+  "journal_entry",
+  "account",
+  "fixed_asset",
+  "employee",
+  "attendance",
+  "leave",
+] as const;
+
+export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
+
+export function isAuditEntityType(value: string): value is AuditEntityType {
+  return (AUDIT_ENTITY_TYPES as readonly string[]).includes(value);
+}
+
 export interface IStorage {
   // Legacy quick-entry transactions
   getTransactions(): Promise<Transaction[]>;
-  createTransaction(tx: InsertTransaction): Promise<Transaction>;
-  deleteTransaction(id: number): Promise<void>;
+  createTransaction(tx: InsertTransaction, ctx?: AuditContext): Promise<Transaction>;
+  deleteTransaction(id: number, ctx?: AuditContext): Promise<void>;
 
   // Chat
   getChatMessages(): Promise<ChatMessage[]>;
@@ -82,13 +112,13 @@ export interface IStorage {
 
   // Chart of accounts
   getAccounts(): Promise<Account[]>;
-  createAccount(input: InsertAccount): Promise<Account>;
+  createAccount(input: InsertAccount, ctx?: AuditContext): Promise<Account>;
   getAccountByCode(code: string): Promise<Account | undefined>;
 
   // Journal entries
   getJournalEntries(): Promise<JournalEntryWithLines[]>;
-  createJournalEntry(input: CreateJournalEntryInput): Promise<JournalEntryWithLines>;
-  deleteJournalEntry(id: number): Promise<void>;
+  createJournalEntry(input: CreateJournalEntryInput, ctx?: AuditContext): Promise<JournalEntryWithLines>;
+  deleteJournalEntry(id: number, ctx?: AuditContext): Promise<void>;
 
   // Budgets
   getBudgets(year?: number, month?: number): Promise<Budget[]>;
@@ -101,16 +131,75 @@ export interface IStorage {
 
   // HR
   getEmployees(): Promise<Employee[]>;
-  createEmployee(input: InsertEmployee): Promise<Employee>;
-  updateEmployee(id: number, input: Partial<InsertEmployee>): Promise<Employee>;
-  deleteEmployee(id: number): Promise<void>;
+  createEmployee(input: InsertEmployee, ctx?: AuditContext): Promise<Employee>;
+  updateEmployee(id: number, input: Partial<InsertEmployee>, ctx?: AuditContext): Promise<Employee>;
+  deleteEmployee(id: number, ctx?: AuditContext): Promise<void>;
 
   getAttendance(employeeId?: number, yearMonth?: string): Promise<Attendance[]>;
-  upsertAttendance(input: InsertAttendance): Promise<Attendance>;
+  upsertAttendance(input: InsertAttendance, ctx?: AuditContext): Promise<Attendance>;
 
   getLeaves(employeeId?: number): Promise<Leave[]>;
-  createLeave(input: InsertLeave): Promise<Leave>;
-  deleteLeave(id: number): Promise<void>;
+  createLeave(input: InsertLeave, ctx?: AuditContext): Promise<Leave>;
+  deleteLeave(id: number, ctx?: AuditContext): Promise<void>;
+
+  // Audit log
+  getAuditLog(entityType: AuditEntityType, entityId: number): Promise<AuditLogEntry[]>;
+}
+
+const AUDIT_SKIP_FIELDS = new Set(["id", "createdAt", "updatedAt"]);
+
+function snapshotChanges(snapshot: Record<string, any>): AuditChange[] {
+  return Object.entries(snapshot)
+    .filter(([k, v]) => !AUDIT_SKIP_FIELDS.has(k) && v !== undefined && v !== null && v !== "")
+    .map(([field, to]) => ({ field, to: serializeValue(to) }));
+}
+
+function serializeValue(v: any): any {
+  if (v === null || v === undefined) return v;
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "object") {
+    try {
+      return JSON.parse(JSON.stringify(v));
+    } catch {
+      return String(v);
+    }
+  }
+  return v;
+}
+
+function diffChanges(before: Record<string, any>, after: Record<string, any>): AuditChange[] {
+  const changes: AuditChange[] = [];
+  const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+  for (const k of Array.from(keys)) {
+    if (AUDIT_SKIP_FIELDS.has(k)) continue;
+    if (!(k in after)) continue; // only fields we tried to set
+    const a = serializeValue(before?.[k]);
+    const b = serializeValue(after?.[k]);
+    if (JSON.stringify(a) !== JSON.stringify(b)) {
+      changes.push({ field: k, from: a, to: b });
+    }
+  }
+  return changes;
+}
+
+async function recordAudit(input: {
+  entityType: AuditEntityType;
+  entityId: number;
+  action: "create" | "update" | "delete" | "post";
+  changes?: AuditChange[];
+  ctx?: AuditContext;
+}): Promise<void> {
+  // Intentionally not wrapped in try/catch: a failed audit write must surface
+  // so the calling mutation rolls back / errors out. Auditability is a
+  // first-class success criterion, not best-effort.
+  await db.insert(auditLog).values({
+    entityType: input.entityType,
+    entityId: input.entityId,
+    action: input.action,
+    actor: input.ctx?.actor ?? null,
+    source: input.ctx?.source ?? "user",
+    changes: input.changes ?? [],
+  });
 }
 
 async function nextJournalReference(): Promise<string> {
@@ -126,37 +215,66 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(transactions).orderBy(transactions.date);
   }
 
-  async createTransaction(tx: InsertTransaction): Promise<Transaction> {
+  async createTransaction(tx: InsertTransaction, ctx?: AuditContext): Promise<Transaction> {
     const [transaction] = await db
       .insert(transactions)
       .values({ ...tx, amount: tx.amount.toString() })
       .returning();
 
+    await recordAudit({
+      entityType: "transaction",
+      entityId: transaction.id,
+      action: "create",
+      changes: snapshotChanges(transaction),
+      ctx,
+    });
+
     // Auto-post double-entry journal entry
     try {
-      await this.autoPostFromTransaction(transaction);
+      await this.autoPostFromTransaction(transaction, ctx);
     } catch (e) {
       console.error("Failed to auto-post journal entry for transaction", transaction.id, e);
     }
     return transaction;
   }
 
-  async deleteTransaction(id: number): Promise<void> {
+  async deleteTransaction(id: number, ctx?: AuditContext): Promise<void> {
+    const [before] = await db.select().from(transactions).where(eq(transactions.id, id));
     // Cascade-delete the auto-posted journal lines + entry atomically
+    const linkedIds: number[] = [];
     await db.transaction(async (tx) => {
       const linkedJEs = await tx
         .select({ id: journalEntries.id })
         .from(journalEntries)
         .where(eq(journalEntries.sourceTransactionId, id));
       for (const je of linkedJEs) {
+        linkedIds.push(je.id);
         await tx.delete(journalLines).where(eq(journalLines.journalEntryId, je.id));
         await tx.delete(journalEntries).where(eq(journalEntries.id, je.id));
       }
       await tx.delete(transactions).where(eq(transactions.id, id));
     });
+    if (before) {
+      await recordAudit({
+        entityType: "transaction",
+        entityId: id,
+        action: "delete",
+        changes: snapshotChanges(before),
+        ctx,
+      });
+    }
+    for (const jeId of linkedIds) {
+      await recordAudit({
+        entityType: "journal_entry",
+        entityId: jeId,
+        action: "delete",
+        changes: [{ field: "reason", to: `cascade from transaction #${id}` }],
+        ctx: { source: "system", actor: ctx?.actor ?? null },
+      });
+    }
   }
 
-  private async autoPostFromTransaction(tx: Transaction): Promise<void> {
+  private async autoPostFromTransaction(tx: Transaction, ctx?: AuditContext): Promise<void> {
     const cash = await this.getAccountByCode(CASH_ACCOUNT_CODE);
     if (!cash) return;
     const amt = Number(tx.amount);
@@ -190,6 +308,21 @@ export class DatabaseStorage implements IStorage {
       { journalEntryId: je.id, accountId: drId, debit: amt.toFixed(2), credit: "0", description: tx.description },
       { journalEntryId: je.id, accountId: crId, debit: "0", credit: amt.toFixed(2), description: tx.description },
     ]);
+    await recordAudit({
+      entityType: "journal_entry",
+      entityId: je.id,
+      action: "create",
+      changes: [
+        { field: "reference", to: je.reference },
+        { field: "description", to: je.description },
+        { field: "source", to: "transaction" },
+        { field: "sourceTransactionId", to: tx.id },
+        { field: "Dr accountId", to: drId },
+        { field: "Cr accountId", to: crId },
+        { field: "amount", to: amt.toFixed(2) },
+      ],
+      ctx: { source: "system", actor: ctx?.actor ?? null },
+    });
   }
 
   // ----- Chat -----
@@ -207,8 +340,15 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(accounts).orderBy(accounts.code);
   }
 
-  async createAccount(input: InsertAccount): Promise<Account> {
+  async createAccount(input: InsertAccount, ctx?: AuditContext): Promise<Account> {
     const [created] = await db.insert(accounts).values(input).returning();
+    await recordAudit({
+      entityType: "account",
+      entityId: created.id,
+      action: "create",
+      changes: snapshotChanges(created),
+      ctx,
+    });
     return created;
   }
 
@@ -237,7 +377,10 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async createJournalEntry(input: CreateJournalEntryInput): Promise<JournalEntryWithLines> {
+  async createJournalEntry(
+    input: CreateJournalEntryInput,
+    ctx?: AuditContext,
+  ): Promise<JournalEntryWithLines> {
     const reference = await nextJournalReference();
     const [je] = await db
       .insert(journalEntries)
@@ -258,15 +401,47 @@ export class DatabaseStorage implements IStorage {
     const insertedLines = await db.insert(journalLines).values(linesToInsert).returning();
     const allAccounts = await db.select().from(accounts);
     const accountById = new Map(allAccounts.map((a) => [a.id, a]));
+
+    const lineSummary: AuditChange[] = insertedLines.map((l) => {
+      const acc = accountById.get(l.accountId);
+      const label = acc ? `${acc.code} ${acc.nameAr}` : `account#${l.accountId}`;
+      const debit = Number(l.debit);
+      const credit = Number(l.credit);
+      const value = debit > 0 ? `Dr ${debit.toFixed(2)}` : `Cr ${credit.toFixed(2)}`;
+      return { field: label, to: value };
+    });
+    await recordAudit({
+      entityType: "journal_entry",
+      entityId: je.id,
+      action: "create",
+      changes: [
+        { field: "reference", to: je.reference },
+        { field: "description", to: je.description },
+        { field: "source", to: je.source },
+        ...lineSummary,
+      ],
+      ctx: ctx ?? (input.source === "ai" ? { source: "ai" } : input.source === "transaction" ? { source: "system" } : undefined),
+    });
+
     return {
       ...je,
       lines: insertedLines.map((l) => ({ ...l, account: accountById.get(l.accountId) })),
     };
   }
 
-  async deleteJournalEntry(id: number): Promise<void> {
+  async deleteJournalEntry(id: number, ctx?: AuditContext): Promise<void> {
+    const [before] = await db.select().from(journalEntries).where(eq(journalEntries.id, id));
     await db.delete(journalLines).where(eq(journalLines.journalEntryId, id));
     await db.delete(journalEntries).where(eq(journalEntries.id, id));
+    if (before) {
+      await recordAudit({
+        entityType: "journal_entry",
+        entityId: id,
+        action: "delete",
+        changes: snapshotChanges(before),
+        ctx,
+      });
+    }
   }
 
   // ----- Budgets -----
@@ -326,7 +501,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(employees).orderBy(employees.fullName);
   }
 
-  async createEmployee(input: InsertEmployee): Promise<Employee> {
+  async createEmployee(input: InsertEmployee, ctx?: AuditContext): Promise<Employee> {
     const [created] = await db
       .insert(employees)
       .values({
@@ -335,19 +510,43 @@ export class DatabaseStorage implements IStorage {
         allowances: String(input.allowances ?? 0),
       })
       .returning();
+    await recordAudit({
+      entityType: "employee",
+      entityId: created.id,
+      action: "create",
+      changes: snapshotChanges(created),
+      ctx,
+    });
     return created;
   }
 
-  async updateEmployee(id: number, input: Partial<InsertEmployee>): Promise<Employee> {
+  async updateEmployee(id: number, input: Partial<InsertEmployee>, ctx?: AuditContext): Promise<Employee> {
+    const [before] = await db.select().from(employees).where(eq(employees.id, id));
     const patch: any = { ...input };
     if (input.baseSalary !== undefined) patch.baseSalary = String(input.baseSalary);
     if (input.allowances !== undefined) patch.allowances = String(input.allowances);
     const [updated] = await db.update(employees).set(patch).where(eq(employees.id, id)).returning();
+    if (before && updated) {
+      const changes = diffChanges(before, updated);
+      if (changes.length > 0) {
+        await recordAudit({ entityType: "employee", entityId: id, action: "update", changes, ctx });
+      }
+    }
     return updated;
   }
 
-  async deleteEmployee(id: number): Promise<void> {
+  async deleteEmployee(id: number, ctx?: AuditContext): Promise<void> {
+    const [before] = await db.select().from(employees).where(eq(employees.id, id));
     await db.delete(employees).where(eq(employees.id, id));
+    if (before) {
+      await recordAudit({
+        entityType: "employee",
+        entityId: id,
+        action: "delete",
+        changes: snapshotChanges(before),
+        ctx,
+      });
+    }
   }
 
   async getAttendance(employeeId?: number, yearMonth?: string): Promise<Attendance[]> {
@@ -359,23 +558,35 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
-  async upsertAttendance(input: InsertAttendance): Promise<Attendance> {
+  async upsertAttendance(input: InsertAttendance, ctx?: AuditContext): Promise<Attendance> {
     const existing = await db
       .select()
       .from(attendance)
       .where(and(eq(attendance.employeeId, input.employeeId), eq(attendance.date, input.date)));
     if (existing[0]) {
+      const before = existing[0];
       const [u] = await db
         .update(attendance)
         .set({ status: input.status, overtimeHours: String(input.overtimeHours ?? 0) })
         .where(eq(attendance.id, existing[0].id))
         .returning();
+      const changes = diffChanges(before, u);
+      if (changes.length > 0) {
+        await recordAudit({ entityType: "attendance", entityId: u.id, action: "update", changes, ctx });
+      }
       return u;
     }
     const [c] = await db
       .insert(attendance)
       .values({ ...input, overtimeHours: String(input.overtimeHours ?? 0) })
       .returning();
+    await recordAudit({
+      entityType: "attendance",
+      entityId: c.id,
+      action: "create",
+      changes: snapshotChanges(c),
+      ctx,
+    });
     return c;
   }
 
@@ -384,13 +595,39 @@ export class DatabaseStorage implements IStorage {
     return employeeId ? all.filter((l) => l.employeeId === employeeId) : all;
   }
 
-  async createLeave(input: InsertLeave): Promise<Leave> {
+  async createLeave(input: InsertLeave, ctx?: AuditContext): Promise<Leave> {
     const [c] = await db.insert(leaves).values(input).returning();
+    await recordAudit({
+      entityType: "leave",
+      entityId: c.id,
+      action: "create",
+      changes: snapshotChanges(c),
+      ctx,
+    });
     return c;
   }
 
-  async deleteLeave(id: number): Promise<void> {
+  async deleteLeave(id: number, ctx?: AuditContext): Promise<void> {
+    const [before] = await db.select().from(leaves).where(eq(leaves.id, id));
     await db.delete(leaves).where(eq(leaves.id, id));
+    if (before) {
+      await recordAudit({
+        entityType: "leave",
+        entityId: id,
+        action: "delete",
+        changes: snapshotChanges(before),
+        ctx,
+      });
+    }
+  }
+
+  // ----- Audit log -----
+  async getAuditLog(entityType: AuditEntityType, entityId: number): Promise<AuditLogEntry[]> {
+    return await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.entityType, entityType), eq(auditLog.entityId, entityId)))
+      .orderBy(desc(auditLog.occurredAt), desc(auditLog.id));
   }
 
   // ----- Companies -----
@@ -454,7 +691,7 @@ export class DatabaseStorage implements IStorage {
     const [a] = await db.select().from(fixedAssets).where(eq(fixedAssets.id, id));
     return a;
   }
-  async createFixedAsset(input: Omit<InsertFixedAsset, "customSchedule"> & { cost: number; customSchedule?: string | null }): Promise<FixedAsset> {
+  async createFixedAsset(input: Omit<InsertFixedAsset, "customSchedule"> & { cost: number; customSchedule?: string | null }, ctx?: AuditContext): Promise<FixedAsset> {
     const [c] = await db
       .insert(fixedAssets)
       .values({
@@ -467,6 +704,13 @@ export class DatabaseStorage implements IStorage {
         customSchedule: input.customSchedule ?? null,
       })
       .returning();
+    await recordAudit({
+      entityType: "fixed_asset",
+      entityId: c.id,
+      action: "create",
+      changes: snapshotChanges(c),
+      ctx,
+    });
     return c;
   }
   async updateFixedAssetBalances(
@@ -480,7 +724,8 @@ export class DatabaseStorage implements IStorage {
       accumRevalLoss: number;
       lastDepreciatedPeriod: string;
       status: string;
-    }>
+    }>,
+    ctx?: AuditContext,
   ): Promise<FixedAsset> {
     const set: Record<string, string | undefined> = {};
     if (patch.cost !== undefined) set.cost = String(patch.cost);
@@ -491,10 +736,18 @@ export class DatabaseStorage implements IStorage {
     if (patch.accumRevalLoss !== undefined) set.accumRevalLoss = String(patch.accumRevalLoss);
     if (patch.lastDepreciatedPeriod !== undefined) set.lastDepreciatedPeriod = patch.lastDepreciatedPeriod;
     if (patch.status !== undefined) set.status = patch.status;
+    const [before] = await db.select().from(fixedAssets).where(eq(fixedAssets.id, id));
     const [u] = await db.update(fixedAssets).set(set).where(eq(fixedAssets.id, id)).returning();
+    if (before && u) {
+      const changes = diffChanges(before, u).filter((c) => set[c.field as string] !== undefined);
+      if (changes.length > 0) {
+        await recordAudit({ entityType: "fixed_asset", entityId: id, action: "update", changes, ctx });
+      }
+    }
     return u;
   }
-  async deleteFixedAsset(id: number): Promise<void> {
+  async deleteFixedAsset(id: number, ctx?: AuditContext): Promise<void> {
+    const [before] = await db.select().from(fixedAssets).where(eq(fixedAssets.id, id));
     await db.delete(assetComponents).where(eq(assetComponents.assetId, id));
     await db.delete(depreciationSchedule).where(eq(depreciationSchedule.assetId, id));
     await db.delete(depreciationPostings).where(eq(depreciationPostings.assetId, id));
@@ -502,6 +755,15 @@ export class DatabaseStorage implements IStorage {
     await db.delete(revaluationEvents).where(eq(revaluationEvents.assetId, id));
     await db.delete(disposals).where(eq(disposals.assetId, id));
     await db.delete(fixedAssets).where(eq(fixedAssets.id, id));
+    if (before) {
+      await recordAudit({
+        entityType: "fixed_asset",
+        entityId: id,
+        action: "delete",
+        changes: snapshotChanges(before),
+        ctx,
+      });
+    }
   }
 
   // ----- Asset Components -----
