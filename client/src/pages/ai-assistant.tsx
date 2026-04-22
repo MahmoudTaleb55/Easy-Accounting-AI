@@ -34,32 +34,34 @@ export default function AiAssistant() {
 
   const t = useMemo(
     () => ({
-      eyebrow: locale === "ar" ? "المساعد الذكي" : "AI assistant",
+      eyebrow: locale === "ar" ? "المساعد التنفيذي" : "Executive assistant",
       title:
         locale === "ar"
-          ? "اوصف معاملتك. سأكتب القيد."
-          : "Describe a transaction. I'll write the entry.",
+          ? "اطلب. أنفّذ."
+          : "Ask. I execute.",
       subtitle:
         locale === "ar"
-          ? "اكتب بلغتك الطبيعية أو ارفع صورة فاتورة. سأستخرج التفاصيل وأرحّل القيد إلى اليومية."
-          : "Type in plain language or upload a receipt. I'll extract the details and post the entry.",
+          ? "سجّل معاملات، اكتب قيود مزدوجة، ولّد تقارير Excel و PDF جاهزة للتنزيل — كله من المحادثة."
+          : "Post transactions, write double-entry journals, and generate ready-to-download Excel & PDF reports — all from chat.",
       welcome:
         locale === "ar"
-          ? "مرحباً. أستطيع تسجيل معاملاتك من جملة واحدة، أو من صورة فاتورة، والإجابة على أسئلتك المالية."
-          : "Hi. I can record your transactions from a single sentence or a receipt photo, and answer your financial questions.",
+          ? "أنا مساعدك المحاسبي. لست أرد فقط — أنفّذ. اطلب أي شيء من القائمة وانتظر النتيجة."
+          : "I'm your accounting copilot. I don't just answer — I execute. Ask for anything below and watch it happen.",
       welcomeBullets:
         locale === "ar"
           ? [
-              "صرفت ١٥٠ ر.س على البقالة اليوم",
-              "ارفع صورة فاتورة → استخرج المبلغ والمورّد تلقائياً",
-              "ما رصيدي؟ ما أكبر فئة إنفاقاً هذا الشهر؟",
+              "ولّد ميزان مراجعة بصيغة Excel أو قائمة دخل PDF بنقرة",
+              "اكتب قيد يومية مزدوج بحسابات حقيقية من دليلك المحاسبي",
+              "سجّل معاملات من جملة واحدة أو من صورة فاتورة فوراً",
+              "اسأل عن رصيدك الحالي أو أكبر فئة إنفاق في الفترة",
             ]
           : [
-              "Spent $150 on groceries today",
-              "Upload a receipt → I extract amount and vendor",
-              "What's my balance? My top expense category?",
+              "Generate a Trial Balance in Excel or a P&L in PDF in one click",
+              "Post a double-entry journal using real accounts from your CoA",
+              "Record transactions from a single sentence or a receipt photo",
+              "Query your live balance or top spending category instantly",
             ],
-      tryThese: locale === "ar" ? "جرّب أحد الاقتراحات" : "Try one of these",
+      tryThese: locale === "ar" ? "أطلق إحدى القدرات" : "Trigger a capability",
       placeholder:
         locale === "ar"
           ? "اكتب رسالتك… مثل: استلمت دفعة 3,500 من العميل"
@@ -89,16 +91,16 @@ export default function AiAssistant() {
     () =>
       locale === "ar"
         ? [
-            "صرفت ٥٠ ر.س على القهوة",
-            "استلمت راتب ٨٠٠٠ ر.س",
-            "فاتورة كهرباء ٣٢٠ ر.س",
-            "ما رصيدي الحالي؟",
+            { icon: FileSpreadsheet, label: "ولّد ميزان مراجعة Excel", prompt: "ولّد لي ميزان مراجعة بصيغة Excel" },
+            { icon: FileText, label: "قائمة دخل PDF", prompt: "اطبع قائمة الدخل بصيغة PDF" },
+            { icon: BookOpen, label: "قيد يومية مزدوج", prompt: "اكتب قيد: ١٠٠٠ نقدية مدين، ١٠٠٠ مبيعات دائن، وصف: مبيعات نقدية" },
+            { icon: CheckCircle2, label: "ما رصيدي الآن؟", prompt: "ما رصيدي الحالي وأكبر مصروف هذا الشهر؟" },
           ]
         : [
-            "Spent $50 on coffee",
-            "Received $8,000 salary",
-            "Electric bill $320",
-            "What's my current balance?",
+            { icon: FileSpreadsheet, label: "Trial Balance · Excel", prompt: "Generate a Trial Balance in Excel" },
+            { icon: FileText, label: "P&L · PDF", prompt: "Print the Profit & Loss statement as PDF" },
+            { icon: BookOpen, label: "Double-entry journal", prompt: "Post a journal: debit Cash 1000, credit Sales 1000, memo: cash sale" },
+            { icon: CheckCircle2, label: "What's my balance?", prompt: "What's my current balance and top expense this month?" },
           ],
     [locale]
   )
@@ -154,7 +156,7 @@ export default function AiAssistant() {
       <header className="mb-5 flex items-end justify-between gap-4 flex-wrap">
         <div className="space-y-2 max-w-2xl">
           <div className="eyebrow text-muted-foreground/80 flex items-center gap-2">
-            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            <Sparkles className="w-3 h-3 text-primary" />
             {t.eyebrow}
           </div>
           <h1
@@ -231,17 +233,25 @@ export default function AiAssistant() {
               <div className="pt-2">
                 <div className="eyebrow text-muted-foreground/80 mb-2.5">{t.tryThese}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {QUICK_PROMPTS.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => handleQuickPrompt(p)}
-                      data-testid={`button-suggestion-${p}`}
-                      className="text-start px-3.5 py-2.5 rounded-md border border-border bg-card hover:border-foreground/30 hover:bg-muted/40 transition-colors text-[13px] text-foreground"
-                    >
-                      {p}
-                    </button>
-                  ))}
+                  {QUICK_PROMPTS.map((p) => {
+                    const Icon = p.icon
+                    return (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => handleQuickPrompt(p.prompt)}
+                        data-testid={`button-suggestion-${p.label}`}
+                        className="group flex items-center gap-3 text-start px-3.5 py-3 rounded-md border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.03] transition-colors"
+                      >
+                        <span className="shrink-0 grid place-items-center w-7 h-7 rounded-md bg-primary/10 text-primary group-hover:bg-primary/15">
+                          <Icon className="w-3.5 h-3.5" />
+                        </span>
+                        <span className="text-[13px] text-foreground font-medium leading-tight">
+                          {p.label}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}
