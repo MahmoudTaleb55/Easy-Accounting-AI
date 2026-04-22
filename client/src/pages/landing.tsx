@@ -3,7 +3,7 @@ import {
   ArrowLeft, ArrowRight, Check, FileText, Receipt, Bot,
   Sparkles, ShieldCheck, Globe2, Workflow, BarChart3, Briefcase,
   Users, Wallet, TrendingUp, AlertTriangle, Lock, Database, ScrollText,
-  MapPin,
+  MapPin, Activity, Scale, Radar, Brain, LineChart,
 } from "lucide-react"
 import { AppNavbar } from "@/components/layout/AppNavbar"
 import { AppFooter } from "@/components/layout/AppFooter"
@@ -29,7 +29,8 @@ function getCopy(locale: Locale) {
     ar,
     nav: {
       platform: ar ? "المنصّة" : "Platform",
-      ai: ar ? "الذكاء" : "Intelligence",
+      ai: ar ? "المساعد" : "Assistant",
+      intelligence: ar ? "الذكاء الاستراتيجيّ" : "Intelligence",
       automation: ar ? "الأتمتة" : "Automation",
       security: ar ? "الأمان" : "Security",
       useCases: ar ? "الاستخدامات" : "Use cases",
@@ -40,11 +41,11 @@ function getCopy(locale: Locale) {
     },
     hero: {
       tag: ar ? "إصدار جديد · بقوّة GPT-5.2" : "New release · Powered by GPT-5.2",
-      h1a: ar ? "محاسبة ذكيّة،" : "Intelligent accounting,",
-      h1b: ar ? "للأعمال التي لا تنتظر." : "built for modern business.",
+      h1a: ar ? "ذكاءٌ ماليٌّ،" : "Financial intelligence,",
+      h1b: ar ? "يقودُ قراراتك التالية." : "engineered for your next decision.",
       sub: ar
-        ? "منصّة محاسبيّة واحدة، مبنيّة على معايير IFRS، يقودها ذكاء اصطناعيّ يفهم أرقامك. سبع دول، عدّة عملات، قرار واحد."
-        : "From invoices to insight — one IFRS-grade accounting platform, AI-native, running across seven countries and multiple currencies.",
+        ? "ليست محاسبة فحسب. منصّةٌ ماليّةٌ مبنيّةٌ على IFRS، يَدرسُ فيها ذكاءٌ اصطناعيّ كلَّ ريالٍ يدخلُ ويخرج، يتوقّعُ تدفّقَك النقديّ، ويرصُدُ ما يستحقُّ انتباهَك قبلَ أن يصبحَ مشكلة."
+        : "More than accounting. An IFRS-grade financial platform where AI reads every transaction, forecasts your cash, and surfaces what deserves your attention — before it becomes a problem.",
       subEm: ar ? " عربيّة في الجوهر، عالميّة في التصميم." : " Arabic-first, global by design.",
       ctaPrimary: ar ? "افتح التطبيق" : "Open the app",
       ctaSecondary: ar ? "اطلب عرضاً مباشراً" : "Book a live demo",
@@ -239,6 +240,66 @@ function getCopy(locale: Locale) {
         : "Travel spend is 18% over the monthly budget. Suggest reviewing the approval policy for items above 2,000.",
       legend: ["Cash Forecast", "Health Score", "What-If Simulator", "Smart Alerts", "AI Coach"],
     },
+    predictive: {
+      eyebrow: ar ? "الذكاء الاستراتيجيّ" : "Strategic intelligence",
+      title: ar ? "رأس مالك،" : "Your capital,",
+      title2: ar ? "بعقلٍ يرى الـ٢٤ شهراً القادمة." : "with a mind that sees 24 months ahead.",
+      lead: ar
+        ? "محرّكٌ تنبّؤيٌّ مدرَّبٌ على دفاترك، وموسميّتك، وعقودك، وسلوك مدفوعاتك. لا يُخبرك فقط أين تقفُ اليوم — يُخبرك متى توظّف، ومتى تؤجّل، وأينَ يُحدِثُ كلُّ ريالٍ أكبرَ أثر."
+        : "A predictive engine trained on your books, your seasonality, your contracts, and your payment behavior. Not just where you stand today — when to hire, when to delay, and where each riyal makes the most impact.",
+      forecastTitle: ar ? "التوقّع النقديّ · ٢٤ شهراً" : "Cash forecast · 24 months",
+      bandLabel: ar ? "نطاق الثقة ٩٠٪" : "90% confidence band",
+      scenarios: ar ? [
+        { k: "base",         t: "الأساس",            d: "النموّ الحاليّ مستمرّ.",         v: "+١٨٪",  positive: true },
+        { k: "aggressive",   t: "توسّع متسارع",       d: "توظيف ٣ مهندسين هذا الربع.",      v: "−٧٪",   positive: false },
+        { k: "conservative", t: "تحفّظ تكتيكيّ",      d: "تأجيل غير الجوهريّ ٩٠ يوماً.",    v: "+٣١٪",  positive: true },
+      ] : [
+        { k: "base",         t: "Baseline",          d: "Current growth holds.",           v: "+18%",  positive: true },
+        { k: "aggressive",   t: "Aggressive scale",  d: "Hire 3 engineers this quarter.",  v: "−7%",   positive: false },
+        { k: "conservative", t: "Tactical hold",     d: "Defer non-essential 90 days.",    v: "+31%",  positive: true },
+      ],
+      pillars: ar ? [
+        { i: "brain",  t: "محرّك تنبّؤ نقديّ",        b: "نموذجٌ يجمع الموسميّة، عقودك، ومدفوعاتك المتأخّرة، فيرسم مساراً واقعيّاً للنقد لا تخميناً." },
+        { i: "scale",  t: "محاكي قرارات",              b: "«ماذا لو وظّفتُ؟ ماذا لو رفعتُ السعر ١٠٪؟» — جوابٌ بالأرقام في ثوانٍ، مع أثرٍ على كلّ بندٍ في القائمة." },
+        { i: "compass", t: "بوصلة الأولويّات",         b: "ترتيبٌ آليّ لما يستحقّ انتباهك هذا الأسبوع، مرتّبٌ بالأثر الماليّ لا بترتيب الإشعارات." },
+      ] : [
+        { i: "brain",  t: "Predictive cash engine",   b: "A model that fuses seasonality, your contracts, and your late payments into a realistic cash path — not a guess." },
+        { i: "scale",  t: "Decision simulator",       b: "“What if I hire? What if I raise prices 10%?” — answers in seconds, with the line-item impact on every statement." },
+        { i: "compass", t: "Priority compass",        b: "An auto-ranked list of what deserves your attention this week — sorted by financial impact, not notification order." },
+      ],
+    },
+    auditor: {
+      eyebrow: ar ? "المدقّق الحيّ" : "Live auditor",
+      title: ar ? "كلّ قيدٍ يُراجَعُ لحظةَ كتابته." : "Every entry, audited the moment it lands.",
+      lead: ar
+        ? "طبقةُ تدقيقٍ مستمرّةٌ تعملُ في الخلفيّة: ترصُدُ الشذوذ، تكتشفُ الازدواج، تتحقّقُ من الامتثال متعدّد الولايات، وتُبرزُ ما يحتاجُ نظرَك — قبل أن يصلَ المدقّقُ الخارجيّ بأشهر."
+        : "A continuous audit layer running in the background: it spots anomalies, catches duplicates, validates multi-jurisdiction compliance, and surfaces what needs your eye — months before the external auditor arrives.",
+      feedTitle: ar ? "تدفّق المراجعة · مباشر" : "Audit feed · live",
+      feedSub: ar ? "آخر ٦٠ ثانية" : "Last 60 seconds",
+      signals: ar ? [
+        { tone: "warn",   t: "شذوذ في مصروف",          d: "فاتورة مورّد ٢٧٫٤k — أعلى من المعدّل الشهريّ بـ٤٫٢σ.", tag: "AI" },
+        { tone: "danger", t: "احتمال ازدواج",          d: "قيدٌ مطابقٌ بنسبة ٩٨٪ سُجِّلَ قبل ساعتين.",         tag: "DUP" },
+        { tone: "info",   t: "تحقّق امتثال · ضريبة",   d: "VAT 15% مُطبَّق صحيحاً · فاتورة #٣٠٤١.",            tag: "VAT" },
+        { tone: "ok",     t: "موازنة مزدوجة",          d: "٤٢ قيداً — مجموعها صفر، توازنٌ تامّ.",             tag: "OK"  },
+      ] : [
+        { tone: "warn",   t: "Expense anomaly",         d: "Vendor invoice 27.4k — 4.2σ above monthly mean.",   tag: "AI" },
+        { tone: "danger", t: "Likely duplicate",        d: "98% match to entry posted 2h ago.",                 tag: "DUP" },
+        { tone: "info",   t: "Tax compliance check",    d: "VAT 15% correctly applied · invoice #3041.",        tag: "VAT" },
+        { tone: "ok",     t: "Double-entry balance",    d: "42 entries — net zero, fully balanced.",            tag: "OK"  },
+      ],
+      jurisdictions: ar ? [
+        { c: "السعوديّة", r: "ضريبة القيمة المضافة · الزكاة · ZATCA Phase 2" },
+        { c: "الإمارات",   r: "VAT · UAE Corporate Tax · FTA e-invoicing" },
+        { c: "مصر",       r: "VAT · ضريبة الدخل · الفوترة الإلكترونيّة" },
+        { c: "الكويت",     r: "ضريبة الدخل للشركات · الزكاة" },
+      ] : [
+        { c: "Saudi Arabia", r: "VAT · Zakat · ZATCA Phase 2"         },
+        { c: "UAE",          r: "VAT · UAE Corporate Tax · FTA e-inv." },
+        { c: "Egypt",        r: "VAT · Income tax · e-invoicing"       },
+        { c: "Kuwait",       r: "Corporate income tax · Zakat"         },
+      ],
+      jurEyebrow: ar ? "امتثالٌ متعدّد الولايات · مُحدَّثٌ تلقائيّاً" : "Multi-jurisdiction compliance · auto-updated",
+    },
     automation: {
       eyebrow: ar ? "الأتمتة" : "Automation",
       title: ar ? "المهامّ التي تستنزف يومك — تختفي." : "The tasks that drain your day. Gone.",
@@ -404,12 +465,12 @@ export default function Landing() {
     <div className="bg-background text-foreground" dir={dir} lang={locale}>
       <AppNavbar
         links={[
-          { label: t.nav.platform,   href: "#platform" },
-          { label: t.nav.ai,         href: "#ai" },
-          { label: t.nav.automation, href: "#automation" },
-          { label: t.nav.security,   href: "#security" },
-          { label: t.nav.useCases,   href: "#use-cases" },
-          { label: t.nav.faq,        href: "#faq" },
+          { label: t.nav.platform,     href: "#platform" },
+          { label: t.nav.ai,           href: "#ai" },
+          { label: t.nav.intelligence, href: "#intelligence" },
+          { label: t.nav.security,     href: "#security" },
+          { label: t.nav.useCases,     href: "#use-cases" },
+          { label: t.nav.faq,          href: "#faq" },
         ]}
         ctaLabel={t.nav.openApp}
         ctaHref={openAppHref}
@@ -425,7 +486,9 @@ export default function Landing() {
         <CoreCapabilities t={t} />
         <AIAssistant t={t} />
         <DashboardShowcase t={t} />
+        <PredictiveCapital t={t} />
         <Automation t={t} />
+        <LiveAuditor t={t} />
         <Security t={t} />
         <UseCases t={t} />
         <FAQ t={t} />
@@ -916,6 +979,148 @@ function DashboardShowcase({ t }: { t: Dict }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
+/*  6.5 · Predictive Capital — strategic AI intelligence                       */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function PredictiveCapital({ t }: { t: Dict }) {
+  const p = t.predictive
+  const pillarIcons: Record<string, React.ReactNode> = {
+    brain:   <Brain     className="size-4" />,
+    scale:   <Scale     className="size-4" />,
+    compass: <LineChart className="size-4" />,
+  }
+  return (
+    <section id="intelligence" className="relative py-24 lg:py-32 border-b border-border overflow-hidden">
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 brand-mesh opacity-60 [mask-image:radial-gradient(60%_50%_at_50%_40%,black,transparent)]"
+      />
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-12 gap-8 mb-14">
+          <div className="lg:col-span-7">
+            <div className="eyebrow mb-3">{p.eyebrow}</div>
+            <h2 className="text-display text-foreground">
+              {p.title}
+              <br />
+              <span className="text-primary">{p.title2}</span>
+            </h2>
+          </div>
+          <div className="lg:col-span-5 self-end">
+            <p className="text-base leading-relaxed text-muted-foreground">{p.lead}</p>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-12 gap-6">
+          {/* Forecast viz */}
+          <div className="lg:col-span-7">
+            <BentoCard className="h-full">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <div className="eyebrow mb-1">{p.forecastTitle}</div>
+                  <div className="text-sm font-medium text-foreground tabular-nums">
+                    {t.ar ? "٢٫٤ مليون → ٣٫٢ مليون" : "2.4M → 3.2M"}
+                  </div>
+                </div>
+                <Badge variant="success" size="sm" className="font-mono">+33%</Badge>
+              </div>
+              <ForecastChart />
+              <div className="mt-3 flex items-center gap-2 text-2xs text-muted-foreground">
+                <span className="inline-block w-3 h-1.5 rounded-sm bg-primary/15" />
+                <span>{p.bandLabel}</span>
+              </div>
+
+              <div className="mt-6 grid grid-cols-3 gap-2">
+                {p.scenarios.map((s) => (
+                  <div
+                    key={s.k}
+                    className={cn(
+                      "rounded-md border p-3 transition-colors",
+                      s.k === "base"
+                        ? "border-primary/30 bg-accent/40"
+                        : "border-border bg-card hover-elevate"
+                    )}
+                    data-testid={`scenario-${s.k}`}
+                  >
+                    <div className="flex items-baseline justify-between mb-1.5">
+                      <div className="text-xs font-medium text-foreground">{s.t}</div>
+                      <div className={cn(
+                        "text-xs font-mono tabular-nums",
+                        s.positive ? "text-success" : "text-loss"
+                      )}>
+                        {s.v}
+                      </div>
+                    </div>
+                    <div className="text-2xs text-muted-foreground leading-snug">{s.d}</div>
+                  </div>
+                ))}
+              </div>
+            </BentoCard>
+          </div>
+
+          {/* Three pillars */}
+          <div className="lg:col-span-5 grid gap-4">
+            {p.pillars.map((pl) => (
+              <BentoCard key={pl.t}>
+                <div className="flex items-start gap-3">
+                  <div className="size-9 rounded-md bg-accent text-accent-foreground border border-accent-border flex items-center justify-center flex-shrink-0">
+                    {pillarIcons[pl.i]}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-foreground mb-1">{pl.t}</div>
+                    <p className="text-2xs text-muted-foreground leading-relaxed">{pl.b}</p>
+                  </div>
+                </div>
+              </BentoCard>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* Forecast chart — historical solid line + projected dashed line + 90% confidence band. */
+function ForecastChart() {
+  // Historical (left half) → dashed projection (right half).
+  const hist = "M0 105 L30 102 L60 96 L90 98 L120 88 L150 82 L180 75 L210 68 L240 62"
+  const proj = "M240 62 L270 55 L300 48 L330 40 L360 32 L390 26 L420 20 L450 14 L480 8"
+  // 90% confidence band — fan widens with time.
+  const bandTop = "M240 62 L270 50 L300 38 L330 26 L360 18 L390 10 L420 4 L450 0 L480 -4"
+  const bandBot = "M240 62 L270 60 L300 58 L330 54 L360 50 L390 46 L420 40 L450 34 L480 30"
+  return (
+    <svg viewBox="0 0 480 130" className="w-full h-32" preserveAspectRatio="none" aria-hidden>
+      <defs>
+        <linearGradient id="bandFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.16" />
+          <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.02" />
+        </linearGradient>
+        <linearGradient id="histFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.14" />
+          <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {/* axis hairline */}
+      <line x1="0" y1="125" x2="480" y2="125" stroke="hsl(var(--border))" strokeWidth="1" />
+      {/* history fill */}
+      <path d={`${hist} L240 125 L0 125 Z`} fill="url(#histFill)" />
+      {/* confidence band (filled fan) */}
+      <path
+        d={`${bandTop} L480 30 L450 34 L420 40 L390 46 L360 50 L330 54 L300 58 L270 60 L240 62 Z`}
+        fill="url(#bandFill)"
+      />
+      {/* historical solid line */}
+      <path d={hist} fill="none" stroke="hsl(var(--primary))" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+      {/* projected dashed line */}
+      <path d={proj} fill="none" stroke="hsl(var(--primary))" strokeWidth="1.8" strokeDasharray="4 3" strokeLinejoin="round" strokeLinecap="round" />
+      {/* today marker */}
+      <line x1="240" y1="0" x2="240" y2="125" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="2 2" />
+      <circle cx="240" cy="62" r="3" fill="hsl(var(--primary))" />
+      <circle cx="240" cy="62" r="6" fill="hsl(var(--primary))" fillOpacity="0.18" />
+    </svg>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
 /*  7 · Automation                                                            */
 /* ────────────────────────────────────────────────────────────────────────── */
 
@@ -974,6 +1179,112 @@ function Automation({ t }: { t: Dict }) {
         </div>
       </div>
     </section>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  7.5 · Live Auditor — continuous AI audit layer                             */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function LiveAuditor({ t }: { t: Dict }) {
+  const a = t.auditor
+  return (
+    <section id="auditor" className="py-24 lg:py-32 bg-card/30 border-b border-border">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-12 gap-8 mb-14">
+          <div className="lg:col-span-7">
+            <div className="eyebrow mb-3 flex items-center gap-2">
+              <Radar className="size-3.5 text-primary" />
+              <span>{a.eyebrow}</span>
+            </div>
+            <h2 className="text-display text-foreground">{a.title}</h2>
+          </div>
+          <div className="lg:col-span-5 self-end">
+            <p className="text-base leading-relaxed text-muted-foreground">{a.lead}</p>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-12 gap-6">
+          {/* Live audit feed */}
+          <div className="lg:col-span-7">
+            <BentoCard className="h-full">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex size-2">
+                    <span className="absolute inset-0 rounded-full bg-success animate-ping opacity-60" />
+                    <span className="relative inline-flex size-2 rounded-full bg-success" />
+                  </span>
+                  <div className="text-sm font-medium text-foreground">{a.feedTitle}</div>
+                </div>
+                <div className="text-2xs text-muted-foreground font-mono">{a.feedSub}</div>
+              </div>
+              <div className="space-y-3">
+                {a.signals.map((sig) => (
+                  <AuditSignal
+                    key={`${sig.tag}-${sig.t}`}
+                    tone={sig.tone as "ok" | "info" | "warn" | "danger"}
+                    t={sig.t}
+                    d={sig.d}
+                    tag={sig.tag}
+                  />
+                ))}
+              </div>
+            </BentoCard>
+          </div>
+
+          {/* Multi-jurisdiction compliance */}
+          <div className="lg:col-span-5">
+            <BentoCard className="h-full">
+              <div className="eyebrow mb-4 flex items-center gap-2">
+                <Globe2 className="size-3.5 text-primary" />
+                <span>{a.jurEyebrow}</span>
+              </div>
+              <ul className="divide-y divide-border -my-3">
+                {a.jurisdictions.map((j) => (
+                  <li key={j.c} className="py-3 flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-foreground">{j.c}</div>
+                      <div className="text-2xs text-muted-foreground mt-0.5 truncate">{j.r}</div>
+                    </div>
+                    <Check className="size-4 text-success flex-shrink-0 mt-0.5" />
+                  </li>
+                ))}
+              </ul>
+            </BentoCard>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function AuditSignal({
+  tone, t, d, tag,
+}: { tone: "ok" | "info" | "warn" | "danger"; t: string; d: string; tag: string }) {
+  const dotColor =
+    tone === "ok"     ? "bg-success" :
+    tone === "info"   ? "bg-info" :
+    tone === "warn"   ? "bg-warning" :
+    "bg-loss"
+  const tagStyle =
+    tone === "ok"     ? "bg-success/10 text-success border-success/20" :
+    tone === "info"   ? "bg-info/10 text-info border-info/20" :
+    tone === "warn"   ? "bg-warning/10 text-warning border-warning/20" :
+    "bg-loss/10 text-loss border-loss/20"
+  return (
+    <div className="flex items-start gap-3">
+      <span className={cn("status-dot mt-1.5 flex-shrink-0", dotColor)} />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-foreground">{t}</div>
+        <div className="text-2xs text-muted-foreground mt-0.5 leading-relaxed">{d}</div>
+      </div>
+      <span className={cn(
+        "text-2xs font-mono px-1.5 py-0.5 rounded border tabular-nums",
+        tagStyle,
+      )}>
+        {tag}
+      </span>
+    </div>
   )
 }
 
