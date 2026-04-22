@@ -6,11 +6,14 @@ import {
   invitations,
   invitationEmailEvents,
   passwordResetTokens,
+  passwordResetEmailEvents,
   companies,
   type User,
   type Membership,
   type Invitation,
   type InvitationEmailEvent,
+  type PasswordResetToken,
+  type PasswordResetEmailEvent,
   type Role,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
@@ -281,11 +284,73 @@ export const authBizStorage = {
   },
 
   // ---------- password reset ----------
-  async createPasswordResetToken(userId: string): Promise<{ token: string; expiresAt: Date }> {
+  async createPasswordResetToken(userId: string): Promise<{ id: string; token: string; expiresAt: Date }> {
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1h
-    await db.insert(passwordResetTokens).values({ userId, token, expiresAt });
-    return { token, expiresAt };
+    const [row] = await db
+      .insert(passwordResetTokens)
+      .values({ userId, token, expiresAt })
+      .returning();
+    return { id: row.id, token, expiresAt };
+  },
+
+  async recordPasswordResetEmailEvent(input: {
+    tokenId: string;
+    userId: string;
+    messageId?: string | null;
+    type: string;
+    error?: string | null;
+    payload?: unknown;
+  }): Promise<PasswordResetEmailEvent> {
+    const [row] = await db
+      .insert(passwordResetEmailEvents)
+      .values({
+        tokenId: input.tokenId,
+        userId: input.userId,
+        messageId: input.messageId ?? null,
+        type: input.type,
+        error: input.error ?? null,
+        payload: (input.payload as any) ?? null,
+      })
+      .returning();
+    return row;
+  },
+
+  async updatePasswordResetEmailMeta(
+    tokenId: string,
+    meta: { messageId?: string | null; status: string; error?: string | null; eventAt?: Date },
+  ): Promise<void> {
+    const set: Record<string, unknown> = {
+      lastEmailStatus: meta.status,
+      lastEmailError: meta.error ?? null,
+      lastEmailEventAt: meta.eventAt ?? new Date(),
+    };
+    if (meta.messageId !== undefined) set.lastMessageId = meta.messageId;
+    await db.update(passwordResetTokens).set(set).where(eq(passwordResetTokens.id, tokenId));
+  },
+
+  async getPasswordResetTokenByMessageId(messageId: string): Promise<PasswordResetToken | undefined> {
+    const [row] = await db
+      .select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.lastMessageId, messageId));
+    return row;
+  },
+
+  async listPasswordResetEmailEventsForUser(userId: string): Promise<PasswordResetEmailEvent[]> {
+    return db
+      .select()
+      .from(passwordResetEmailEvents)
+      .where(eq(passwordResetEmailEvents.userId, userId))
+      .orderBy(desc(passwordResetEmailEvents.createdAt));
+  },
+
+  async listPasswordResetTokensForUser(userId: string): Promise<PasswordResetToken[]> {
+    return db
+      .select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.userId, userId))
+      .orderBy(desc(passwordResetTokens.createdAt));
   },
 
   async consumePasswordResetToken(token: string): Promise<{ userId: string } | null> {

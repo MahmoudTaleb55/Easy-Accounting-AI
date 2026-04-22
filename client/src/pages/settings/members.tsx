@@ -26,9 +26,19 @@ interface MemberSession {
   isCurrent: boolean;
   provider: "local" | "replit";
 }
+interface PasswordResetEmailEventRow {
+  id: string;
+  tokenId: string;
+  userId: string;
+  messageId: string | null;
+  type: string;
+  error: string | null;
+  createdAt: string | null;
+}
 interface MemberActivityResponse {
   member: { id: string; userId: string; role: Role; user: MemberRow["user"] };
   sessions: MemberSession[];
+  passwordResetEmails: PasswordResetEmailEventRow[];
 }
 
 interface MemberRow {
@@ -482,24 +492,84 @@ export default function MembersPage() {
           </DialogHeader>
           {loadingActivity ? (
             <div className="py-8 text-center"><Loader2 className="inline h-4 w-4 animate-spin" /></div>
-          ) : !activity || activity.sessions.length === 0 ? (
+          ) : !activity ? (
             <p className="py-6 text-sm text-muted-foreground" data-testid="text-no-activity">
-              {ar ? "لا توجد جلسات نشطة." : "No active sessions."}
+              {ar ? "لا توجد بيانات." : "No data."}
             </p>
           ) : (
-            <ul className="divide-y divide-border text-sm">
-              {activity.sessions.map((s) => (
-                <li key={s.sid} className="flex items-center justify-between py-2" data-testid={`row-session-${s.sid}`}>
-                  <div>
-                    <div className="font-medium capitalize">{s.provider}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {ar ? "تنتهي" : "expires"} {new Date(s.expiresAt).toLocaleString()}
-                    </div>
-                  </div>
-                  {s.isCurrent && <Badge variant="secondary">{ar ? "حالية" : "current"}</Badge>}
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-6">
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {ar ? "الجلسات النشطة" : "Active sessions"}
+                </h3>
+                {activity.sessions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground" data-testid="text-no-sessions">
+                    {ar ? "لا توجد جلسات نشطة." : "No active sessions."}
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border text-sm">
+                    {activity.sessions.map((s) => (
+                      <li key={s.sid} className="flex items-center justify-between py-2" data-testid={`row-session-${s.sid}`}>
+                        <div>
+                          <div className="font-medium capitalize">{s.provider}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {ar ? "تنتهي" : "expires"} {new Date(s.expiresAt).toLocaleString()}
+                          </div>
+                        </div>
+                        {s.isCurrent && <Badge variant="secondary">{ar ? "حالية" : "current"}</Badge>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {ar ? "رسائل إعادة تعيين كلمة المرور" : "Password reset emails"}
+                </h3>
+                {activity.passwordResetEmails.length === 0 ? (
+                  <p className="text-sm text-muted-foreground" data-testid="text-no-reset-emails">
+                    {ar ? "لم يتم إرسال أي رسائل بعد." : "No reset emails sent yet."}
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border text-sm">
+                    {activity.passwordResetEmails.map((evt) => {
+                      const badge = deliveryBadge(
+                        (evt.type as InvitationRow["lastEmailStatus"]) ?? null,
+                        ar,
+                      );
+                      const Icon = badge.Icon;
+                      return (
+                        <li
+                          key={evt.id}
+                          className="flex items-start justify-between gap-3 py-2"
+                          data-testid={`row-reset-email-${evt.id}`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="font-medium">{badge.label}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {evt.createdAt ? new Date(evt.createdAt).toLocaleString() : ""}
+                            </div>
+                            {evt.error && (
+                              <div
+                                className="mt-1 truncate text-xs text-destructive"
+                                title={evt.error}
+                                data-testid={`text-reset-email-error-${evt.id}`}
+                              >
+                                {evt.error}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+            </div>
           )}
         </DialogContent>
       </Dialog>

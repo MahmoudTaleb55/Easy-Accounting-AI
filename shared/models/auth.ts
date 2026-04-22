@@ -121,10 +121,41 @@ export const passwordResetTokens = pgTable(
     expiresAt: timestamp("expires_at").notNull(),
     usedAt: timestamp("used_at"),
     createdAt: timestamp("created_at").defaultNow(),
+    // Latest delivery snapshot, mirroring the invitation pattern so the admin
+    // UI can render a Sent/Delivered/Bounced badge for password reset emails.
+    lastMessageId: varchar("last_message_id"),
+    lastEmailStatus: text("last_email_status"),
+    lastEmailError: text("last_email_error"),
+    lastEmailEventAt: timestamp("last_email_event_at"),
   },
-  (t) => [index("prt_user_idx").on(t.userId)]
+  (t) => [
+    index("prt_user_idx").on(t.userId),
+    index("prt_last_message_idx").on(t.lastMessageId),
+  ]
 );
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
+// Lifecycle log for password-reset emails — same shape as invitation_email_events
+// so the webhook + admin surfaces can treat both transports uniformly.
+export const passwordResetEmailEvents = pgTable(
+  "password_reset_email_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tokenId: varchar("token_id").notNull(),
+    userId: varchar("user_id").notNull(),
+    messageId: varchar("message_id"),
+    type: text("type").notNull(),
+    error: text("error"),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("prt_email_events_token_idx").on(t.tokenId),
+    index("prt_email_events_user_idx").on(t.userId),
+    index("prt_email_events_msg_idx").on(t.messageId),
+  ]
+);
+export type PasswordResetEmailEvent = typeof passwordResetEmailEvents.$inferSelect;
 
 // Zod schemas for client/server input validation.
 export const signUpSchema = z.object({

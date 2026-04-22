@@ -266,7 +266,7 @@ export function registerLocalAuthRoutes(app: Express) {
       // Always return ok to prevent email enumeration.
       const isProd = process.env.NODE_ENV === "production";
       if (user && user.provider === "local") {
-        const { token } = await authBizStorage.createPasswordResetToken(user.id);
+        const { id: tokenId, token } = await authBizStorage.createPasswordResetToken(user.id);
         const link = `${req.protocol}://${req.get("host")}/reset-password/${token}`;
 
         // Try to send a real branded email when a transport is configured.
@@ -276,6 +276,40 @@ export function registerLocalAuthRoutes(app: Express) {
           firstName: user.firstName ?? null,
           locale: normalizeLocale(user.preferredLocale),
         });
+
+        // Mirror the invitation pattern: record one event per send attempt
+        // and denormalize the latest status onto the token row so admins
+        // can answer "did the reset email go out?" without scraping logs.
+        if (result.ok) {
+          await Promise.all([
+            authBizStorage.recordPasswordResetEmailEvent({
+              tokenId,
+              userId: user.id,
+              messageId: result.id,
+              type: "sent",
+            }),
+            authBizStorage.updatePasswordResetEmailMeta(tokenId, {
+              messageId: result.id,
+              status: "sent",
+              error: null,
+            }),
+          ]);
+        } else {
+          const status = result.reason === "not_configured" ? "not_configured" : "send_failed";
+          await Promise.all([
+            authBizStorage.recordPasswordResetEmailEvent({
+              tokenId,
+              userId: user.id,
+              type: status,
+              error: result.error ?? result.reason,
+            }),
+            authBizStorage.updatePasswordResetEmailMeta(tokenId, {
+              messageId: null,
+              status,
+              error: result.error ?? result.reason,
+            }),
+          ]);
+        }
 
         if (!result.ok) {
           // Never log the tokenized link in production — it grants account
@@ -443,10 +477,14 @@ export function registerLocalAuthRoutes(app: Express) {
     const all = await authBizStorage.listMembersForCompany(ctx.companyId);
     const target = all.find((m) => m.id === String(req.params.id));
     if (!target) return res.status(404).json({ message: "Member not found" });
-    const sessions = await authBizStorage.listSessionsForUser(target.userId);
+    const [sessions, passwordResetEmails] = await Promise.all([
+      authBizStorage.listSessionsForUser(target.userId),
+      authBizStorage.listPasswordResetEmailEventsForUser(target.userId),
+    ]);
     res.json({
       member: { id: target.id, userId: target.userId, role: target.role, user: target.user },
       sessions,
+      passwordResetEmails,
     });
   });
 
@@ -647,12 +685,6 @@ async function resendWebhook(req: Request, res: Response) {
     return res.status(200).json({ ok: true, ignored: "no message id" });
   }
 
-  const inv = await authBizStorage.getInvitationByMessageId(messageId);
-  if (!inv) {
-    // Could be a non-invitation email (e.g. password reset) — acknowledge.
-    return res.status(200).json({ ok: true, ignored: "no matching invitation" });
-  }
-
   const error: string | null =
     data?.bounce?.message ??
     data?.reason ??
@@ -660,20 +692,47 @@ async function resendWebhook(req: Request, res: Response) {
 
   const eventAt = body.created_at ? new Date(body.created_at) : new Date();
 
-  await Promise.all([
-    authBizStorage.recordInvitationEmailEvent({
-      invitationId: inv.id,
-      messageId,
-      type: status,
-      error,
-      payload: body,
-    }),
-    authBizStorage.updateInvitationEmailMeta(inv.id, {
-      status,
-      error,
-      eventAt,
-    }),
-  ]);
+  // The same Resend account ferries both invitation and password-reset
+  // mails. Try each lookup before giving up so a bounce on either path
+  // updates the right record.
+  const inv = await authBizStorage.getInvitationByMessageId(messageId);
+  if (inv) {
+    await Promise.all([
+      authBizStorage.recordInvitationEmailEvent({
+        invitationId: inv.id,
+        messageId,
+        type: status,
+        error,
+        payload: body,
+      }),
+      authBizStorage.updateInvitationEmailMeta(inv.id, {
+        status,
+        error,
+        eventAt,
+      }),
+    ]);
+    return res.status(200).json({ ok: true, kind: "invitation" });
+  }
 
-  return res.status(200).json({ ok: true });
+  const prt = await authBizStorage.getPasswordResetTokenByMessageId(messageId);
+  if (prt) {
+    await Promise.all([
+      authBizStorage.recordPasswordResetEmailEvent({
+        tokenId: prt.id,
+        userId: prt.userId,
+        messageId,
+        type: status,
+        error,
+        payload: body,
+      }),
+      authBizStorage.updatePasswordResetEmailMeta(prt.id, {
+        status,
+        error,
+        eventAt,
+      }),
+    ]);
+    return res.status(200).json({ ok: true, kind: "password_reset" });
+  }
+
+  return res.status(200).json({ ok: true, ignored: "no matching record" });
 }
