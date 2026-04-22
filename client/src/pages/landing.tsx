@@ -668,6 +668,98 @@ function getCopy(locale: Locale) {
         },
       ],
     },
+    compliance: {
+      eyebrow: ar ? "تقويم الامتثال · ٢٠٢٦" : "Compliance Calendar · 2026",
+      title: ar ? "٤٧ موعداً تنظيميّاً. ٦ دول. صفر فاتك." : "47 deadlines. 6 countries. Zero misses.",
+      lead: ar
+        ? "كلّ هيئة ضريبيّة في المنطقة لها لُغتها ومواعيدها. نتعقّبها كلّها هنا، ونُذكِّرك قبلها بأسبوع. أنت لا تفتح هذه الصفحة — نحن نُغلقها لك."
+        : "Every regulator in MENA speaks its own dialect of deadlines. We track them all here and remind you a week ahead. You don't open this page — we close it for you.",
+      stats: [
+        { v: ar ? "٤٧" : "47",  l: ar ? "موعداً نتعقّبه" : "deadlines tracked" },
+        { v: ar ? "٦"  : "6",   l: ar ? "دول مدعومة"   : "countries covered"  },
+        { v: ar ? "٧"  : "7",   l: ar ? "أيّام تذكير مسبق" : "days advance notice" },
+        { v: ar ? "٠"  : "0",   l: ar ? "غرامات تأخير عند عملائنا" : "late penalties at our clients" },
+      ],
+      months: ar
+        ? ["ينا","فبر","مار","أبر","ماي","يون","يول","أغس","سبت","أكت","نوف","ديس"]
+        : ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+      todayLabel: ar ? "اليوم" : "Today",
+      legend: [
+        { k: "vat",     l: ar ? "ضريبة القيمة المضافة" : "VAT" },
+        { k: "income",  l: ar ? "ضريبة الدخل / الشركات" : "Income / Corporate" },
+        { k: "zakat",   l: ar ? "زكاة" : "Zakat" },
+        { k: "esr",     l: ar ? "ESR / حوكمة" : "ESR / governance" },
+        { k: "excise",  l: ar ? "ضرائب انتقائيّة" : "Excise" },
+      ] as const,
+      countries: [
+        {
+          k: "sa", flag: "🇸🇦", n: ar ? "السعوديّة" : "Saudi Arabia", regulator: "ZATCA",
+          ds: [
+            { m: 1,  k: "vat",     t: ar ? "إقرار VAT يناير" : "VAT return Jan" },
+            { m: 4,  k: "vat",     t: ar ? "إقرار VAT أبريل" : "VAT return Apr" },
+            { m: 4,  k: "zakat",   t: ar ? "زكاة سنويّة" : "Annual Zakat" },
+            { m: 4,  k: "income",  t: ar ? "ضريبة الشركات" : "Corporate tax" },
+            { m: 7,  k: "vat",     t: ar ? "إقرار VAT يوليو" : "VAT return Jul" },
+            { m: 10, k: "vat",     t: ar ? "إقرار VAT أكتوبر" : "VAT return Oct" },
+          ],
+        },
+        {
+          k: "ae", flag: "🇦🇪", n: ar ? "الإمارات" : "UAE", regulator: "FTA",
+          ds: [
+            { m: 1,  k: "vat",     t: ar ? "VAT 201 ر١" : "VAT 201 Q1" },
+            { m: 4,  k: "vat",     t: ar ? "VAT 201 ر٢" : "VAT 201 Q2" },
+            { m: 6,  k: "esr",     t: ar ? "إخطار ESR" : "ESR notification" },
+            { m: 7,  k: "vat",     t: ar ? "VAT 201 ر٣" : "VAT 201 Q3" },
+            { m: 9,  k: "income",  t: ar ? "ضريبة الشركات" : "Corporate tax" },
+            { m: 10, k: "vat",     t: ar ? "VAT 201 ر٤" : "VAT 201 Q4" },
+            { m: 12, k: "esr",     t: ar ? "تقرير ESR" : "ESR report" },
+          ],
+        },
+        {
+          k: "eg", flag: "🇪🇬", n: ar ? "مصر" : "Egypt", regulator: "ETA",
+          ds: [
+            { m: 2,  k: "vat",     t: ar ? "VAT شهريّ" : "Monthly VAT" },
+            { m: 4,  k: "income",  t: ar ? "إقرار شركات" : "Corporate filing" },
+            { m: 5,  k: "vat",     t: ar ? "VAT شهريّ" : "Monthly VAT" },
+            { m: 8,  k: "vat",     t: ar ? "VAT شهريّ" : "Monthly VAT" },
+            { m: 11, k: "vat",     t: ar ? "VAT شهريّ" : "Monthly VAT" },
+          ],
+        },
+        {
+          k: "kw", flag: "🇰🇼", n: ar ? "الكويت" : "Kuwait", regulator: "MoF",
+          ds: [
+            { m: 1,  k: "excise",  t: ar ? "ضريبة انتقائيّة ر١" : "Excise Q1" },
+            { m: 4,  k: "zakat",   t: ar ? "زكاة سنويّة" : "Annual Zakat" },
+            { m: 4,  k: "income",  t: ar ? "ضريبة دخل" : "Income tax" },
+            { m: 7,  k: "excise",  t: ar ? "انتقائيّة ر٢" : "Excise Q2" },
+            { m: 10, k: "excise",  t: ar ? "انتقائيّة ر٣" : "Excise Q3" },
+          ],
+        },
+        {
+          k: "qa", flag: "🇶🇦", n: ar ? "قطر" : "Qatar", regulator: "GTA",
+          ds: [
+            { m: 4,  k: "income",  t: ar ? "ضريبة دخل" : "Income tax" },
+            { m: 6,  k: "esr",     t: ar ? "تقارير DTT" : "DTT reports" },
+            { m: 7,  k: "excise",  t: ar ? "انتقائيّة ر٢" : "Excise Q2" },
+            { m: 10, k: "excise",  t: ar ? "انتقائيّة ر٣" : "Excise Q3" },
+          ],
+        },
+        {
+          k: "jo", flag: "🇯🇴", n: ar ? "الأردن" : "Jordan", regulator: "ISTD",
+          ds: [
+            { m: 3,  k: "vat",     t: ar ? "VAT ثنائيّ" : "Bi-monthly VAT" },
+            { m: 4,  k: "income",  t: ar ? "ضريبة دخل" : "Income tax" },
+            { m: 5,  k: "vat",     t: ar ? "VAT ثنائيّ" : "Bi-monthly VAT" },
+            { m: 7,  k: "vat",     t: ar ? "VAT ثنائيّ" : "Bi-monthly VAT" },
+            { m: 9,  k: "vat",     t: ar ? "VAT ثنائيّ" : "Bi-monthly VAT" },
+            { m: 11, k: "vat",     t: ar ? "VAT ثنائيّ" : "Bi-monthly VAT" },
+          ],
+        },
+      ] as const,
+      caption: ar
+        ? "البيانات أعلاه مأخوذة من أحدث جداول ZATCA · FTA · ETA · MoF · GTA · ISTD. نُحدّثها أسبوعيّاً."
+        : "Sourced from the latest ZATCA · FTA · ETA · MoF · GTA · ISTD calendars. Updated weekly.",
+    },
     manifesto: {
       eyebrow: ar ? "بيان" : "Manifesto",
       kicker: ar ? "نحن نؤمن بأنّ" : "We believe that",
@@ -971,6 +1063,7 @@ export default function Landing() {
         <Automation t={t} />
         <LiveAuditor t={t} />
         <LocalIntegrations t={t} />
+        <ComplianceCalendar t={t} />
         <Security t={t} />
         <UseCases t={t} />
         <Testimonials t={t} />
@@ -1614,7 +1707,7 @@ function Testimonials({ t }: { t: Dict }) {
         {/* Header */}
         <div className="grid lg:grid-cols-12 gap-10 mb-14 items-end">
           <div className="lg:col-span-7">
-            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">10</span>{ts.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">11</span>{ts.eyebrow}</div>
             <h2 className="text-display text-foreground">{ts.title}</h2>
           </div>
           <div className="lg:col-span-5">
@@ -2847,7 +2940,195 @@ function LocalIntegrations({ t }: { t: Dict }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/*  8 · Security                                                              */
+/*  8 · Compliance Calendar — MENA-wide year-at-a-glance                      */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+const KIND_STYLES: Record<string, { bg: string; ring: string; dot: string; chip: string }> = {
+  vat:    { bg: "bg-primary/12",   ring: "ring-primary/30",   dot: "bg-primary",     chip: "text-primary" },
+  income: { bg: "bg-warning/15",   ring: "ring-warning/35",   dot: "bg-warning",     chip: "text-warning" },
+  zakat:  { bg: "bg-info/12",      ring: "ring-info/30",      dot: "bg-info",        chip: "text-info" },
+  esr:    { bg: "bg-foreground/8", ring: "ring-foreground/25",dot: "bg-foreground/70",chip: "text-foreground/80" },
+  excise: { bg: "bg-loss/12",      ring: "ring-loss/30",      dot: "bg-loss",        chip: "text-loss" },
+}
+
+function ComplianceCalendar({ t }: { t: Dict }) {
+  const c = t.compliance
+  const todayMonth = new Date().getMonth() + 1 // 1..12
+  const todayPercent = ((todayMonth - 0.5) / 12) * 100
+
+  return (
+    <section
+      id="compliance"
+      className="relative py-24 lg:py-32 border-b border-border overflow-hidden"
+      data-testid="section-compliance"
+    >
+      {/* Quiet ambient backdrop — emerald wash from the side the eye reads from */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 pointer-events-none"
+        style={{
+          background: t.ar
+            ? "radial-gradient(45% 55% at 90% 10%, hsl(158 64% 28% / 0.08), transparent 70%)"
+            : "radial-gradient(45% 55% at 10% 10%, hsl(158 64% 28% / 0.08), transparent 70%)",
+        }}
+      />
+
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="grid lg:grid-cols-12 gap-10 mb-12 items-end">
+          <div className="lg:col-span-7">
+            <div className="eyebrow eyebrow-lead mb-3">
+              <span className="chapter-index">08</span>{c.eyebrow}
+            </div>
+            <h2 className="text-display text-foreground">{c.title}</h2>
+          </div>
+          <div className="lg:col-span-5">
+            <p className="text-base leading-relaxed text-muted-foreground">{c.lead}</p>
+          </div>
+        </div>
+
+        {/* Stats strip */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border mb-10">
+          {c.stats.map((s) => (
+            <div key={s.l} className="bg-card p-5 lg:p-6">
+              <div className="text-3xl lg:text-4xl font-semibold text-foreground tracking-tight tabular-nums">
+                {s.v}
+              </div>
+              <div className="mt-1 text-2xs text-muted-foreground leading-snug">{s.l}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar surface */}
+        <div className="card-premium relative rounded-2xl border border-card-border bg-card shadow-md overflow-hidden">
+          {/* Months header */}
+          <div className="grid grid-cols-[8.5rem_repeat(12,minmax(0,1fr))] border-b border-border bg-muted/30">
+            <div className="px-4 py-3 font-mono text-2xs uppercase tracking-widest text-muted-foreground">
+              {t.ar ? "الجهة · الدولة" : "Regulator · Country"}
+            </div>
+            {c.months.map((m, i) => {
+              const isToday = i + 1 === todayMonth
+              return (
+                <div
+                  key={m}
+                  className={cn(
+                    "px-1 py-3 text-center font-mono text-2xs tracking-wide border-l border-border/60",
+                    isToday ? "text-primary font-semibold" : "text-muted-foreground"
+                  )}
+                  data-testid={`cal-month-${i + 1}`}
+                >
+                  {m}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Today vertical guideline overlay */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute top-0 bottom-12 w-px bg-primary/40"
+            style={{
+              left: t.ar ? undefined : `calc(8.5rem + (100% - 8.5rem) * ${todayPercent / 100})`,
+              right: t.ar ? `calc(8.5rem + (100% - 8.5rem) * ${todayPercent / 100})` : undefined,
+            }}
+          >
+            <span
+              className={cn(
+                "absolute -top-2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider bg-primary text-primary-foreground whitespace-nowrap",
+                t.ar && "translate-x-1/2"
+              )}
+            >
+              {c.todayLabel}
+            </span>
+          </div>
+
+          {/* Country rows */}
+          {c.countries.map((co, ri) => (
+            <div
+              key={co.k}
+              className={cn(
+                "grid grid-cols-[8.5rem_repeat(12,minmax(0,1fr))] items-stretch",
+                ri !== c.countries.length - 1 && "border-b border-border/60"
+              )}
+              data-testid={`cal-row-${co.k}`}
+            >
+              {/* Country label */}
+              <div className="px-4 py-4 flex items-center gap-2.5 bg-muted/20 border-l border-border/40">
+                <span className="text-lg leading-none" aria-hidden>{co.flag}</span>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-foreground leading-tight truncate">{co.n}</div>
+                  <div className="font-mono text-2xs text-muted-foreground tracking-wide">{co.regulator}</div>
+                </div>
+              </div>
+              {/* 12 month cells */}
+              {Array.from({ length: 12 }, (_, mi) => {
+                const monthNum = mi + 1
+                const isToday = monthNum === todayMonth
+                const dls = co.ds.filter((d) => d.m === monthNum)
+                return (
+                  <div
+                    key={mi}
+                    className={cn(
+                      "relative min-h-[64px] px-1 py-2 border-l border-border/50 flex flex-col gap-1 items-stretch justify-start",
+                      isToday && "bg-primary/[0.04]"
+                    )}
+                  >
+                    {dls.map((d, di) => {
+                      const s = KIND_STYLES[d.k] ?? KIND_STYLES.vat
+                      return (
+                        <div
+                          key={di}
+                          title={d.t}
+                          className={cn(
+                            "group/pill relative cursor-default",
+                            "rounded-md px-1.5 py-1 ring-1",
+                            s.bg, s.ring,
+                          )}
+                          data-testid={`cal-pill-${co.k}-${monthNum}-${di}`}
+                        >
+                          <div className="flex items-center gap-1">
+                            <span className={cn("size-1.5 rounded-full flex-shrink-0", s.dot)} />
+                            <span className={cn("text-[10px] font-medium leading-tight truncate", s.chip)}>
+                              {d.t}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+
+          {/* Legend strip */}
+          <div className="border-t border-border bg-muted/20 px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <span className="font-mono text-2xs uppercase tracking-widest text-muted-foreground">
+              {t.ar ? "المفتاح" : "Legend"}
+            </span>
+            {c.legend.map((l) => {
+              const s = KIND_STYLES[l.k] ?? KIND_STYLES.vat
+              return (
+                <span key={l.k} className="inline-flex items-center gap-1.5 text-2xs text-foreground/80">
+                  <span className={cn("size-2 rounded-full", s.dot)} />
+                  {l.l}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Caption */}
+        <p className="mt-5 text-2xs text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">
+          {c.caption}
+        </p>
+      </div>
+    </section>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  9 · Security & trust                                                      */
 /* ────────────────────────────────────────────────────────────────────────── */
 
 function Security({ t }: { t: Dict }) {
@@ -2863,7 +3144,7 @@ function Security({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-12 mb-14 items-end">
           <div className="lg:col-span-7">
-            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">08</span>{sec.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">09</span>{sec.eyebrow}</div>
             <h2 className="text-display text-foreground">{sec.title}</h2>
           </div>
           <div className="lg:col-span-4 lg:col-start-9">
@@ -2902,7 +3183,7 @@ function UseCases({ t }: { t: Dict }) {
     <section id="use-cases" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl mb-12">
-          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">09</span>{u.eyebrow}</div>
+          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">10</span>{u.eyebrow}</div>
           <h2 className="text-display text-foreground">{u.title}</h2>
         </div>
 
@@ -3072,7 +3353,7 @@ function Pricing({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section heading */}
         <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">11</span>{p.eyebrow}</div>
+          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">12</span>{p.eyebrow}</div>
           <h2 className="text-display text-foreground">{p.title}</h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">{p.lead}</p>
         </div>
@@ -3262,7 +3543,7 @@ function FAQ({ t }: { t: Dict }) {
     <section id="faq" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">12</span>{t.faq.eyebrow}</div>
+          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">13</span>{t.faq.eyebrow}</div>
           <h2 className="text-display text-foreground">{t.faq.title}</h2>
         </div>
         <Accordion type="single" collapsible className="border-t border-border">
