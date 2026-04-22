@@ -4,7 +4,9 @@ import {
   Sparkles, ShieldCheck, Globe2, Workflow, BarChart3, Briefcase,
   Users, Wallet, TrendingUp, AlertTriangle, Lock, Database, ScrollText,
   MapPin, Activity, Scale, Radar, Brain, LineChart, Clock, Zap,
+  Send, Search, Calendar, Building2, Command,
 } from "lucide-react"
+import { SiWhatsapp } from "react-icons/si"
 import { AppNavbar } from "@/components/layout/AppNavbar"
 import { AppFooter } from "@/components/layout/AppFooter"
 import { Button } from "@/components/ui/button"
@@ -54,6 +56,16 @@ function getCopy(locale: Locale) {
       bullets: ar
         ? ["بدون بطاقة ائتمان", "١٤ يوماً مجاناً، بكلّ المزايا", "جاهز خلال ٥ دقائق"]
         : ["No credit card", "Full 14-day trial", "Set up in 5 minutes"],
+      certBadge: ar ? "مُعتمَد من ZATCA · المرحلة الثانية" : "ZATCA-cleared · Phase 2",
+      countriesLabel: ar ? "يعمل في" : "Live in",
+      countries: [
+        { f: "🇸🇦", n: ar ? "السعوديّة" : "KSA" },
+        { f: "🇦🇪", n: ar ? "الإمارات"  : "UAE" },
+        { f: "🇪🇬", n: ar ? "مصر"        : "Egypt" },
+        { f: "🇰🇼", n: ar ? "الكويت"     : "Kuwait" },
+        { f: "🇶🇦", n: ar ? "قطر"        : "Qatar" },
+        { f: "🇯🇴", n: ar ? "الأردن"     : "Jordan" },
+      ],
       mockTitle: ar ? "cockpit · محاسب ذكي" : "cockpit · Smart Accountant",
       chipAuto: { t: ar ? "قيد سُجِّل تلقائيّاً" : "Entry auto-posted", s: ar ? "فاتورة كهرباء · ١٥٠ ر.س" : "Electricity invoice · SAR 150" },
       chipProfit: { t: ar ? "هامش الربح ↑ ١٢٪" : "Profit margin ↑ 12%", s: ar ? "هذا الربع" : "Current quarter" },
@@ -656,6 +668,72 @@ function getCopy(locale: Locale) {
         },
       ],
     },
+    productTour: {
+      eyebrow: ar ? "داخل المنتج" : "Inside the product",
+      title: ar ? "هذه ليست رسومات. هذه الشاشات نفسها." : "Not diagrams. These are the actual screens.",
+      lead: ar
+        ? "كلّ وحدة هنا تعمل اليوم — عربيّةٌ في الجوهر منذ السطر الأوّل، ومُعتمدةٌ من الهيئات التنظيميّة في كلّ سوق نخدمه."
+        : "Every module here ships today — Arabic-first from the first line of code, certified by the regulators in every market we serve.",
+      modules: ar ? [
+        {
+          k: "invoice", n: "وحدة ٠١",
+          title: "فاتورة معتمدة من ZATCA — دفعة واحدة.",
+          body: "ارسم الفاتورة، أضف البنود، وأرسلها. التطبيق يحسب الضريبة، يولّد رمز QR التوقيع، ويُرسلها بطريقتك المُفضّلة — بريد، WhatsApp، أو رابط دفع.",
+          bullets: ["رمز QR متوافق مع المرحلة الثانية", "إرسال عبر WhatsApp مدمج", "قوالب لا تنتهي · علامتك التجاريّة"],
+          align: "right",
+        },
+        {
+          k: "vat", n: "وحدة ٠٢",
+          title: "إقرار VAT جاهز للتقديم — بنقرة.",
+          body: "الإقرار يُملأ من نفسه طوال الربع. عند الموعد، تجد كلّ الأرقام منطبقة على نموذج هيئة الزكاة، تراجع، تُقدِّم، تنتهي.",
+          bullets: ["مطابقة لحظيّة مع الأستاذ العامّ", "تنبيه قبل ١٤ يوماً من موعد التقديم", "أثر تدقيق كامل لكلّ بند في الإقرار"],
+          align: "left",
+        },
+        {
+          k: "multi", n: "وحدة ٠٣",
+          title: "كيانات متعدّدة، عملات متعدّدة، حقيقة واحدة.",
+          body: "أَدِر كلّ شركاتك من حساب واحد. كلّ كيان بعملته ودولته وضريبته، والتوحيد يحدث آليّاً وفق IFRS 10.",
+          bullets: ["٧ هيئات تنظيميّة في الحساب نفسه", "توحيد فوريّ بسعر الصرف الحقيقيّ", "صلاحيّات متفرّعة لكلّ كيان"],
+          align: "right",
+        },
+        {
+          k: "command", n: "وحدة ٠٤",
+          title: "كلّ شيء على بُعد ⌘K.",
+          body: "اطبع ما تريد فعله — لا أين هو في القائمة. النظام يفهم: «فاتورة لـعميل جدّة»، «تقرير الربع»، «أوقف موافقة الدفع لمطعم النور».",
+          bullets: ["لغة طبيعيّة، عربيّ وإنجليزيّ", "تنفيذ مباشر — ليس مجرّد بحث", "اختصارات قابلة للتخصيص"],
+          align: "left",
+        },
+      ] : [
+        {
+          k: "invoice", n: "Module 01",
+          title: "ZATCA-cleared invoices — one shot.",
+          body: "Draft, add items, send. The app computes the tax, generates the signed QR, and sends it your way — email, WhatsApp, or a pay-link.",
+          bullets: ["Phase-2 compliant QR code", "WhatsApp send, built in", "Endless templates · your brand"],
+          align: "right",
+        },
+        {
+          k: "vat", n: "Module 02",
+          title: "A VAT return that's ready to file — one click.",
+          body: "The return self-fills all quarter. When it's due, every number is mapped to ZATCA's form. Review, file, done.",
+          bullets: ["Live ledger reconciliation", "14-day filing-deadline alerts", "Full audit trail per return line"],
+          align: "left",
+        },
+        {
+          k: "multi", n: "Module 03",
+          title: "Many entities, many currencies, one truth.",
+          body: "Run all your companies from one account. Every entity in its currency, country, and tax — consolidation runs automatically per IFRS 10.",
+          bullets: ["7 regulators in the same account", "Real-time consolidation at live FX", "Per-entity branched permissions"],
+          align: "right",
+        },
+        {
+          k: "command", n: "Module 04",
+          title: "Everything is one ⌘K away.",
+          body: "Type what you want to do — not where it lives. The system understands: \"invoice for the Jeddah customer\", \"this quarter's report\", \"hold payment for Al-Noor restaurant\".",
+          bullets: ["Natural language, Arabic & English", "Direct execution — not just search", "Customizable keyboard shortcuts"],
+          align: "left",
+        },
+      ],
+    },
     faq: {
       eyebrow: ar ? "الأسئلة الشائعة" : "Frequently asked",
       title: ar ? "سؤال مباشر، إجابة مباشرة." : "Straight question, straight answer.",
@@ -724,6 +802,7 @@ export default function Landing() {
         <CoreCapabilities t={t} />
         <AIAssistant t={t} />
         <DashboardShowcase t={t} />
+        <ProductTour t={t} />
         <PredictiveCapital t={t} />
         <Automation t={t} />
         <LiveAuditor t={t} />
@@ -763,9 +842,29 @@ function Hero({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-center">
           <div className="lg:col-span-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-xs">
-              <span className="status-dot bg-success animate-pulse" />
-              <span className="text-xs text-muted-foreground">{t.hero.tag}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-xs">
+                <span className="status-dot bg-success animate-pulse motion-reduce:animate-none" />
+                <span className="text-xs text-muted-foreground">{t.hero.tag}</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5">
+                <ShieldCheck className="size-3.5 text-primary" />
+                <span className="text-xs text-primary font-medium">{t.hero.certBadge}</span>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+              <span className="font-mono text-2xs uppercase tracking-wider">{t.hero.countriesLabel}</span>
+              {t.hero.countries.map((c) => (
+                <span
+                  key={c.n}
+                  className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-card/60 px-1.5 py-0.5"
+                  data-testid={`hero-country-${c.n}`}
+                >
+                  <span aria-hidden className="leading-none">{c.f}</span>
+                  <span className="text-foreground/80">{c.n}</span>
+                </span>
+              ))}
             </div>
 
             <h1 className="mt-6 text-display-lg text-foreground">
@@ -1240,6 +1339,523 @@ function DashboardShowcase({ t }: { t: Dict }) {
         </div>
       </div>
     </section>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  6.4 · Product Tour — module-by-module screenshots                         */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function ProductTour({ t }: { t: Dict }) {
+  const p = t.productTour
+  const mocks: Record<string, React.ReactNode> = {
+    invoice: <InvoiceMock t={t} />,
+    vat:     <VatReturnMock t={t} />,
+    multi:   <MultiOrgMock t={t} />,
+    command: <CommandMock t={t} />,
+  }
+  return (
+    <section id="modules" className="py-24 lg:py-32 border-b border-border">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-12 gap-8 mb-16">
+          <div className="lg:col-span-7">
+            <div className="eyebrow mb-3">{p.eyebrow}</div>
+            <h2 className="text-display text-foreground">{p.title}</h2>
+          </div>
+          <div className="lg:col-span-5 self-end">
+            <p className="text-base leading-relaxed text-muted-foreground">{p.lead}</p>
+          </div>
+        </div>
+
+        <div className="space-y-20 lg:space-y-28">
+          {p.modules.map((m) => {
+            const flipped = m.align === "left"
+            return (
+              <div
+                key={m.k}
+                className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-center"
+                data-testid={`module-${m.k}`}
+              >
+                <div className={cn(
+                  "lg:col-span-5",
+                  flipped ? "lg:order-2" : "lg:order-1"
+                )}>
+                  <div className="font-mono text-2xs text-primary tracking-widest mb-3">{m.n}</div>
+                  <h3 className="text-2xl lg:text-3xl font-semibold text-foreground tracking-tight leading-snug mb-4">
+                    {m.title}
+                  </h3>
+                  <p className="text-base leading-relaxed text-muted-foreground mb-6">
+                    {m.body}
+                  </p>
+                  <ul className="space-y-2.5">
+                    {m.bullets.map((b) => (
+                      <li key={b} className="flex items-start gap-2.5 text-sm text-foreground/85 leading-relaxed">
+                        <Check className="size-4 text-primary flex-shrink-0 mt-0.5" />
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className={cn(
+                  "lg:col-span-7",
+                  flipped ? "lg:order-1" : "lg:order-2"
+                )}>
+                  {mocks[m.k]}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ── Module 01: Invoice mock with QR + ZATCA badge + WhatsApp action ── */
+function InvoiceMock({ t }: { t: Dict }) {
+  const ar = t.ar
+  const items = ar
+    ? [
+        { d: "خدمات استشاريّة · يناير", q: "١", p: "٣٬٥٠٠٫٠٠", x: "٣٬٥٠٠٫٠٠" },
+        { d: "تطوير لوحة تحكّم", q: "١", p: "٢٬٢٠٠٫٠٠", x: "٢٬٢٠٠٫٠٠" },
+        { d: "صيانة شهر فبراير", q: "١", p: "١٬٣٠٠٫٠٠", x: "١٬٣٠٠٫٠٠" },
+      ]
+    : [
+        { d: "Consulting services · January", q: "1", p: "3,500.00", x: "3,500.00" },
+        { d: "Dashboard development",        q: "1", p: "2,200.00", x: "2,200.00" },
+        { d: "February maintenance",         q: "1", p: "1,300.00", x: "1,300.00" },
+      ]
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg">
+      {/* Window chrome */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
+        <div className="flex gap-1.5">
+          <span className="size-2.5 rounded-full bg-border" />
+          <span className="size-2.5 rounded-full bg-border" />
+          <span className="size-2.5 rounded-full bg-border" />
+        </div>
+        <div className="flex-1 text-center font-mono text-2xs text-muted-foreground tracking-wide">
+          invoice · INV-2478
+        </div>
+      </div>
+
+      <div className="p-6 lg:p-7 grid grid-cols-12 gap-5">
+        {/* Header */}
+        <div className="col-span-12 flex items-start justify-between gap-4 pb-5 border-b border-border">
+          <div>
+            <div className="text-2xs text-muted-foreground mb-1">{ar ? "فاتورة ضريبيّة" : "Tax invoice"}</div>
+            <div className="text-lg font-semibold text-foreground tabular-nums">#INV-2478</div>
+            <div className="font-mono text-2xs text-muted-foreground mt-1">{ar ? "تاريخ الإصدار · ١٢ مارس ٢٠٢٦" : "Issued · 12 Mar 2026"}</div>
+          </div>
+          <div className="flex flex-col items-end gap-1.5">
+            <Badge variant="brand" size="sm" className="font-mono text-2xs">
+              <ShieldCheck className="size-3" />
+              ZATCA · {ar ? "المرحلة ٢" : "Phase 2"}
+            </Badge>
+            <span className="text-2xs text-muted-foreground">{ar ? "إلى" : "To"}: {ar ? "شركة الجوهرة للاستثمار" : "Al-Jawhara Investments Co."}</span>
+          </div>
+        </div>
+
+        {/* Line items */}
+        <div className="col-span-12 lg:col-span-8 -mx-2 sm:mx-0 overflow-x-auto">
+         <table className="w-full min-w-[360px] text-2xs">
+            <thead>
+              <tr className="text-muted-foreground">
+                <th className="text-start font-medium pb-2">{ar ? "البند" : "Item"}</th>
+                <th className="text-end font-medium pb-2 w-10">{ar ? "كمّ" : "Qty"}</th>
+                <th className="text-end font-medium pb-2 w-20">{ar ? "السعر" : "Price"}</th>
+                <th className="text-end font-medium pb-2 w-20">{ar ? "المجموع" : "Total"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it, i) => (
+                <tr key={i} className="border-t border-border/60">
+                  <td className="py-2 text-foreground/90">{it.d}</td>
+                  <td className="py-2 text-end font-mono text-muted-foreground">{it.q}</td>
+                  <td className="py-2 text-end font-mono text-muted-foreground">{it.p}</td>
+                  <td className="py-2 text-end font-mono text-foreground">{it.x}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="mt-4 pt-3 border-t border-border space-y-1.5 text-2xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{ar ? "المجموع الفرعيّ" : "Subtotal"}</span>
+              <span className="font-mono text-foreground">{ar ? "٧٬٠٠٠٫٠٠" : "7,000.00"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{ar ? "ضريبة القيمة المضافة · ١٥٪" : "VAT · 15%"}</span>
+              <span className="font-mono text-foreground">{ar ? "١٬٠٥٠٫٠٠" : "1,050.00"}</span>
+            </div>
+            <div className="flex justify-between pt-1.5 mt-1.5 border-t border-border/60">
+              <span className="text-sm font-semibold text-foreground">{ar ? "الإجماليّ المستحقّ" : "Total due"}</span>
+              <span className="font-mono text-sm font-semibold text-foreground tabular-nums">
+                {ar ? "٨٬٠٥٠٫٠٠ ر.س" : "SAR 8,050.00"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* QR + ZATCA */}
+        <div className="col-span-12 lg:col-span-4 flex flex-col items-center gap-2 lg:border-s lg:border-border lg:ps-5">
+          <ZatcaQR />
+          <div className="text-2xs text-muted-foreground text-center leading-relaxed">
+            {ar ? "رمز QR موقّع رقميّاً · مُستخرَج من فاضورة" : "Cryptographically signed QR · Fatoora gateway"}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="col-span-12 flex flex-wrap items-center gap-2 pt-4 border-t border-border">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover-elevate"
+            data-testid="invoice-mock-send"
+          >
+            <Send className="size-3.5" />
+            {ar ? "إرسال" : "Send"}
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover-elevate"
+          >
+            <SiWhatsapp className="size-3.5 text-[#25D366]" />
+            WhatsApp
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover-elevate"
+          >
+            <FileText className="size-3.5" />
+            PDF
+          </button>
+          <div className="ms-auto text-2xs text-muted-foreground font-mono">
+            {ar ? "محفوظ تلقائيّاً قبل ثانيتَين" : "Auto-saved 2s ago"}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* Decorative ZATCA-style QR pattern (purely visual — not a real code). */
+function ZatcaQR() {
+  // Deterministic pseudo-random pattern from a simple hash so it stays stable.
+  const cells: boolean[] = []
+  for (let i = 0; i < 21 * 21; i++) {
+    const x = i % 21, y = Math.floor(i / 21)
+    // Finder squares (top-left, top-right, bottom-left)
+    const inFinder = (cx: number, cy: number) =>
+      x >= cx && x < cx + 7 && y >= cy && y < cy + 7
+    if (inFinder(0, 0) || inFinder(14, 0) || inFinder(0, 14)) {
+      const lx = inFinder(0, 0) ? x : inFinder(14, 0) ? x - 14 : x
+      const ly = inFinder(0, 0) ? y : inFinder(0, 14) ? y - 14 : y
+      const onBorder = lx === 0 || lx === 6 || ly === 0 || ly === 6
+      const onCenter = lx >= 2 && lx <= 4 && ly >= 2 && ly <= 4
+      cells.push(onBorder || onCenter)
+      continue
+    }
+    // Pseudo-random data cells
+    cells.push(((x * 73 + y * 131 + (x ^ y) * 19) % 7) < 3)
+  }
+  return (
+    <div className="rounded-md border border-border bg-background p-2">
+      <svg viewBox="0 0 21 21" className="size-28 lg:size-32" aria-hidden>
+        {cells.map((on, i) =>
+          on ? (
+            <rect
+              key={i}
+              x={i % 21}
+              y={Math.floor(i / 21)}
+              width="1"
+              height="1"
+              fill="hsl(var(--foreground))"
+            />
+          ) : null
+        )}
+      </svg>
+    </div>
+  )
+}
+
+/* ── Module 02: VAT return ready-to-file mock ── */
+function VatReturnMock({ t }: { t: Dict }) {
+  const ar = t.ar
+  const rows = ar ? [
+    { l: "المبيعات الخاضعة للضريبة", v: "٤٢٢٬٧٥٠٫٠٠", t: "ضريبة المخرجات", tv: "٦٣٬٤١٢٫٥٠", tone: "out" },
+    { l: "الصادرات (صفريّة)",         v: "٨٧٬٢٠٠٫٠٠",  t: "—",                tv: "٠٫٠٠",       tone: "neutral" },
+    { l: "المشتريات الخاضعة للضريبة", v: "١٩٨٬٤٠٠٫٠٠", t: "ضريبة المدخلات",   tv: "٢٩٬٧٦٠٫٠٠", tone: "in" },
+    { l: "تعديلات",                     v: "٤٬٢٠٠٫٠٠",   t: "—",                tv: "٦٣٠٫٠٠",     tone: "neutral" },
+  ] : [
+    { l: "Taxable sales",       v: "422,750.00", t: "Output tax", tv: "63,412.50", tone: "out" },
+    { l: "Exports (zero-rated)", v: "87,200.00",  t: "—",          tv: "0.00",      tone: "neutral" },
+    { l: "Taxable purchases",   v: "198,400.00", t: "Input tax",  tv: "29,760.00", tone: "in" },
+    { l: "Adjustments",         v: "4,200.00",   t: "—",          tv: "630.00",    tone: "neutral" },
+  ]
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
+        <div className="flex gap-1.5">
+          <span className="size-2.5 rounded-full bg-border" />
+          <span className="size-2.5 rounded-full bg-border" />
+          <span className="size-2.5 rounded-full bg-border" />
+        </div>
+        <div className="flex-1 text-center font-mono text-2xs text-muted-foreground tracking-wide">
+          vat-return · Q1-2026
+        </div>
+      </div>
+      <div className="p-6 lg:p-7 space-y-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="eyebrow mb-1">{ar ? "إقرار ضريبة القيمة المضافة" : "VAT return"}</div>
+            <div className="text-lg font-semibold text-foreground">{ar ? "الربع الأوّل · ٢٠٢٦" : "Q1 · 2026"}</div>
+          </div>
+          <div className="flex flex-col items-end gap-1.5">
+            <Badge variant="success" size="sm" className="font-mono">
+              <Check className="size-3" />
+              {ar ? "جاهز للتقديم" : "Ready to file"}
+            </Badge>
+            <div className="text-2xs text-muted-foreground flex items-center gap-1.5">
+              <Calendar className="size-3" />
+              {ar ? "موعد التقديم · ٣٠ أبريل" : "Filing due · Apr 30"}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border overflow-x-auto">
+          <table className="w-full min-w-[440px] text-2xs">
+            <thead>
+              <tr className="bg-muted/40 text-muted-foreground">
+                <th className="text-start px-3 py-2 font-medium">{ar ? "البند" : "Box"}</th>
+                <th className="text-end px-3 py-2 font-medium w-24">{ar ? "القيمة" : "Amount"}</th>
+                <th className="text-start px-3 py-2 font-medium w-24">{ar ? "الضريبة" : "Tax"}</th>
+                <th className="text-end px-3 py-2 font-medium w-24">{ar ? "المبلغ" : "Value"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-t border-border">
+                  <td className="px-3 py-2 text-foreground/90">{r.l}</td>
+                  <td className="px-3 py-2 text-end font-mono text-foreground">{r.v}</td>
+                  <td className={cn(
+                    "px-3 py-2 text-2xs",
+                    r.tone === "out" ? "text-loss" : r.tone === "in" ? "text-success" : "text-muted-foreground"
+                  )}>{r.t}</td>
+                  <td className={cn(
+                    "px-3 py-2 text-end font-mono",
+                    r.tone === "out" ? "text-loss" : r.tone === "in" ? "text-success" : "text-muted-foreground"
+                  )}>{r.tv}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-primary/30 bg-accent/40">
+                <td className="px-3 py-2.5 text-sm font-semibold text-foreground" colSpan={3}>
+                  {ar ? "الصافي المستحقّ للهيئة" : "Net payable to authority"}
+                </td>
+                <td className="px-3 py-2.5 text-end font-mono text-sm font-semibold text-foreground tabular-nums">
+                  {ar ? "٣٤٬٢٨٢٫٥٠" : "34,282.50"}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center gap-2 pt-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover-elevate"
+          >
+            <ShieldCheck className="size-3.5" />
+            {ar ? "تقديم لـ ZATCA" : "Submit to ZATCA"}
+          </button>
+          <div className="ms-auto text-2xs text-muted-foreground font-mono">
+            {ar ? "أثر تدقيق · ٤٢ بنداً مرتبطاً" : "Audit trail · 42 linked entries"}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Module 03: Multi-org / multi-currency mock ── */
+function MultiOrgMock({ t }: { t: Dict }) {
+  const ar = t.ar
+  const orgs = ar ? [
+    { f: "🇸🇦", n: "محاسب ذكي · المملكة",   c: "ر.س", b: "١٫٢٤ مليون", reg: "ZATCA",  ok: true },
+    { f: "🇦🇪", n: "Smart Accountant FZ",  c: "د.إ", b: "٨٤٠ ألف",     reg: "FTA",    ok: true },
+    { f: "🇪🇬", n: "محاسب ذكي · مصر",       c: "ج.م", b: "٤٫٢٠ مليون",  reg: "ETA",    ok: true },
+    { f: "🇰🇼", n: "محاسب ذكي · الكويت",    c: "د.ك", b: "٢٢٠ ألف",     reg: "—",      ok: true },
+    { f: "🇯🇴", n: "محاسب ذكي · الأردن",    c: "د.أ", b: "١١٢ ألف",     reg: "ISTD",   ok: false },
+  ] : [
+    { f: "🇸🇦", n: "Smart Accountant · KSA",  c: "SAR", b: "1.24M",  reg: "ZATCA", ok: true },
+    { f: "🇦🇪", n: "Smart Accountant FZ",     c: "AED", b: "840K",   reg: "FTA",   ok: true },
+    { f: "🇪🇬", n: "Smart Accountant · EG",   c: "EGP", b: "4.20M",  reg: "ETA",   ok: true },
+    { f: "🇰🇼", n: "Smart Accountant · KW",   c: "KWD", b: "220K",   reg: "—",     ok: true },
+    { f: "🇯🇴", n: "Smart Accountant · JO",   c: "JOD", b: "112K",   reg: "ISTD",  ok: false },
+  ]
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
+        <div className="flex gap-1.5">
+          <span className="size-2.5 rounded-full bg-border" />
+          <span className="size-2.5 rounded-full bg-border" />
+          <span className="size-2.5 rounded-full bg-border" />
+        </div>
+        <div className="flex-1 text-center font-mono text-2xs text-muted-foreground tracking-wide">
+          entities · consolidated
+        </div>
+      </div>
+      <div className="p-6 lg:p-7">
+        <div className="flex items-start justify-between gap-3 mb-5">
+          <div>
+            <div className="eyebrow mb-1 flex items-center gap-2">
+              <Building2 className="size-3.5 text-primary" />
+              {ar ? "الكيانات والفروع" : "Entities & branches"}
+            </div>
+            <div className="text-lg font-semibold text-foreground">{ar ? "٥ كيانات · ٤ عملات" : "5 entities · 4 currencies"}</div>
+          </div>
+          <div className="text-end">
+            <div className="text-2xs text-muted-foreground">{ar ? "مُوحَّد بـ ر.س" : "Consolidated in SAR"}</div>
+            <div className="font-mono text-base font-semibold text-foreground tabular-nums">
+              {ar ? "٨٫٤١ مليون" : "8.41M"}
+            </div>
+          </div>
+        </div>
+
+        <ul className="rounded-lg border border-border overflow-hidden divide-y divide-border">
+          {orgs.map((o, i) => (
+            <li key={i} className="flex items-center gap-3 px-3.5 py-3 bg-card hover-elevate">
+              <span className="text-xl leading-none flex-shrink-0" aria-hidden>{o.f}</span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-foreground truncate">{o.n}</div>
+                <div className="font-mono text-2xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                  <span>{o.c}</span>
+                  <span className="text-border">·</span>
+                  <span>{o.reg}</span>
+                  {o.ok ? (
+                    <span className="inline-flex items-center gap-1 text-success">
+                      <span className="size-1 rounded-full bg-success" />
+                      {ar ? "مُتزامِن" : "in sync"}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-warning">
+                      <span className="size-1 rounded-full bg-warning" />
+                      {ar ? "بانتظار الإعداد" : "setup pending"}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="font-mono text-sm text-foreground tabular-nums whitespace-nowrap">{o.b}</div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-4 rounded-md border border-primary/20 bg-accent/40 px-3 py-2.5 flex items-center gap-2.5">
+          <Sparkles className="size-3.5 text-primary flex-shrink-0" />
+          <div className="text-2xs text-foreground/85 leading-relaxed">
+            {ar
+              ? "التوحيد يجري لحظيّاً عند سعر الصرف الحقيقيّ · IFRS 10"
+              : "Consolidation runs in real time at live FX · IFRS 10"}
+          </div>
+          <div className="ms-auto font-mono text-2xs text-primary">
+            {ar ? "ر.س ١ ≈ د.إ ٠٫٩٨" : "SAR 1 ≈ AED 0.98"}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Module 04: Command palette mock ── */
+function CommandMock({ t }: { t: Dict }) {
+  const ar = t.ar
+  const results = ar ? [
+    { i: <Receipt className="size-3.5" />,    p: "إنشاء", t: "فاتورة لـ شركة الجوهرة · ٨٬٠٥٠ ر.س", k: "↵" },
+    { i: <BarChart3 className="size-3.5" />,  p: "افتح",  t: "تقرير الربح والخسارة · الربع الأوّل ٢٠٢٦", k: "⌘1" },
+    { i: <ShieldCheck className="size-3.5" />,p: "أنشئ",  t: "إقرار VAT · جاهز للتقديم لـ ZATCA",       k: "⌘V" },
+    { i: <Users className="size-3.5" />,      p: "أوقف",  t: "موافقة الدفع لـ مطعم النور · ١٬٢٠٠ ر.س",   k: "⌘P" },
+    { i: <Brain className="size-3.5" />,      p: "اسأل",  t: "هل التدفّق النقديّ كافٍ لرواتب فبراير؟",   k: "⌘?" },
+  ] : [
+    { i: <Receipt className="size-3.5" />,    p: "New",     t: "Invoice for Al-Jawhara Co. · SAR 8,050", k: "↵" },
+    { i: <BarChart3 className="size-3.5" />,  p: "Open",    t: "P&L report · Q1 2026",                   k: "⌘1" },
+    { i: <ShieldCheck className="size-3.5" />,p: "Generate",t: "VAT return · ready to file with ZATCA",  k: "⌘V" },
+    { i: <Users className="size-3.5" />,      p: "Hold",    t: "Payment approval for Al-Noor · SAR 1,200",k: "⌘P" },
+    { i: <Brain className="size-3.5" />,      p: "Ask",     t: "Is cash enough for February payroll?",   k: "⌘?" },
+  ]
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg relative">
+      {/* Subtle backdrop tint to feel like a command palette over an app */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-0 opacity-30 brand-mesh [mask-image:radial-gradient(60%_50%_at_50%_30%,black,transparent)] pointer-events-none"
+      />
+      <div className="relative">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
+          <div className="flex gap-1.5">
+            <span className="size-2.5 rounded-full bg-border" />
+            <span className="size-2.5 rounded-full bg-border" />
+            <span className="size-2.5 rounded-full bg-border" />
+          </div>
+          <div className="flex-1 text-center font-mono text-2xs text-muted-foreground tracking-wide">
+            command · ⌘K
+          </div>
+        </div>
+        <div className="p-5 lg:p-6">
+          {/* Input row */}
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-4 py-3 mb-4">
+            <Search className="size-4 text-muted-foreground flex-shrink-0" />
+            <div className="flex-1 text-sm text-foreground">
+              {ar ? "فاتورة لـ" : "invoice for"}
+              <span className="text-muted-foreground">{ar ? " شركة الجوهرة" : " Al-Jawhara"}</span>
+              <span className="inline-block w-px h-4 bg-foreground align-middle ms-1 animate-pulse motion-reduce:animate-none" />
+            </div>
+            <kbd className="hidden sm:inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground border border-border bg-card rounded px-1.5 py-0.5">
+              <Command className="size-3" />K
+            </kbd>
+          </div>
+
+          {/* Results */}
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground mb-2 px-1">
+            {ar ? "اقتراحات" : "Suggestions"}
+          </div>
+          <ul className="rounded-lg border border-border overflow-hidden divide-y divide-border">
+            {results.map((r, i) => (
+              <li
+                key={i}
+                className={cn(
+                  "flex items-center gap-3 px-3.5 py-2.5",
+                  i === 0 ? "bg-accent text-accent-foreground" : "bg-card hover-elevate"
+                )}
+              >
+                <span className={cn(
+                  "size-7 rounded-md border flex items-center justify-center flex-shrink-0",
+                  i === 0
+                    ? "bg-primary/15 border-primary/30 text-primary"
+                    : "bg-muted/40 border-border text-muted-foreground"
+                )}>
+                  {r.i}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-2xs font-mono text-muted-foreground uppercase tracking-wider mb-0.5">
+                    {r.p}
+                  </div>
+                  <div className="text-sm text-foreground truncate">{r.t}</div>
+                </div>
+                <kbd className="font-mono text-2xs text-muted-foreground border border-border bg-card rounded px-1.5 py-0.5 flex-shrink-0">
+                  {r.k}
+                </kbd>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 px-1 flex items-center gap-3 text-2xs text-muted-foreground">
+            <span className="font-mono">↑↓ {ar ? "تنقّل" : "navigate"}</span>
+            <span className="font-mono">↵ {ar ? "نفّذ" : "run"}</span>
+            <span className="font-mono">esc {ar ? "إغلاق" : "close"}</span>
+            <span className="ms-auto font-mono text-primary">{ar ? "يفهم العربيّة والإنجليزيّة" : "understands Arabic & English"}</span>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
