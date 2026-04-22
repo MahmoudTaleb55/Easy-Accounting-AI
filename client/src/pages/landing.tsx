@@ -31,7 +31,8 @@ function getCopy(locale: Locale) {
       platform: ar ? "المنصّة" : "Platform",
       ai: ar ? "المساعد" : "Assistant",
       intelligence: ar ? "الذكاء الاستراتيجيّ" : "Intelligence",
-      automation: ar ? "الأتمتة" : "Automation",
+      integrations: ar ? "التكاملات" : "Integrations",
+      pricing: ar ? "الأسعار" : "Pricing",
       security: ar ? "الأمان" : "Security",
       useCases: ar ? "الاستخدامات" : "Use cases",
       faq: ar ? "الأسئلة" : "FAQ",
@@ -300,6 +301,182 @@ function getCopy(locale: Locale) {
       ],
       jurEyebrow: ar ? "امتثالٌ متعدّد الولايات · مُحدَّثٌ تلقائيّاً" : "Multi-jurisdiction compliance · auto-updated",
     },
+    integrations: {
+      eyebrow: ar ? "التكاملات" : "Integrations",
+      title: ar ? "متّصلٌ بكلِّ ما تستخدمُه شركتُك بالفعل." : "Plugs into the stack your business already runs on.",
+      lead: ar
+        ? "ZATCA المرحلة الثانية، البنوك السعوديّة، منصّات التجارة المحلّيّة، ومدفوعات الخليج — كلّها مربوطة من اليوم الأوّل، بلا وسطاء ولا تحويلات يدويّة."
+        : "ZATCA Phase 2, Saudi banks, regional commerce platforms, and Gulf payment rails — wired in from day one. No middleware, no manual exports.",
+      groups: ar ? [
+        {
+          k: "compliance", t: "الامتثال والفوترة",
+          items: [
+            { n: "ZATCA · المرحلة ٢", b: "ربطٌ مباشرٌ مع فاتورة" },
+            { n: "هيئة الزكاة",        b: "إقرارات تلقائيّة" },
+            { n: "GAZT · مصر",         b: "الفوترة الإلكترونيّة" },
+            { n: "FTA · الإمارات",     b: "VAT + ضريبة الشركات" },
+          ],
+        },
+        {
+          k: "banks", t: "البنوك",
+          items: [
+            { n: "الراجحي",       b: "كشوفات + مطابقة" },
+            { n: "الأهلي السعودي", b: "Open Banking" },
+            { n: "الإمارات NBD",   b: "API مباشر" },
+            { n: "QNB",            b: "Bank feeds" },
+          ],
+        },
+        {
+          k: "commerce", t: "التجارة والمدفوعات",
+          items: [
+            { n: "سلّة",     b: "مزامنة طلبات + مخزون" },
+            { n: "زِد",      b: "Webhook لحظيّ" },
+            { n: "فودكس",    b: "نقاط بيع المطاعم" },
+            { n: "Mada",     b: "تسوية البطاقات" },
+            { n: "STC Pay",  b: "محفظة رقميّة" },
+            { n: "Apple Pay", b: "بطاقات + iOS" },
+          ],
+        },
+      ] : [
+        {
+          k: "compliance", t: "Compliance & e-invoicing",
+          items: [
+            { n: "ZATCA · Phase 2",   b: "Direct Fatoora link" },
+            { n: "Saudi Zakat Auth.",  b: "Automated returns" },
+            { n: "Egypt e-Tax",        b: "e-invoicing" },
+            { n: "UAE FTA",            b: "VAT + Corp Tax" },
+          ],
+        },
+        {
+          k: "banks", t: "Banks",
+          items: [
+            { n: "Al Rajhi",           b: "Statements + match" },
+            { n: "Saudi National",     b: "Open Banking" },
+            { n: "Emirates NBD",       b: "Direct API" },
+            { n: "QNB",                b: "Bank feeds" },
+          ],
+        },
+        {
+          k: "commerce", t: "Commerce & payments",
+          items: [
+            { n: "Salla",     b: "Order + inventory sync" },
+            { n: "Zid",       b: "Live webhooks" },
+            { n: "Foodics",   b: "F&B point of sale" },
+            { n: "Mada",      b: "Card settlement" },
+            { n: "STC Pay",   b: "Digital wallet" },
+            { n: "Apple Pay", b: "Cards + iOS" },
+          ],
+        },
+      ],
+      footnote: ar ? "وأكثر من ٤٠ تكاملاً جاهزاً عبر REST API و Webhooks." : "Plus 40+ ready integrations via REST API and webhooks.",
+    },
+    pricing: {
+      eyebrow: ar ? "الأسعار" : "Pricing",
+      title: ar ? "تسعيرٌ شفّاف. بلا مفاجآت." : "Transparent pricing. No surprises.",
+      lead: ar
+        ? "كلّ خطّةٍ تشمل المحاسبة الكاملة وفق IFRS، الذكاء الاصطناعيّ، وأثر التدقيق. الفروقات في الحجم — لا في الجوهر."
+        : "Every plan includes the full IFRS accounting core, the AI layer, and the audit trail. Differences are about scale — not substance.",
+      billing: { monthly: ar ? "شهريّاً" : "Monthly", yearly: ar ? "سنويّاً · وفّر ٢٠٪" : "Yearly · save 20%" },
+      currency: ar ? "ر.س" : "SAR",
+      perMonth: ar ? "/شهريّاً" : "/mo",
+      mostPopular: ar ? "الأكثر اختياراً" : "Most popular",
+      tiers: ar ? [
+        {
+          k: "starter", n: "Starter",
+          desc: "للمؤسّسين والشركات الناشئة.",
+          price: "٢٤٩",
+          features: [
+            "حتى ٣ مستخدمين",
+            "ZATCA Phase 2 + الزكاة",
+            "حتى ٥٠٠ فاتورة شهريّاً",
+            "بنك واحد + سلّة/زِد",
+            "تقارير IFRS الأساسيّة",
+            "دعم بالعربيّة عبر البريد",
+          ],
+          cta: "ابدأ مجّاناً",
+        },
+        {
+          k: "growth", n: "Growth", popular: true,
+          desc: "للفرق الماليّة المتنامية.",
+          price: "٧٤٩",
+          features: [
+            "حتى ١٠ مستخدمين بصلاحيّات دقيقة",
+            "ذكاء استراتيجيّ + توقّع ٢٤ شهراً",
+            "فواتير غير محدودة",
+            "كلّ التكاملات المحلّيّة + بنوك",
+            "متعدّد العملات والشركات",
+            "محاكي «ماذا لو»",
+            "دعم أولويّة + onboarding مخصّص",
+          ],
+          cta: "ابدأ تجربة ١٤ يوماً",
+        },
+        {
+          k: "enterprise", n: "Enterprise",
+          desc: "للمجموعات والشركات الكبرى.",
+          price: ar ? "تواصل معنا" : "Custom",
+          customPrice: true,
+          features: [
+            "مستخدمون غير محدودين",
+            "توحيد متعدّد الكيانات",
+            "SSO · SCIM · SAML",
+            "بيئة مخصّصة + SLA ٩٩٫٩٩٪",
+            "مدير حساب + مهندس حلول",
+            "تدقيق أمنيّ مشترك",
+            "تخصيص Workflow متقدّم",
+          ],
+          cta: "تواصل مع المبيعات",
+        },
+      ] : [
+        {
+          k: "starter", n: "Starter",
+          desc: "For founders and early-stage teams.",
+          price: "249",
+          features: [
+            "Up to 3 users",
+            "ZATCA Phase 2 + Zakat",
+            "500 invoices per month",
+            "1 bank feed + Salla/Zid",
+            "Core IFRS reports",
+            "Arabic email support",
+          ],
+          cta: "Start free",
+        },
+        {
+          k: "growth", n: "Growth", popular: true,
+          desc: "For growing finance teams.",
+          price: "749",
+          features: [
+            "Up to 10 users with fine-grained roles",
+            "Strategic intelligence + 24-mo forecast",
+            "Unlimited invoices",
+            "All local integrations + banks",
+            "Multi-currency · multi-entity",
+            "“What-if” simulator",
+            "Priority support + onboarding",
+          ],
+          cta: "Start 14-day trial",
+        },
+        {
+          k: "enterprise", n: "Enterprise",
+          desc: "For groups and large enterprises.",
+          price: "Custom",
+          customPrice: true,
+          features: [
+            "Unlimited users",
+            "Multi-entity consolidation",
+            "SSO · SCIM · SAML",
+            "Dedicated tenant + 99.99% SLA",
+            "Account manager + solutions engineer",
+            "Joint security review",
+            "Advanced workflow customization",
+          ],
+          cta: "Contact sales",
+        },
+      ],
+      assurances: ar
+        ? ["بدون بطاقة ائتمان", "ألغِ متى شئت", "اضمن استرجاع المبلغ ٣٠ يوماً", "تخفيض ٢٠٪ سنويّاً"]
+        : ["No credit card", "Cancel anytime", "30-day money back", "20% off yearly"],
+    },
     automation: {
       eyebrow: ar ? "الأتمتة" : "Automation",
       title: ar ? "المهامّ التي تستنزف يومك — تختفي." : "The tasks that drain your day. Gone.",
@@ -466,10 +643,10 @@ export default function Landing() {
       <AppNavbar
         links={[
           { label: t.nav.platform,     href: "#platform" },
-          { label: t.nav.ai,           href: "#ai" },
           { label: t.nav.intelligence, href: "#intelligence" },
+          { label: t.nav.integrations, href: "#integrations" },
           { label: t.nav.security,     href: "#security" },
-          { label: t.nav.useCases,     href: "#use-cases" },
+          { label: t.nav.pricing,      href: "#pricing" },
           { label: t.nav.faq,          href: "#faq" },
         ]}
         ctaLabel={t.nav.openApp}
@@ -489,8 +666,10 @@ export default function Landing() {
         <PredictiveCapital t={t} />
         <Automation t={t} />
         <LiveAuditor t={t} />
+        <LocalIntegrations t={t} />
         <Security t={t} />
         <UseCases t={t} />
+        <Pricing t={t} />
         <FAQ t={t} />
         <FinalCTA t={t} />
       </main>
@@ -1289,6 +1468,59 @@ function AuditSignal({
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
+/*  7.7 · Local Integrations — MENA-native stack                                */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function LocalIntegrations({ t }: { t: Dict }) {
+  const i = t.integrations
+  const groupIcon: Record<string, React.ReactNode> = {
+    compliance: <ScrollText className="size-4" />,
+    banks:      <Wallet     className="size-4" />,
+    commerce:   <Globe2     className="size-4" />,
+  }
+  return (
+    <section id="integrations" className="py-24 lg:py-32 border-b border-border">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-12 gap-8 mb-14">
+          <div className="lg:col-span-7">
+            <div className="eyebrow mb-3">{i.eyebrow}</div>
+            <h2 className="text-display text-foreground">{i.title}</h2>
+          </div>
+          <div className="lg:col-span-5 self-end">
+            <p className="text-base leading-relaxed text-muted-foreground">{i.lead}</p>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-3 gap-6">
+          {i.groups.map((g) => (
+            <BentoCard key={g.k} className="h-full">
+              <div className="flex items-center gap-2 mb-5 pb-3 border-b border-border">
+                <div className="size-8 rounded-md bg-accent text-accent-foreground border border-accent-border flex items-center justify-center">
+                  {groupIcon[g.k]}
+                </div>
+                <div className="text-sm font-semibold text-foreground">{g.t}</div>
+              </div>
+              <ul className="grid grid-cols-2 gap-x-4 gap-y-3.5">
+                {g.items.map((it) => (
+                  <li key={it.n} className="min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate" title={it.n}>{it.n}</div>
+                    <div className="text-2xs text-muted-foreground truncate mt-0.5" title={it.b}>{it.b}</div>
+                  </li>
+                ))}
+              </ul>
+            </BentoCard>
+          ))}
+        </div>
+
+        <div className="mt-8 text-center">
+          <span className="text-2xs text-muted-foreground">{i.footnote}</span>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
 /*  8 · Security                                                              */
 /* ────────────────────────────────────────────────────────────────────────── */
 
@@ -1416,6 +1648,171 @@ function UseCases({ t }: { t: Dict }) {
       </div>
     </section>
   )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  9.5 · Pricing — transparent tiers                                          */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+type PricingTier = {
+  k: string
+  n: string
+  desc: string
+  price: string
+  features: readonly string[]
+  cta: string
+  popular?: boolean
+  customPrice?: boolean
+}
+
+function Pricing({ t }: { t: Dict }) {
+  const p = t.pricing
+  const [yearly, setYearly] = useState(true)
+  const yearlyMultiplier = 0.8 // 20% off yearly
+  const tiers = p.tiers as readonly PricingTier[]
+
+  const onToggleKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault()
+      setYearly((v) => !v)
+    }
+  }
+
+  const billingLabel = t.ar ? "دورة الفوترة" : "Billing cycle"
+
+  return (
+    <section id="pricing" className="relative py-24 lg:py-32 border-b border-border bg-card/30">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="eyebrow mb-3">{p.eyebrow}</div>
+          <h2 className="text-display text-foreground">{p.title}</h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">{p.lead}</p>
+
+          {/* Billing radiogroup (segmented control) */}
+          <div
+            role="radiogroup"
+            aria-label={billingLabel}
+            onKeyDown={onToggleKey}
+            className="mt-8 inline-flex items-center gap-1 p-1 rounded-full border border-border bg-card"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!yearly}
+              tabIndex={!yearly ? 0 : -1}
+              onClick={() => setYearly(false)}
+              className={cn(
+                "px-4 py-1.5 rounded-full text-xs font-medium transition-colors",
+                !yearly ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
+              )}
+              data-testid="pricing-monthly"
+            >
+              {p.billing.monthly}
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={yearly}
+              tabIndex={yearly ? 0 : -1}
+              onClick={() => setYearly(true)}
+              className={cn(
+                "px-4 py-1.5 rounded-full text-xs font-medium transition-colors",
+                yearly ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
+              )}
+              data-testid="pricing-yearly"
+            >
+              {p.billing.yearly}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-3 gap-6">
+          {tiers.map((tier) => {
+            const isCustom = tier.customPrice
+            const popular = tier.popular
+            const displayPrice = isCustom
+              ? tier.price
+              : yearly
+                ? formatYearly(tier.price, yearlyMultiplier, t.ar)
+                : tier.price
+            return (
+              <div
+                key={tier.k}
+                data-testid={`pricing-tier-${tier.k}`}
+                className={cn(
+                  "relative rounded-xl border bg-card p-7 lg:p-8 flex flex-col",
+                  popular
+                    ? "border-primary/50 shadow-md ring-1 ring-primary/20"
+                    : "border-card-border shadow-xs",
+                )}
+              >
+                {popular && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-primary text-primary-foreground text-2xs font-medium tracking-wide">
+                    {p.mostPopular}
+                  </span>
+                )}
+                <div className="mb-5">
+                  <div className="text-sm font-semibold text-foreground">{tier.n}</div>
+                  <div className="text-2xs text-muted-foreground mt-1">{tier.desc}</div>
+                </div>
+                <div className="mb-6 pb-6 border-b border-border">
+                  {isCustom ? (
+                    <div className="text-3xl font-semibold text-foreground tracking-tight">{displayPrice}</div>
+                  ) : (
+                    <div className="flex items-baseline gap-1.5 tabular-nums">
+                      <span className="text-2xs text-muted-foreground self-start mt-2">{p.currency}</span>
+                      <span className="text-4xl font-semibold text-foreground tracking-tight">{displayPrice}</span>
+                      <span className="text-xs text-muted-foreground">{p.perMonth}</span>
+                    </div>
+                  )}
+                </div>
+                <ul className="space-y-2.5 mb-7 flex-1">
+                  {tier.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-sm text-foreground/85">
+                      <Check className="size-4 text-primary flex-shrink-0 mt-0.5" />
+                      <span className="leading-snug">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  variant={popular ? "default" : "outline"}
+                  className="w-full"
+                  asChild
+                  data-testid={`button-pricing-${tier.k}`}
+                >
+                  <a href={isCustom ? "/demo" : "/signup"}>{tier.cta}</a>
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-2xs text-muted-foreground">
+          {p.assurances.map((a) => (
+            <span key={a} className="inline-flex items-center gap-1.5">
+              <Check className="size-3 text-success" />
+              <span>{a}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* Format a monthly tier price under yearly billing (apply discount + Arabic numerals). */
+function formatYearly(monthly: string, mult: number, ar: boolean): string {
+  // Try to parse the numeric portion (handles Arabic-Indic and Latin digits).
+  const arabicMap: Record<string, string> = { "٠":"0","١":"1","٢":"2","٣":"3","٤":"4","٥":"5","٦":"6","٧":"7","٨":"8","٩":"9" }
+  const normalized = monthly.replace(/[٠-٩]/g, (d) => arabicMap[d] ?? d).replace(/[^0-9.]/g, "")
+  const n = parseFloat(normalized)
+  if (!isFinite(n)) return monthly
+  const discounted = Math.round(n * mult)
+  if (!ar) return discounted.toLocaleString("en-US")
+  // Render in Arabic-Indic digits.
+  return discounted
+    .toLocaleString("en-US")
+    .replace(/[0-9]/g, (d) => "٠١٢٣٤٥٦٧٨٩"[parseInt(d, 10)])
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
