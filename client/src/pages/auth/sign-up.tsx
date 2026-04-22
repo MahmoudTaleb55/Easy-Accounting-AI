@@ -9,10 +9,25 @@ import { useLocale } from "@/contexts/locale-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthShell } from "./auth-shell";
 import { SiReplit } from "react-icons/si";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+
+const CURRENCIES: Array<{ code: string; symbol: string; nameEn: string; nameAr: string }> = [
+  { code: "SAR", symbol: "ر.س", nameEn: "Saudi Riyal", nameAr: "ريال سعودي" },
+  { code: "AED", symbol: "د.إ", nameEn: "UAE Dirham", nameAr: "درهم إماراتي" },
+  { code: "KWD", symbol: "د.ك", nameEn: "Kuwaiti Dinar", nameAr: "دينار كويتي" },
+  { code: "QAR", symbol: "ر.ق", nameEn: "Qatari Riyal", nameAr: "ريال قطري" },
+  { code: "BHD", symbol: "د.ب", nameEn: "Bahraini Dinar", nameAr: "دينار بحريني" },
+  { code: "OMR", symbol: "ر.ع", nameEn: "Omani Rial", nameAr: "ريال عماني" },
+  { code: "EGP", symbol: "ج.م", nameEn: "Egyptian Pound", nameAr: "جنيه مصري" },
+  { code: "JOD", symbol: "د.أ", nameEn: "Jordanian Dinar", nameAr: "دينار أردني" },
+  { code: "USD", symbol: "$", nameEn: "US Dollar", nameAr: "دولار أمريكي" },
+  { code: "EUR", symbol: "€", nameEn: "Euro", nameAr: "يورو" },
+  { code: "GBP", symbol: "£", nameEn: "British Pound", nameAr: "جنيه استرليني" },
+];
 
 export default function SignUpPage() {
   const [, navigate] = useLocation();
@@ -48,8 +63,12 @@ export default function SignUpPage() {
       lastName: "",
       preferredLocale: ar ? "ar" : "en",
       invitationToken: inviteToken ?? null,
+      currencyCode: "SAR",
+      currencySymbol: "ر.س",
     },
   });
+
+  const currencyCode = form.watch("currencyCode") ?? "SAR";
 
   useEffect(() => {
     if (invite?.email) form.setValue("email", invite.email);
@@ -156,6 +175,38 @@ export default function SignUpPage() {
             <p className="text-xs text-destructive">{form.formState.errors.password.message}</p>
           )}
         </div>
+
+        {!invite && (
+          <div className="space-y-2">
+            <Label htmlFor="currency">{ar ? "عملة دفاترك" : "Books currency"}</Label>
+            <Select
+              value={currencyCode}
+              onValueChange={(code) => {
+                const c = CURRENCIES.find((x) => x.code === code);
+                if (!c) return;
+                form.setValue("currencyCode", c.code, { shouldDirty: true });
+                form.setValue("currencySymbol", c.symbol, { shouldDirty: true });
+              }}
+            >
+              <SelectTrigger id="currency" data-testid="select-currency">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCIES.map((c) => (
+                  <SelectItem key={c.code} value={c.code} data-testid={`option-currency-${c.code}`}>
+                    <span className="font-mono text-xs text-muted-foreground me-2">{c.code}</span>
+                    {ar ? c.nameAr : c.nameEn}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {ar
+                ? "يمكنك تغييرها لاحقاً من الإعدادات."
+                : "You can change this later in settings."}
+            </p>
+          </div>
+        )}
 
         {serverError && (
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive" data-testid="error-signup">

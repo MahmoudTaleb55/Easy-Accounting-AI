@@ -165,6 +165,9 @@ export const signUpSchema = z.object({
   lastName: z.string().min(1).max(80).optional().nullable(),
   invitationToken: z.string().optional().nullable(),
   preferredLocale: z.enum(["ar", "en"]).optional().default("ar"),
+  // Workspace currency. Server validates against the shared allowlist and
+  // derives the symbol — clients cannot inject arbitrary symbols.
+  currencyCode: z.string().min(2).max(8).optional(),
 });
 export type SignUpInput = z.infer<typeof signUpSchema>;
 

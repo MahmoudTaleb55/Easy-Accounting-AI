@@ -203,7 +203,9 @@ export function registerLocalAuthRoutes(app: Express) {
       }
       if (bootstrapped === "created") {
         const display = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email!;
-        await authBizStorage.bootstrapWorkspaceForUser(user.id, display);
+        await authBizStorage.bootstrapWorkspaceForUser(user.id, display, {
+          currencyCode: input.currencyCode,
+        });
       }
 
       const session = buildLocalSession(user);

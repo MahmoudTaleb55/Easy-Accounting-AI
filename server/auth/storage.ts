@@ -8,6 +8,7 @@ import {
   passwordResetTokens,
   passwordResetEmailEvents,
   companies,
+  settings,
   type User,
   type Membership,
   type Invitation,
@@ -18,6 +19,7 @@ import {
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { resolveCurrency } from "@shared/currencies";
 
 export const authBizStorage = {
   // ---------- users ----------
@@ -387,25 +389,48 @@ export const authBizStorage = {
     return c;
   },
 
-  async createCompanyForOwner(ownerUserId: string, name: string): Promise<typeof companies.$inferSelect> {
-    const [c] = await db
-      .insert(companies)
-      .values({
-        name,
-        functionalCurrency: "USD",
-        currencySymbol: "$",
-        isDefault: false,
-        isActive: true,
-        ownerUserId,
-      })
-      .returning();
-    return c;
+  async createCompanyForOwner(
+    ownerUserId: string,
+    name: string,
+    opts?: { currencyCode?: string },
+  ): Promise<typeof companies.$inferSelect> {
+    // Symbol is derived server-side from the canonical catalogue — never
+    // trusted from caller input — to keep accounting defaults consistent.
+    const { code: currencyCode, symbol: currencySymbol } = resolveCurrency(opts?.currencyCode);
+
+    // All-or-nothing: a company without its settings row would leave the
+    // workspace bootstrap half-complete, so wrap both writes in a tx.
+    return await db.transaction(async (tx) => {
+      const [c] = await tx
+        .insert(companies)
+        .values({
+          name,
+          functionalCurrency: currencyCode,
+          currencySymbol,
+          isDefault: false,
+          isActive: true,
+          ownerUserId,
+        })
+        .returning();
+
+      await tx.insert(settings).values({
+        companyId: c.id,
+        currencyCode,
+        currencySymbol,
+      });
+
+      return c;
+    });
   },
 
   /** First-signup bootstrap: if the legacy seed companies have no owner,
    *  give the new user Admin membership on each so the seeded data is usable.
    *  Otherwise we provision them a fresh personal workspace. */
-  async bootstrapWorkspaceForUser(userId: string, displayName: string): Promise<{ companyId: number; role: Role; bootstrapped: "adopted" | "created" }> {
+  async bootstrapWorkspaceForUser(
+    userId: string,
+    displayName: string,
+    opts?: { currencyCode?: string },
+  ): Promise<{ companyId: number; role: Role; bootstrapped: "adopted" | "created" }> {
     const orphan = await db
       .select()
       .from(companies)
@@ -425,7 +450,7 @@ export const authBizStorage = {
     }
 
     // Otherwise create a fresh personal workspace.
-    const c = await this.createCompanyForOwner(userId, `${displayName} — Workspace`);
+    const c = await this.createCompanyForOwner(userId, `${displayName} — Workspace`, opts);
     await this.createMembership({ userId, companyId: c.id, role: "admin" });
     return { companyId: c.id, role: "admin", bootstrapped: "created" };
   },
