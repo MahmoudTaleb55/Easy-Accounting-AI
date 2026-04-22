@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { rbacMiddleware, registerAuthRoutes } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
@@ -61,6 +62,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  app.use(rbacMiddleware());
+  registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
 
   // Bootstrap IFRS Chart of Accounts and backfill journal entries for legacy data

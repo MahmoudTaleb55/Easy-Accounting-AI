@@ -16,6 +16,7 @@ import type { OrgSettings } from "@/lib/format";
 import { CompaniesPanel, FxPanel } from "@/pages/fixed-assets";
 import { useCompany } from "@/contexts/company-context";
 import { SecurityCompliance } from "@/components/trust/security-compliance";
+import { TeamPanel } from "@/components/team/team-panel";
 
 interface LocalizationPack {
   code: string;
@@ -209,6 +210,8 @@ export default function SettingsPage() {
           <CompaniesPanel />
         </CardContent>
       </Card>
+
+      <TeamPanel />
 
       <SecurityCompliance />
 

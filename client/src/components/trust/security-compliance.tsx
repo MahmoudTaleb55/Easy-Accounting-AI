@@ -25,6 +25,16 @@ interface JE {
   createdAt?: string;
 }
 
+interface MemberLite {
+  id: number;
+  role: "owner" | "accountant" | "viewer";
+  status: string;
+}
+interface InviteLite {
+  id: number;
+  status: "pending" | "accepted" | "revoked";
+}
+
 interface MarkProps {
   status: "ok" | "info" | "todo";
   children: React.ReactNode;
@@ -120,8 +130,8 @@ export function SecurityCompliance() {
     rbac: locale === "ar" ? "الأدوار والصلاحيات" : "Roles & permissions",
     rbacCaption:
       locale === "ar"
-        ? "نموذج الأدوار قيد التطوير. حالياً جميع المستخدمين يمتلكون نفس الصلاحيات داخل المنشأة."
-        : "RBAC model is in development. All users currently share full access within the workspace.",
+        ? "أدوار حقيقية: المالك يحرر الإعدادات والفريق، المحاسب يحرر القيود والمعاملات، المشاهد يقرأ فقط."
+        : "Live roles: owners manage settings & team, accountants edit entries & transactions, viewers are read-only.",
     integrations: locale === "ar" ? "أمان التكاملات" : "Integration security",
     integrationsCaption:
       locale === "ar"
@@ -139,7 +149,22 @@ export function SecurityCompliance() {
   };
 
   const { data: entries } = useQuery<JE[]>({ queryKey: ["/api/journal-entries"] });
+  const { data: me } = useQuery<{ role: "owner" | "accountant" | "viewer"; id: number }>({
+    queryKey: ["/api/auth/me"],
+  });
+  const { data: members = [] } = useQuery<MemberLite[]>({
+    queryKey: ["/api/team/members"],
+    enabled: !!me && me.id !== 0,
+  });
+  const { data: invites = [] } = useQuery<InviteLite[]>({
+    queryKey: ["/api/team/invites"],
+    enabled: me?.role === "owner",
+  });
   const recent = (entries || []).slice(0, 5);
+  const ownerCount = members.filter((m) => m.role === "owner").length;
+  const accountantCount = members.filter((m) => m.role === "accountant").length;
+  const viewerCount = members.filter((m) => m.role === "viewer").length;
+  const pendingInvites = invites.filter((i) => i.status === "pending").length;
 
   return (
     <div className="space-y-4" data-testid="section-security">
@@ -189,13 +214,24 @@ export function SecurityCompliance() {
             <Row
               label={t.rbac}
               value={
-                <Badge variant="outline" className="text-[10px]">
-                  <Users className="w-3 h-3 me-1" />
-                  {locale === "ar" ? "قيد التطوير" : "In development"}
-                </Badge>
+                <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                  <Badge variant="secondary" className="text-[10px]" data-testid="badge-role-counts">
+                    <Users className="w-3 h-3 me-1" />
+                    {locale === "ar"
+                      ? `${ownerCount} مالك · ${accountantCount} محاسب · ${viewerCount} مشاهد`
+                      : `${ownerCount} owner · ${accountantCount} accountant · ${viewerCount} viewer`}
+                  </Badge>
+                  {pendingInvites > 0 && (
+                    <Badge variant="outline" className="text-[10px]" data-testid="badge-pending-invites">
+                      {locale === "ar"
+                        ? `${pendingInvites} دعوة معلّقة`
+                        : `${pendingInvites} pending invite${pendingInvites === 1 ? "" : "s"}`}
+                    </Badge>
+                  )}
+                </span>
               }
               caption={t.rbacCaption}
-              status="todo"
+              status="ok"
               testId="row-rbac"
             />
             <Row

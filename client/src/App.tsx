@@ -29,6 +29,7 @@ import HR from "@/pages/hr";
 import FixedAssets from "@/pages/fixed-assets";
 import SettingsPage from "@/pages/settings";
 import Styleguide from "@/pages/styleguide";
+import InviteAccept from "@/pages/invite";
 
 const isDev = import.meta.env.DEV;
 
@@ -80,6 +81,7 @@ function Router() {
   // Public routes — render OUTSIDE the authenticated MainLayout shell.
   if (location === "/") return <Landing />;
   if (location === "/demo") return <Demo />;
+  if (location.startsWith("/invite/")) return <InviteAccept />;
 
   // Legacy top-level in-app paths — permanently redirect to /app/* equivalents.
   if (LEGACY_REDIRECTS[location]) {

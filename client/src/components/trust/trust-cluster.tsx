@@ -2,7 +2,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, AlertCircle, RefreshCw, Shield, Database, Plug } from "lucide-react";
+import { CheckCircle2, AlertCircle, RefreshCw, Shield, Database, Plug, UserCheck } from "lucide-react";
 import { useLocale } from "@/contexts/locale-context";
 import { formatDistanceToNow } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
@@ -98,9 +98,22 @@ function useIntegrationStatuses(lastFetchAt: Date | null): IntegrationStatus[] {
   ];
 }
 
+interface MeRole {
+  id: number;
+  name: string;
+  role: "owner" | "accountant" | "viewer";
+}
+
+const ROLE_LABEL: Record<MeRole["role"], { ar: string; en: string }> = {
+  owner: { ar: "مالك", en: "Owner" },
+  accountant: { ar: "محاسب", en: "Accountant" },
+  viewer: { ar: "مشاهد", en: "Viewer" },
+};
+
 export function TrustCluster() {
   const { locale } = useLocale();
   const dfLocale = locale === "ar" ? ar : enUS;
+  const { data: me } = useQuery<MeRole>({ queryKey: ["/api/auth/me"] });
 
   // Use the insights health endpoint as a proxy for "is the data layer
   // alive and how recent is it". dataUpdatedAt gives us a real moment.
@@ -154,6 +167,15 @@ export function TrustCluster() {
           <span className="hidden md:inline tabular-nums" data-testid="text-data-freshness">
             {freshLabel}
           </span>
+          {me && (
+            <span
+              className="hidden md:inline-flex items-center gap-1 ms-1 px-1.5 py-0.5 rounded border border-border bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground"
+              data-testid="text-current-role"
+            >
+              <UserCheck className="w-3 h-3" />
+              {ROLE_LABEL[me.role][locale]}
+            </span>
+          )}
         </Button>
       </SheetTrigger>
       <SheetContent side={locale === "ar" ? "left" : "right"} className="w-full sm:max-w-md p-0 flex flex-col">
