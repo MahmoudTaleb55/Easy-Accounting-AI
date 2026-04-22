@@ -1087,83 +1087,79 @@ function CtaArrow({ ar }: { ar: boolean }) {
 
 function Hero({ t }: { t: Dict }) {
   return (
-    <section className="relative pt-16 pb-24 lg:pt-24 lg:pb-32 brand-grain">
+    <section className="relative pt-20 lg:pt-32 pb-20 lg:pb-28 overflow-hidden">
+      {/* Single, restrained ambient wash — no grid, no mesh, no noise */}
       <div
         aria-hidden
-        className="absolute inset-0 -z-10 brand-mesh [mask-image:radial-gradient(70%_55%_at_50%_30%,black,transparent)]"
+        className="absolute inset-x-0 top-0 -z-10 h-[70%] pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(55% 55% at 50% 0%, hsl(158 64% 28% / 0.07), transparent 72%)",
+        }}
       />
       <div
         aria-hidden
-        className="absolute inset-x-0 -z-10 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent"
+        className="absolute inset-x-0 -z-10 top-0 h-px bg-gradient-to-r from-transparent via-border/60 to-transparent"
       />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-          <div className="lg:col-span-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 shadow-xs">
-                <span className="status-dot bg-success animate-pulse motion-reduce:animate-none" />
-                <span className="text-xs text-muted-foreground">{t.hero.tag}</span>
-              </div>
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5">
-                <ShieldCheck className="size-3.5 text-primary" />
-                <span className="text-xs text-primary font-medium">{t.hero.certBadge}</span>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-              <span className="font-mono text-2xs uppercase tracking-wider">{t.hero.countriesLabel}</span>
-              {t.hero.countries.map((c) => (
-                <span
-                  key={c.n}
-                  className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-card/60 px-1.5 py-0.5"
-                  data-testid={`hero-country-${c.n}`}
-                >
-                  <span aria-hidden className="leading-none">{c.f}</span>
-                  <span className="text-foreground/80">{c.n}</span>
-                </span>
-              ))}
-            </div>
-
-            <h1 className="mt-6 text-display-lg text-foreground">
-              {t.hero.h1a}
-              <br />
-              <span className="display-italic text-primary">{t.hero.h1b}</span>
-            </h1>
-
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
-              {t.hero.sub}
-              <span className="text-foreground/80">{t.hero.subEm}</span>
-            </p>
-
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Button size="lg" data-testid="button-hero-cta-primary" asChild>
-                <a href="/signin" className="gap-2">
-                  {t.hero.ctaPrimary}
-                  <CtaArrow ar={t.ar} />
-                </a>
-              </Button>
-              <Button size="lg" variant="outline" data-testid="button-hero-cta-secondary" asChild>
-                <a href="/demo">{t.hero.ctaSecondary}</a>
-              </Button>
-              <Button size="lg" variant="ghost" data-testid="button-hero-cta-tertiary" asChild>
-                <a href="/signin">{t.hero.ctaTertiary}</a>
-              </Button>
-            </div>
-
-            <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-              {t.hero.bullets.map((b) => (
-                <span key={b} className="flex items-center gap-1.5">
-                  <Check className="size-3.5 text-success" />{b}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="lg:col-span-6">
-            <HeroProductMockup t={t} />
-          </div>
+      {/* ── Headline column — single, centered, monumental ──────────────── */}
+      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 text-center">
+        {/* One restrained eyebrow combining live status + ZATCA cert */}
+        <div className="inline-flex items-center gap-2.5 rounded-full border border-border bg-card/70 backdrop-blur px-3 py-1.5 shadow-xs">
+          <span className="status-dot bg-success animate-pulse motion-reduce:animate-none" />
+          <span className="text-2xs text-foreground/70">{t.hero.tag}</span>
+          <span aria-hidden className="text-border">·</span>
+          <ShieldCheck className="size-3.5 text-primary" />
+          <span className="text-2xs text-primary font-medium">{t.hero.certBadge}</span>
         </div>
+
+        <h1 className="mt-10 text-display-mega text-foreground">
+          {t.hero.h1a}
+          <br />
+          <span className="display-italic text-primary">{t.hero.h1b}</span>
+        </h1>
+
+        <p className="mt-8 mx-auto max-w-2xl text-lg lg:text-xl leading-relaxed text-muted-foreground">
+          {t.hero.sub}
+          <span className="text-foreground/85">{t.hero.subEm}</span>
+        </p>
+
+        <div className="mt-10 flex flex-wrap justify-center items-center gap-3">
+          <Button size="xl" data-testid="button-hero-cta-primary" asChild>
+            <a href="/signin" className="gap-2">
+              {t.hero.ctaPrimary}
+              <CtaArrow ar={t.ar} />
+            </a>
+          </Button>
+          <Button size="xl" variant="ghost" data-testid="button-hero-cta-secondary" asChild>
+            <a href="/demo" className="gap-1.5 text-foreground hover:text-primary">
+              {t.hero.ctaSecondary}
+              <ArrowRight className={cn("size-4 transition-transform group-hover:translate-x-0.5", t.ar && "rotate-180")} />
+            </a>
+          </Button>
+        </div>
+
+        <div className="mt-8 flex flex-wrap justify-center items-center gap-x-6 gap-y-2 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+          {t.hero.bullets.map((b) => (
+            <span key={b} className="flex items-center gap-1.5">
+              <Check className="size-3 text-success/80" />{b}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Product showcase — full breathing room beneath the headline ── */}
+      <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 mt-20 lg:mt-24">
+        {/* Soft emerald spotlight beneath the product */}
+        <div
+          aria-hidden
+          className="absolute inset-x-8 -bottom-12 h-1/2 -z-10 blur-3xl pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(50% 70% at 50% 100%, hsl(158 64% 28% / 0.22), transparent 70%)",
+          }}
+        />
+        <HeroProductMockup t={t} />
       </div>
     </section>
   )
