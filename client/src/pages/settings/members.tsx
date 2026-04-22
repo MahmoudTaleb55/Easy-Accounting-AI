@@ -15,8 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Mail, RotateCw, Trash2, Loader2, Copy, Check, Activity as ActivityIcon } from "lucide-react";
+import { Mail, RotateCw, Trash2, Loader2, Copy, Check, Activity as ActivityIcon, AlertTriangle, MailCheck, MailX, MailWarning, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface MemberSession {
   sid: string;
@@ -46,6 +47,49 @@ interface InvitationRow {
   status: "pending" | "accepted" | "revoked" | "expired";
   expiresAt: string;
   createdAt: string;
+  lastMessageId: string | null;
+  lastEmailStatus:
+    | "queued"
+    | "sent"
+    | "delivered"
+    | "delivery_delayed"
+    | "bounced"
+    | "complained"
+    | "opened"
+    | "clicked"
+    | "send_failed"
+    | "not_configured"
+    | null;
+  lastEmailError: string | null;
+  lastEmailEventAt: string | null;
+}
+
+type DeliveryTone = "success" | "warning" | "info" | "destructive" | "muted";
+
+function deliveryBadge(
+  status: InvitationRow["lastEmailStatus"],
+  ar: boolean,
+): { label: string; tone: DeliveryTone; Icon: typeof MailCheck } {
+  switch (status) {
+    case "delivered":
+    case "opened":
+    case "clicked":
+      return { label: ar ? "وصلت" : "Delivered", tone: "success", Icon: MailCheck };
+    case "sent":
+      return { label: ar ? "أُرسلت" : "Sent", tone: "info", Icon: Mail };
+    case "delivery_delayed":
+      return { label: ar ? "تأخّر التسليم" : "Delayed", tone: "warning", Icon: Clock };
+    case "bounced":
+      return { label: ar ? "ارتدّت" : "Bounced", tone: "destructive", Icon: MailX };
+    case "complained":
+      return { label: ar ? "بلاغ سبام" : "Spam report", tone: "destructive", Icon: MailWarning };
+    case "send_failed":
+      return { label: ar ? "فشل الإرسال" : "Failed", tone: "destructive", Icon: AlertTriangle };
+    case "not_configured":
+      return { label: ar ? "البريد غير مفعّل" : "Email off", tone: "muted", Icon: Mail };
+    default:
+      return { label: ar ? "بانتظار" : "Pending", tone: "muted", Icon: Mail };
+  }
 }
 
 const ROLE_LABELS: Record<Role, { ar: string; en: string; tone: "default" | "secondary" | "outline" | "destructive" }> = {
@@ -321,36 +365,98 @@ export default function MembersPage() {
                     {ar ? "لا توجد دعوات." : "No invitations yet."}
                   </div>
                 ) : (
-                  <ul className="divide-y divide-border">
-                    {invitations.map((inv) => (
-                      <li key={inv.id} className="flex items-center gap-3 px-5 py-3" data-testid={`row-invitation-${inv.id}`}>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">{inv.email}</div>
-                          <div className="text-xs text-muted-foreground">
-                            <Badge variant={ROLE_LABELS[inv.role].tone} className="mr-2">
-                              {ar ? ROLE_LABELS[inv.role].ar : ROLE_LABELS[inv.role].en}
-                            </Badge>
-                            <span>{inv.status}</span>
-                            <span className="mx-2">•</span>
-                            <span>{ar ? "تنتهي" : "expires"} {new Date(inv.expiresAt).toLocaleDateString()}</span>
-                          </div>
-                        </div>
-                        {inv.status === "pending" && (
-                          <>
-                            <Button variant="ghost" size="sm" onClick={() => copyLink(inv.token)} data-testid={`button-copy-${inv.id}`}>
-                              {copiedToken === inv.token ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => resend.mutate(inv.id)} data-testid={`button-resend-${inv.id}`}>
-                              <RotateCw className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => revoke.mutate(inv.id)} data-testid={`button-revoke-${inv.id}`}>
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                            </Button>
-                          </>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                  <TooltipProvider delayDuration={200}>
+                    <ul className="divide-y divide-border">
+                      {invitations.map((inv) => {
+                        const delivery = deliveryBadge(inv.lastEmailStatus, ar);
+                        const DeliveryIcon = delivery.Icon;
+                        const failed =
+                          inv.lastEmailStatus === "bounced" ||
+                          inv.lastEmailStatus === "complained" ||
+                          inv.lastEmailStatus === "send_failed";
+                        const reasonText = inv.lastEmailError
+                          ? inv.lastEmailError
+                          : inv.lastEmailStatus === "not_configured"
+                            ? ar
+                              ? "خدمة البريد غير مهيّأة. شارك الرابط يدوياً."
+                              : "Email service not configured. Share the link manually."
+                            : null;
+                        return (
+                          <li key={inv.id} className="flex items-center gap-3 px-5 py-3" data-testid={`row-invitation-${inv.id}`}>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium">{inv.email}</div>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <Badge variant={ROLE_LABELS[inv.role].tone}>
+                                  {ar ? ROLE_LABELS[inv.role].ar : ROLE_LABELS[inv.role].en}
+                                </Badge>
+                                {inv.status === "pending" ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge
+                                        variant={delivery.tone}
+                                        size="sm"
+                                        className="gap-1"
+                                        data-testid={`badge-delivery-${inv.id}`}
+                                      >
+                                        <DeliveryIcon className="h-3 w-3" />
+                                        {delivery.label}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    {(reasonText || inv.lastEmailEventAt) && (
+                                      <TooltipContent className="max-w-xs">
+                                        {reasonText && (
+                                          <p data-testid={`text-delivery-reason-${inv.id}`}>{reasonText}</p>
+                                        )}
+                                        {inv.lastEmailEventAt && (
+                                          <p className="mt-1 text-[11px] opacity-70">
+                                            {new Date(inv.lastEmailEventAt).toLocaleString()}
+                                          </p>
+                                        )}
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                ) : (
+                                  <span className="capitalize">{inv.status}</span>
+                                )}
+                                <span>•</span>
+                                <span>
+                                  {ar ? "تنتهي" : "expires"} {new Date(inv.expiresAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+                            {inv.status === "pending" && (
+                              <>
+                                <Button variant="ghost" size="sm" onClick={() => copyLink(inv.token)} data-testid={`button-copy-${inv.id}`}>
+                                  {copiedToken === inv.token ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant={failed ? "outline" : "ghost"}
+                                      size="sm"
+                                      onClick={() => resend.mutate(inv.id)}
+                                      disabled={resend.isPending}
+                                      data-testid={`button-resend-${inv.id}`}
+                                      className={failed ? "border-destructive/40 text-destructive hover:bg-destructive/10" : undefined}
+                                    >
+                                      <RotateCw className={`h-3.5 w-3.5 ${failed ? "mr-1.5" : ""}`} />
+                                      {failed && (ar ? "أعد الإرسال" : "Resend")}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {ar ? "إعادة إرسال الدعوة" : "Resend invitation"}
+                                  </TooltipContent>
+                                </Tooltip>
+                                <Button variant="ghost" size="sm" onClick={() => revoke.mutate(inv.id)} data-testid={`button-revoke-${inv.id}`}>
+                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                </Button>
+                              </>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </TooltipProvider>
                 )}
               </CardContent>
             </Card>

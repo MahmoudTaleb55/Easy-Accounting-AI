@@ -4,11 +4,13 @@ import {
   users,
   memberships,
   invitations,
+  invitationEmailEvents,
   passwordResetTokens,
   companies,
   type User,
   type Membership,
   type Invitation,
+  type InvitationEmailEvent,
   type Role,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
@@ -204,10 +206,69 @@ export const authBizStorage = {
     const expiresAt = new Date(Date.now() + 168 * 60 * 60 * 1000);
     const [inv] = await db
       .update(invitations)
-      .set({ token, expiresAt, status: "pending" })
+      .set({
+        token,
+        expiresAt,
+        status: "pending",
+        // Reset delivery snapshot — the new send is what we'll judge from now.
+        lastMessageId: null,
+        lastEmailStatus: null,
+        lastEmailError: null,
+        lastEmailEventAt: null,
+      })
       .where(eq(invitations.id, id))
       .returning();
     return inv;
+  },
+
+  // ---------- email lifecycle ----------
+  async recordInvitationEmailEvent(input: {
+    invitationId: string;
+    messageId?: string | null;
+    type: string;
+    error?: string | null;
+    payload?: unknown;
+  }): Promise<InvitationEmailEvent> {
+    const [row] = await db
+      .insert(invitationEmailEvents)
+      .values({
+        invitationId: input.invitationId,
+        messageId: input.messageId ?? null,
+        type: input.type,
+        error: input.error ?? null,
+        payload: (input.payload as any) ?? null,
+      })
+      .returning();
+    return row;
+  },
+
+  async updateInvitationEmailMeta(
+    id: string,
+    meta: { messageId?: string | null; status: string; error?: string | null; eventAt?: Date },
+  ): Promise<void> {
+    const set: Record<string, unknown> = {
+      lastEmailStatus: meta.status,
+      lastEmailError: meta.error ?? null,
+      lastEmailEventAt: meta.eventAt ?? new Date(),
+    };
+    if (meta.messageId !== undefined) set.lastMessageId = meta.messageId;
+    await db.update(invitations).set(set).where(eq(invitations.id, id));
+  },
+
+  async getInvitationByMessageId(messageId: string): Promise<Invitation | undefined> {
+    const [inv] = await db
+      .select()
+      .from(invitations)
+      .where(eq(invitations.lastMessageId, messageId));
+    return inv;
+  },
+
+  async listInvitationEmailEvents(invitationId: string): Promise<InvitationEmailEvent[]> {
+    return db
+      .select()
+      .from(invitationEmailEvents)
+      .where(eq(invitationEmailEvents.invitationId, invitationId))
+      .orderBy(desc(invitationEmailEvents.createdAt));
   },
 
   async acceptInvitation(token: string, userId: string): Promise<Invitation> {

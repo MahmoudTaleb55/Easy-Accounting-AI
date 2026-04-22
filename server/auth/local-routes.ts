@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
+import crypto from "crypto";
 import { z } from "zod";
 import {
   signUpSchema,
@@ -82,7 +83,7 @@ const inviteAcceptLimiter = rateLimit({
  * send fails, log the link so an admin can recover it. Never throws.
  */
 async function sendInvitationOrLog(
-  inv: { email: string; role: string; companyId: number; invitedByUserId: string },
+  inv: { id: string; email: string; role: string; companyId: number; invitedByUserId: string },
   link: string,
 ): Promise<{ ok: boolean }> {
   try {
@@ -100,6 +101,36 @@ async function sendInvitationOrLog(
       companyName: company?.name ?? null,
       inviterName,
     });
+    // Record an outbound-attempt row + denormalize to the invitation so the
+    // UI can show a Sent/Failed badge before any webhook arrives.
+    if (result.ok) {
+      await Promise.all([
+        authBizStorage.recordInvitationEmailEvent({
+          invitationId: inv.id,
+          messageId: result.id,
+          type: "sent",
+        }),
+        authBizStorage.updateInvitationEmailMeta(inv.id, {
+          messageId: result.id,
+          status: "sent",
+          error: null,
+        }),
+      ]);
+    } else {
+      const status = result.reason === "not_configured" ? "not_configured" : "send_failed";
+      await Promise.all([
+        authBizStorage.recordInvitationEmailEvent({
+          invitationId: inv.id,
+          type: status,
+          error: result.error ?? result.reason,
+        }),
+        authBizStorage.updateInvitationEmailMeta(inv.id, {
+          messageId: null,
+          status,
+          error: result.error ?? result.reason,
+        }),
+      ]);
+    }
     if (!result.ok) {
       // Never log the tokenized invitation link in production — it would
       // let anyone with log access claim a workspace seat. Only emit
@@ -495,4 +526,151 @@ export function registerLocalAuthRoutes(app: Express) {
     await authBizStorage.acceptInvitation(token, userId);
     res.json({ companyId: inv.companyId, role: inv.role });
   });
+
+  // Per-invitation lifecycle log (admin-only). Powers the "why did this fail?"
+  // tooltip / drilldown in the Members UI.
+  app.get("/api/auth/invitations/:id/events", requireAuth, requireRole("admin"), async (req, res) => {
+    const events = await authBizStorage.listInvitationEmailEvents(String(req.params.id));
+    res.json(events);
+  });
+
+  // ---------- Resend webhook ----------
+  // Resend signs payloads with the Svix scheme:
+  //   svix-id, svix-timestamp, svix-signature ("v1,<base64sig> v1,<base64sig>")
+  // Signed string: `${svix_id}.${svix_timestamp}.${rawBody}` HMAC-SHA256
+  // with the base64-decoded portion of `whsec_<base64>`.
+  app.post("/api/webhooks/resend", resendWebhook);
+}
+
+function constantTimeEqualB64(a: string, b: string): boolean {
+  try {
+    const ab = Buffer.from(a, "base64");
+    const bb = Buffer.from(b, "base64");
+    if (ab.length !== bb.length) return false;
+    return crypto.timingSafeEqual(ab, bb);
+  } catch {
+    return false;
+  }
+}
+
+function verifyResendSignature(req: Request): { ok: true } | { ok: false; reason: string } {
+  const secret = process.env.RESEND_WEBHOOK_SECRET;
+  if (!secret) {
+    // Dev convenience: accept unsigned events but log loudly. In production
+    // an unsigned secret means we never accept the payload.
+    if (process.env.NODE_ENV === "production") {
+      return { ok: false, reason: "RESEND_WEBHOOK_SECRET not configured" };
+    }
+    console.warn("[resend webhook] RESEND_WEBHOOK_SECRET missing — accepting unsigned event (dev only)");
+    return { ok: true };
+  }
+  const id = String(req.header("svix-id") ?? "");
+  const ts = String(req.header("svix-timestamp") ?? "");
+  const sigHeader = String(req.header("svix-signature") ?? "");
+  if (!id || !ts || !sigHeader) return { ok: false, reason: "missing svix headers" };
+
+  // Reject events older than 5 minutes (replay defense).
+  const tsNum = Number(ts);
+  if (!Number.isFinite(tsNum) || Math.abs(Date.now() / 1000 - tsNum) > 5 * 60) {
+    return { ok: false, reason: "stale timestamp" };
+  }
+
+  const raw = (req as any).rawBody as Buffer | undefined;
+  if (!raw) return { ok: false, reason: "raw body unavailable" };
+
+  // Strip the `whsec_` prefix and base64-decode.
+  const secretB64 = secret.startsWith("whsec_") ? secret.slice(6) : secret;
+  let secretBuf: Buffer;
+  try {
+    secretBuf = Buffer.from(secretB64, "base64");
+  } catch {
+    return { ok: false, reason: "invalid secret encoding" };
+  }
+
+  const signed = `${id}.${ts}.${raw.toString("utf8")}`;
+  const expected = crypto.createHmac("sha256", secretBuf).update(signed).digest("base64");
+
+  // Header may include multiple `vN,signature` pairs — any match is OK.
+  const candidates = sigHeader.split(" ").map((p) => p.split(",")[1]).filter(Boolean) as string[];
+  const match = candidates.some((c) => constantTimeEqualB64(c, expected));
+  return match ? { ok: true } : { ok: false, reason: "signature mismatch" };
+}
+
+// Map Resend event-type strings ("email.delivered", "email.bounced", …) onto
+// the short status tokens we store and render.
+function mapResendEventType(t: string): string | null {
+  if (!t.startsWith("email.")) return null;
+  const tail = t.slice("email.".length);
+  // Known Resend events: sent, delivered, delivery_delayed, bounced, complained,
+  // opened, clicked, failed.
+  const allowed = new Set([
+    "sent",
+    "delivered",
+    "delivery_delayed",
+    "bounced",
+    "complained",
+    "opened",
+    "clicked",
+    "failed",
+  ]);
+  if (!allowed.has(tail)) return null;
+  return tail === "failed" ? "send_failed" : tail;
+}
+
+async function resendWebhook(req: Request, res: Response) {
+  const verified = verifyResendSignature(req);
+  if (!verified.ok) {
+    console.warn(`[resend webhook] rejected: ${verified.reason}`);
+    return res.status(401).json({ message: "invalid signature" });
+  }
+
+  const body = req.body as { type?: string; created_at?: string; data?: any } | undefined;
+  if (!body || typeof body !== "object" || !body.type) {
+    return res.status(400).json({ message: "invalid payload" });
+  }
+
+  const status = mapResendEventType(body.type);
+  if (!status) {
+    // Unknown event type — ack with 200 so Resend doesn't retry forever.
+    return res.status(200).json({ ok: true, ignored: body.type });
+  }
+
+  // Resend events surface the message id on `data.email_id` (modern) or
+  // `data.id` (legacy). Bounce/complaint reasons live on `data.bounce` /
+  // `data.reason`.
+  const data = body.data ?? {};
+  const messageId: string | null = data.email_id ?? data.id ?? null;
+  if (!messageId) {
+    return res.status(200).json({ ok: true, ignored: "no message id" });
+  }
+
+  const inv = await authBizStorage.getInvitationByMessageId(messageId);
+  if (!inv) {
+    // Could be a non-invitation email (e.g. password reset) — acknowledge.
+    return res.status(200).json({ ok: true, ignored: "no matching invitation" });
+  }
+
+  const error: string | null =
+    data?.bounce?.message ??
+    data?.reason ??
+    (status === "bounced" ? "Address rejected by recipient server" : null);
+
+  const eventAt = body.created_at ? new Date(body.created_at) : new Date();
+
+  await Promise.all([
+    authBizStorage.recordInvitationEmailEvent({
+      invitationId: inv.id,
+      messageId,
+      type: status,
+      error,
+      payload: body,
+    }),
+    authBizStorage.updateInvitationEmailMeta(inv.id, {
+      status,
+      error,
+      eventAt,
+    }),
+  ]);
+
+  return res.status(200).json({ ok: true });
 }

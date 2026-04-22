@@ -72,13 +72,44 @@ export const invitations = pgTable(
     acceptedAt: timestamp("accepted_at"),
     acceptedByUserId: varchar("accepted_by_user_id"),
     createdAt: timestamp("created_at").defaultNow(),
+    // Latest delivery-status snapshot (denormalized from invitation_email_events
+    // so the invitations list query stays a single read). Updated whenever a
+    // send is attempted or a Resend webhook fires.
+    lastMessageId: varchar("last_message_id"),
+    lastEmailStatus: text("last_email_status"), // queued | sent | delivered | bounced | complained | delivery_delayed | opened | clicked | send_failed | not_configured
+    lastEmailError: text("last_email_error"),
+    lastEmailEventAt: timestamp("last_email_event_at"),
   },
   (t) => [
     index("invitations_company_idx").on(t.companyId),
     index("invitations_email_idx").on(t.email),
+    index("invitations_last_message_idx").on(t.lastMessageId),
   ]
 );
 export type Invitation = typeof invitations.$inferSelect;
+
+// Raw email lifecycle log: one row per send attempt and per webhook event
+// from Resend. The newest row drives the badge in the admin UI; older rows
+// power forensic drill-downs (why did it bounce, when, what was the address).
+export const invitationEmailEvents = pgTable(
+  "invitation_email_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    invitationId: varchar("invitation_id").notNull(),
+    messageId: varchar("message_id"),
+    // sent | delivered | bounced | complained | delivery_delayed | opened |
+    // clicked | send_failed | not_configured
+    type: text("type").notNull(),
+    error: text("error"),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [
+    index("invitation_email_events_inv_idx").on(t.invitationId),
+    index("invitation_email_events_msg_idx").on(t.messageId),
+  ]
+);
+export type InvitationEmailEvent = typeof invitationEmailEvents.$inferSelect;
 
 // Password reset tokens (one-shot, time-limited).
 export const passwordResetTokens = pgTable(

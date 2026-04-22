@@ -2,18 +2,17 @@
 
 ## Overview
 
-This project is an Arabic-language personal finance management application named "محاسب ذكي" (Smart Accountant). Its primary purpose is to provide users with comprehensive financial tracking, analysis, and intelligent assistance, designed to meet the specific needs of the MENA region.
+"محاسب ذكي" (Smart Accountant) is an Arabic-language personal finance management application designed for multi-country use, specifically tailored for the MENA region. It provides comprehensive financial tracking, AI-powered assistance, and advanced IFRS-compliant accounting features for individuals and businesses.
 
-Key capabilities include:
-- Tracking income and expenses through a dynamic transactions dashboard.
-- Visualizing financial data with summary charts.
-- Interacting with an AI assistant to log transactions via natural language chat, supporting image uploads for receipts.
-- Implementing IFRS-compliant double-entry accounting with a Chart of Accounts, Journal Entries, and IFRS statements.
-- A "Decision Cockpit" offering financial health scores, alerts, cash flow forecasting, a what-if simulator, budgeting tools, and an AI financial coach.
-- Multi-country localization with configurable currency, VAT rates, Zakat toggles, weekend days, social insurance rates, and end-of-service formulas for 7 different country packs (INTL, SA, AE, EG, KW, QA, JO).
-- Integrated HR & Payroll module supporting employee management, attendance, leaves, and monthly payroll runs with auto-posted journal entries adhering to IAS 19 provisions.
+Key Capabilities:
+- **Financial Tracking**: Income and expense tracking through a dynamic transactions dashboard and visual summaries (charts).
+- **AI Assistant**: Natural language processing for logging transactions via chat, including image uploads (e.g., receipts) for intelligent assistance, powered by OpenAI.
+- **Double-Entry Accounting**: Full IFRS-compliant system with a Chart of Accounts, Journal Entries, and generation of IFRS statements.
+- **Decision Cockpit (`/insights`)**: Offers financial health scores, alerts, cash flow forecasting, what-if simulations, budgeting tools, and an AI financial coach.
+- **Multi-Country Localization**: Supports 7 country packs (INTL, SA, AE, EG, KW, QA, JO) with configurable currency, VAT rates, zakat toggles, weekend days, social insurance rates, and end-of-service formulas.
+- **HR & Payroll (`/hr`)**: Integrated module for managing employees, attendance, leaves, and automating monthly payroll runs with auto-posted journal entries adhering to IAS 19 provisions.
 
-The application aims to provide a sophisticated, localized financial management solution with a focus on intuitive user experience and robust accounting principles.
+The application is built as a full-stack TypeScript monorepo, utilizing a React frontend and an Express backend, with shared schema and route definitions to ensure consistency and a sophisticated user experience.
 
 ## User Preferences
 
@@ -24,7 +23,6 @@ Preferred communication style: Simple, everyday language.
 The application is a full-stack TypeScript monorepo utilizing a React frontend and an Express backend, with shared schema and route definitions for consistency.
 
 ### Frontend Architecture
-
 - **Framework**: React with Vite.
 - **Routing**: `wouter` for client-side navigation.
 - **State Management**: TanStack React Query (v5) for server state with optimistic updates.
@@ -43,6 +41,7 @@ The application is a full-stack TypeScript monorepo utilizing a React frontend a
     - Improved display of financial metrics with radial progress rings and Mercury/Stripe-inspired currency chips.
     - Decluttered TopBar by consolidating controls and refining gain/loss tones using dedicated color tokens.
     - Custom underline tab strip (`.ledger-tabs`) for editorial surfaces.
+    - Public marketing landing page (`/`) built on the visual system, with asymmetric grids, bento layouts, and showcase sections.
 - **RTL Layout**: The entire application is built with `dir="rtl"` as a primary consideration, ensuring correct layout for Arabic.
 - **Charts**: Recharts is used for displaying financial data.
 - **Forms**: React Hook Form with Zod resolvers for validation.
@@ -60,7 +59,7 @@ The application is a full-stack TypeScript monorepo utilizing a React frontend a
 
 ### Data Storage
 
-- **Database**: PostgreSQL.
+- **Database**: PostgreSQL, accessed via `drizzle-orm/node-postgres`.
 - **ORM**: Drizzle ORM with schema defined in `shared/schema.ts`.
 - **Schema**: Includes tables for `transactions`, `chatMessages`, `conversations`, `messages`, and `budgets`.
 - **Migrations**: Managed by Drizzle Kit.
@@ -81,18 +80,23 @@ Modular, plug-in-style integrations are located in `server/replit_integrations/`
 ## External Dependencies
 
 ### APIs and AI
-- **OpenAI API**: Utilized for AI chat, speech-to-text, text-to-speech, voice chat streaming, and image generation, configured via `AI_INTEGRATIONS_OPENAI_API_KEY` and `AI_INTEGRATIONS_OPENAI_BASE_URL`.
+- **OpenAI API**: Used for AI chat, speech-to-text, text-to-speech, voice chat streaming, and image generation. Configured via `AI_INTEGRATIONS_OPENAI_API_KEY` and `AI_INTEGRATIONS_OPENAI_BASE_URL`.
 
 ### Database
-- **PostgreSQL**: The primary database, requiring a `DATABASE_URL` environment variable.
+- **PostgreSQL**: Primary database. Connection string supplied via `DATABASE_URL`.
 
 ### Key npm Dependencies
-- **Data & ORM**: `drizzle-orm`, `drizzle-kit`, `drizzle-zod`.
-- **Validation**: `zod`.
-- **Frontend**: `@tanstack/react-query`, `wouter`, `recharts`, `react-hook-form`, `@hookform/resolvers`.
-- **UI**: `shadcn/ui`, `radix-ui`, `tailwind-merge`, `clsx`, `vaul`.
-- **Utilities**: `date-fns`, `nanoid`, `p-limit`, `p-retry`.
-- **Backend**: `openai`.
+- `drizzle-orm`, `drizzle-kit`, `drizzle-zod`: ORM and schema management.
+- `zod`: Runtime validation.
+- `@tanstack/react-query`: Client-side data fetching and server state management (v5).
+- `wouter`: Lightweight React router.
+- `recharts`: Charting library for financial data.
+- `react-hook-form`, `@hookform/resolvers`: Form management and validation.
+- `shadcn/ui`, `Radix UI`: UI component library adhering to the design system.
+- `date-fns`: Date formatting (with `ar` locale).
+- `openai`: OpenAI SDK.
+- `p-limit`, `p-retry`: Batch processing utilities.
+- `tailwind-merge`, `clsx`, `vaul`: UI utilities.
 
 ### Environment Variables Required
 - `DATABASE_URL`
@@ -101,14 +105,4 @@ Modular, plug-in-style integrations are located in `server/replit_integrations/`
 
 ## Automated UI Checks
 
-- **Mobile horizontal overflow** — `tests/e2e/mobile-overflow.spec.ts` is a
-  Playwright check that loads every dense-table app page (Journal, Reports,
-  Insights, Fixed Assets, HR, Chart of Accounts, Transactions) at a 360x720
-  viewport in both English (LTR) and Arabic (RTL) and asserts the document
-  itself does not overflow horizontally. This is the regression net for new
-  pages that forget the `.table-sticky-first` table wrapper or ship an
-  `inline-flex` toolbar that would push the page wider than a phone viewport.
-  Run it with `PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test --reporter=line`
-  while the dev server is up, or via the registered `mobile-overflow`
-  validation command. See `tests/mobile-overflow-check.md` for the full
-  rationale and failure-mode playbook.
+- **Mobile horizontal overflow** — `tests/e2e/mobile-overflow.spec.ts` is a Playwright check that loads every dense-table app page (Journal, Reports, Insights, Fixed Assets, HR, Chart of Accounts, Transactions) at a 360x720 viewport in both English (LTR) and Arabic (RTL) and asserts the document itself does not overflow horizontally. This is the regression net for new pages that forget the `.table-sticky-first` table wrapper or ship an `inline-flex` toolbar that would push the page wider than a phone viewport. Run it with `PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test --reporter=line` while the dev server is up, or via the registered `mobile-overflow` validation command. See `tests/mobile-overflow-check.md` for the full rationale and failure-mode playbook.
