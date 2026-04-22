@@ -1,8 +1,10 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { rbacMiddleware, registerAuthRoutes } from "./auth";
+import { rbacMiddleware, registerAuthRoutes as registerTeamRoutes } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { registerLocalAuthRoutes } from "./auth/local-routes";
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,8 +64,18 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  app.use(rbacMiddleware());
+  // Auth must be set up BEFORE any routes that depend on session/passport.
+  await setupAuth(app);
+  // Local auth routes register first so our /api/auth/user shadow (which
+  // accepts both OIDC and email+password sessions) wins over the blueprint's.
+  registerLocalAuthRoutes(app);
   registerAuthRoutes(app);
+
+  // Legacy team/RBAC layer (req.member cookie-based) — kept alongside the new
+  // user/membership system.
+  app.use(rbacMiddleware());
+  registerTeamRoutes(app);
+
   await registerRoutes(httpServer, app);
 
   // Bootstrap IFRS Chart of Accounts and backfill journal entries for legacy data

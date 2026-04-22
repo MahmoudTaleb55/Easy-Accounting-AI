@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage, isAuditEntityType, type AuditContext } from "./storage";
 import type { Request } from "express";
@@ -19,6 +19,54 @@ import { db } from "./db";
 import { assetComponents, type AssetComponent } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { PeriodKey } from "./fixed-assets";
+import {
+  requireAuth,
+  attachMembership,
+  requireWriteRoleForMutations,
+  type MembershipContext,
+} from "./auth/middleware";
+
+/** Pull the active workspace id from the request after `attachMembership`.
+ *  Sends 403 if no membership context (e.g. signed-in user with no workspace). */
+function cid(req: Request): number {
+  const ctx = (req as any).membership as MembershipContext | undefined;
+  if (!ctx) throw Object.assign(new Error("No active workspace"), { status: 403 });
+  return ctx.companyId;
+}
+
+// Routes under /api/* that must remain reachable without authentication
+// (login/signup flows, OIDC callbacks, public marketing endpoints).
+const PUBLIC_API_PREFIXES = [
+  "/api/login",
+  "/api/logout",
+  "/api/callback",
+  "/api/auth/signup",
+  "/api/auth/signin",
+  "/api/auth/signout",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/invitations/by-token",
+  "/api/auth/user", // returns 401 itself when missing — keeps /useAuth polling cheap
+];
+
+function isPublic(path: string): boolean {
+  return PUBLIC_API_PREFIXES.some((p) => path === p || path.startsWith(p + "/") || path === p);
+}
+
+// Auth self-service mutations — any authenticated user can perform these,
+// regardless of workspace role (or even before they have any membership).
+// They are still behind requireAuth (per-route) and the global requireAuth gate.
+const SELF_SERVICE_PREFIXES = [
+  "/api/auth/profile",
+  "/api/auth/change-password",
+  "/api/auth/sessions",
+  "/api/auth/invitations/accept",
+  "/api/companies", // listing user's workspaces + creating a brand-new workspace
+];
+
+function isSelfServiceWrite(path: string): boolean {
+  return SELF_SERVICE_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
+}
 
 // Using the OpenAI integration blueprint
 const openai = new OpenAI({
@@ -30,16 +78,36 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Global API gate: every /api/* request that is NOT in the public allowlist
+  // must be authenticated. Mutations additionally require a workspace role of
+  // admin or accountant (reviewer/readonly are blocked from writes).
+  app.use("/api", (req, res, next) => {
+    if (isPublic(req.path)) return next();
+    return requireAuth(req, res, (err?: any) => {
+      if (err) return next(err);
+      attachMembership(req, res, (err2?: any) => {
+        if (err2) return next(err2);
+        // Reads: any authenticated user with attached membership.
+        // Self-service writes (profile, password, sessions, accept invite,
+        // create/list workspaces): any authenticated user, no role gate.
+        // Everything else: requires admin/accountant role for the active workspace.
+        if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return next();
+        if (isSelfServiceWrite(req.path)) return next();
+        return requireWriteRoleForMutations(req, res, next);
+      });
+    });
+  });
+
   // Transactions
   app.get(api.transactions.list.path, async (req, res) => {
-    const allTransactions = await storage.getTransactions();
+    const allTransactions = await storage.getTransactions(cid(req));
     res.json(allTransactions);
   });
 
   app.post(api.transactions.create.path, async (req, res) => {
     try {
       const input = api.transactions.create.input.parse(req.body);
-      const transaction = await storage.createTransaction(input, userCtx(req));
+      const transaction = await storage.createTransaction(cid(req), input, userCtx(req));
       res.status(201).json(transaction);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -57,12 +125,12 @@ export async function registerRoutes(
     if (isNaN(id)) {
       return res.status(400).json({ message: "Invalid ID" });
     }
-    await storage.deleteTransaction(id, userCtx(req));
+    await storage.deleteTransaction(cid(req), id, userCtx(req));
     res.status(204).send();
   });
 
   app.get(api.transactions.summary.path, async (req, res) => {
-    const allTransactions = await storage.getTransactions();
+    const allTransactions = await storage.getTransactions(cid(req));
     let totalIncome = 0;
     let totalExpense = 0;
     
@@ -170,15 +238,15 @@ export async function registerRoutes(
   });
 
   // ----- Chart of Accounts -----
-  app.get(api.accounts.list.path, async (_req, res) => {
-    const list = await storage.getAccounts();
+  app.get(api.accounts.list.path, async (req, res) => {
+    const list = await storage.getAccounts(cid(req));
     res.json(list);
   });
 
   app.post(api.accounts.create.path, async (req, res) => {
     try {
       const input = api.accounts.create.input.parse(req.body);
-      const created = await storage.createAccount(input, userCtx(req));
+      const created = await storage.createAccount(cid(req), input, userCtx(req));
       res.status(201).json(created);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -192,15 +260,15 @@ export async function registerRoutes(
   });
 
   // ----- Journal Entries -----
-  app.get(api.journal.list.path, async (_req, res) => {
-    const entries = await storage.getJournalEntries();
+  app.get(api.journal.list.path, async (req, res) => {
+    const entries = await storage.getJournalEntries(cid(req));
     res.json(entries);
   });
 
   app.post(api.journal.create.path, async (req, res) => {
     try {
       const input = api.journal.create.input.parse(req.body);
-      const created = await storage.createJournalEntry(input, userCtx(req));
+      const created = await storage.createJournalEntry(cid(req), input, userCtx(req));
       res.status(201).json(created);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -217,7 +285,7 @@ export async function registerRoutes(
   app.delete(api.journal.delete.path, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    await storage.deleteJournalEntry(id, userCtx(req));
+    await storage.deleteJournalEntry(cid(req), id, userCtx(req));
     res.status(204).send();
   });
 
@@ -236,9 +304,9 @@ export async function registerRoutes(
   });
 
   // ----- Reports: Trial Balance -----
-  app.get(api.reports.trialBalance.path, async (_req, res) => {
-    const allAccounts = await storage.getAccounts();
-    const entries = await storage.getJournalEntries();
+  app.get(api.reports.trialBalance.path, async (req, res) => {
+    const allAccounts = await storage.getAccounts(cid(req));
+    const entries = await storage.getJournalEntries(cid(req));
     const debitMap = new Map<number, number>();
     const creditMap = new Map<number, number>();
     entries.forEach((je) =>
@@ -274,9 +342,9 @@ export async function registerRoutes(
   });
 
   // ----- Reports: Balance Sheet -----
-  app.get(api.reports.balanceSheet.path, async (_req, res) => {
-    const allAccounts = await storage.getAccounts();
-    const entries = await storage.getJournalEntries();
+  app.get(api.reports.balanceSheet.path, async (req, res) => {
+    const allAccounts = await storage.getAccounts(cid(req));
+    const entries = await storage.getJournalEntries(cid(req));
     const debitMap = new Map<number, number>();
     const creditMap = new Map<number, number>();
     entries.forEach((je) =>
@@ -353,19 +421,24 @@ export async function registerRoutes(
   // ============================================================================
   // Settings (singleton org settings)
   // ============================================================================
-  app.get("/api/settings", async (_req, res) => {
-    res.json(await storage.getSettings());
+  app.get("/api/settings", async (req, res) => {
+    res.json(await storage.getSettings(cid(req)));
   });
 
-  app.patch("/api/settings", async (req, res) => {
+  // Workspace settings can only be modified by admins (per role matrix:
+  // accountant has financial write access but cannot manage workspace
+  // configuration).
+  app.patch("/api/settings", async (req, res, next) => {
+    const ctx = (req as any).membership as MembershipContext | undefined;
+    if (!ctx || ctx.role !== "admin") return res.status(403).json({ message: "Admins only" });
     try {
       const { upsertSettingsSchema } = await import("@shared/schema");
       const input = upsertSettingsSchema.parse(req.body);
-      const updated = await storage.updateSettings(input);
+      const updated = await storage.updateSettings(cid(req), input);
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
-      res.status(500).json({ message: "تعذر حفظ الإعدادات" });
+      next(err);
     }
   });
 
@@ -379,11 +452,11 @@ export async function registerRoutes(
   // ============================================================================
   const { insertEmployeeSchema, insertAttendanceSchema, insertLeaveSchema } = await import("@shared/schema");
 
-  app.get("/api/hr/employees", async (_req, res) => res.json(await storage.getEmployees()));
+  app.get("/api/hr/employees", async (req, res) => res.json(await storage.getEmployees(cid(req))));
   app.post("/api/hr/employees", async (req, res) => {
     try {
       const input = insertEmployeeSchema.parse(req.body);
-      res.status(201).json(await storage.createEmployee(input, userCtx(req)));
+      res.status(201).json(await storage.createEmployee(cid(req), input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر حفظ الموظف" });
@@ -392,7 +465,7 @@ export async function registerRoutes(
   app.patch("/api/hr/employees/:id", async (req, res) => {
     try {
       const input = insertEmployeeSchema.partial().parse(req.body);
-      res.json(await storage.updateEmployee(Number(req.params.id), input, userCtx(req)));
+      res.json(await storage.updateEmployee(cid(req), Number(req.params.id), input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر التحديث" });
@@ -411,7 +484,7 @@ export async function registerRoutes(
           message: "لا يمكن حذف الموظف لأنه مرتبط بكشوف رواتب سابقة. يمكنك تعطيله بدلاً من ذلك.",
         });
       }
-      await storage.deleteEmployee(id, userCtx(req));
+      await storage.deleteEmployee(cid(req), id, userCtx(req));
       res.status(204).send();
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "تعذر الحذف" });
@@ -421,12 +494,12 @@ export async function registerRoutes(
   app.get("/api/hr/attendance", async (req, res) => {
     const employeeId = req.query.employeeId ? Number(req.query.employeeId) : undefined;
     const yearMonth = req.query.yearMonth as string | undefined;
-    res.json(await storage.getAttendance(employeeId, yearMonth));
+    res.json(await storage.getAttendance(cid(req), employeeId, yearMonth));
   });
   app.post("/api/hr/attendance", async (req, res) => {
     try {
       const input = insertAttendanceSchema.parse(req.body);
-      res.status(201).json(await storage.upsertAttendance(input, userCtx(req)));
+      res.status(201).json(await storage.upsertAttendance(cid(req), input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر حفظ الحضور" });
@@ -435,25 +508,25 @@ export async function registerRoutes(
 
   app.get("/api/hr/leaves", async (req, res) => {
     const employeeId = req.query.employeeId ? Number(req.query.employeeId) : undefined;
-    res.json(await storage.getLeaves(employeeId));
+    res.json(await storage.getLeaves(cid(req), employeeId));
   });
   app.post("/api/hr/leaves", async (req, res) => {
     try {
       const input = insertLeaveSchema.parse(req.body);
-      res.status(201).json(await storage.createLeave(input, userCtx(req)));
+      res.status(201).json(await storage.createLeave(cid(req), input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر حفظ الإجازة" });
     }
   });
   app.delete("/api/hr/leaves/:id", async (req, res) => {
-    await storage.deleteLeave(Number(req.params.id), userCtx(req));
+    await storage.deleteLeave(cid(req), Number(req.params.id), userCtx(req));
     res.status(204).send();
   });
 
   app.get("/api/hr/leave-balance/:employeeId", async (req, res) => {
     const { leaveBalance } = await import("./payroll");
-    res.json(await leaveBalance(Number(req.params.employeeId)));
+    res.json(await leaveBalance(cid(req), Number(req.params.employeeId)));
   });
 
   const payrollPeriodSchema = z.object({
@@ -468,7 +541,7 @@ export async function registerRoutes(
         year: req.query.year || new Date().getFullYear(),
         month: req.query.month || new Date().getMonth() + 1,
       });
-      res.json({ year, month, lines: await computePayrollPreview(year, month) });
+      res.json({ year, month, lines: await computePayrollPreview(cid(req), year, month) });
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: err?.message || "تعذر حساب الرواتب" });
@@ -482,7 +555,7 @@ export async function registerRoutes(
         year: req.body?.year || new Date().getFullYear(),
         month: req.body?.month || new Date().getMonth() + 1,
       });
-      res.status(201).json(await runPayroll(year, month));
+      res.status(201).json(await runPayroll(cid(req), year, month));
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(400).json({ message: err?.message || "تعذر تنفيذ كشف الرواتب" });
@@ -494,20 +567,20 @@ export async function registerRoutes(
   // ============================================================================
   const insights = await import("./insights");
 
-  app.get("/api/insights/health", async (_req, res) => {
-    const k = await insights.computeKPIs();
+  app.get("/api/insights/health", async (req, res) => {
+    const k = await insights.computeKPIs(cid(req));
     const health = insights.computeHealthScore(k);
     res.json({ kpis: k, health });
   });
 
-  app.get("/api/insights/alerts", async (_req, res) => {
-    const alerts = await insights.generateAlerts();
+  app.get("/api/insights/alerts", async (req, res) => {
+    const alerts = await insights.generateAlerts(cid(req));
     res.json({ alerts });
   });
 
   app.get("/api/insights/cash-forecast", async (req, res) => {
     const days = Number(req.query.days || 90);
-    const forecast = await insights.projectCash(Math.min(Math.max(days, 7), 365));
+    const forecast = await insights.projectCash(cid(req), Math.min(Math.max(days, 7), 365));
     res.json(forecast);
   });
 
@@ -522,7 +595,7 @@ export async function registerRoutes(
   app.post("/api/insights/simulate", async (req, res) => {
     try {
       const input = scenarioSchema.parse(req.body);
-      const result = await insights.simulateScenario(input);
+      const result = await insights.simulateScenario(cid(req), input);
       res.json(result);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -532,22 +605,22 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/insights/taxes", async (_req, res) => {
-    const t = await insights.estimateTaxes();
+  app.get("/api/insights/taxes", async (req, res) => {
+    const t = await insights.estimateTaxes(cid(req));
     res.json(t);
   });
 
   app.get("/api/insights/budget-vs-actual", async (req, res) => {
     const year = Number(req.query.year || new Date().getFullYear());
     const month = Number(req.query.month || new Date().getMonth() + 1);
-    const rows = await insights.budgetVsActual(year, month);
+    const rows = await insights.budgetVsActual(cid(req), year, month);
     res.json({ year, month, rows });
   });
 
   app.get("/api/budgets", async (req, res) => {
     const year = req.query.year ? Number(req.query.year) : undefined;
     const month = req.query.month ? Number(req.query.month) : undefined;
-    const list = await storage.getBudgets(year, month);
+    const list = await storage.getBudgets(cid(req), year, month);
     res.json(list);
   });
 
@@ -558,11 +631,11 @@ export async function registerRoutes(
         year: z.coerce.number().int().min(2000).max(2100),
         month: z.coerce.number().int().min(1).max(12),
       }).parse(req.body);
-      const acc = await storage.getAccounts();
+      const acc = await storage.getAccounts(cid(req));
       if (!acc.find((a) => a.id === input.accountId && !a.isHeader)) {
         return res.status(400).json({ message: "حساب غير صالح" });
       }
-      const b = await storage.upsertBudget(input);
+      const b = await storage.upsertBudget(cid(req), input);
       res.status(201).json(b);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -571,7 +644,7 @@ export async function registerRoutes(
   });
 
   app.delete("/api/budgets/:id", async (req, res) => {
-    await storage.deleteBudget(Number(req.params.id));
+    await storage.deleteBudget(cid(req), Number(req.params.id));
     res.status(204).send();
   });
 
@@ -590,10 +663,10 @@ export async function registerRoutes(
       const question = String(req.body?.question || "").slice(0, 1000);
       if (!question.trim()) return res.status(400).json({ message: "أدخل سؤالك" });
 
-      const k = await insights.computeKPIs();
-      const cash = await insights.projectCash(90);
-      const alerts = await insights.generateAlerts();
-      const txs = await storage.getTransactions();
+      const k = await insights.computeKPIs(cid(req));
+      const cash = await insights.projectCash(cid(req), 90);
+      const alerts = await insights.generateAlerts(cid(req));
+      const txs = await storage.getTransactions(cid(req));
 
       const recentTxs = txs.slice(-15).map((t) => ({
         type: t.type,
@@ -647,9 +720,9 @@ export async function registerRoutes(
     }
   });
 
-  // Chat
+  // Chat — per-workspace history
   app.get(api.chat.list.path, async (req, res) => {
-    const messages = await storage.getChatMessages();
+    const messages = await storage.getChatMessages(cid(req));
     res.json(messages);
   });
 
@@ -663,6 +736,7 @@ export async function registerRoutes(
         : input.content;
 
       await storage.createChatMessage({
+        companyId: cid(req),
         role: "user",
         content: userContentForDb,
       });
@@ -730,7 +804,7 @@ export async function registerRoutes(
           const raw = JSON.parse(jsonMatch[1]);
           const parsed = aiActionSchema.safeParse(raw);
           if (parsed.success) {
-            await storage.createTransaction({
+            await storage.createTransaction(cid(req), {
               type: parsed.data.type,
               amount: parsed.data.amount,
               description: parsed.data.description,
@@ -747,6 +821,7 @@ export async function registerRoutes(
       // Save assistant message (strip the JSON block from displayed content)
       const cleanContent = aiContent.replace(/```json\s*[\s\S]*?\s*```/g, "").trim();
       const assistantMessage = await storage.createChatMessage({
+        companyId: cid(req),
         role: "assistant",
         content: cleanContent || "تم! ✅",
       });
@@ -763,6 +838,7 @@ export async function registerRoutes(
       // Persist a graceful assistant fallback so the chat doesn't appear stuck
       try {
         const fallback = await storage.createChatMessage({
+          companyId: cid(req),
           role: "assistant",
           content: "عذراً، حدث خطأ أثناء معالجة طلبك. حاول مرة أخرى من فضلك. 🙏",
         });
@@ -797,17 +873,45 @@ async function registerFixedAssetRoutes(app: Express) {
 
   const RETAINED_EARNINGS_CODE = "3020";
 
-  async function resolveAccountId(code: string): Promise<number | null> {
-    const acc = await storage.getAccountByCode(code);
+  async function resolveAccountId(companyId: number, code: string): Promise<number | null> {
+    const acc = await storage.getAccountByCode(companyId, code);
     return acc?.id ?? null;
   }
 
-  // Companies
-  app.get("/api/companies", async (_req, res) => res.json(await storage.getCompanies()));
+  // Helper: load a fixed asset and verify it belongs to the active workspace.
+  async function loadOwnedAsset(req: Request, res: Response) {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      res.status(400).json({ message: "معرّف غير صالح" });
+      return null;
+    }
+    const asset = await storage.getFixedAsset(id);
+    if (!asset || asset.companyId !== cid(req)) {
+      res.status(404).json({ message: "الأصل غير موجود" });
+      return null;
+    }
+    return asset;
+  }
+
+  // Companies — scoped to the signed-in user's memberships only.
+  app.get("/api/companies", async (req, res) => {
+    const { authBizStorage } = await import("./auth/storage");
+    const userId = (req.user as any)?.claims?.sub as string | undefined;
+    if (!userId) return res.json([]);
+    const ms = await authBizStorage.listMembershipsForUser(userId);
+    const cos = ms.map((m) => m.company).filter(Boolean);
+    res.json(cos);
+  });
   app.post("/api/companies", async (req, res) => {
     try {
       const input = insertCompanySchema.parse(req.body);
-      res.status(201).json(await storage.createCompany(input));
+      const userId = (req.user as any)?.claims?.sub as string | undefined;
+      const company = await storage.createCompany({ ...input, ownerUserId: userId ?? null });
+      if (userId) {
+        const { authBizStorage } = await import("./auth/storage");
+        await authBizStorage.createMembership({ userId, companyId: company.id, role: "admin" });
+      }
+      res.status(201).json(company);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر حفظ الشركة" });
@@ -815,42 +919,50 @@ async function registerFixedAssetRoutes(app: Express) {
   });
   app.patch("/api/companies/:id", async (req, res) => {
     try {
+      const id = Number(req.params.id);
+      const ctx = (req as Request & { membership?: MembershipContext }).membership;
+      // Authorization: must be admin of the active workspace, and the target
+      // workspace must match it (no cross-tenant edits).
+      if (!ctx || ctx.role !== "admin" || id !== ctx.companyId) {
+        return res.status(403).json({ message: "Admins only" });
+      }
       const input = insertCompanySchema.partial().parse(req.body);
-      res.json(await storage.updateCompany(Number(req.params.id), input));
+      res.json(await storage.updateCompany(id, input));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر التحديث" });
     }
   });
 
-  // FX Rates
+  // FX Rates — always scoped to the active workspace; client-provided companyId is ignored.
   app.get("/api/fx-rates", async (req, res) => {
-    const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
-    res.json(await storage.getFxRates(companyId));
+    res.json(await storage.getFxRates(cid(req)));
   });
   app.post("/api/fx-rates", async (req, res) => {
     try {
       const input = insertFxRateSchema.parse(req.body);
-      res.status(201).json(await storage.createFxRate(input));
+      res.status(201).json(await storage.createFxRate({ ...input, companyId: cid(req) }));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر حفظ سعر الصرف" });
     }
   });
   app.delete("/api/fx-rates/:id", async (req, res) => {
-    await storage.deleteFxRate(Number(req.params.id));
+    const id = Number(req.params.id);
+    const rates = await storage.getFxRates(cid(req));
+    if (!rates.find((r) => r.id === id)) return res.status(404).json({ message: "غير موجود" });
+    await storage.deleteFxRate(id);
     res.status(204).send();
   });
 
-  // Asset Categories
+  // Asset Categories — always scoped to the active workspace.
   app.get("/api/asset-categories", async (req, res) => {
-    const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
-    res.json(await storage.getAssetCategories(companyId));
+    res.json(await storage.getAssetCategories(cid(req)));
   });
   app.post("/api/asset-categories", async (req, res) => {
     try {
       const input = insertAssetCategorySchema.parse(req.body);
-      res.status(201).json(await storage.createAssetCategory(input));
+      res.status(201).json(await storage.createAssetCategory({ ...input, companyId: cid(req) }));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر حفظ التصنيف" });
@@ -858,18 +970,21 @@ async function registerFixedAssetRoutes(app: Express) {
   });
   app.patch("/api/asset-categories/:id", async (req, res) => {
     try {
-      const input = insertAssetCategorySchema.partial().parse(req.body);
-      res.json(await storage.updateAssetCategory(Number(req.params.id), input));
+      const id = Number(req.params.id);
+      const cats = await storage.getAssetCategories(cid(req));
+      if (!cats.find((c) => c.id === id)) return res.status(404).json({ message: "غير موجود" });
+      // Strip any companyId in the body so callers can't move the category between workspaces.
+      const input = insertAssetCategorySchema.omit({ companyId: true }).partial().parse(req.body);
+      res.json(await storage.updateAssetCategory(id, input));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "تعذر التحديث" });
     }
   });
 
-  // Fixed Assets - list (with computed carrying)
+  // Fixed Assets - list (always scoped to active workspace)
   app.get("/api/fixed-assets", async (req, res) => {
-    const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
-    const all = await storage.getFixedAssets(companyId);
+    const all = await storage.getFixedAssets(cid(req));
     res.json(all.map((a) => ({
       ...a,
       carryingAmount: fa.carryingAmount({ cost: a.cost, accumDepreciation: a.accumDepreciation, accumImpairment: a.accumImpairment }),
@@ -877,9 +992,9 @@ async function registerFixedAssetRoutes(app: Express) {
   });
 
   app.get("/api/fixed-assets/:id", async (req, res) => {
-    const id = Number(req.params.id);
-    const asset = await storage.getFixedAsset(id);
-    if (!asset) return res.status(404).json({ message: "الأصل غير موجود" });
+    const asset = await loadOwnedAsset(req, res);
+    if (!asset) return;
+    const id = asset.id;
     const [components, schedule, impairments, revaluations, disposalsList, depreciations] = await Promise.all([
       storage.getAssetComponents(id),
       storage.getSchedule(id),
@@ -929,17 +1044,22 @@ async function registerFixedAssetRoutes(app: Express) {
 
   app.post("/api/fixed-assets", async (req, res) => {
     try {
+      const companyId = cid(req);
       const componentsSchema = z.array(insertAssetComponentSchema.omit({ assetId: true })).optional().default([]);
+      // Force the asset onto the active workspace; never trust client-supplied companyId.
       const body = insertFixedAssetSchema.extend({
+        companyId: z.coerce.number().int().positive().optional(),
         components: componentsSchema,
       }).parse(req.body);
-      // Validate references
-      const cat = (await storage.getAssetCategories(body.companyId)).find((c) => c.id === body.categoryId);
+      // Validate references against THIS workspace's catalog.
+      const cat = (await storage.getAssetCategories(companyId)).find((c) => c.id === body.categoryId);
       if (!cat) return res.status(400).json({ message: "تصنيف الأصل غير صالح" });
       const cost = Number(body.txCost) * Number(body.fxRate ?? 1);
-      const { components, customSchedule, ...rest } = body;
+      const { components, customSchedule, companyId: _ignored, ...rest } = body;
+      void _ignored;
       const created = await storage.createFixedAsset({
         ...rest,
+        companyId,
         cost,
         customSchedule: customSchedule ? JSON.stringify(customSchedule) : null,
       }, userCtx(req));
@@ -963,27 +1083,28 @@ async function registerFixedAssetRoutes(app: Express) {
   });
 
   app.delete("/api/fixed-assets/:id", async (req, res) => {
-    await storage.deleteFixedAsset(Number(req.params.id), userCtx(req));
+    const asset = await loadOwnedAsset(req, res);
+    if (!asset) return;
+    await storage.deleteFixedAsset(asset.id, userCtx(req));
     res.status(204).send();
   });
 
-  // Depreciation runs
+  // Depreciation runs — always scoped to active workspace
   app.get("/api/depreciation-runs", async (req, res) => {
-    const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
-    const runs = await storage.getDepreciationRuns(companyId);
+    const runs = await storage.getDepreciationRuns(cid(req));
     res.json(runs);
   });
 
   app.get("/api/depreciation-runs/:id", async (req, res) => {
     const run = await storage.getDepreciationRun(Number(req.params.id));
-    if (!run) return res.status(404).json({ message: "غير موجود" });
+    if (!run || run.companyId !== cid(req)) return res.status(404).json({ message: "غير موجود" });
     const postings = await storage.getDepreciationPostings(run.id);
     res.json({ ...run, postings });
   });
 
-  // Preview depreciation for a given month — returns per-asset amounts & totals
+  // Preview depreciation for a given month — returns per-asset amounts & totals.
+  // companyId is derived from the active workspace; never accepted from the client.
   const depRunBodySchema = z.object({
-    companyId: z.coerce.number().int().positive(),
     year: z.coerce.number().int().min(2000).max(2100),
     month: z.coerce.number().int().min(1).max(12),
     // Optional per-asset/per-component units for units_of_production assets.
@@ -1003,12 +1124,13 @@ async function registerFixedAssetRoutes(app: Express) {
   app.post("/api/depreciation-runs/preview", async (req, res) => {
     try {
       const body = depRunBodySchema.parse(req.body);
-      const existing = await storage.findPostedRun(body.companyId, body.year, body.month);
+      const companyId = cid(req);
+      const existing = await storage.findPostedRun(companyId, body.year, body.month);
       if (existing) {
         return res.status(409).json({ message: "تم ترحيل قيد إهلاك لهذا الشهر مسبقاً" });
       }
-      const all = await storage.getFixedAssets(body.companyId);
-      const cats = await storage.getAssetCategories(body.companyId);
+      const all = await storage.getFixedAssets(companyId);
+      const cats = await storage.getAssetCategories(companyId);
       const catById = new Map(cats.map((c) => [c.id, c]));
       const usageOf = usageLookup(body.usage);
       const period: PeriodKey = { year: body.year, month: body.month };
@@ -1062,12 +1184,13 @@ async function registerFixedAssetRoutes(app: Express) {
   app.post("/api/depreciation-runs/post", async (req, res) => {
     try {
       const body = depRunBodySchema.parse(req.body);
+      const companyId = cid(req);
 
-      const existing = await storage.findPostedRun(body.companyId, body.year, body.month);
+      const existing = await storage.findPostedRun(companyId, body.year, body.month);
       if (existing) return res.status(409).json({ message: "تم الترحيل مسبقاً لهذا الشهر" });
 
-      const all = await storage.getFixedAssets(body.companyId);
-      const cats = await storage.getAssetCategories(body.companyId);
+      const all = await storage.getFixedAssets(companyId);
+      const cats = await storage.getAssetCategories(companyId);
       const catById = new Map(cats.map((c) => [c.id, c]));
       const usageOf = usageLookup(body.usage);
 
@@ -1116,14 +1239,14 @@ async function registerFixedAssetRoutes(app: Express) {
 
       const periodStr = `${body.year}-${String(body.month).padStart(2, "0")}`;
       const built = fa.buildDepreciationJE(postings.reduce((s, p) => s + p.amount, 0), byCat, `إهلاك شهر ${periodStr}`);
-      const je = await storage.createJournalEntry({
+      const je = await storage.createJournalEntry(cid(req), {
         description: built.description,
         entryDate: new Date(`${periodStr}-28`),
         source: "manual",
         lines: built.lines,
       }, userCtx(req));
 
-      const run = await storage.createDepreciationRun({ companyId: body.companyId, year: body.year, month: body.month, postings });
+      const run = await storage.createDepreciationRun({ companyId, year: body.year, month: body.month, postings });
       const posted = await storage.markRunPosted(run.id, je.id);
       await storage.markScheduledPosted(run.id, period, postings.map((p) => ({ assetId: p.assetId, componentId: p.componentId ?? null, amount: p.amount })));
 
@@ -1164,15 +1287,15 @@ async function registerFixedAssetRoutes(app: Express) {
   // Impairment
   app.post("/api/fixed-assets/:id/impairment", async (req, res) => {
     try {
-      const id = Number(req.params.id);
+      const asset = await loadOwnedAsset(req, res);
+      if (!asset) return;
+      const id = asset.id;
       const body = z.object({
         eventDate: z.string().min(1),
         recoverableAmount: z.coerce.number().nonnegative(),
         notes: z.string().max(500).optional().default(""),
         confirm: z.boolean().optional().default(false),
       }).parse(req.body);
-      const asset = await storage.getFixedAsset(id);
-      if (!asset) return res.status(404).json({ message: "غير موجود" });
       const cat = (await storage.getAssetCategories(asset.companyId)).find((c) => c.id === asset.categoryId);
       if (!cat) return res.status(400).json({ message: "تصنيف غير موجود" });
 
@@ -1199,7 +1322,7 @@ async function registerFixedAssetRoutes(app: Express) {
 
       if (amount <= 0.005) return res.status(400).json({ message: "لا يوجد فرق يتطلب قيد انخفاض" });
       const built = fa.buildImpairmentJE(cat, amount, isReversal, asset.name);
-      const je = await storage.createJournalEntry({
+      const je = await storage.createJournalEntry(cid(req), {
         description: built.description,
         entryDate: new Date(body.eventDate),
         source: "manual",
@@ -1248,7 +1371,9 @@ async function registerFixedAssetRoutes(app: Express) {
   // Revaluation
   app.post("/api/fixed-assets/:id/revaluation", async (req, res) => {
     try {
-      const id = Number(req.params.id);
+      const asset = await loadOwnedAsset(req, res);
+      if (!asset) return;
+      const id = asset.id;
       const body = z.object({
         eventDate: z.string().min(1),
         fairValue: z.coerce.number().nonnegative(),
@@ -1256,8 +1381,6 @@ async function registerFixedAssetRoutes(app: Express) {
         notes: z.string().max(500).optional().default(""),
         confirm: z.boolean().optional().default(false),
       }).parse(req.body);
-      const asset = await storage.getFixedAsset(id);
-      if (!asset) return res.status(404).json({ message: "غير موجود" });
       const cat = (await storage.getAssetCategories(asset.companyId)).find((c) => c.id === asset.categoryId);
       if (!cat) return res.status(400).json({ message: "تصنيف غير موجود" });
 
@@ -1290,7 +1413,7 @@ async function registerFixedAssetRoutes(app: Express) {
         result.surplusDelta,
         result.plImpact,
       );
-      const je = await storage.createJournalEntry({
+      const je = await storage.createJournalEntry(cid(req), {
         description: built.description,
         entryDate: new Date(body.eventDate),
         source: "manual",
@@ -1330,7 +1453,9 @@ async function registerFixedAssetRoutes(app: Express) {
   // Disposal
   app.post("/api/fixed-assets/:id/dispose", async (req, res) => {
     try {
-      const id = Number(req.params.id);
+      const asset = await loadOwnedAsset(req, res);
+      if (!asset) return;
+      const id = asset.id;
       const body = z.object({
         eventDate: z.string().min(1),
         proceeds: z.coerce.number().nonnegative().default(0),
@@ -1338,14 +1463,12 @@ async function registerFixedAssetRoutes(app: Express) {
         notes: z.string().max(500).optional().default(""),
         confirm: z.boolean().optional().default(false),
       }).parse(req.body);
-      const asset = await storage.getFixedAsset(id);
-      if (!asset) return res.status(404).json({ message: "غير موجود" });
       if (asset.status === "disposed") return res.status(400).json({ message: "تم استبعاد هذا الأصل مسبقاً" });
       const cat = (await storage.getAssetCategories(asset.companyId)).find((c) => c.id === asset.categoryId);
       if (!cat) return res.status(400).json({ message: "تصنيف غير موجود" });
 
-      const cashAccountId = await resolveAccountId(CASH_ACCOUNT_CODE);
-      const reAccountId = await resolveAccountId(RETAINED_EARNINGS_CODE);
+      const cashAccountId = await resolveAccountId(asset.companyId, CASH_ACCOUNT_CODE);
+      const reAccountId = await resolveAccountId(asset.companyId, RETAINED_EARNINGS_CODE);
       if (!cashAccountId || !reAccountId) return res.status(500).json({ message: "حساب النقدية أو الأرباح المحتجزة غير موجود" });
 
       const result = fa.computeDisposal(Number(asset.cost), Number(asset.accumDepreciation), Number(asset.accumImpairment), Number(asset.revalSurplus), body.proceeds);
@@ -1353,7 +1476,7 @@ async function registerFixedAssetRoutes(app: Express) {
       if (!body.confirm) return res.json({ preview });
 
       const built = fa.buildDisposalJE(cat, asset, Number(asset.cost), Number(asset.accumDepreciation), Number(asset.accumImpairment), body.proceeds, result, cashAccountId, reAccountId);
-      const je = await storage.createJournalEntry({
+      const je = await storage.createJournalEntry(cid(req), {
         description: built.description,
         entryDate: new Date(body.eventDate),
         source: "manual",

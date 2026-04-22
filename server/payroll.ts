@@ -56,12 +56,16 @@ function yearsCompleted(hireDate: string, asOfYear: number, asOfMonth: number) {
 }
 
 export async function computePayrollPreview(
+  companyId: number,
   year: number,
   month: number,
 ): Promise<PayrollPreviewLine[]> {
-  const settings = await storage.getSettings();
+  const settings = await storage.getSettings(companyId);
   const pack = getPack(settings.countryCode);
-  const allEmps = await db.select().from(employees).where(eq(employees.isActive, true));
+  const allEmps = await db
+    .select()
+    .from(employees)
+    .where(and(eq(employees.companyId, companyId), eq(employees.isActive, true)));
 
   const totalDays = daysInMonth(year, month);
   const monthStr = String(month).padStart(2, "0");
@@ -129,17 +133,22 @@ export async function computePayrollPreview(
 }
 
 export async function runPayroll(
+  companyId: number,
   year: number,
   month: number,
 ): Promise<{ runId: number; journalEntryId: number; lines: PayrollPreviewLine[] }> {
-  const lines = await computePayrollPreview(year, month);
+  const lines = await computePayrollPreview(companyId, year, month);
   if (!lines.length) throw new Error("لا يوجد موظفون نشطون");
 
-  // Check no existing posted run
+  // Check no existing posted run for this workspace
   const existing = await db
     .select()
     .from(payrollRuns)
-    .where(and(eq(payrollRuns.year, year), eq(payrollRuns.month, month)));
+    .where(and(
+      eq(payrollRuns.companyId, companyId),
+      eq(payrollRuns.year, year),
+      eq(payrollRuns.month, month),
+    ));
   if (existing.find((r) => r.status === "posted")) {
     throw new Error("تم اعتماد رواتب هذا الشهر مسبقاً");
   }
@@ -166,7 +175,7 @@ export async function runPayroll(
   //   Cr SI Payable (employee + employer)
   //   Cr EoS Liability (accrual)
   //   Cr Accrued Leave Liability (accrual)
-  const allAccs = await db.select().from(accounts);
+  const allAccs = await db.select().from(accounts).where(eq(accounts.companyId, companyId));
   const idOf = (code: string) => {
     const a = allAccs.find((x) => x.code === code);
     if (!a) throw new Error(`Account ${code} missing — run /api/accounts/seed`);
@@ -185,7 +194,7 @@ export async function runPayroll(
   ].filter((l) => Math.abs(l.debit) + Math.abs(l.credit) > 0.001);
 
   const monthStr = String(month).padStart(2, "0");
-  const je = await storage.createJournalEntry({
+  const je = await storage.createJournalEntry(companyId, {
     entryDate: `${year}-${monthStr}-${String(daysInMonth(year, month)).padStart(2, "0")}`,
     description: `رواتب شهر ${monthStr}/${year}`,
     source: "manual",
@@ -201,6 +210,7 @@ export async function runPayroll(
   const [run] = await db
     .insert(payrollRuns)
     .values({
+      companyId,
       year,
       month,
       status: "posted",
@@ -231,10 +241,13 @@ export async function runPayroll(
   return { runId: run.id, journalEntryId: je.id, lines };
 }
 
-export async function leaveBalance(employeeId: number): Promise<{ entitled: number; taken: number; remaining: number }> {
-  const settings = await storage.getSettings();
+export async function leaveBalance(companyId: number, employeeId: number): Promise<{ entitled: number; taken: number; remaining: number }> {
+  const settings = await storage.getSettings(companyId);
   const pack = getPack(settings.countryCode);
-  const [emp] = await db.select().from(employees).where(eq(employees.id, employeeId));
+  const [emp] = await db
+    .select()
+    .from(employees)
+    .where(and(eq(employees.companyId, companyId), eq(employees.id, employeeId)));
   if (!emp) return { entitled: 0, taken: 0, remaining: 0 };
 
   const annual = emp.annualLeaveDaysOverride ?? pack.annualLeaveDays;

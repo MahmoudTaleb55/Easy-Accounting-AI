@@ -1,6 +1,9 @@
 import { db } from "./db";
 import { accounts, journalEntries, journalLines, transactions, budgets } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
+
+// All read functions in this module accept a `companyId` so insights are scoped
+// to the active workspace. Callers must pass `req.membership.companyId`.
 
 export interface AccountBalance {
   accountId: number;
@@ -11,9 +14,12 @@ export interface AccountBalance {
   balance: number;
 }
 
-export async function computeBalances(): Promise<AccountBalance[]> {
-  const allAccounts = await db.select().from(accounts);
-  const lines = await db.select().from(journalLines);
+export async function computeBalances(companyId: number): Promise<AccountBalance[]> {
+  const allAccounts = await db.select().from(accounts).where(eq(accounts.companyId, companyId));
+  const accountIds = allAccounts.map((a) => a.id);
+  const lines = accountIds.length
+    ? await db.select().from(journalLines).where(inArray(journalLines.accountId, accountIds))
+    : [];
   const debit = new Map<number, number>();
   const credit = new Map<number, number>();
   for (const l of lines) {
@@ -59,8 +65,8 @@ export interface KPIs {
   debtToEquity: number;
 }
 
-export async function computeKPIs(): Promise<KPIs> {
-  const balances = await computeBalances();
+export async function computeKPIs(companyId: number): Promise<KPIs> {
+  const balances = await computeBalances(companyId);
   const sumWhere = (pred: (b: AccountBalance) => boolean) =>
     balances.filter(pred).reduce((s, b) => s + b.balance, 0);
 
@@ -115,18 +121,13 @@ export function computeHealthScore(k: KPIs): {
 } {
   const clamp = (v: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 
-  // Profitability: net margin > 15% = 100
   const profitScore = k.totalRevenue > 0 ? clamp((k.netMargin / 0.15) * 100) : 0;
-  // Liquidity: current ratio 2.0 = 100, 1.0 = 50
   const liquidityScore = k.totalCurrentLiabilities > 0
     ? clamp((k.currentRatio / 2) * 100)
     : k.totalCurrentAssets > 0 ? 100 : 0;
-  // Cash strength: cash/expenses ≥ 3 months = 100
   const monthlyExp = k.totalExpenses / 3 || 1;
   const cashScore = clamp((k.cash / (monthlyExp * 3)) * 100);
-  // Expense discipline: expense ratio < 70% = 100, > 100% = 0
   const disciplineScore = k.totalRevenue > 0 ? clamp(100 - (k.expenseRatio - 0.7) / 0.3 * 100) : 50;
-  // Solvency: debt/equity < 1 = 100, > 3 = 0
   const solvencyScore = k.totalEquity > 0 ? clamp(100 - (k.debtToEquity / 3) * 100) : 0;
 
   const components = [
@@ -143,8 +144,8 @@ export function computeHealthScore(k: KPIs): {
 // ============================================================================
 // Cash Runway & Forecast
 // ============================================================================
-export async function computeCashFlow(daysBack = 90) {
-  const txs = await db.select().from(transactions);
+export async function computeCashFlow(companyId: number, daysBack = 90) {
+  const txs = await db.select().from(transactions).where(eq(transactions.companyId, companyId));
   const cutoff = Date.now() - daysBack * 86400000;
   const recent = txs.filter((t) => new Date(t.date || 0).getTime() >= cutoff);
   const inflow = recent.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
@@ -160,9 +161,9 @@ export async function computeCashFlow(daysBack = 90) {
   };
 }
 
-export async function projectCash(daysAhead = 90) {
-  const k = await computeKPIs();
-  const flow = await computeCashFlow(90);
+export async function projectCash(companyId: number, daysAhead = 90) {
+  const k = await computeKPIs(companyId);
+  const flow = await computeCashFlow(companyId, 90);
   const cash = k.cash;
   const series: { day: number; date: string; balance: number }[] = [];
   for (let d = 0; d <= daysAhead; d += 1) {
@@ -199,13 +200,12 @@ export interface Alert {
   category?: string;
 }
 
-export async function generateAlerts(): Promise<Alert[]> {
+export async function generateAlerts(companyId: number): Promise<Alert[]> {
   const alerts: Alert[] = [];
-  const k = await computeKPIs();
-  const cash = await projectCash(90);
-  const txs = await db.select().from(transactions);
+  const k = await computeKPIs(companyId);
+  const cash = await projectCash(companyId, 90);
+  const txs = await db.select().from(transactions).where(eq(transactions.companyId, companyId));
 
-  // 1) Cash runway
   if (cash.runwayDays !== null) {
     if (cash.runwayDays < 30) {
       alerts.push({
@@ -226,7 +226,6 @@ export async function generateAlerts(): Promise<Alert[]> {
     }
   }
 
-  // 2) Expense ratio too high
   if (k.totalRevenue > 0 && k.expenseRatio > 0.9) {
     alerts.push({
       id: "expense-ratio-high",
@@ -237,7 +236,6 @@ export async function generateAlerts(): Promise<Alert[]> {
     });
   }
 
-  // 3) Net loss
   if (k.netProfit < 0) {
     alerts.push({
       id: "net-loss",
@@ -248,7 +246,6 @@ export async function generateAlerts(): Promise<Alert[]> {
     });
   }
 
-  // 4) Category anomaly: spend > 1.5x trailing 3-month avg
   const now = Date.now();
   const last30 = txs.filter(
     (t) => t.type === "expense" && new Date(t.date || 0).getTime() >= now - 30 * 86400000
@@ -265,7 +262,7 @@ export async function generateAlerts(): Promise<Alert[]> {
   const recentByCat = sumByCat(last30);
   const prevByCat = sumByCat(prev60_120);
   for (const [cat, recent] of Object.entries(recentByCat)) {
-    const prevAvg = (prevByCat[cat] || 0) / 3; // monthly avg from 3 months
+    const prevAvg = (prevByCat[cat] || 0) / 3;
     if (prevAvg > 50 && recent > prevAvg * 1.5) {
       alerts.push({
         id: `anomaly-${cat}`,
@@ -278,7 +275,6 @@ export async function generateAlerts(): Promise<Alert[]> {
     }
   }
 
-  // 5) Revenue drop month over month
   const last30Income = txs
     .filter((t) => t.type === "income" && new Date(t.date || 0).getTime() >= now - 30 * 86400000)
     .reduce((s, t) => s + Number(t.amount), 0);
@@ -298,7 +294,6 @@ export async function generateAlerts(): Promise<Alert[]> {
     });
   }
 
-  // 6) Single large outlier
   const expenseTxs = txs.filter((t) => t.type === "expense");
   if (expenseTxs.length > 5) {
     const amounts = expenseTxs.map((t) => Number(t.amount));
@@ -314,12 +309,11 @@ export async function generateAlerts(): Promise<Alert[]> {
           description: `${Number(t.amount).toFixed(0)} ر.س على "${t.description}" — أكبر بكثير من متوسط مصاريفك (${mean.toFixed(0)} ر.س).`,
           metric: `${Number(t.amount).toFixed(0)} ر.س`,
         });
-        break; // one outlier alert is enough
+        break;
       }
     }
   }
 
-  // 7) All clear
   if (alerts.length === 0) {
     alerts.push({
       id: "all-good",
@@ -336,16 +330,16 @@ export async function generateAlerts(): Promise<Alert[]> {
 // What-If Simulator
 // ============================================================================
 export interface ScenarioInput {
-  priceChangePct: number; // e.g., +10 means raise prices 10%
-  costChangePct: number; // change to COGS
-  newMonthlyExpense: number; // additional fixed expense
-  expenseReductionPct: number; // reduce operating expenses
+  priceChangePct: number;
+  costChangePct: number;
+  newMonthlyExpense: number;
+  expenseReductionPct: number;
   monthsAhead: number;
 }
 
-export async function simulateScenario(input: ScenarioInput) {
-  const k = await computeKPIs();
-  const flow = await computeCashFlow(90);
+export async function simulateScenario(companyId: number, input: ScenarioInput) {
+  const k = await computeKPIs(companyId);
+  const flow = await computeCashFlow(companyId, 90);
   const monthlyRevenue = flow.avgDailyIn * 30;
   const monthlyExpense = flow.avgDailyOut * 30;
   const cogsRatio = k.totalExpenses > 0 ? k.totalCogs / k.totalExpenses : 0;
@@ -371,7 +365,6 @@ export async function simulateScenario(input: ScenarioInput) {
     });
   }
 
-  // Break-even (monthly)
   const contributionMargin = newRevenue > 0 ? (newRevenue - newCogs) / newRevenue : 0;
   const breakEvenRevenue = contributionMargin > 0 ? newOpEx / contributionMargin : 0;
 
@@ -397,13 +390,13 @@ export async function simulateScenario(input: ScenarioInput) {
 // ============================================================================
 // Tax & Zakat Estimates (simplified — Saudi context)
 // ============================================================================
-export async function estimateTaxes() {
+export async function estimateTaxes(companyId: number) {
   const { storage } = await import("./storage");
-  const settings = await storage.getSettings();
+  const settings = await storage.getSettings(companyId);
   const vatRate = Number(settings.vatRate);
   const zakatEnabled = settings.zakatEnabled;
 
-  const k = await computeKPIs();
+  const k = await computeKPIs(companyId);
   const vatBase = Math.max(0, k.totalRevenue - k.totalCogs);
   const vatPayable = vatBase * vatRate;
 
@@ -435,20 +428,22 @@ export async function estimateTaxes() {
 // ============================================================================
 // Budget vs Actual
 // ============================================================================
-export async function budgetVsActual(year: number, month: number) {
+export async function budgetVsActual(companyId: number, year: number, month: number) {
   const allBudgets = await db
     .select()
     .from(budgets)
-    .where(and(eq(budgets.year, year), eq(budgets.month, month)));
+    .where(and(eq(budgets.companyId, companyId), eq(budgets.year, year), eq(budgets.month, month)));
 
-  const allAccounts = await db.select().from(accounts);
+  const allAccounts = await db.select().from(accounts).where(eq(accounts.companyId, companyId));
   const accountById = new Map(allAccounts.map((a) => [a.id, a]));
 
-  const lines = await db.select().from(journalLines);
-  const entries = await db.select().from(journalEntries);
+  const entries = await db.select().from(journalEntries).where(eq(journalEntries.companyId, companyId));
+  const entryIds = entries.map((e) => e.id);
   const entryById = new Map(entries.map((e) => [e.id, e]));
+  const lines = entryIds.length
+    ? await db.select().from(journalLines).where(inArray(journalLines.journalEntryId, entryIds))
+    : [];
 
-  // Aggregate actual debits per account for the given month
   const actualMap = new Map<number, number>();
   for (const l of lines) {
     const e = entryById.get(l.journalEntryId);

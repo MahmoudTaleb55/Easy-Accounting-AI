@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/accordion"
 import { cn } from "@/lib/utils"
 import { useLocale, type Locale } from "@/contexts/locale-context"
+import { useAuth } from "@/hooks/use-auth"
 
 /* ============================================================================
    Landing page — محاسب ذكي / Smart Accountant
@@ -393,6 +394,11 @@ function getCopy(locale: Locale) {
 export default function Landing() {
   const { locale, dir } = useLocale()
   const t = getCopy(locale)
+  // Session-aware: signed-in visitors land directly in the app; guests
+  // see Sign in / Sign up.
+  const { isAuthenticated, isLoading } = useAuth()
+  const openAppHref = !isLoading && isAuthenticated ? "/app" : "/signin"
+  const signInHref = !isLoading && isAuthenticated ? "/app" : "/signin"
 
   return (
     <div className="bg-background text-foreground" dir={dir} lang={locale}>
@@ -406,11 +412,11 @@ export default function Landing() {
           { label: t.nav.faq,        href: "#faq" },
         ]}
         ctaLabel={t.nav.openApp}
-        ctaHref="/app"
+        ctaHref={openAppHref}
         secondaryLabel={t.nav.demo}
         secondaryHref="/demo"
         tertiaryLabel={t.nav.signIn}
-        tertiaryHref="/app"
+        tertiaryHref={signInHref}
       />
       <main className="overflow-x-clip">
         <Hero t={t} />
@@ -472,7 +478,7 @@ function Hero({ t }: { t: Dict }) {
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button size="lg" data-testid="button-hero-cta-primary" asChild>
-                <a href="/app" className="gap-2">
+                <a href="/signin" className="gap-2">
                   {t.hero.ctaPrimary}
                   <CtaArrow ar={t.ar} />
                 </a>
@@ -481,7 +487,7 @@ function Hero({ t }: { t: Dict }) {
                 <a href="/demo">{t.hero.ctaSecondary}</a>
               </Button>
               <Button size="lg" variant="ghost" data-testid="button-hero-cta-tertiary" asChild>
-                <a href="/app">{t.hero.ctaTertiary}</a>
+                <a href="/signin">{t.hero.ctaTertiary}</a>
               </Button>
             </div>
 
@@ -787,7 +793,7 @@ function AIAssistant({ t }: { t: Dict }) {
             </ul>
             <div className="mt-8">
               <Button variant="outline" asChild>
-                <a href="/app">{a.cta}<CtaArrow ar={t.ar} /></a>
+                <a href="/signin">{a.cta}<CtaArrow ar={t.ar} /></a>
               </Button>
             </div>
           </div>
@@ -1162,7 +1168,7 @@ function FinalCTA({ t }: { t: Dict }) {
             <div className="lg:col-span-5 lg:text-end">
               <div className="flex flex-wrap lg:justify-end gap-3">
                 <Button size="xl" data-testid="button-final-cta" asChild>
-                  <a href="/app" className="gap-2">
+                  <a href="/signin" className="gap-2">
                     {f.cta}
                     <CtaArrow ar={t.ar} />
                   </a>

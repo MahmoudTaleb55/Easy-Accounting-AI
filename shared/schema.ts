@@ -1,7 +1,10 @@
-import { pgTable, text, serial, numeric, timestamp, integer, boolean, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, numeric, timestamp, integer, boolean, index, jsonb, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Re-export auth/membership/invitation/session schema so drizzle-kit picks it up.
+export * from "./models/auth";
 
 // ============================================================================
 // Chart of Accounts (IFRS-aligned)
@@ -15,6 +18,7 @@ import { z } from "zod";
 // contra_asset
 export const accounts = pgTable("accounts", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().default(1),
   code: text("code").notNull().unique(), // e.g., "1110"
   nameAr: text("name_ar").notNull(),
   nameEn: text("name_en").notNull(),
@@ -36,6 +40,7 @@ export type InsertAccount = z.infer<typeof insertAccountSchema>;
 
 export const journalEntries = pgTable("journal_entries", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().default(1),
   reference: text("reference").notNull(), // JE-0001
   entryDate: timestamp("entry_date").notNull().defaultNow(),
   description: text("description").notNull(),
@@ -114,6 +119,7 @@ export type CreateJournalEntryInput = z.infer<typeof createJournalEntrySchema>;
 
 export const transactions = pgTable("transactions", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().default(1),
   type: text("type").notNull(), // 'income' or 'expense'
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   description: text("description").notNull(),
@@ -135,6 +141,7 @@ export type CreateTransactionRequest = InsertTransaction;
 
 export const budgets = pgTable("budgets", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().default(1),
   accountId: integer("account_id").notNull(),
   year: integer("year").notNull(),
   month: integer("month").notNull(), // 1-12
@@ -154,6 +161,7 @@ export type InsertBudget = z.infer<typeof insertBudgetSchema>;
 
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().default(1),
   orgName: text("org_name").notNull().default("My Business"),
   countryCode: text("country_code").notNull().default("INTL"),
   locale: text("locale").notNull().default("ar"), // 'ar' | 'en'
@@ -183,6 +191,7 @@ export type UpsertOrgSettings = z.infer<typeof upsertSettingsSchema>;
 
 export const employees = pgTable("employees", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().default(1),
   fullName: text("full_name").notNull(),
   jobTitle: text("job_title").notNull().default(""),
   hireDate: text("hire_date").notNull(), // YYYY-MM-DD
@@ -209,6 +218,7 @@ export const attendance = pgTable(
   "attendance",
   {
     id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().default(1),
     employeeId: integer("employee_id").notNull(),
     date: text("date").notNull(),
     status: text("status").notNull(), // present|absent|leave|holiday|weekend
@@ -225,6 +235,7 @@ export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
 
 export const leaves = pgTable("leaves", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().default(1),
   employeeId: integer("employee_id").notNull(),
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
@@ -243,6 +254,7 @@ export type InsertLeave = z.infer<typeof insertLeaveSchema>;
 
 export const payrollRuns = pgTable("payroll_runs", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().default(1),
   year: integer("year").notNull(),
   month: integer("month").notNull(),
   status: text("status").notNull().default("draft"), // draft|posted
@@ -282,6 +294,9 @@ export const companies = pgTable("companies", {
   currencySymbol: text("currency_symbol").notNull().default("$"),
   isDefault: boolean("is_default").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
+  // Owner of the workspace (the user that created the company). Nullable for
+  // legacy seed rows; the auth bootstrap path back-fills ownership on first sign-up.
+  ownerUserId: varchar("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true });
@@ -567,12 +582,13 @@ export const acceptInviteSchema = z.object({
 
 export const chatMessages = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull().default(1),
   role: text("role").notNull(), // 'user' or 'assistant'
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ id: true, createdAt: true });
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ id: true, createdAt: true, companyId: true });
 
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;

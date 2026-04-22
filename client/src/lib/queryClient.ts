@@ -7,6 +7,17 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+/** Inject the active workspace id (chosen by the company switcher) into every
+ *  authenticated API request so the backend can scope by membership. */
+function buildHeaders(extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = { ...(extra ?? {}) };
+  if (typeof window !== "undefined") {
+    const id = window.localStorage.getItem("active_company_id");
+    if (id) h["X-Company-Id"] = id;
+  }
+  return h;
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -14,7 +25,7 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: buildHeaders(data ? { "Content-Type": "application/json" } : undefined),
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -31,6 +42,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers: buildHeaders(),
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

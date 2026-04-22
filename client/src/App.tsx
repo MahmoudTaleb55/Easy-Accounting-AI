@@ -6,18 +6,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
-// Layout
 import { MainLayout } from "@/components/layout/main-layout";
 
-// Providers
 import { LocaleProvider } from "@/contexts/locale-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 
-// Pages — public
 import Landing from "@/pages/landing";
 import Demo from "@/pages/demo";
 
-// Pages — authenticated app
 import Dashboard from "@/pages/dashboard";
 import Transactions from "@/pages/transactions";
 import AiAssistant from "@/pages/ai-assistant";
@@ -31,9 +27,22 @@ import SettingsPage from "@/pages/settings";
 import Styleguide from "@/pages/styleguide";
 import InviteAccept from "@/pages/invite";
 
+// Auth pages
+import SignInPage from "@/pages/auth/sign-in";
+import SignUpPage from "@/pages/auth/sign-up";
+import ForgotPasswordPage from "@/pages/auth/forgot-password";
+import ResetPasswordPage from "@/pages/auth/reset-password";
+import AcceptInvitationPage from "@/pages/auth/accept-invitation";
+
+// Settings sub-pages
+import MembersPage from "@/pages/settings/members";
+import ProfilePage from "@/pages/settings/profile";
+
+import { useAuth } from "@/hooks/use-auth";
+import { Loader2 } from "lucide-react";
+
 const isDev = import.meta.env.DEV;
 
-/** Map of legacy in-app routes → new /app/* equivalents (kept stable for redirects). */
 const LEGACY_REDIRECTS: Record<string, string> = {
   "/dashboard": "/app",
   "/transactions": "/app/transactions",
@@ -63,37 +72,60 @@ function AppShellRoutes() {
       <Route path="/app/hr" component={HR} />
       <Route path="/app/fixed-assets" component={FixedAssets} />
       <Route path="/app/settings" component={SettingsPage} />
+      <Route path="/app/settings/members" component={MembersPage} />
+      <Route path="/app/settings/profile" component={ProfilePage} />
       <Route path="/app/ai-assistant" component={AiAssistant} />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
+/** Gate that redirects unauthenticated users to /signin. */
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const [location] = useLocation();
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+  if (!isAuthenticated) {
+    return <Redirect to={`/signin?next=${encodeURIComponent(location)}`} />;
+  }
+  return <>{children}</>;
+}
+
 function Router() {
   const [location] = useLocation();
 
-  // Standalone, dev-only styleguide — no shell.
   if (location === "/styleguide") {
     if (!isDev) return <NotFound />;
     return <Styleguide />;
   }
 
-  // Public routes — render OUTSIDE the authenticated MainLayout shell.
+  // Public routes
   if (location === "/") return <Landing />;
   if (location === "/demo") return <Demo />;
   if (location.startsWith("/invite/")) return <InviteAccept />;
+  if (location === "/signin") return <SignInPage />;
+  if (location === "/signup") return <SignUpPage />;
+  if (location === "/forgot-password") return <ForgotPasswordPage />;
+  if (location.startsWith("/reset-password/")) return <ResetPasswordPage />;
+  if (location.startsWith("/accept-invitation/")) return <AcceptInvitationPage />;
 
-  // Legacy top-level in-app paths — permanently redirect to /app/* equivalents.
   if (LEGACY_REDIRECTS[location]) {
     return <LegacyRedirect to={LEGACY_REDIRECTS[location]} />;
   }
 
-  // Authenticated app shell.
   if (location === "/app" || location.startsWith("/app/")) {
     return (
-      <MainLayout>
-        <AppShellRoutes />
-      </MainLayout>
+      <RequireAuth>
+        <MainLayout>
+          <AppShellRoutes />
+        </MainLayout>
+      </RequireAuth>
     );
   }
 

@@ -1,8 +1,15 @@
 import { Link, useLocation } from "wouter";
 import {
   Home, ListOrdered, Bot, Wallet, Menu, BarChart3, BookOpen, BookText,
-  Sparkles, Users, Building2, Settings as SettingsIcon, ChevronLeft, ChevronRight, type LucideIcon,
+  Sparkles, Users, Building2, Settings as SettingsIcon, ChevronLeft, ChevronRight,
+  LogOut, User as UserIcon, type LucideIcon,
 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter,
@@ -130,7 +137,8 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border px-2 py-2">
+      <SidebarFooter className="border-t border-sidebar-border px-2 py-2 space-y-1">
+        <UserBadge collapsed={collapsed} />
         <button
           onClick={toggleSidebar}
           className="w-full inline-flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/40 transition-colors"
@@ -145,6 +153,54 @@ export function AppSidebar() {
         </button>
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+function UserBadge({ collapsed }: { collapsed: boolean }) {
+  const { user, role, signOut, activeMembership } = useAuth();
+  if (!user) return null;
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "—";
+  const initials = ((user.firstName?.[0] ?? "") + (user.lastName?.[0] ?? "")) || (user.email?.[0]?.toUpperCase() ?? "?");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="w-full flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-sidebar-accent/40 transition-colors"
+          data-testid="button-user-menu"
+        >
+          <Avatar className="h-7 w-7 shrink-0">
+            {user.profileImageUrl && <AvatarImage src={user.profileImageUrl} alt={fullName} />}
+            <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
+          </Avatar>
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium" data-testid="text-user-name">{fullName}</div>
+              {role && <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground" data-testid="text-user-role">{role}</div>}
+            </div>
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="truncate">{user.email}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild data-testid="menu-profile">
+          <Link href="/app/settings/profile">
+            <a className="flex items-center gap-2"><UserIcon className="h-4 w-4" /> Profile</a>
+          </Link>
+        </DropdownMenuItem>
+        {role === "admin" && (
+          <DropdownMenuItem asChild data-testid="menu-members">
+            <Link href="/app/settings/members">
+              <a className="flex items-center gap-2"><Users className="h-4 w-4" /> Members</a>
+            </Link>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => signOut()} data-testid="menu-signout">
+          <LogOut className="h-4 w-4 mr-2" /> Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

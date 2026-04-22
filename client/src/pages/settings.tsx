@@ -11,12 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings as SettingsIcon, Save, Globe, Building2 } from "lucide-react";
+import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight } from "lucide-react";
 import type { OrgSettings } from "@/lib/format";
 import { CompaniesPanel, FxPanel } from "@/pages/fixed-assets";
 import { useCompany } from "@/contexts/company-context";
 import { SecurityCompliance } from "@/components/trust/security-compliance";
 import { TeamPanel } from "@/components/team/team-panel";
+import { Link } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import { useLocale } from "@/contexts/locale-context";
 
 interface LocalizationPack {
   code: string;
@@ -38,6 +41,61 @@ const formSchema = z.object({
   fiscalYearStartMonth: z.coerce.number().int().min(1).max(12),
 });
 type FormVals = z.infer<typeof formSchema>;
+
+function SettingsSubpagesNav() {
+  const { can } = useAuth();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+  const items = [
+    {
+      href: "/app/settings/profile",
+      icon: UserIcon,
+      title: ar ? "الملف الشخصي" : "Profile",
+      desc: ar ? "اسمك وكلمة المرور وتفضيلاتك." : "Your name, password and preferences.",
+      testid: "link-settings-profile",
+    },
+    ...(can.view
+      ? [
+          {
+            href: "/app/settings/members",
+            icon: Users,
+            title: ar ? "الأعضاء والصلاحيات" : "Members & roles",
+            desc: ar
+              ? can.invite
+                ? "ادعُ الفريق وحدّد الأدوار."
+                : "اعرض أعضاء مساحة العمل."
+              : can.invite
+              ? "Invite teammates and set roles."
+              : "View workspace members.",
+            testid: "link-settings-members",
+          },
+        ]
+      : []),
+  ];
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="settings-nav">
+      {items.map((it) => (
+        <Link key={it.href} href={it.href}>
+          <a
+            data-testid={it.testid}
+            className="group flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-accent/40"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="rounded-md bg-primary/10 p-2">
+                <it.icon className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{it.title}</div>
+                <div className="truncate text-xs text-muted-foreground">{it.desc}</div>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground/60 group-hover:text-foreground" />
+          </a>
+        </Link>
+      ))}
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -108,6 +166,8 @@ export default function SettingsPage() {
           الموقع، العملة، الضرائب، والكيانات — كل ما يحدد سلوك دفاترك في مكان واحد.
         </p>
       </header>
+
+      <SettingsSubpagesNav />
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-6">
