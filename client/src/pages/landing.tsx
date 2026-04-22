@@ -735,75 +735,148 @@ function getCopy(locale: Locale) {
       ],
     },
     testimonials: {
-      eyebrow: ar ? "الذين انتقلوا" : "Who switched",
+      eyebrow: ar ? "الذين انتقلوا إلينا" : "Who switched to us",
       title: ar
-        ? "ليس عددٌ على شريحة. أسماءٌ ومدنٌ ومحاسبون يقفون خلف كلّ كلمة."
-        : "Not a number on a slide. Names, cities, and accountants standing behind every word.",
-      stat: ar ? "+٤٬٢٠٠" : "4,200+",
-      statSub: ar
-        ? "مالك أعمال يُدير ماليّته من هنا — في ٧ دول"
-        : "business owners running finance here — across 7 countries",
+        ? "ليست شعاراتٍ على شريحة. أرقامٌ، أسماءٌ، ومدنٌ — وكلّ ساعةٍ مُستردّة موثّقة."
+        : "Not logos on a slide. Numbers, names, and cities — every recovered hour documented.",
+      lead: ar
+        ? "كلّ شهادةٍ هنا تأتي مع الأثر الذي يمكن قياسه: ساعات وفّرناها، أيّامٌ اختصرناها، رياضٌ لم تُهدر. اطلبها بالاسم وسنُريك الفاتورة."
+        : "Every quote here ships with measurable impact: hours saved, days cut, riyals not wasted. Ask us by name and we'll show you the receipts.",
+      stats: ar ? [
+        { n: "+٤٬٢٠٠", l: "مالك أعمال نشط",        s: "+١٢٪ شهريّاً" },
+        { n: "٧",       l: "دول · ٤ هيئات تنظيميّة", s: "السعوديّة، الإمارات، مصر…" },
+        { n: "٢٫١ مليار ر.س", l: "فُوتر عبر النظام في ٢٠٢٥", s: "بزيادة ٣٫٤× عن ٢٠٢٤" },
+        { n: "٪٩٩٫٩٧",  l: "وقت تشغيل مُؤكَّد",      s: "آخر ١٢ شهراً · status.smart.sa" },
+      ] : [
+        { n: "4,200+",  l: "active business owners",      s: "+12% month over month" },
+        { n: "7",       l: "countries · 4 regulators",    s: "KSA, UAE, Egypt, and more" },
+        { n: "SAR 2.1B+", l: "invoiced through us in 2025", s: "3.4× growth over 2024" },
+        { n: "99.97%",  l: "verified uptime",             s: "trailing 12 mo · status.smart.sa" },
+      ],
+      switchedLabel: ar ? "حلّوا محلّ:" : "Replacing:",
+      switchedFrom: ["QuickBooks", "Xero", "Zoho Books", "SAP", "Microsoft Excel"],
+      featured: ar ? {
+        q: "في اليوم التاسع من الإطلاق، أَغلقتُ الربع الأوّل قبل موعده بأسبوع، وأرسلتُ الإقرار الضريبيّ بنقرتَين. كنّا ندفع لـ QuickBooks أربعة آلاف ريال شهريّاً ومحاسباً خارجيّاً ضعفها — اليوم النظام يفعل ما يفعلانه ويرى ما لا يرَيانه. أصبحت الماليّة عندنا غرفةً مضاءة لا غرفةً تخاف الدخول إليها.",
+        n: "ريما خالد",
+        r: "المديرة الماليّة",
+        c: "شركة الواحة للتجارة · جدّة 🇸🇦",
+        since: "عميلة منذ مارس ٢٠٢٤",
+        kpis: [
+          { v: "١٤ ساعة", l: "وفّرتها أسبوعيّاً" },
+          { v: "٧ أيّام",   l: "إغلاق الربع · من ١٩ يوماً" },
+          { v: "٠",          l: "موعد ZATCA فاتني" },
+        ],
+        switched: "QuickBooks Online",
+      } : {
+        q: "Nine days after launch, I closed Q1 a week early and filed VAT in two clicks. We were paying QuickBooks SAR 4K/month and an outsourced accountant twice that — today the platform does what they did and sees what they missed. Finance became a lit room, not one we feared walking into.",
+        n: "Reema Khaled",
+        r: "Chief Financial Officer",
+        c: "Al-Waha Trading · Jeddah 🇸🇦",
+        since: "Customer since March 2024",
+        kpis: [
+          { v: "14 hrs", l: "recovered every week" },
+          { v: "7 days",  l: "to close Q · was 19" },
+          { v: "0",       l: "ZATCA deadlines missed" },
+        ],
+        switched: "QuickBooks Online",
+      },
       items: ar ? [
         {
-          q: "أوّل مرّة أُغلق فيها شهراً ماليّاً قبل الموعد. الإقرار الضريبيّ تولّى نفسه. لم أعد أنام والـ Excel على ركبتيّ.",
-          n: "ريما خالد", r: "مديرة ماليّة", c: "شركة الواحة للتجارة · جدّة 🇸🇦",
-          ind: "تجارة تجزئة", since: "منذ ٢٠٢٤",
-        },
-        {
-          q: "ثلاث شركات في ثلاث دول، وكنت أعيش بين ثلاثة أنظمة. اليوم أراها كلّها في شاشة واحدة، مُوحَّدةً بـ ر.س لحظيّاً.",
-          n: "ياسر الحمّادي", r: "الرئيس التنفيذيّ", c: "مجموعة الحمّادي القابضة · دبي 🇦🇪",
+          q: "ثلاث شركات في ثلاث دول، وكنتُ أعيش بين ثلاثة أنظمة. اليوم أراها كلّها على شاشة واحدة، مُوحَّدةً بـ ر.س لحظيّاً.",
+          n: "ياسر الحمّادي", r: "الرئيس التنفيذيّ",
+          c: "مجموعة الحمّادي القابضة · دبي 🇦🇪",
           ind: "مجموعة قابضة", since: "منذ ٢٠٢٣",
+          kpi: { v: "٪٤١", l: "اختصار وقت التوحيد الشهريّ" },
+          switched: "Xero + Excel",
         },
         {
           q: "أرسل الفاتورة عبر WhatsApp، يدفعها العميل من نفس الرابط، وأرى القيد منعكساً في الأستاذ قبل أن أُغلق الشاشة.",
-          n: "نور الدين الفقيه", r: "صاحب مؤسّسة", c: "النور للحلول الرقميّة · القاهرة 🇪🇬",
+          n: "نور الدين الفقيه", r: "صاحب مؤسّسة",
+          c: "النور للحلول الرقميّة · القاهرة 🇪🇬",
           ind: "خدمات تقنيّة", since: "منذ ٢٠٢٥",
+          kpi: { v: "٢٫٣ يوم", l: "متوسّط التحصيل · من ١٧ يوماً" },
+          switched: "Zoho Books",
         },
         {
-          q: "لمّا سألتُه عن سيولة الربع القادم، أعطاني الإجابة بعربيّة فصيحة وجدول يظهر فيه التحدّي قبل ثلاثة أشهر من حدوثه.",
-          n: "عبدالرحمن الكواري", r: "مدير العمليّات", c: "الخليج للمقاولات · الدوحة 🇶🇦",
+          q: "لمّا سألتُه عن سيولة الربع القادم، أعطاني الإجابة بعربيّة فصيحة وجدولاً يُظهر التحدّي قبل ثلاثة أشهر من حدوثه.",
+          n: "عبدالرحمن الكواري", r: "مدير العمليّات",
+          c: "الخليج للمقاولات · الدوحة 🇶🇦",
           ind: "مقاولات وإنشاءات", since: "منذ ٢٠٢٤",
+          kpi: { v: "٣ أشهر", l: "تنبؤّ مسبق بنقص السيولة" },
+          switched: "SAP Business One",
         },
         {
-          q: "المدقّق الخارجيّ طلب الوصول، فتحت له حساباً للقراءة فقط في دقيقة. خرج راضياً، وأنا لم أُرسل ملفّاً واحداً.",
-          n: "ليلى العتيبي", r: "محاسبة قانونيّة", c: "مكتب العتيبي للاستشارات · الكويت 🇰🇼",
+          q: "المدقّق الخارجيّ طلب الوصول، فتحتُ له حساباً للقراءة فقط في دقيقة. خرج راضياً، وأنا لم أُرسل ملفّاً واحداً.",
+          n: "ليلى العتيبي", r: "محاسبة قانونيّة",
+          c: "مكتب العتيبي للاستشارات · الكويت 🇰🇼",
           ind: "استشارات ماليّة", since: "منذ ٢٠٢٥",
+          kpi: { v: "٠ ملفّ", l: "أُرسل خارج النظام في تدقيق ٢٠٢٥" },
+          switched: "Excel + Google Drive",
         },
         {
           q: "كنّا ندفع لمحاسب خارجيّ ٤٬٥٠٠ ريال شهريّاً. اليوم نملك النظام، والتقارير، والوقت — بثُلث المبلغ.",
-          n: "خالد المعشّر", r: "مؤسِّس", c: "كنفّة للمأكولات · عمّان 🇯🇴",
-          ind: "مطاعم", since: "منذ ٢٠٢٤",
+          n: "خالد المعشّر", r: "مؤسِّس",
+          c: "كنفّة للمأكولات · عمّان 🇯🇴",
+          ind: "مطاعم وضيافة", since: "منذ ٢٠٢٤",
+          kpi: { v: "٪٦٧", l: "خفض تكلفة المحاسبة الشهريّة" },
+          switched: "محاسب خارجيّ",
+        },
+        {
+          q: "في الموسم، نُصدر ٤٠٠ فاتورة في أسبوع. النظام يُدير الموقف بهدوء — لا ساعة عمل ضائعة، لا فاتورة منسيّة، لا VAT خاطئ.",
+          n: "هند الشهراني", r: "مديرة العمليّات",
+          c: "أنوار الديكور · الرياض 🇸🇦",
+          ind: "تنظيم فعاليّات", since: "منذ ٢٠٢٤",
+          kpi: { v: "٤٠٠ فاتورة", l: "في أسبوع ذروة · بـ٠ خطأ" },
+          switched: "نظام داخليّ مخصّص",
         },
       ] : [
         {
-          q: "First time I ever closed a month before the deadline. The VAT return ran itself. I no longer sleep with Excel on my lap.",
-          n: "Reema Khaled", r: "CFO", c: "Al-Waha Trading · Jeddah 🇸🇦",
-          ind: "Retail", since: "Since 2024",
-        },
-        {
-          q: "Three companies in three countries — I used to live between three systems. Today I see them all on one screen, consolidated in SAR in real time.",
-          n: "Yasser Al-Hammadi", r: "CEO", c: "Al-Hammadi Holding · Dubai 🇦🇪",
+          q: "Three companies, three countries — I used to live between three systems. Today I see them on one screen, consolidated in SAR in real time.",
+          n: "Yasser Al-Hammadi", r: "Chief Executive Officer",
+          c: "Al-Hammadi Holding · Dubai 🇦🇪",
           ind: "Holding group", since: "Since 2023",
+          kpi: { v: "−41%", l: "monthly consolidation time" },
+          switched: "Xero + Excel",
         },
         {
           q: "I send the invoice over WhatsApp, the client pays from the same link, and the entry hits the ledger before I close the tab.",
-          n: "Noureddine Al-Faqih", r: "Owner", c: "Al-Noor Digital · Cairo 🇪🇬",
+          n: "Noureddine Al-Faqih", r: "Founder",
+          c: "Al-Noor Digital · Cairo 🇪🇬",
           ind: "Tech services", since: "Since 2025",
+          kpi: { v: "2.3 days", l: "avg collection · was 17" },
+          switched: "Zoho Books",
         },
         {
           q: "When I asked about next quarter's liquidity, it answered in fluent Arabic with a chart showing the squeeze three months before it happened.",
-          n: "Abdulrahman Al-Kuwari", r: "COO", c: "Gulf Contracting · Doha 🇶🇦",
+          n: "Abdulrahman Al-Kuwari", r: "Chief Operating Officer",
+          c: "Gulf Contracting · Doha 🇶🇦",
           ind: "Construction", since: "Since 2024",
+          kpi: { v: "3 months", l: "advance liquidity warning" },
+          switched: "SAP Business One",
         },
         {
           q: "The external auditor asked for access. I opened a read-only account in a minute. He left satisfied — and I sent zero files.",
-          n: "Layla Al-Otaibi", r: "Chartered accountant", c: "Al-Otaibi Advisory · Kuwait City 🇰🇼",
+          n: "Layla Al-Otaibi", r: "Chartered accountant",
+          c: "Al-Otaibi Advisory · Kuwait City 🇰🇼",
           ind: "Financial advisory", since: "Since 2025",
+          kpi: { v: "0 files", l: "sent outside the system in 2025 audit" },
+          switched: "Excel + Google Drive",
         },
         {
           q: "We used to pay an outside accountant SAR 4,500/month. Today we own the system, the reports, and the time — at one-third the cost.",
-          n: "Khaled Al-Mu'asher", r: "Founder", c: "Knafeh & Co. · Amman 🇯🇴",
-          ind: "Restaurants", since: "Since 2024",
+          n: "Khaled Al-Mu'asher", r: "Founder",
+          c: "Knafeh & Co. · Amman 🇯🇴",
+          ind: "Restaurants & hospitality", since: "Since 2024",
+          kpi: { v: "−67%", l: "monthly accounting cost" },
+          switched: "Outsourced accountant",
+        },
+        {
+          q: "In peak season we issue 400 invoices a week. The platform handles it without flinching — no lost hour, no forgotten invoice, no wrong VAT.",
+          n: "Hind Al-Shahrani", r: "Operations Director",
+          c: "Anwar Decor · Riyadh 🇸🇦",
+          ind: "Events & production", since: "Since 2024",
+          kpi: { v: "400 invoices", l: "in a peak week · 0 errors" },
+          switched: "Custom in-house tool",
         },
       ],
     },
@@ -1422,54 +1495,171 @@ function DashboardShowcase({ t }: { t: Dict }) {
 
 function Testimonials({ t }: { t: Dict }) {
   const ts = t.testimonials
+  const f = ts.featured
+  const fInit = f.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")
   return (
-    <section id="customers" className="py-24 lg:py-32 border-b border-border bg-muted/20">
+    <section id="customers" className="relative py-24 lg:py-32 border-b border-border overflow-hidden">
+      {/* Ambient brand-mesh wash */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 brand-mesh opacity-40 dark:opacity-25 [mask-image:radial-gradient(85%_60%_at_50%_30%,black,transparent)]"
+      />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Header */}
         <div className="grid lg:grid-cols-12 gap-10 mb-14 items-end">
           <div className="lg:col-span-7">
             <div className="eyebrow mb-3">{ts.eyebrow}</div>
             <h2 className="text-display text-foreground">{ts.title}</h2>
           </div>
           <div className="lg:col-span-5">
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-              <div className="font-mono text-3xl lg:text-4xl font-semibold text-primary tabular-nums leading-none">
-                {ts.stat}
-              </div>
-              <div className="mt-2 text-sm text-foreground/80 leading-relaxed">{ts.statSub}</div>
-            </div>
+            <p className="text-base leading-relaxed text-muted-foreground">{ts.lead}</p>
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        {/* Proof-stats strip */}
+        <div className="rounded-2xl border border-border bg-card/70 backdrop-blur-sm overflow-hidden mb-12">
+          <div className="grid grid-cols-2 lg:grid-cols-4 divide-y divide-border lg:divide-y-0 lg:divide-x lg:rtl:divide-x-reverse">
+            {ts.stats.map((s, i) => (
+              <div key={i} className="p-6 lg:p-7" data-testid={`testimonial-stat-${i}`}>
+                <div className="font-mono text-3xl lg:text-4xl font-semibold text-foreground tabular-nums leading-none tracking-tight">
+                  {s.n}
+                </div>
+                <div className="mt-2.5 text-sm font-medium text-foreground/90 leading-snug">{s.l}</div>
+                <div className="mt-1 text-2xs font-mono text-primary uppercase tracking-wider">{s.s}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Featured testimonial — luxe pull-quote */}
+        <figure
+          className="relative rounded-2xl border border-primary/25 bg-card overflow-hidden mb-10 shadow-xl"
+          data-testid="testimonial-featured"
+        >
+          {/* Decorative emerald wash */}
+          <div
+            aria-hidden
+            className="absolute inset-0 -z-0 bg-gradient-to-br from-primary/8 via-transparent to-transparent"
+          />
+          {/* Gigantic quote glyph */}
+          <span
+            aria-hidden
+            className="absolute top-6 start-8 text-[10rem] leading-none font-serif text-primary/12 select-none pointer-events-none"
+          >
+            “
+          </span>
+
+          <div className="relative grid lg:grid-cols-12 gap-0">
+            {/* Quote side */}
+            <div className="lg:col-span-8 p-8 lg:p-12 xl:p-14">
+              <div className="flex items-center gap-2 mb-6">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1">
+                  <ShieldCheck className="size-3 text-primary" />
+                  <span className="text-2xs font-mono uppercase tracking-wider text-primary">
+                    {t.ar ? "عميلة موثّقة" : "Verified customer"}
+                  </span>
+                </span>
+                <span className="font-mono text-2xs text-muted-foreground">{f.since}</span>
+              </div>
+
+              <blockquote className="text-xl lg:text-2xl xl:text-3xl leading-relaxed text-foreground font-medium tracking-tight">
+                {f.q}
+              </blockquote>
+
+              <figcaption className="mt-8 pt-6 border-t border-border flex items-center gap-4">
+                <div
+                  aria-hidden
+                  className="size-14 lg:size-16 rounded-full bg-gradient-to-br from-primary to-primary/60 text-primary-foreground flex items-center justify-center font-semibold text-lg shadow-md flex-shrink-0"
+                >
+                  {fInit}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-base font-semibold text-foreground">{f.n}</div>
+                  <div className="text-sm text-muted-foreground mt-0.5">{f.r}</div>
+                  <div className="text-sm text-foreground/80 mt-0.5">{f.c}</div>
+                </div>
+              </figcaption>
+
+              <div className="mt-5 inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5">
+                <span className="text-2xs font-mono uppercase tracking-wider text-muted-foreground">
+                  {ts.switchedLabel}
+                </span>
+                <span className="text-xs font-medium text-foreground line-through decoration-loss/60 decoration-[1.5px]">
+                  {f.switched}
+                </span>
+              </div>
+            </div>
+
+            {/* KPI rail */}
+            <div className="lg:col-span-4 lg:border-s lg:border-border bg-muted/30 grid grid-cols-3 lg:grid-cols-1 lg:divide-y lg:divide-border divide-x lg:divide-x-0 rtl:divide-x-reverse divide-border">
+              {f.kpis.map((k, i) => (
+                <div key={i} className="p-5 lg:p-7 text-center lg:text-start" data-testid={`featured-kpi-${i}`}>
+                  <div className="font-mono text-2xl lg:text-3xl font-semibold text-primary tabular-nums leading-none tracking-tight">
+                    {k.v}
+                  </div>
+                  <div className="mt-2 text-2xs lg:text-xs leading-snug text-muted-foreground">
+                    {k.l}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </figure>
+
+        {/* Grid of remaining testimonials */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-12">
           {ts.items.map((it, i) => {
-            const initials = it.n
-              .split(/\s+/)
-              .slice(0, 2)
-              .map((w) => w[0])
-              .join("")
+            const initials = it.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")
             const tints = [
-              "from-primary/15 to-primary/5 text-primary",
-              "from-accent/40 to-accent/10 text-accent-foreground",
-              "from-warning/15 to-warning/5 text-warning",
+              "from-primary to-primary/60 text-primary-foreground",
+              "from-foreground to-foreground/70 text-background",
+              "from-warning to-warning/70 text-warning-foreground",
             ]
             const tint = tints[i % tints.length]
             return (
               <figure
                 key={it.n}
-                className="rounded-xl border border-border bg-card p-6 flex flex-col gap-5 hover-elevate"
+                className="group rounded-xl border border-border bg-card p-6 lg:p-7 flex flex-col gap-5 hover-elevate transition-shadow hover:shadow-lg"
                 data-testid={`testimonial-${i}`}
               >
-                <blockquote className="text-base leading-relaxed text-foreground/90 relative">
-                  <span aria-hidden className="absolute -top-3 -start-1 text-4xl text-primary/30 font-serif leading-none select-none">
+                {/* Top: 5 stars + verified */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-0.5" aria-label={t.ar ? "تقييم خمس نجوم" : "Five stars"}>
+                    {Array.from({ length: 5 }).map((_, s) => (
+                      <svg key={s} viewBox="0 0 20 20" className="size-4 fill-warning" aria-hidden>
+                        <path d="M10 1.5l2.6 5.3 5.9.85-4.25 4.15 1 5.85L10 14.85l-5.25 2.8 1-5.85L1.5 7.65l5.9-.85L10 1.5z" />
+                      </svg>
+                    ))}
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-2xs font-mono text-success uppercase tracking-wider">
+                    <Check className="size-3" />
+                    {t.ar ? "موثّقة" : "Verified"}
+                  </span>
+                </div>
+
+                <blockquote className="text-base leading-relaxed text-foreground/90 relative flex-1">
+                  <span
+                    aria-hidden
+                    className="absolute -top-2 -start-1 text-3xl text-primary/30 font-serif leading-none select-none"
+                  >
                     “
                   </span>
                   <span className="relative">{it.q}</span>
                 </blockquote>
+
+                {/* KPI ribbon */}
+                <div className="rounded-lg border border-primary/25 bg-primary/5 px-3.5 py-2.5 flex items-baseline gap-3">
+                  <span className="font-mono text-lg font-semibold text-primary tabular-nums tracking-tight whitespace-nowrap">
+                    {it.kpi.v}
+                  </span>
+                  <span className="text-2xs leading-snug text-foreground/80">{it.kpi.l}</span>
+                </div>
+
                 <figcaption className="mt-auto pt-4 border-t border-border flex items-center gap-3">
                   <div
                     aria-hidden
                     className={cn(
-                      "size-11 rounded-full bg-gradient-to-br flex items-center justify-center font-semibold text-sm flex-shrink-0",
+                      "size-11 rounded-full bg-gradient-to-br flex items-center justify-center font-semibold text-sm flex-shrink-0 shadow-sm",
                       tint
                     )}
                   >
@@ -1480,16 +1670,42 @@ function Testimonials({ t }: { t: Dict }) {
                     <div className="text-2xs text-muted-foreground truncate">{it.r}</div>
                     <div className="text-2xs text-foreground/70 mt-0.5 truncate">{it.c}</div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className="font-mono text-2xs text-muted-foreground">{it.since}</span>
-                    <span className="font-mono text-2xs text-primary border border-primary/30 bg-primary/5 rounded px-1.5 py-0.5">
-                      {it.ind}
-                    </span>
-                  </div>
                 </figcaption>
+
+                <div className="flex items-center justify-between gap-2 -mt-1">
+                  <span className="font-mono text-2xs text-primary border border-primary/30 bg-primary/5 rounded px-1.5 py-0.5">
+                    {it.ind}
+                  </span>
+                  <span className="font-mono text-2xs text-muted-foreground">{it.since}</span>
+                </div>
+
+                <div className="-mt-2 flex items-center gap-1.5 text-2xs text-muted-foreground">
+                  <span className="font-mono uppercase tracking-wider">{ts.switchedLabel}</span>
+                  <span className="text-foreground/70 line-through decoration-loss/50 decoration-[1.5px]">
+                    {it.switched}
+                  </span>
+                </div>
               </figure>
             )
           })}
+        </div>
+
+        {/* Switched-from wordmark strip */}
+        <div className="rounded-xl border border-border bg-card/60 p-5 lg:p-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+          <span className="text-2xs font-mono uppercase tracking-wider text-muted-foreground">
+            {t.ar
+              ? "محاسب ذكي حلّ محلّ"
+              : "Smart Accountant has replaced"}
+          </span>
+          {ts.switchedFrom.map((s) => (
+            <span
+              key={s}
+              className="text-base font-semibold text-foreground/60 grayscale hover:text-foreground hover:grayscale-0 transition-colors"
+              data-testid={`switched-from-${s}`}
+            >
+              {s}
+            </span>
+          ))}
         </div>
       </div>
     </section>
