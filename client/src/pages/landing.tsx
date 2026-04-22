@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import {
   ArrowLeft, ArrowRight, Check, FileText, Receipt, Bot,
   Sparkles, ShieldCheck, Globe2, Workflow, BarChart3, Briefcase,
@@ -369,20 +369,40 @@ function getCopy(locale: Locale) {
         },
       ],
       footnote: ar ? "وأكثر من ٤٠ تكاملاً جاهزاً عبر REST API و Webhooks." : "Plus 40+ ready integrations via REST API and webhooks.",
+      spineTitle: ar ? "طبقة الامتثال الموحّدة" : "Unified compliance layer",
+      spineSub:   ar ? "بين الجهات التنظيميّة وبنوكِك ومنافذ بيعك — مزامنةٌ حيّةٌ، بلا وسطاء."
+                    : "Between regulators, your banks, and your sales channels — live sync, no middlemen.",
+      lanes: {
+        regulators: ar ? "الجهات التنظيميّة"   : "Regulators",
+        banks:      ar ? "البنوك"               : "Banks",
+        commerce:   ar ? "تجارة ونقاط بيع"      : "Commerce & POS",
+      },
+      live:       ar ? "متّصلٌ ومتزامن" : "Live & synced",
     },
     pricing: {
       eyebrow: ar ? "الأسعار" : "Pricing",
-      title: ar ? "تسعيرٌ شفّاف. بلا مفاجآت." : "Transparent pricing. No surprises.",
+      title: ar ? "اختر موقفك من الماليّة." : "Choose your finance posture.",
       lead: ar
-        ? "كلّ خطّةٍ تشمل المحاسبة الكاملة وفق IFRS، الذكاء الاصطناعيّ، وأثر التدقيق. الفروقات في الحجم — لا في الجوهر."
-        : "Every plan includes the full IFRS accounting core, the AI layer, and the audit trail. Differences are about scale — not substance.",
+        ? "ثلاثُ مواقفَ، لا ثلاثُ حِزَم. كلّ موقفٍ يفتحُ قدراً مختلفاً من السيطرة على رقمِك التالي."
+        : "Three postures, not three plans. Each one unlocks a different degree of control over your next number.",
       billing: { monthly: ar ? "شهريّاً" : "Monthly", yearly: ar ? "سنويّاً · وفّر ٢٠٪" : "Yearly · save 20%" },
       currency: ar ? "ر.س" : "SAR",
       perMonth: ar ? "/شهريّاً" : "/mo",
-      mostPopular: ar ? "الأكثر اختياراً" : "Most popular",
+      mostPopular: ar ? "الموقفُ الأمثل" : "Optimal posture",
+      inactionLabel: ar ? "كلفةُ الانتظار · في الشهر" : "Cost of waiting · per month",
+      inaction: ar ? [
+        { v: "٤٢ ساعة", t: "مطابقةٌ يدويّة في جداول Excel" },
+        { v: "٣ مخاطر",  t: "تأخير ZATCA أو خطأ ضريبيّ" },
+        { v: "قرارٌ فائت", t: "تحرّكٌ متأخّرٌ على رقمٍ ميّت" },
+      ] : [
+        { v: "42 hrs",   t: "manual reconciliation in spreadsheets" },
+        { v: "3 risks",  t: "ZATCA delays or VAT errors" },
+        { v: "1 missed", t: "decision made on a stale number" },
+      ],
+      forecastCaption: ar ? "ما يراه ذكاؤنا الاستراتيجيّ" : "What our strategic AI sees",
       tiers: ar ? [
         {
-          k: "starter", n: "Starter",
+          k: "starter", n: "Starter", posture: "اِبدأ بنظافة",
           desc: "للمؤسّسين والشركات الناشئة.",
           price: "٢٤٩",
           features: [
@@ -396,7 +416,7 @@ function getCopy(locale: Locale) {
           cta: "ابدأ مجّاناً",
         },
         {
-          k: "growth", n: "Growth", popular: true,
+          k: "growth", n: "Growth", posture: "اِقرأ المستقبل", popular: true,
           desc: "للفرق الماليّة المتنامية.",
           price: "٧٤٩",
           features: [
@@ -411,7 +431,7 @@ function getCopy(locale: Locale) {
           cta: "ابدأ تجربة ١٤ يوماً",
         },
         {
-          k: "enterprise", n: "Enterprise",
+          k: "enterprise", n: "Enterprise", posture: "اِحكُم المنظومة",
           desc: "للمجموعات والشركات الكبرى.",
           price: ar ? "تواصل معنا" : "Custom",
           customPrice: true,
@@ -428,7 +448,7 @@ function getCopy(locale: Locale) {
         },
       ] : [
         {
-          k: "starter", n: "Starter",
+          k: "starter", n: "Starter", posture: "Start clean",
           desc: "For founders and early-stage teams.",
           price: "249",
           features: [
@@ -442,7 +462,7 @@ function getCopy(locale: Locale) {
           cta: "Start free",
         },
         {
-          k: "growth", n: "Growth", popular: true,
+          k: "growth", n: "Growth", posture: "Read the future", popular: true,
           desc: "For growing finance teams.",
           price: "749",
           features: [
@@ -457,7 +477,7 @@ function getCopy(locale: Locale) {
           cta: "Start 14-day trial",
         },
         {
-          k: "enterprise", n: "Enterprise",
+          k: "enterprise", n: "Enterprise", posture: "Command the system",
           desc: "For groups and large enterprises.",
           price: "Custom",
           customPrice: true,
@@ -1474,14 +1494,37 @@ function AuditSignal({
 function LocalIntegrations({ t }: { t: Dict }) {
   const i = t.integrations
   const groupIcon: Record<string, React.ReactNode> = {
-    compliance: <ScrollText className="size-4" />,
-    banks:      <Wallet     className="size-4" />,
-    commerce:   <Globe2     className="size-4" />,
+    compliance: <ScrollText className="size-3.5" />,
+    banks:      <Wallet     className="size-3.5" />,
+    commerce:   <Globe2     className="size-3.5" />,
   }
+  const regulators = i.groups.find((g) => g.k === "compliance")!
+  const banks      = i.groups.find((g) => g.k === "banks")!
+  const commerce   = i.groups.find((g) => g.k === "commerce")!
+
+  /* A compact node chip — used for every regulator / bank / commerce platform. */
+  const Node = ({ n, b }: { n: string; b: string }) => (
+    <div className="group relative rounded-lg border border-card-border bg-card px-3 py-2 hover:border-primary/40 hover:shadow-sm transition-all min-w-0">
+      <div className="text-xs font-semibold text-foreground truncate" title={n}>{n}</div>
+      <div className="text-2xs text-muted-foreground truncate mt-0.5" title={b}>{b}</div>
+    </div>
+  )
+
+  const LaneHeader = ({ k, label }: { k: string; label: string }) => (
+    <div className="flex items-center gap-2 mb-3">
+      <div className="size-6 rounded-md bg-accent text-accent-foreground border border-accent-border flex items-center justify-center">
+        {groupIcon[k]}
+      </div>
+      <div className="eyebrow text-foreground/80">{label}</div>
+      <div className="flex-1 h-px bg-border" />
+    </div>
+  )
+
   return (
-    <section id="integrations" className="py-24 lg:py-32 border-b border-border">
+    <section id="integrations" className="py-24 lg:py-32 border-b border-border bg-gradient-to-b from-background to-card/20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-12 gap-8 mb-14">
+        {/* Heading */}
+        <div className="grid lg:grid-cols-12 gap-8 mb-12 lg:mb-16">
           <div className="lg:col-span-7">
             <div className="eyebrow mb-3">{i.eyebrow}</div>
             <h2 className="text-display text-foreground">{i.title}</h2>
@@ -1491,28 +1534,99 @@ function LocalIntegrations({ t }: { t: Dict }) {
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {i.groups.map((g) => (
-            <BentoCard key={g.k} className="h-full">
-              <div className="flex items-center gap-2 mb-5 pb-3 border-b border-border">
-                <div className="size-8 rounded-md bg-accent text-accent-foreground border border-accent-border flex items-center justify-center">
-                  {groupIcon[g.k]}
+        {/* Compliance topology — regulators above, spine in the middle, operational rails below */}
+        <div className="relative">
+          {/* Decorative connector lines (lg+ only) */}
+          <svg
+            aria-hidden="true"
+            className="hidden lg:block absolute inset-0 w-full h-full pointer-events-none"
+            preserveAspectRatio="none"
+            viewBox="0 0 100 100"
+          >
+            <defs>
+              <linearGradient id="conn-up" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+              </linearGradient>
+              <linearGradient id="conn-dn" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {/* Up-going (spine → regulators) */}
+            {[15, 38, 62, 85].map((x) => (
+              <line key={`u-${x}`} x1={x} y1="38" x2={x} y2="6" stroke="url(#conn-up)" strokeWidth="0.15" />
+            ))}
+            {/* Down-going (spine → banks/commerce) */}
+            {[10, 25, 40, 60, 75, 90].map((x) => (
+              <line key={`d-${x}`} x1={x} y1="62" x2={x} y2="96" stroke="url(#conn-dn)" strokeWidth="0.15" />
+            ))}
+          </svg>
+
+          {/* Regulators lane — TOP */}
+          <div className="relative">
+            <LaneHeader k="compliance" label={i.lanes.regulators} />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10 lg:mb-14">
+              {regulators.items.map((it) => <Node key={it.n} {...it} />)}
+            </div>
+          </div>
+
+          {/* Spine — the unified compliance layer */}
+          <div className="relative rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/[0.08] via-primary/[0.04] to-primary/[0.08] px-6 py-6 lg:px-8 lg:py-7 mb-10 lg:mb-14 overflow-hidden">
+            {/* Pulse line */}
+            <svg aria-hidden="true" className="absolute inset-x-0 bottom-0 w-full h-6" viewBox="0 0 400 24" preserveAspectRatio="none">
+              <path
+                d="M0 12 Q 50 4, 100 12 T 200 12 T 300 12 T 400 12"
+                fill="none"
+                stroke="hsl(var(--primary))"
+                strokeWidth="1"
+                strokeOpacity="0.55"
+                strokeDasharray="4 4"
+              >
+                <animate attributeName="stroke-dashoffset" from="0" to="-16" dur="1.6s" repeatCount="indefinite" />
+              </path>
+            </svg>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 relative">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="size-1.5 rounded-full bg-success animate-pulse motion-reduce:animate-none" />
+                  <span className="text-2xs uppercase tracking-wider text-success font-medium">{i.live}</span>
                 </div>
-                <div className="text-sm font-semibold text-foreground">{g.t}</div>
+                <div className="text-lg lg:text-xl font-semibold text-foreground tracking-tight">{i.spineTitle}</div>
+                <div className="text-xs lg:text-sm text-muted-foreground mt-1 leading-relaxed max-w-xl">{i.spineSub}</div>
               </div>
-              <ul className="grid grid-cols-2 gap-x-4 gap-y-3.5">
-                {g.items.map((it) => (
-                  <li key={it.n} className="min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate" title={it.n}>{it.n}</div>
-                    <div className="text-2xs text-muted-foreground truncate mt-0.5" title={it.b}>{it.b}</div>
-                  </li>
-                ))}
-              </ul>
-            </BentoCard>
-          ))}
+              <div className="flex items-center gap-2">
+                <div className="size-9 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
+                  <Sparkles className="size-4 text-primary" />
+                </div>
+                <div className="size-9 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
+                  <ShieldCheck className="size-4 text-primary" />
+                </div>
+                <div className="size-9 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
+                  <Activity className="size-4 text-primary" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Operational rails — BOTTOM */}
+          <div className="grid lg:grid-cols-2 gap-x-10 gap-y-10 relative">
+            <div>
+              <LaneHeader k="banks" label={i.lanes.banks} />
+              <div className="grid grid-cols-2 gap-3">
+                {banks.items.map((it) => <Node key={it.n} {...it} />)}
+              </div>
+            </div>
+            <div>
+              <LaneHeader k="commerce" label={i.lanes.commerce} />
+              <div className="grid grid-cols-2 gap-3">
+                {commerce.items.map((it) => <Node key={it.n} {...it} />)}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-8 text-center">
+        <div className="mt-12 text-center">
           <span className="text-2xs text-muted-foreground">{i.footnote}</span>
         </div>
       </div>
@@ -1657,6 +1771,7 @@ function UseCases({ t }: { t: Dict }) {
 type PricingTier = {
   k: string
   n: string
+  posture: string
   desc: string
   price: string
   features: readonly string[]
@@ -1665,68 +1780,145 @@ type PricingTier = {
   customPrice?: boolean
 }
 
+/* Mini-forecast bars rendered inside the Growth tier — visualizes the predictive layer. */
+function MiniForecast({ ar }: { ar: boolean }) {
+  const bars = [42, 58, 51, 67, 79, 88]
+  const max = 100
+  return (
+    <div className="mt-4 mb-6 rounded-lg border border-card-border bg-card/60 px-3.5 py-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-2xs text-muted-foreground tracking-wide uppercase">
+          {ar ? "توقّع ٦ أشهر" : "6-mo outlook"}
+        </span>
+        <span className="text-2xs text-success font-medium tabular-nums">
+          {ar ? "+ ٢٤٫٣٪" : "+ 24.3%"}
+        </span>
+      </div>
+      <svg viewBox="0 0 180 44" className="w-full h-10" aria-hidden="true">
+        {/* baseline */}
+        <line x1="0" y1="42" x2="180" y2="42" stroke="hsl(var(--border))" strokeWidth="0.5" />
+        {bars.map((v, i) => {
+          const x = i * 30 + 6
+          const h = (v / max) * 38
+          const y = 42 - h
+          const projected = i >= 4
+          return (
+            <g key={i}>
+              <rect
+                x={x}
+                y={y}
+                width="18"
+                height={h}
+                rx="2"
+                fill={projected ? "transparent" : "hsl(var(--primary))"}
+                stroke={projected ? "hsl(var(--primary))" : "none"}
+                strokeWidth="1"
+                strokeDasharray={projected ? "2 2" : undefined}
+                opacity={projected ? 0.7 : 1}
+              />
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
 function Pricing({ t }: { t: Dict }) {
   const p = t.pricing
   const [yearly, setYearly] = useState(true)
   const yearlyMultiplier = 0.8 // 20% off yearly
   const tiers = p.tiers as readonly PricingTier[]
 
+  const monthlyRef = useRef<HTMLButtonElement>(null)
+  const yearlyRef  = useRef<HTMLButtonElement>(null)
+
+  const selectBilling = (next: boolean) => {
+    setYearly(next)
+    // Move focus to the newly-selected radio (per WAI-ARIA radiogroup pattern)
+    requestAnimationFrame(() => (next ? yearlyRef : monthlyRef).current?.focus())
+  }
+
   const onToggleKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+    if (
+      e.key === "ArrowLeft" || e.key === "ArrowRight" ||
+      e.key === "ArrowUp"   || e.key === "ArrowDown"
+    ) {
       e.preventDefault()
-      setYearly((v) => !v)
+      selectBilling(!yearly)
     }
   }
 
   const billingLabel = t.ar ? "دورة الفوترة" : "Billing cycle"
 
+  // Asymmetric column spans (lg+); mobile stacks
+  const tierSpan = (k: string) =>
+    k === "growth" ? "lg:col-span-5" : k === "starter" ? "lg:col-span-3" : "lg:col-span-4"
+
   return (
     <section id="pricing" className="relative py-24 lg:py-32 border-b border-border bg-card/30">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-2xl mx-auto mb-12">
+        {/* Section heading */}
+        <div className="text-center max-w-2xl mx-auto mb-10">
           <div className="eyebrow mb-3">{p.eyebrow}</div>
           <h2 className="text-display text-foreground">{p.title}</h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">{p.lead}</p>
+        </div>
 
-          {/* Billing radiogroup (segmented control) */}
+        {/* Cost of waiting strip — anchors pricing in the cost of NOT acting */}
+        <div className="mx-auto max-w-4xl mb-10 lg:mb-12 rounded-xl border border-loss/25 bg-loss/[0.04] px-5 py-4 lg:px-7 lg:py-5">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="size-1.5 rounded-full bg-loss/80 animate-pulse motion-reduce:animate-none" />
+            <span className="eyebrow text-loss/90">{p.inactionLabel}</span>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-4 sm:gap-6">
+            {p.inaction.map((it) => (
+              <div key={it.t} className="min-w-0">
+                <div className="text-xl lg:text-2xl font-semibold text-loss tracking-tight tabular-nums">{it.v}</div>
+                <div className="text-2xs text-muted-foreground mt-1 leading-snug">{it.t}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Billing radiogroup */}
+        <div className="flex justify-center mb-10">
           <div
             role="radiogroup"
             aria-label={billingLabel}
             onKeyDown={onToggleKey}
-            className="mt-8 inline-flex items-center gap-1 p-1 rounded-full border border-border bg-card"
+            className="inline-flex items-center gap-1 p-1 rounded-full border border-border bg-card"
           >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!yearly}
-              tabIndex={!yearly ? 0 : -1}
-              onClick={() => setYearly(false)}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-xs font-medium transition-colors",
-                !yearly ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
-              )}
-              data-testid="pricing-monthly"
-            >
-              {p.billing.monthly}
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={yearly}
-              tabIndex={yearly ? 0 : -1}
-              onClick={() => setYearly(true)}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-xs font-medium transition-colors",
-                yearly ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
-              )}
-              data-testid="pricing-yearly"
-            >
-              {p.billing.yearly}
-            </button>
+            {[
+              { v: false, label: p.billing.monthly, id: "pricing-monthly", ref: monthlyRef },
+              { v: true,  label: p.billing.yearly,  id: "pricing-yearly",  ref: yearlyRef  },
+            ].map((opt) => {
+              const active = yearly === opt.v
+              return (
+                <button
+                  key={opt.id}
+                  ref={opt.ref}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  tabIndex={active ? 0 : -1}
+                  onClick={() => selectBilling(opt.v)}
+                  className={cn(
+                    "px-4 py-1.5 rounded-full text-xs font-medium transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                    active ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
+                  )}
+                  data-testid={opt.id}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
+        {/* Asymmetric tier grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           {tiers.map((tier) => {
             const isCustom = tier.customPrice
             const popular = tier.popular
@@ -1740,42 +1932,76 @@ function Pricing({ t }: { t: Dict }) {
                 key={tier.k}
                 data-testid={`pricing-tier-${tier.k}`}
                 className={cn(
-                  "relative rounded-xl border bg-card p-7 lg:p-8 flex flex-col",
+                  "relative rounded-2xl border bg-card flex flex-col",
+                  tierSpan(tier.k),
                   popular
-                    ? "border-primary/50 shadow-md ring-1 ring-primary/20"
-                    : "border-card-border shadow-xs",
+                    ? "border-primary/40 shadow-lg ring-1 ring-primary/15 lg:-my-4 p-7 lg:p-9 bg-gradient-to-b from-primary/[0.04] to-card"
+                    : "border-card-border shadow-xs p-7 lg:p-7",
                 )}
               >
                 {popular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-primary text-primary-foreground text-2xs font-medium tracking-wide">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-primary text-primary-foreground text-2xs font-medium tracking-wide shadow-sm">
                     {p.mostPopular}
                   </span>
                 )}
-                <div className="mb-5">
-                  <div className="text-sm font-semibold text-foreground">{tier.n}</div>
-                  <div className="text-2xs text-muted-foreground mt-1">{tier.desc}</div>
+
+                {/* Posture eyebrow — the signature framing */}
+                <div className={cn(
+                  "text-2xs tracking-wider uppercase mb-2",
+                  popular ? "text-primary" : "text-muted-foreground",
+                )}>
+                  · {tier.posture} ·
                 </div>
-                <div className="mb-6 pb-6 border-b border-border">
+
+                <div className="mb-4">
+                  <div className={cn(
+                    "font-semibold text-foreground",
+                    popular ? "text-lg" : "text-base",
+                  )}>{tier.n}</div>
+                  <div className="text-2xs text-muted-foreground mt-1 leading-snug">{tier.desc}</div>
+                </div>
+
+                <div
+                  className={cn("pb-5 mb-5 border-b border-border", popular && "pb-6 mb-6")}
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
                   {isCustom ? (
-                    <div className="text-3xl font-semibold text-foreground tracking-tight">{displayPrice}</div>
+                    <div className="text-2xl lg:text-3xl font-semibold text-foreground tracking-tight">{displayPrice}</div>
                   ) : (
                     <div className="flex items-baseline gap-1.5 tabular-nums">
                       <span className="text-2xs text-muted-foreground self-start mt-2">{p.currency}</span>
-                      <span className="text-4xl font-semibold text-foreground tracking-tight">{displayPrice}</span>
+                      <span className={cn(
+                        "font-semibold text-foreground tracking-tight",
+                        popular ? "text-5xl" : "text-4xl",
+                      )}>{displayPrice}</span>
                       <span className="text-xs text-muted-foreground">{p.perMonth}</span>
                     </div>
                   )}
                 </div>
+
+                {/* Mini predictive forecast — only the popular tier */}
+                {popular && (
+                  <>
+                    <div className="text-2xs text-muted-foreground -mt-2">{p.forecastCaption}</div>
+                    <MiniForecast ar={t.ar} />
+                  </>
+                )}
+
                 <ul className="space-y-2.5 mb-7 flex-1">
                   {tier.features.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-foreground/85">
-                      <Check className="size-4 text-primary flex-shrink-0 mt-0.5" />
+                      <Check className={cn(
+                        "size-4 flex-shrink-0 mt-0.5",
+                        popular ? "text-primary" : "text-foreground/60",
+                      )} />
                       <span className="leading-snug">{f}</span>
                     </li>
                   ))}
                 </ul>
                 <Button
                   variant={popular ? "default" : "outline"}
+                  size={popular ? "lg" : "default"}
                   className="w-full"
                   asChild
                   data-testid={`button-pricing-${tier.k}`}
