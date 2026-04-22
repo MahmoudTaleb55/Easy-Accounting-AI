@@ -15,10 +15,12 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Mail, RotateCw, Trash2, Loader2, Copy, Check, Activity as ActivityIcon, AlertTriangle, MailCheck, MailX, MailWarning, Clock } from "lucide-react";
+import { Mail, RotateCw, Trash2, Loader2, Copy, Check, Activity as ActivityIcon, AlertTriangle, MailCheck, MailX, MailWarning, Clock, History as HistoryIcon, MousePointerClick, Eye, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { WriteGuard } from "@/components/auth/write-guard";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface MemberSession {
   sid: string;
@@ -77,6 +79,44 @@ interface InvitationRow {
 
 type DeliveryTone = "success" | "warning" | "info" | "destructive" | "muted";
 
+interface InvitationEventRow {
+  id: string;
+  invitationId: string;
+  messageId: string | null;
+  type: string;
+  error: string | null;
+  payload: unknown;
+  createdAt: string | null;
+}
+
+function eventDescriptor(
+  type: string,
+  ar: boolean,
+): { label: string; tone: DeliveryTone; Icon: typeof MailCheck } {
+  switch (type) {
+    case "sent":
+      return { label: ar ? "أُرسلت" : "Sent", tone: "info", Icon: Send };
+    case "delivered":
+      return { label: ar ? "وصلت" : "Delivered", tone: "success", Icon: MailCheck };
+    case "delivery_delayed":
+      return { label: ar ? "تأخّر التسليم" : "Delivery delayed", tone: "warning", Icon: Clock };
+    case "bounced":
+      return { label: ar ? "ارتدّت" : "Bounced", tone: "destructive", Icon: MailX };
+    case "complained":
+      return { label: ar ? "بلاغ سبام" : "Spam report", tone: "destructive", Icon: MailWarning };
+    case "opened":
+      return { label: ar ? "فُتحت" : "Opened", tone: "info", Icon: Eye };
+    case "clicked":
+      return { label: ar ? "نُقر عليها" : "Clicked", tone: "info", Icon: MousePointerClick };
+    case "send_failed":
+      return { label: ar ? "فشل الإرسال" : "Send failed", tone: "destructive", Icon: AlertTriangle };
+    case "not_configured":
+      return { label: ar ? "البريد غير مفعّل" : "Email not configured", tone: "muted", Icon: Mail };
+    default:
+      return { label: type, tone: "muted", Icon: Mail };
+  }
+}
+
 function deliveryBadge(
   status: InvitationRow["lastEmailStatus"],
   ar: boolean,
@@ -124,7 +164,18 @@ export default function MembersPage() {
   const { toast } = useToast();
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [activityMemberId, setActivityMemberId] = useState<string | null>(null);
+  const [historyInvitation, setHistoryInvitation] = useState<InvitationRow | null>(null);
   const isAdmin = role === "admin";
+
+  const { data: historyEvents = [], isLoading: loadingHistory, error: historyError } = useQuery<InvitationEventRow[]>({
+    queryKey: ["/api/auth/invitations", historyInvitation?.id, "events"],
+    queryFn: async () => {
+      const r = await fetch(`/api/auth/invitations/${historyInvitation!.id}/events`, { credentials: "include" });
+      if (!r.ok) throw new Error(`${r.status}: ${r.statusText}`);
+      return r.json();
+    },
+    enabled: !!historyInvitation && isAdmin,
+  });
 
   const { data: activity, isLoading: loadingActivity } = useQuery<MemberActivityResponse>({
     queryKey: ["/api/auth/members", activityMemberId, "activity"],
@@ -439,6 +490,22 @@ export default function MembersPage() {
                                 </span>
                               </div>
                             </div>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setHistoryInvitation(inv)}
+                                  data-testid={`button-history-${inv.id}`}
+                                  aria-label={ar ? "سجل التسليم" : "Delivery history"}
+                                >
+                                  <HistoryIcon className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {ar ? "سجل التسليم" : "Delivery history"}
+                              </TooltipContent>
+                            </Tooltip>
                             {inv.status === "pending" && (
                               <>
                                 <Button variant="ghost" size="sm" onClick={() => copyLink(inv.token)} data-testid={`button-copy-${inv.id}`}>
@@ -573,6 +640,106 @@ export default function MembersPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Sheet
+        open={!!historyInvitation}
+        onOpenChange={(open) => !open && setHistoryInvitation(null)}
+      >
+        <SheetContent
+          side={ar ? "left" : "right"}
+          className="w-full sm:max-w-md flex flex-col"
+          data-testid="sheet-invitation-history"
+        >
+          <SheetHeader>
+            <SheetTitle>{ar ? "سجل تسليم الدعوة" : "Invitation delivery history"}</SheetTitle>
+            <SheetDescription data-testid="text-history-email">
+              {historyInvitation?.email}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 flex-1 overflow-hidden">
+            {loadingHistory ? (
+              <div className="py-10 text-center">
+                <Loader2 className="inline h-4 w-4 animate-spin" />
+              </div>
+            ) : historyError ? (
+              <p
+                className="py-10 text-center text-sm text-destructive"
+                data-testid="text-history-error"
+              >
+                {ar
+                  ? "تعذّر تحميل سجل التسليم."
+                  : "Couldn't load delivery history."}
+              </p>
+            ) : historyEvents.length === 0 ? (
+              <p
+                className="py-10 text-center text-sm text-muted-foreground"
+                data-testid="text-no-history"
+              >
+                {ar ? "لا توجد أحداث بعد." : "No events recorded yet."}
+              </p>
+            ) : (
+              <ScrollArea className="h-full pe-2">
+                <ol className="relative space-y-4 ps-5">
+                  {historyEvents.map((ev) => {
+                    const desc = eventDescriptor(ev.type, ar);
+                    const Icon = desc.Icon;
+                    const dotColor =
+                      desc.tone === "success"
+                        ? "bg-emerald-500"
+                        : desc.tone === "warning"
+                          ? "bg-amber-500"
+                          : desc.tone === "destructive"
+                            ? "bg-destructive"
+                            : desc.tone === "info"
+                              ? "bg-sky-500"
+                              : "bg-muted-foreground";
+                    return (
+                      <li
+                        key={ev.id}
+                        className="relative"
+                        data-testid={`row-event-${ev.id}`}
+                      >
+                        <span
+                          className={`absolute -start-5 top-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-background ${dotColor}`}
+                          aria-hidden="true"
+                        />
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span
+                            className="text-sm font-medium"
+                            data-testid={`text-event-type-${ev.id}`}
+                          >
+                            {desc.label}
+                          </span>
+                          <Badge variant={desc.tone} size="sm">
+                            {ev.type}
+                          </Badge>
+                        </div>
+                        <div
+                          className="mt-0.5 text-xs text-muted-foreground"
+                          data-testid={`text-event-time-${ev.id}`}
+                        >
+                          {ev.createdAt
+                            ? new Date(ev.createdAt).toLocaleString()
+                            : "—"}
+                        </div>
+                        {ev.error && (
+                          <p
+                            className="mt-1 text-xs text-destructive"
+                            data-testid={`text-event-error-${ev.id}`}
+                          >
+                            {ev.error}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </ScrollArea>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
