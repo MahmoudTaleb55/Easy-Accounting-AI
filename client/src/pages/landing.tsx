@@ -1106,7 +1106,7 @@ function Hero({ t }: { t: Dict }) {
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 text-center">
         {/* One restrained eyebrow combining live status + ZATCA cert */}
         <div className="inline-flex items-center gap-2.5 rounded-full border border-border bg-card/70 backdrop-blur px-3 py-1.5 shadow-xs">
-          <span className="status-dot bg-success animate-pulse motion-reduce:animate-none" />
+          <span className="status-dot bg-success" />
           <span className="text-2xs text-foreground/70">{t.hero.tag}</span>
           <span aria-hidden className="text-border">·</span>
           <ShieldCheck className="size-3.5 text-primary" />
@@ -1170,22 +1170,6 @@ function HeroProductMockup({ t }: { t: Dict }) {
   const endSide   = t.ar ? "-right-4" : "-left-4"
   return (
     <div className="relative">
-      <div className={cn("absolute -bottom-6 z-10 hidden md:block", startSide)}>
-        <FloatingChip
-          icon={<Sparkles className="size-3.5" />}
-          title={t.hero.chipAuto.t}
-          subtitle={t.hero.chipAuto.s}
-        />
-      </div>
-      <div className={cn("absolute -top-4 z-10 hidden md:block", endSide)}>
-        <FloatingChip
-          icon={<TrendingUp className="size-3.5" />}
-          title={t.hero.chipProfit.t}
-          subtitle={t.hero.chipProfit.s}
-          accent="success"
-        />
-      </div>
-
       <BrowserFrame title={t.hero.mockTitle}>
         <div className="grid grid-cols-3 gap-3 p-4">
           <MiniKPI label={t.hero.kpis.revenue} value={t.ar ? "٢٤٢,٣٠٠" : "242,300"} delta="+8.4%" positive />
@@ -1676,7 +1660,7 @@ function Manifesto({ t }: { t: Dict }) {
             <span className="font-mono text-xs uppercase tracking-[0.25em] text-background/75">
               {m.sig}
             </span>
-            <span aria-hidden className="size-1.5 rounded-full bg-primary animate-pulse motion-reduce:animate-none" />
+            <span aria-hidden className="size-1.5 rounded-full bg-primary" />
           </div>
         </div>
       </div>
@@ -2372,7 +2356,7 @@ function CommandMock({ t }: { t: Dict }) {
             <div className="flex-1 text-sm text-foreground">
               {ar ? "فاتورة لـ" : "invoice for"}
               <span className="text-muted-foreground">{ar ? " شركة الجوهرة" : " Al-Jawhara"}</span>
-              <span className="inline-block w-px h-4 bg-foreground align-middle ms-1 animate-pulse motion-reduce:animate-none" />
+              <span className="inline-block w-px h-4 bg-foreground align-middle ms-1" />
             </div>
             <kbd className="hidden sm:inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground border border-border bg-card rounded px-1.5 py-0.5">
               <Command className="size-3" />K
@@ -2890,7 +2874,7 @@ function LocalIntegrations({ t }: { t: Dict }) {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 relative">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <span className="size-1.5 rounded-full bg-success animate-pulse motion-reduce:animate-none" />
+                  <span className="size-1.5 rounded-full bg-success" />
                   <span className="text-2xs uppercase tracking-wider text-success font-medium">{i.live}</span>
                 </div>
                 <div className="text-lg lg:text-xl font-semibold text-foreground tracking-tight">{i.spineTitle}</div>
@@ -3357,7 +3341,7 @@ function Pricing({ t }: { t: Dict }) {
         {/* Cost of waiting strip — anchors pricing in the cost of NOT acting */}
         <div className="mx-auto max-w-4xl mb-10 lg:mb-12 rounded-xl border border-loss/25 bg-loss/[0.04] px-5 py-4 lg:px-7 lg:py-5">
           <div className="flex items-center gap-3 mb-3">
-            <span className="size-1.5 rounded-full bg-loss/80 animate-pulse motion-reduce:animate-none" />
+            <span className="size-1.5 rounded-full bg-loss/80" />
             <span className="eyebrow text-loss/90">{p.inactionLabel}</span>
           </div>
           <div className="grid sm:grid-cols-3 gap-4 sm:gap-6">
@@ -3724,9 +3708,9 @@ function ChatBubble({
       >
         {typing ? (
           <span className="inline-flex gap-1 py-1">
-            <span className="size-1.5 rounded-full bg-current opacity-40 animate-pulse" />
-            <span className="size-1.5 rounded-full bg-current opacity-60 animate-pulse [animation-delay:120ms]" />
-            <span className="size-1.5 rounded-full bg-current opacity-80 animate-pulse [animation-delay:240ms]" />
+            <span className="size-1.5 rounded-full bg-current opacity-40" />
+            <span className="size-1.5 rounded-full bg-current opacity-60" />
+            <span className="size-1.5 rounded-full bg-current opacity-80" />
           </span>
         ) : children}
       </div>
