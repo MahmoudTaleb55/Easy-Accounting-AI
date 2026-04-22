@@ -16,6 +16,7 @@ import Demo from "@/pages/demo";
 
 import Dashboard from "@/pages/dashboard";
 import Transactions from "@/pages/transactions";
+import Inbox from "@/pages/inbox";
 import AiAssistant from "@/pages/ai-assistant";
 import Reports from "@/pages/reports";
 import ChartOfAccounts from "@/pages/chart-of-accounts";
@@ -45,6 +46,7 @@ const isDev = import.meta.env.DEV;
 
 const LEGACY_REDIRECTS: Record<string, string> = {
   "/dashboard": "/app",
+  "/inbox": "/app/inbox",
   "/transactions": "/app/transactions",
   "/reports": "/app/reports",
   "/accounts": "/app/accounts",
@@ -64,6 +66,7 @@ function AppShellRoutes() {
   return (
     <Switch>
       <Route path="/app" component={Dashboard} />
+      <Route path="/app/inbox" component={Inbox} />
       <Route path="/app/transactions" component={Transactions} />
       <Route path="/app/reports" component={Reports} />
       <Route path="/app/accounts" component={ChartOfAccounts} />

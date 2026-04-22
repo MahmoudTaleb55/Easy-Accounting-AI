@@ -24,6 +24,11 @@ import {
   revaluationEvents,
   disposals,
   auditLog,
+  documents,
+  type DocumentRow,
+  type InsertDocument,
+  type ExtractedDocument,
+  type SuggestedJournal,
   type AuditLogEntry,
   type AuditChange,
   type Company,
@@ -150,6 +155,30 @@ export interface IStorage {
   // an empty array (the route layer turns that into a 404).
   getAuditLog(companyId: number, entityType: AuditEntityType, entityId: number): Promise<AuditLogEntry[]>;
   entityBelongsToCompany(entityType: AuditEntityType, entityId: number, companyId: number): Promise<boolean>;
+
+  // AI document inbox
+  createDocument(companyId: number, input: InsertDocument): Promise<DocumentRow>;
+  listDocuments(companyId: number): Promise<DocumentRow[]>;
+  getDocument(companyId: number, id: number): Promise<DocumentRow | undefined>;
+  updateDocumentExtraction(
+    companyId: number,
+    id: number,
+    patch: {
+      status: "ready" | "error" | "posting";
+      extractedJson?: ExtractedDocument | null;
+      suggestedJournalJson?: SuggestedJournal | null;
+      errorMessage?: string | null;
+    },
+  ): Promise<DocumentRow>;
+  /**
+   * Atomically post a document: only succeeds if the row is still in `ready`
+   * status, otherwise returns null. Prevents two concurrent confirm clicks
+   * from creating duplicate journal entries linked to the same source doc.
+   */
+  claimDocumentForPosting(companyId: number, id: number): Promise<DocumentRow | null>;
+  markDocumentPosted(companyId: number, id: number, journalEntryId: number): Promise<DocumentRow>;
+  deleteDocument(companyId: number, id: number): Promise<DocumentRow | undefined>;
+  countDocumentsByStoragePath(companyId: number, storagePath: string): Promise<number>;
 }
 
 const AUDIT_SKIP_FIELDS = new Set(["id", "createdAt", "updatedAt"]);
@@ -1060,6 +1089,107 @@ export class DatabaseStorage implements IStorage {
       .from(auditLog)
       .where(and(eq(auditLog.entityType, entityType), eq(auditLog.entityId, entityId)))
       .orderBy(desc(auditLog.occurredAt));
+  }
+
+  // ----- AI Document Inbox -----
+  async createDocument(companyId: number, input: InsertDocument): Promise<DocumentRow> {
+    const [row] = await db.insert(documents).values({ ...input, companyId }).returning();
+    return row;
+  }
+
+  async listDocuments(companyId: number): Promise<DocumentRow[]> {
+    return await db
+      .select()
+      .from(documents)
+      .where(eq(documents.companyId, companyId))
+      .orderBy(desc(documents.uploadedAt));
+  }
+
+  async getDocument(companyId: number, id: number): Promise<DocumentRow | undefined> {
+    const [row] = await db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.companyId, companyId), eq(documents.id, id)));
+    return row;
+  }
+
+  async updateDocumentExtraction(
+    companyId: number,
+    id: number,
+    patch: {
+      status: "ready" | "error" | "posting";
+      extractedJson?: ExtractedDocument | null;
+      suggestedJournalJson?: SuggestedJournal | null;
+      errorMessage?: string | null;
+    },
+  ): Promise<DocumentRow> {
+    const [row] = await db
+      .update(documents)
+      .set({
+        status: patch.status,
+        extractedJson: patch.extractedJson ?? null,
+        suggestedJournalJson: patch.suggestedJournalJson ?? null,
+        errorMessage: patch.errorMessage ?? null,
+        extractedAt: new Date(),
+      })
+      .where(and(eq(documents.companyId, companyId), eq(documents.id, id)))
+      .returning();
+    return row;
+  }
+
+  async claimDocumentForPosting(
+    companyId: number,
+    id: number,
+  ): Promise<DocumentRow | null> {
+    // Atomic transition: ready → posting. If another request already claimed
+    // it (or it's still extracting / errored / posted), this returns no row
+    // and the caller must surface a 409.
+    const [row] = await db
+      .update(documents)
+      .set({ status: "posting" })
+      .where(
+        and(
+          eq(documents.companyId, companyId),
+          eq(documents.id, id),
+          eq(documents.status, "ready"),
+        ),
+      )
+      .returning();
+    return row ?? null;
+  }
+
+  async markDocumentPosted(
+    companyId: number,
+    id: number,
+    journalEntryId: number,
+  ): Promise<DocumentRow> {
+    const [row] = await db
+      .update(documents)
+      .set({ status: "posted", journalEntryId, postedAt: new Date() })
+      .where(and(eq(documents.companyId, companyId), eq(documents.id, id)))
+      .returning();
+    return row;
+  }
+
+  async countDocumentsByStoragePath(
+    companyId: number,
+    storagePath: string,
+  ): Promise<number> {
+    const rows = await db
+      .select({ id: documents.id })
+      .from(documents)
+      .where(
+        and(eq(documents.companyId, companyId), eq(documents.storagePath, storagePath)),
+      );
+    return rows.length;
+  }
+
+  async deleteDocument(companyId: number, id: number): Promise<DocumentRow | undefined> {
+    const [row] = await db
+      .delete(documents)
+      .where(and(eq(documents.companyId, companyId), eq(documents.id, id)))
+      .returning();
+    return row;
   }
 }
 

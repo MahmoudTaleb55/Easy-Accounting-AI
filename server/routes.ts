@@ -15,8 +15,16 @@ function userCtx(_req: Request): AuditContext {
 import { api } from "@shared/routes";
 import { z } from "zod";
 import OpenAI from "openai";
+import multer from "multer";
 import { ASSISTANT_TOOLS, executeTool, type ToolArtifact } from "./services/assistant-tools";
 import { readFile as readGeneratedFile } from "./services/assistant-files";
+import { extractDocument, suggestJournalForDocument } from "./services/document-extraction";
+import {
+  saveDocumentFile,
+  readDocumentFile,
+  deleteDocumentFileIfOrphaned,
+} from "./services/document-storage";
+import { postDocumentSchema } from "@shared/schema";
 import { db } from "./db";
 import { assetComponents, type AssetComponent } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -896,11 +904,230 @@ export async function registerRoutes(
   });
 
   // ============================================================================
+  // AI Document Inbox — receipts/invoices → extracted data → suggested JE
+  // ============================================================================
+  registerDocumentRoutes(app);
+
+  // ============================================================================
   // Fixed Assets (IAS 16 / IAS 36)
   // ============================================================================
   await registerFixedAssetRoutes(app);
 
   return httpServer;
+}
+
+// ----------------------------------------------------------------------------
+// AI document inbox routes
+// ----------------------------------------------------------------------------
+
+function registerDocumentRoutes(app: Express) {
+  // 10 MB cap is generous for phone-camera receipts and well below Express's
+  // default body limit. Memory storage keeps the upload in RAM long enough
+  // for us to hash + persist + send to vision API in one pass.
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const ok = file.mimetype.startsWith("image/");
+      if (!ok) return cb(new Error("Only image uploads are supported (PNG, JPEG, WEBP)."));
+      cb(null, true);
+    },
+  });
+
+  function userIdFromReq(req: Request): string | null {
+    const u = (req as any).user;
+    return (u?.claims?.sub as string | undefined) ?? null;
+  }
+
+  // List inbox
+  app.get("/api/documents", async (req, res) => {
+    const rows = await storage.listDocuments(cid(req));
+    res.json(rows);
+  });
+
+  // Upload + extract (extraction runs synchronously here so the user gets
+  // immediate feedback; for very large workspaces this can be moved to a
+  // background queue without changing the API contract).
+  app.post("/api/documents", upload.single("file"), async (req, res, next) => {
+    try {
+      const companyId = cid(req);
+      const file = req.file;
+      if (!file) return res.status(400).json({ message: "No file uploaded" });
+
+      const saved = await saveDocumentFile({
+        companyId,
+        buffer: file.buffer,
+        originalName: file.originalname,
+      });
+
+      const created = await storage.createDocument(companyId, {
+        companyId,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: saved.sizeBytes,
+        storagePath: saved.storagePath,
+        status: "extracting",
+        uploadedBy: userIdFromReq(req),
+      });
+
+      // Kick off extraction. We await so the response carries the result
+      // (and any errors are surfaced to the user immediately).
+      try {
+        const extracted = await extractDocument(file.buffer, file.mimetype);
+        const accounts = await storage.getAccounts(companyId);
+        const settings = await storage.getSettings(companyId);
+        const suggestion = await suggestJournalForDocument(extracted, accounts, settings);
+
+        const updated = await storage.updateDocumentExtraction(companyId, created.id, {
+          status: "ready",
+          extractedJson: extracted,
+          suggestedJournalJson: suggestion,
+        });
+        res.status(201).json(updated);
+      } catch (err: any) {
+        const msg = err?.message ?? "Extraction failed";
+        const failed = await storage.updateDocumentExtraction(companyId, created.id, {
+          status: "error",
+          errorMessage: String(msg).slice(0, 500),
+        });
+        res.status(201).json(failed);
+      }
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Detail
+  app.get("/api/documents/:id", async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+    const row = await storage.getDocument(cid(req), id);
+    if (!row) return res.status(404).json({ message: "Not found" });
+    res.json(row);
+  });
+
+  // Original-file passthrough (workspace-scoped — we never serve a doc
+  // belonging to another company even if the path is guessed correctly).
+  app.get("/api/documents/:id/file", async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const row = await storage.getDocument(cid(req), id);
+      if (!row) return res.status(404).json({ message: "Not found" });
+      const buffer = await readDocumentFile(row.storagePath);
+      res.setHeader("Content-Type", row.mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${encodeURIComponent(row.fileName)}"`,
+      );
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.end(buffer);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Confirm + post → create journal entry, link doc → JE
+  app.post("/api/documents/:id/post", async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const companyId = cid(req);
+      const input = postDocumentSchema.parse(req.body);
+
+      // Atomic ready→posting claim: prevents two concurrent confirm clicks
+      // from each creating a journal entry against the same source document.
+      const claimed = await storage.claimDocumentForPosting(companyId, id);
+      if (!claimed) {
+        const row = await storage.getDocument(companyId, id);
+        if (!row) return res.status(404).json({ message: "Not found" });
+        if (row.status === "posted") {
+          return res.status(409).json({ message: "Document already posted" });
+        }
+        return res
+          .status(409)
+          .json({ message: `Document not ready to post (status: ${row.status})` });
+      }
+      const row = claimed;
+
+      // Defensive balance + accounts-belong-to-workspace check before
+      // creating the JE — the user could have edited the suggestion freely.
+      const totalDebit = input.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+      const totalCredit = input.lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+      if (Math.abs(totalDebit - totalCredit) > 0.005 || totalDebit <= 0) {
+        return res.status(400).json({ message: "Debits and credits must balance and be > 0" });
+      }
+      const accounts = await storage.getAccounts(companyId);
+      const validIds = new Set(accounts.filter((a) => !a.isHeader).map((a) => a.id));
+      for (const l of input.lines) {
+        if (!validIds.has(l.accountId)) {
+          return res.status(400).json({ message: `Unknown account id ${l.accountId}` });
+        }
+      }
+
+      try {
+        const je = await storage.createJournalEntry(
+          companyId,
+          {
+            description: input.description,
+            entryDate: input.entryDate ?? new Date().toISOString().slice(0, 10),
+            source: "ai",
+            lines: input.lines.map((l) => ({
+              accountId: l.accountId,
+              debit: Number(l.debit || 0),
+              credit: Number(l.credit || 0),
+              description: l.description,
+            })),
+          },
+          userCtx(req),
+        );
+        const updated = await storage.markDocumentPosted(companyId, id, je.id);
+        res.status(201).json({ document: updated, journalEntry: je });
+      } catch (jeErr) {
+        // Roll the document back to `ready` so the user can retry. Without
+        // this the row would be stuck in `posting` forever.
+        await storage.updateDocumentExtraction(companyId, id, {
+          status: "ready",
+          extractedJson: row.extractedJson as any,
+          suggestedJournalJson: row.suggestedJournalJson as any,
+        });
+        throw jeErr;
+      }
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      next(err);
+    }
+  });
+
+  app.delete("/api/documents/:id", async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+    const companyId = cid(req);
+    const removed = await storage.deleteDocument(companyId, id);
+    if (removed) {
+      await deleteDocumentFileIfOrphaned(removed.storagePath, async () => {
+        const remaining = await storage.countDocumentsByStoragePath(
+          companyId,
+          removed.storagePath,
+        );
+        return remaining > 0;
+      });
+    }
+    res.status(204).send();
+  });
+
+  // Multer / fileFilter errors → 400 instead of 500.
+  app.use("/api/documents", (err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err && (err instanceof multer.MulterError || /Only image uploads/.test(err.message))) {
+      return res.status(400).json({ message: err.message });
+    }
+    return next(err);
+  });
 }
 
 async function registerFixedAssetRoutes(app: Express) {

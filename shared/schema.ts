@@ -619,3 +619,102 @@ export const auditLog = pgTable(
 
 export type AuditChange = { field: string; from?: unknown; to?: unknown };
 export type AuditLogEntry = typeof auditLog.$inferSelect;
+
+// ============================================================================
+// AI Document Inbox — receipts and invoices captured by the user, extracted
+// by AI vision into structured data, then reviewed and posted as a journal
+// entry. The original file is retained on disk for audit attachment.
+// ============================================================================
+
+// status: extracting | ready | posting | posted | error
+export const documents = pgTable(
+  "documents",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    storagePath: text("storage_path").notNull(),
+    status: text("status").notNull().default("extracting"),
+    extractedJson: jsonb("extracted_json"),
+    suggestedJournalJson: jsonb("suggested_journal_json"),
+    journalEntryId: integer("journal_entry_id"),
+    errorMessage: text("error_message"),
+    uploadedBy: varchar("uploaded_by"),
+    uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+    extractedAt: timestamp("extracted_at"),
+    postedAt: timestamp("posted_at"),
+  },
+  (t) => ({
+    companyIdx: index("documents_company_idx").on(t.companyId),
+    statusIdx: index("documents_status_idx").on(t.companyId, t.status),
+  }),
+);
+
+export type DocumentRow = typeof documents.$inferSelect;
+export type InsertDocument = typeof documents.$inferInsert;
+
+// Strict shape returned by the vision extractor. Frontend & assistant
+// downstream both rely on this contract.
+export const extractedDocumentSchema = z.object({
+  vendor: z.string().nullable().optional(),
+  invoiceNumber: z.string().nullable().optional(),
+  documentDate: z.string().nullable().optional(), // YYYY-MM-DD
+  currency: z.string().nullable().optional(),
+  subtotal: z.number().nullable().optional(),
+  vatAmount: z.number().nullable().optional(),
+  vatRate: z.number().nullable().optional(),
+  total: z.number().nullable().optional(),
+  paymentMethod: z.enum(["cash", "card", "bank", "credit", "unknown"]).default("unknown"),
+  category: z.string().nullable().optional(),
+  documentType: z.enum(["receipt", "invoice", "credit_note", "other"]).default("receipt"),
+  language: z.enum(["ar", "en", "mixed"]).default("ar"),
+  lineItems: z
+    .array(
+      z.object({
+        description: z.string(),
+        quantity: z.number().nullable().optional(),
+        unitPrice: z.number().nullable().optional(),
+        total: z.number().nullable().optional(),
+      }),
+    )
+    .default([]),
+  confidence: z.number().min(0).max(1).default(0.5),
+  notes: z.string().nullable().optional(),
+});
+export type ExtractedDocument = z.infer<typeof extractedDocumentSchema>;
+
+export const suggestedJournalSchema = z.object({
+  description: z.string(),
+  entryDate: z.string().optional(),
+  lines: z.array(
+    z.object({
+      accountId: z.number().int(),
+      accountCode: z.string(),
+      accountName: z.string(),
+      debit: z.number().default(0),
+      credit: z.number().default(0),
+      description: z.string().optional(),
+    }),
+  ),
+  reasoning: z.string().optional(),
+});
+export type SuggestedJournal = z.infer<typeof suggestedJournalSchema>;
+
+// Payload accepted from the client when confirming a document → journal
+export const postDocumentSchema = z.object({
+  description: z.string().min(1).max(300),
+  entryDate: z.string().optional(),
+  lines: z
+    .array(
+      z.object({
+        accountId: z.number().int().positive(),
+        debit: z.coerce.number().nonnegative().default(0),
+        credit: z.coerce.number().nonnegative().default(0),
+        description: z.string().max(300).optional(),
+      }),
+    )
+    .min(2),
+});
+export type PostDocumentInput = z.infer<typeof postDocumentSchema>;

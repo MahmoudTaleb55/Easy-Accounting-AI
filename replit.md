@@ -11,6 +11,7 @@ Key Capabilities:
 - **Decision Cockpit (`/insights`)**: Offers financial health scores, alerts, cash flow forecasting, what-if simulations, budgeting tools, and an AI financial coach.
 - **Multi-Country Localization**: Supports 7 country packs (INTL, SA, AE, EG, KW, QA, JO) with configurable currency, VAT rates, zakat toggles, weekend days, social insurance rates, and end-of-service formulas.
 - **HR & Payroll (`/hr`)**: Integrated module for managing employees, attendance, leaves, and automating monthly payroll runs with auto-posted journal entries adhering to IAS 19 provisions.
+- **Smart Document Inbox (`/app/inbox`)**: Upload receipt/invoice images; an OpenAI vision pipeline extracts vendor, date, totals, VAT (GCC-aware), and proposes a balanced IFRS-correct journal entry against the live chart of accounts. User reviews/edits and posts in one click; the original file is retained and linked to the resulting journal entry. Posting is atomic (`ready→posting→posted`) to prevent duplicate journal entries from concurrent confirms; deduped storage uses reference counting on delete.
 
 The application is built as a full-stack TypeScript monorepo, utilizing a React frontend and an Express backend, with shared schema and route definitions to ensure consistency and a sophisticated user experience.
 

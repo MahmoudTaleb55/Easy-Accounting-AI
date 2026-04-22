@@ -14,6 +14,7 @@ export const STRINGS = {
   group_settings:     { ar: "الإعدادات",     en: "Settings" },
 
   nav_dashboard:    { ar: "اللوحة الرئيسية", en: "Dashboard" },
+  nav_inbox:        { ar: "الوارد الذكي",     en: "Smart Inbox" },
   nav_transactions: { ar: "المعاملات",        en: "Transactions" },
   nav_journal:      { ar: "قيود اليومية",      en: "Journal" },
   nav_accounts:     { ar: "دليل الحسابات",     en: "Chart of Accounts" },
