@@ -16,7 +16,7 @@ import {
 } from "@shared/schema";
 import { authBizStorage, hashPassword, verifyPassword } from "./storage";
 import { authStorage } from "../replit_integrations/auth/storage";
-import { sendInvitationEmail, sendPasswordResetEmail } from "./email";
+import { sendInvitationEmail, sendPasswordResetEmail, normalizeLocale } from "./email";
 import {
   requireAuth,
   loadMembership,
@@ -100,6 +100,8 @@ async function sendInvitationOrLog(
       role: inv.role,
       companyName: company?.name ?? null,
       inviterName,
+      // Invitee may not exist yet — fall back to the inviter's locale.
+      locale: normalizeLocale(inviter?.preferredLocale),
     });
     // Record an outbound-attempt row + denormalize to the invitation so the
     // UI can show a Sent/Failed badge before any webhook arrives.
@@ -272,6 +274,7 @@ export function registerLocalAuthRoutes(app: Express) {
           to: user.email!,
           link,
           firstName: user.firstName ?? null,
+          locale: normalizeLocale(user.preferredLocale),
         });
 
         if (!result.ok) {
