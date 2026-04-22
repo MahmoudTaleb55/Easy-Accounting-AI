@@ -37,10 +37,21 @@ interface PasswordResetEmailEventRow {
   error: string | null;
   createdAt: string | null;
 }
+interface PasswordResetTokenRow {
+  id: string;
+  userId: string;
+  expiresAt: string;
+  usedAt: string | null;
+  createdAt: string | null;
+  lastMessageId: string | null;
+  lastEmailStatus: InvitationRow["lastEmailStatus"];
+  lastEmailError: string | null;
+  lastEmailEventAt: string | null;
+}
 interface MemberActivityResponse {
   member: { id: string; userId: string; role: Role; user: MemberRow["user"] };
   sessions: MemberSession[];
-  passwordResetEmails: PasswordResetEmailEventRow[];
+  passwordResetTokens: PasswordResetTokenRow[];
 }
 
 interface MemberRow {
@@ -183,6 +194,7 @@ export default function MembersPage() {
   const [activityMemberId, setActivityMemberId] = useState<string | null>(null);
   const [historyInvitation, setHistoryInvitation] = useState<InvitationRow | null>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilterId>("all");
+  const [historyResetToken, setHistoryResetToken] = useState<PasswordResetTokenRow | null>(null);
   const isAdmin = role === "admin";
 
   useEffect(() => {
@@ -219,6 +231,23 @@ export default function MembersPage() {
     const allowed = HISTORY_FILTER_TYPES[historyFilter];
     return historyEvents.filter((ev) => allowed.includes(ev.type));
   }, [historyEvents, historyFilter]);
+
+  const {
+    data: resetHistoryEvents = [],
+    isLoading: loadingResetHistory,
+    error: resetHistoryError,
+  } = useQuery<PasswordResetEmailEventRow[]>({
+    queryKey: ["/api/auth/password-reset-tokens", historyResetToken?.id, "events"],
+    queryFn: async () => {
+      const r = await fetch(
+        `/api/auth/password-reset-tokens/${historyResetToken!.id}/events`,
+        { credentials: "include" },
+      );
+      if (!r.ok) throw new Error(`${r.status}: ${r.statusText}`);
+      return r.json();
+    },
+    enabled: !!historyResetToken && isAdmin,
+  });
 
   const { data: activity, isLoading: loadingActivity } = useQuery<MemberActivityResponse>({
     queryKey: ["/api/auth/members", activityMemberId, "activity"],
@@ -637,42 +666,63 @@ export default function MembersPage() {
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {ar ? "رسائل إعادة تعيين كلمة المرور" : "Password reset emails"}
                 </h3>
-                {activity.passwordResetEmails.length === 0 ? (
+                {activity.passwordResetTokens.length === 0 ? (
                   <p className="text-sm text-muted-foreground" data-testid="text-no-reset-emails">
                     {ar ? "لم يتم إرسال أي رسائل بعد." : "No reset emails sent yet."}
                   </p>
                 ) : (
                   <ul className="divide-y divide-border text-sm">
-                    {activity.passwordResetEmails.map((evt) => {
-                      const badge = deliveryBadge(
-                        (evt.type as InvitationRow["lastEmailStatus"]) ?? null,
-                        ar,
-                      );
+                    {activity.passwordResetTokens.map((tok) => {
+                      const badge = deliveryBadge(tok.lastEmailStatus ?? null, ar);
                       const Icon = badge.Icon;
                       return (
                         <li
-                          key={evt.id}
+                          key={tok.id}
                           className="flex items-start justify-between gap-3 py-2"
-                          data-testid={`row-reset-email-${evt.id}`}
+                          data-testid={`row-reset-email-${tok.id}`}
                         >
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span className="font-medium">{badge.label}</span>
+                              <Badge variant={badge.tone} size="sm" className="gap-1">
+                                {badge.label}
+                              </Badge>
+                              {tok.usedAt && (
+                                <Badge variant="muted" size="sm">
+                                  {ar ? "استُخدمت" : "used"}
+                                </Badge>
+                              )}
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {evt.createdAt ? new Date(evt.createdAt).toLocaleString() : ""}
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {ar ? "أُنشئت" : "requested"}{" "}
+                              {tok.createdAt ? new Date(tok.createdAt).toLocaleString() : "—"}
                             </div>
-                            {evt.error && (
+                            {tok.lastEmailError && (
                               <div
                                 className="mt-1 truncate text-xs text-destructive"
-                                title={evt.error}
-                                data-testid={`text-reset-email-error-${evt.id}`}
+                                title={tok.lastEmailError}
+                                data-testid={`text-reset-email-error-${tok.id}`}
                               >
-                                {evt.error}
+                                {tok.lastEmailError}
                               </div>
                             )}
                           </div>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setHistoryResetToken(tok)}
+                                data-testid={`button-reset-history-${tok.id}`}
+                                aria-label={ar ? "سجل التسليم" : "Delivery history"}
+                              >
+                                <HistoryIcon className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {ar ? "سجل التسليم" : "Delivery history"}
+                            </TooltipContent>
+                          </Tooltip>
                         </li>
                       );
                     })}
@@ -810,6 +860,112 @@ export default function MembersPage() {
                           <p
                             className="mt-1 text-xs text-destructive"
                             data-testid={`text-event-error-${ev.id}`}
+                          >
+                            {ev.error}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </ScrollArea>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet
+        open={!!historyResetToken}
+        onOpenChange={(open) => !open && setHistoryResetToken(null)}
+      >
+        <SheetContent
+          side={ar ? "left" : "right"}
+          className="w-full sm:max-w-md flex flex-col"
+          data-testid="sheet-reset-history"
+        >
+          <SheetHeader>
+            <SheetTitle>
+              {ar ? "سجل تسليم رسالة الاستعادة" : "Password reset delivery history"}
+            </SheetTitle>
+            <SheetDescription data-testid="text-reset-history-meta">
+              {historyResetToken?.createdAt
+                ? `${ar ? "أُنشئت" : "Requested"} ${new Date(
+                    historyResetToken.createdAt,
+                  ).toLocaleString()}`
+                : ""}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 flex-1 overflow-hidden">
+            {loadingResetHistory ? (
+              <div className="py-10 text-center">
+                <Loader2 className="inline h-4 w-4 animate-spin" />
+              </div>
+            ) : resetHistoryError ? (
+              <p
+                className="py-10 text-center text-sm text-destructive"
+                data-testid="text-reset-history-error"
+              >
+                {ar
+                  ? "تعذّر تحميل سجل التسليم."
+                  : "Couldn't load delivery history."}
+              </p>
+            ) : resetHistoryEvents.length === 0 ? (
+              <p
+                className="py-10 text-center text-sm text-muted-foreground"
+                data-testid="text-no-reset-history"
+              >
+                {ar ? "لا توجد أحداث بعد." : "No events recorded yet."}
+              </p>
+            ) : (
+              <ScrollArea className="h-full pe-2">
+                <ol className="relative space-y-4 ps-5">
+                  {resetHistoryEvents.map((ev) => {
+                    const desc = eventDescriptor(ev.type, ar);
+                    const Icon = desc.Icon;
+                    const dotColor =
+                      desc.tone === "success"
+                        ? "bg-emerald-500"
+                        : desc.tone === "warning"
+                          ? "bg-amber-500"
+                          : desc.tone === "destructive"
+                            ? "bg-destructive"
+                            : desc.tone === "info"
+                              ? "bg-sky-500"
+                              : "bg-muted-foreground";
+                    return (
+                      <li
+                        key={ev.id}
+                        className="relative"
+                        data-testid={`row-reset-event-${ev.id}`}
+                      >
+                        <span
+                          className={`absolute -start-5 top-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-background ${dotColor}`}
+                          aria-hidden="true"
+                        />
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span
+                            className="text-sm font-medium"
+                            data-testid={`text-reset-event-type-${ev.id}`}
+                          >
+                            {desc.label}
+                          </span>
+                          <Badge variant={desc.tone} size="sm">
+                            {ev.type}
+                          </Badge>
+                        </div>
+                        <div
+                          className="mt-0.5 text-xs text-muted-foreground"
+                          data-testid={`text-reset-event-time-${ev.id}`}
+                        >
+                          {ev.createdAt
+                            ? new Date(ev.createdAt).toLocaleString()
+                            : "—"}
+                        </div>
+                        {ev.error && (
+                          <p
+                            className="mt-1 text-xs text-destructive"
+                            data-testid={`text-reset-event-error-${ev.id}`}
                           >
                             {ev.error}
                           </p>

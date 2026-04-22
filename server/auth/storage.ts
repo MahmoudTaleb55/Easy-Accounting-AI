@@ -345,6 +345,22 @@ export const authBizStorage = {
       .orderBy(desc(passwordResetEmailEvents.createdAt));
   },
 
+  async listPasswordResetEmailEventsForToken(tokenId: string): Promise<PasswordResetEmailEvent[]> {
+    return db
+      .select()
+      .from(passwordResetEmailEvents)
+      .where(eq(passwordResetEmailEvents.tokenId, tokenId))
+      .orderBy(desc(passwordResetEmailEvents.createdAt));
+  },
+
+  async getPasswordResetTokenById(id: string): Promise<PasswordResetToken | undefined> {
+    const [row] = await db
+      .select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.id, id));
+    return row;
+  },
+
   async listPasswordResetTokensForUser(userId: string): Promise<PasswordResetToken[]> {
     return db
       .select()

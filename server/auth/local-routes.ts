@@ -477,16 +477,36 @@ export function registerLocalAuthRoutes(app: Express) {
     const all = await authBizStorage.listMembersForCompany(ctx.companyId);
     const target = all.find((m) => m.id === String(req.params.id));
     if (!target) return res.status(404).json({ message: "Member not found" });
-    const [sessions, passwordResetEmails] = await Promise.all([
+    const [sessions, passwordResetTokens] = await Promise.all([
       authBizStorage.listSessionsForUser(target.userId),
-      authBizStorage.listPasswordResetEmailEventsForUser(target.userId),
+      authBizStorage.listPasswordResetTokensForUser(target.userId),
     ]);
     res.json({
       member: { id: target.id, userId: target.userId, role: target.role, user: target.user },
       sessions,
-      passwordResetEmails,
+      passwordResetTokens,
     });
   });
+
+  // Per password-reset-token lifecycle log (admin-only). Mirrors the invitation
+  // events route so the Members UI can render the same timeline drawer for
+  // password-reset emails. Scoped to the admin's workspace.
+  app.get(
+    "/api/auth/password-reset-tokens/:id/events",
+    requireAuth,
+    requireRole("admin"),
+    async (req, res) => {
+      const ctx = (req as any).membership!;
+      const token = await authBizStorage.getPasswordResetTokenById(String(req.params.id));
+      if (!token) return res.status(404).json({ message: "Token not found" });
+      const members = await authBizStorage.listMembersForCompany(ctx.companyId);
+      if (!members.some((m) => m.userId === token.userId)) {
+        return res.status(404).json({ message: "Token not found" });
+      }
+      const events = await authBizStorage.listPasswordResetEmailEventsForToken(token.id);
+      res.json(events);
+    },
+  );
 
   app.delete("/api/auth/members/:id", requireAuth, requireRole("admin"), async (req, res) => {
     const ctx = (req as any).membership!;
