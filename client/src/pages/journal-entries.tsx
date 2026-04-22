@@ -206,7 +206,7 @@ export default function JournalEntriesPage() {
                 </div>
               </div>
 
-              <div className="border border-border rounded-md overflow-hidden">
+              <div className="border border-border rounded-md table-sticky-first">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
                     <tr>
@@ -435,6 +435,7 @@ export default function JournalEntriesPage() {
                     )}
                   </div>
                 </div>
+                <div className="table-sticky-first">
                 <table className="w-full text-sm">
                   <thead className="text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
                     <tr>
@@ -464,6 +465,7 @@ export default function JournalEntriesPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </Card>
             )
           })}
