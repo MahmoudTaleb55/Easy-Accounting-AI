@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -89,6 +89,23 @@ interface InvitationEventRow {
   createdAt: string | null;
 }
 
+type HistoryFilterId = "all" | "delivery" | "engagement" | "failures";
+
+const HISTORY_FILTER_TYPES: Record<Exclude<HistoryFilterId, "all">, readonly string[]> = {
+  delivery: ["sent", "delivered", "delivery_delayed"],
+  engagement: ["opened", "clicked"],
+  failures: ["bounced", "complained", "send_failed", "not_configured"],
+};
+
+function historyFilterLabels(ar: boolean): Record<HistoryFilterId, string> {
+  return {
+    all: ar ? "الكل" : "All",
+    delivery: ar ? "التسليم" : "Delivery",
+    engagement: ar ? "التفاعل" : "Engagement",
+    failures: ar ? "الإخفاقات" : "Failures",
+  };
+}
+
 function eventDescriptor(
   type: string,
   ar: boolean,
@@ -165,7 +182,12 @@ export default function MembersPage() {
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [activityMemberId, setActivityMemberId] = useState<string | null>(null);
   const [historyInvitation, setHistoryInvitation] = useState<InvitationRow | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilterId>("all");
   const isAdmin = role === "admin";
+
+  useEffect(() => {
+    setHistoryFilter("all");
+  }, [historyInvitation?.id]);
 
   const { data: historyEvents = [], isLoading: loadingHistory, error: historyError } = useQuery<InvitationEventRow[]>({
     queryKey: ["/api/auth/invitations", historyInvitation?.id, "events"],
@@ -176,6 +198,27 @@ export default function MembersPage() {
     },
     enabled: !!historyInvitation && isAdmin,
   });
+
+  const historyCounts = useMemo<Record<HistoryFilterId, number>>(() => {
+    const counts: Record<HistoryFilterId, number> = {
+      all: historyEvents.length,
+      delivery: 0,
+      engagement: 0,
+      failures: 0,
+    };
+    for (const ev of historyEvents) {
+      for (const key of ["delivery", "engagement", "failures"] as const) {
+        if (HISTORY_FILTER_TYPES[key].includes(ev.type)) counts[key]++;
+      }
+    }
+    return counts;
+  }, [historyEvents]);
+
+  const filteredHistoryEvents = useMemo(() => {
+    if (historyFilter === "all") return historyEvents;
+    const allowed = HISTORY_FILTER_TYPES[historyFilter];
+    return historyEvents.filter((ev) => allowed.includes(ev.type));
+  }, [historyEvents, historyFilter]);
 
   const { data: activity, isLoading: loadingActivity } = useQuery<MemberActivityResponse>({
     queryKey: ["/api/auth/members", activityMemberId, "activity"],
@@ -656,6 +699,37 @@ export default function MembersPage() {
               {historyInvitation?.email}
             </SheetDescription>
           </SheetHeader>
+          <div
+            className="mt-3 flex flex-wrap gap-1.5"
+            role="group"
+            aria-label={ar ? "تصفية الأحداث" : "Filter events"}
+            data-testid="group-history-filter"
+          >
+            {(["all", "delivery", "engagement", "failures"] as const).map((id) => {
+              const labels = historyFilterLabels(ar);
+              const active = historyFilter === id;
+              return (
+                <Button
+                  key={id}
+                  type="button"
+                  size="sm"
+                  variant={active ? "default" : "outline"}
+                  onClick={() => setHistoryFilter(id)}
+                  className="h-7 rounded-full px-3 text-xs"
+                  aria-pressed={active}
+                  data-testid={`chip-history-filter-${id}`}
+                >
+                  <span>{labels[id]}</span>
+                  <span
+                    className="ms-1.5 text-[10px] opacity-80"
+                    data-testid={`text-history-filter-count-${id}`}
+                  >
+                    {historyCounts[id]}
+                  </span>
+                </Button>
+              );
+            })}
+          </div>
           <div className="mt-4 flex-1 overflow-hidden">
             {loadingHistory ? (
               <div className="py-10 text-center">
@@ -677,10 +751,19 @@ export default function MembersPage() {
               >
                 {ar ? "لا توجد أحداث بعد." : "No events recorded yet."}
               </p>
+            ) : filteredHistoryEvents.length === 0 ? (
+              <p
+                className="py-10 text-center text-sm text-muted-foreground"
+                data-testid="text-no-history-filtered"
+              >
+                {ar
+                  ? "لا توجد أحداث ضمن هذا التصفية."
+                  : "No events match this filter."}
+              </p>
             ) : (
               <ScrollArea className="h-full pe-2">
                 <ol className="relative space-y-4 ps-5">
-                  {historyEvents.map((ev) => {
+                  {filteredHistoryEvents.map((ev) => {
                     const desc = eventDescriptor(ev.type, ar);
                     const Icon = desc.Icon;
                     const dotColor =
