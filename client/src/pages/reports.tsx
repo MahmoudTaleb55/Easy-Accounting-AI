@@ -441,7 +441,7 @@ function AnalyticsView({
       </div>
 
       {/* KPI strip — Mercury style: only revenue gets color, expense neutral */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat
           label={t.kpiIncome}
           value={fmt(totals.income)}
@@ -729,7 +729,7 @@ function AnalyticsView({
             {t.noTx}
           </div>
         ) : (
-          <div className="overflow-x-auto border-t border-border/60">
+          <div className="overflow-x-auto table-sticky-first border-t border-border/60">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs uppercase tracking-wider text-muted-foreground/80 bg-muted/30">

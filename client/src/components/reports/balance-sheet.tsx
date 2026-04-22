@@ -58,7 +58,7 @@ export function BalanceSheet() {
           <h3 className="text-lg font-bold text-blue-700 dark:text-blue-300 border-b pb-2">الأصول</h3>
           <div>
             <h4 className="text-sm font-semibold text-muted-foreground mb-1">أصول متداولة</h4>
-            <table className="w-full"><tbody><ItemRows items={data.assets.current} /></tbody></table>
+            <div className="table-sticky-first overflow-x-auto"><table className="w-full"><tbody><ItemRows items={data.assets.current} /></tbody></table></div>
             <div className="flex justify-between font-medium text-sm border-t pt-2 mt-1 px-3">
               <span>إجمالي المتداول</span>
               <span className="tabular-nums">{fmt(data.assets.totalCurrent)}</span>
@@ -66,7 +66,7 @@ export function BalanceSheet() {
           </div>
           <div>
             <h4 className="text-sm font-semibold text-muted-foreground mb-1">أصول غير متداولة</h4>
-            <table className="w-full"><tbody><ItemRows items={data.assets.nonCurrent} /></tbody></table>
+            <div className="table-sticky-first overflow-x-auto"><table className="w-full"><tbody><ItemRows items={data.assets.nonCurrent} /></tbody></table></div>
             <div className="flex justify-between font-medium text-sm border-t pt-2 mt-1 px-3">
               <span>إجمالي غير المتداول</span>
               <span className="tabular-nums">{fmt(data.assets.totalNonCurrent)}</span>
@@ -83,7 +83,7 @@ export function BalanceSheet() {
           <h3 className="text-lg font-bold text-rose-700 dark:text-rose-300 border-b pb-2">الخصوم وحقوق الملكية</h3>
           <div>
             <h4 className="text-sm font-semibold text-muted-foreground mb-1">خصوم متداولة</h4>
-            <table className="w-full"><tbody><ItemRows items={data.liabilities.current} /></tbody></table>
+            <div className="table-sticky-first overflow-x-auto"><table className="w-full"><tbody><ItemRows items={data.liabilities.current} /></tbody></table></div>
             <div className="flex justify-between font-medium text-sm border-t pt-2 mt-1 px-3">
               <span>إجمالي الخصوم المتداولة</span>
               <span className="tabular-nums">{fmt(data.liabilities.totalCurrent)}</span>
@@ -91,7 +91,7 @@ export function BalanceSheet() {
           </div>
           <div>
             <h4 className="text-sm font-semibold text-muted-foreground mb-1">خصوم غير متداولة</h4>
-            <table className="w-full"><tbody><ItemRows items={data.liabilities.nonCurrent} /></tbody></table>
+            <div className="table-sticky-first overflow-x-auto"><table className="w-full"><tbody><ItemRows items={data.liabilities.nonCurrent} /></tbody></table></div>
             <div className="flex justify-between font-medium text-sm border-t pt-2 mt-1 px-3">
               <span>إجمالي الخصوم غير المتداولة</span>
               <span className="tabular-nums">{fmt(data.liabilities.totalNonCurrent)}</span>
@@ -104,13 +104,13 @@ export function BalanceSheet() {
 
           <div>
             <h4 className="text-sm font-semibold text-muted-foreground mb-1">حقوق الملكية</h4>
-            <table className="w-full"><tbody>
+            <div className="table-sticky-first overflow-x-auto"><table className="w-full"><tbody>
               <ItemRows items={data.equity.items} />
               <tr className="border-b last:border-0">
                 <td className="px-3 py-1.5 text-sm italic">صافي ربح الفترة</td>
                 <td className="px-3 py-1.5 text-left tabular-nums text-sm italic">{fmt(data.equity.netIncome)}</td>
               </tr>
-            </tbody></table>
+            </tbody></table></div>
             <div className="flex justify-between font-medium text-sm border-t pt-2 mt-1 px-3">
               <span>إجمالي حقوق الملكية</span>
               <span className="tabular-nums">{fmt(data.equity.total)}</span>

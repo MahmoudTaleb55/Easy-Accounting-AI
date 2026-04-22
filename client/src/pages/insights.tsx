@@ -404,7 +404,7 @@ function SimulatorTab() {
             <p className="text-muted-foreground text-center py-12">شغّل المحاكاة لرؤية النتائج</p>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div className="border rounded-lg p-3">
                   <div className="text-muted-foreground text-xs mb-1">الوضع الحالي / شهرياً</div>
                   <div>إيراد: {fmtCurrency(result.base.monthlyRevenue)}</div>
@@ -559,9 +559,9 @@ function BudgetTab() {
                 const pct = Math.min(100, Math.abs(r.budget > 0 ? (r.actual / r.budget) * 100 : 0));
                 return (
                   <div key={r.accountId} data-testid={`row-budget-${r.accountId}`}>
-                    <div className="flex justify-between text-sm mb-1">
+                    <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm mb-1">
                       <span className="font-medium">{r.code} — {r.nameAr}</span>
-                      <span className={overBudget ? "text-destructive font-bold" : "text-green-600 dark:text-green-400 font-bold"}>
+                      <span className={overBudget ? "text-destructive font-bold tabular-nums" : "text-green-600 dark:text-green-400 font-bold tabular-nums"}>
                         {fmtCurrency(r.actual)} / {fmtCurrency(r.budget)}
                         <span className="text-xs mr-2">({variance >= 0 ? "+" : ""}{r.variancePct.toFixed(0)}%)</span>
                       </span>

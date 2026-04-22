@@ -589,19 +589,19 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
             </TabsContent>
             <TabsContent value="schedule" className="mt-4 max-h-96 overflow-y-auto">
               {data.schedule.length === 0 ? <div className="text-sm text-muted-foreground">لا يوجد جدول.</div> : (
-                <table className="w-full text-sm"><thead className="text-muted-foreground border-b"><tr><th className="text-right py-2">الشهر</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">الحالة</th></tr></thead>
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="text-muted-foreground border-b"><tr><th className="text-right py-2">الشهر</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">الحالة</th></tr></thead>
                   <tbody>{data.schedule.map((r) => (
                     <tr key={r.id} className="border-b" data-testid={`row-schedule-${r.id}`}>
                       <td className="py-1">{r.periodYear}-{String(r.periodMonth).padStart(2, "0")}</td>
                       <td className="py-1 tabular-nums">{fmt(r.plannedAmount)}</td>
                       <td className="py-1"><Badge variant="secondary">{r.status}</Badge></td>
                     </tr>
-                  ))}</tbody></table>
+                  ))}</tbody></table></div>
               )}
             </TabsContent>
             <TabsContent value="history" className="mt-4 max-h-96 overflow-y-auto" data-testid="tab-content-history">
               {history.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد قيود مرتبطة بعد.</div> : (
-                <table className="w-full text-sm">
+                <div className="table-sticky-first"><table className="w-full text-sm">
                   <thead className="text-muted-foreground border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">النوع</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">القيد</th><th className="text-right py-2">ملاحظات</th></tr></thead>
                   <tbody>{history.map((r, i) => (
                     <tr key={i} className="border-b" data-testid={`row-history-${i}`}>
@@ -612,7 +612,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                       <td className="py-1 text-xs text-muted-foreground">{r.notes}</td>
                     </tr>
                   ))}</tbody>
-                </table>
+                </table></div>
               )}
               {data.disposals.length > 0 && (
                 <div className="mt-4 text-xs text-muted-foreground">
@@ -622,7 +622,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
             </TabsContent>
             <TabsContent value="impairments" className="mt-4">
               {data.impairments.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد قيود انخفاض.</div> : (
-                <table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة الاستردادية</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">القيد</th></tr></thead>
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة الاستردادية</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">القيد</th></tr></thead>
                   <tbody>{data.impairments.map((e) => (
                     <tr key={e.id} className="border-b">
                       <td className="py-1">{e.eventDate}</td>
@@ -630,12 +630,12 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                       <td className="py-1 tabular-nums">{fmt(e.lossAmount)}</td>
                       <td className="py-1">{e.journalEntryId ? `JE ${e.journalEntryId}` : "—"}</td>
                     </tr>
-                  ))}</tbody></table>
+                  ))}</tbody></table></div>
               )}
             </TabsContent>
             <TabsContent value="revaluations" className="mt-4">
               {data.revaluations.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد عمليات إعادة تقييم.</div> : (
-                <table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة العادلة</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">فائض</th><th className="text-right py-2">P&L</th></tr></thead>
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة العادلة</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">فائض</th><th className="text-right py-2">P&L</th></tr></thead>
                   <tbody>{data.revaluations.map((e) => (
                     <tr key={e.id} className="border-b">
                       <td className="py-1">{e.eventDate}</td>
@@ -644,12 +644,12 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                       <td className="py-1 tabular-nums">{fmt(e.surplusDelta)}</td>
                       <td className="py-1 tabular-nums">{fmt(e.plImpact)}</td>
                     </tr>
-                  ))}</tbody></table>
+                  ))}</tbody></table></div>
               )}
             </TabsContent>
             <TabsContent value="components" className="mt-4">
               {data.components.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد مكونات.</div> : (
-                <table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">الاسم</th><th className="text-right py-2">التكلفة</th><th className="text-right py-2">العمر</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">مجمع الإهلاك</th></tr></thead>
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">الاسم</th><th className="text-right py-2">التكلفة</th><th className="text-right py-2">العمر</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">مجمع الإهلاك</th></tr></thead>
                   <tbody>{data.components.map((c) => (
                     <tr key={c.id} className="border-b">
                       <td className="py-1">{c.name}</td>
@@ -658,7 +658,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                       <td className="py-1">{METHODS.find(m => m.value === c.method)?.label}</td>
                       <td className="py-1 tabular-nums">{fmt(c.accumDepreciation)}</td>
                     </tr>
-                  ))}</tbody></table>
+                  ))}</tbody></table></div>
               )}
             </TabsContent>
           </Tabs>
@@ -921,7 +921,7 @@ function DepreciationPanel({ company }: { company: Company }) {
         <CardHeader><CardTitle className="text-lg">سجل تشغيلات الإهلاك</CardTitle></CardHeader>
         <CardContent>
           {!runs || runs.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد تشغيلات بعد.</div> : (
-            <table className="w-full text-sm">
+            <div className="table-sticky-first"><table className="w-full text-sm">
               <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">الفترة</th><th className="text-right py-2">الإجمالي</th><th className="text-right py-2">الحالة</th><th className="text-right py-2">القيد</th></tr></thead>
               <tbody>{runs.map((r) => (
                 <tr key={r.id} className="border-b" data-testid={`row-run-${r.id}`}>
@@ -931,7 +931,7 @@ function DepreciationPanel({ company }: { company: Company }) {
                   <td className="py-2">{r.journalEntryId ? `JE ${r.journalEntryId}` : "—"}</td>
                 </tr>
               ))}</tbody>
-            </table>
+            </table></div>
           )}
         </CardContent>
       </Card>
@@ -1068,7 +1068,7 @@ function CategoriesPanel({ company }: { company: Company }) {
       </CardHeader>
       <CardContent>
         {!cats || cats.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد تصنيفات.</div> : (
-          <table className="w-full text-sm">
+          <div className="table-sticky-first"><table className="w-full text-sm">
             <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">الاسم</th><th className="text-right py-2">النموذج</th><th className="text-right py-2">العمر</th><th className="text-right py-2">الطريقة</th></tr></thead>
             <tbody>{cats.map((c) => (
               <tr key={c.id} className="border-b" data-testid={`row-category-${c.id}`}>
@@ -1078,7 +1078,7 @@ function CategoriesPanel({ company }: { company: Company }) {
                 <td className="py-2">{METHODS.find((m) => m.value === c.defaultMethod)?.label}</td>
               </tr>
             ))}</tbody>
-          </table>
+          </table></div>
         )}
       </CardContent>
     </Card>
@@ -1129,7 +1129,7 @@ export function CompaniesPanel() {
         </Dialog>
       </CardHeader>
       <CardContent>
-        <table className="w-full text-sm">
+        <div className="table-sticky-first"><table className="w-full text-sm">
           <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">الاسم</th><th className="text-right py-2">العملة</th><th className="text-right py-2">افتراضية</th></tr></thead>
           <tbody>{(companies || []).map((c) => (
             <tr key={c.id} className="border-b" data-testid={`row-company-${c.id}`}>
@@ -1138,7 +1138,7 @@ export function CompaniesPanel() {
               <td className="py-2">{c.isDefault ? <Badge>افتراضية</Badge> : "—"}</td>
             </tr>
           ))}</tbody>
-        </table>
+        </table></div>
       </CardContent>
     </Card>
   );
@@ -1180,7 +1180,7 @@ export function FxPanel({ company }: { company: Company }) {
           <Button onClick={() => m.mutate()} disabled={m.isPending} data-testid="button-save-fx"><Plus className="w-4 h-4 ml-1" /> إضافة</Button>
         </div>
         {!rates || rates.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد أسعار صرف.</div> : (
-          <table className="w-full text-sm">
+          <div className="table-sticky-first"><table className="w-full text-sm">
             <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">من</th><th className="text-right py-2">إلى</th><th className="text-right py-2">السعر</th><th /></tr></thead>
             <tbody>{rates.map((r) => (
               <tr key={r.id} className="border-b" data-testid={`row-fx-${r.id}`}>
@@ -1191,7 +1191,7 @@ export function FxPanel({ company }: { company: Company }) {
                 <td className="py-2"><Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)} data-testid={`button-delete-fx-${r.id}`}><Trash2 className="w-4 h-4 text-rose-600" /></Button></td>
               </tr>
             ))}</tbody>
-          </table>
+          </table></div>
         )}
       </CardContent>
     </Card>

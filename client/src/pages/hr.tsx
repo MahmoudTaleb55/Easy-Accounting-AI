@@ -537,7 +537,7 @@ function PayrollTab() {
             />
           ) : (
             <>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto table-sticky-first">
                 <Table>
                   <TableHeader>
                     <TableRow>

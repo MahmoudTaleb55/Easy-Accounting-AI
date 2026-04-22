@@ -40,7 +40,7 @@ export function IfrsIncomeStatement({
       </div>
 
       {/* Statement table */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto table-sticky-first">
         <table className="w-full text-sm" dir="rtl">
           <thead>
             <tr className="bg-muted/40 text-foreground/70 text-xs uppercase tracking-wider">
