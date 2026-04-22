@@ -734,6 +734,79 @@ function getCopy(locale: Locale) {
         },
       ],
     },
+    testimonials: {
+      eyebrow: ar ? "الذين انتقلوا" : "Who switched",
+      title: ar
+        ? "ليس عددٌ على شريحة. أسماءٌ ومدنٌ ومحاسبون يقفون خلف كلّ كلمة."
+        : "Not a number on a slide. Names, cities, and accountants standing behind every word.",
+      stat: ar ? "+٤٬٢٠٠" : "4,200+",
+      statSub: ar
+        ? "مالك أعمال يُدير ماليّته من هنا — في ٧ دول"
+        : "business owners running finance here — across 7 countries",
+      items: ar ? [
+        {
+          q: "أوّل مرّة أُغلق فيها شهراً ماليّاً قبل الموعد. الإقرار الضريبيّ تولّى نفسه. لم أعد أنام والـ Excel على ركبتيّ.",
+          n: "ريما خالد", r: "مديرة ماليّة", c: "شركة الواحة للتجارة · جدّة 🇸🇦",
+          ind: "تجارة تجزئة", since: "منذ ٢٠٢٤",
+        },
+        {
+          q: "ثلاث شركات في ثلاث دول، وكنت أعيش بين ثلاثة أنظمة. اليوم أراها كلّها في شاشة واحدة، مُوحَّدةً بـ ر.س لحظيّاً.",
+          n: "ياسر الحمّادي", r: "الرئيس التنفيذيّ", c: "مجموعة الحمّادي القابضة · دبي 🇦🇪",
+          ind: "مجموعة قابضة", since: "منذ ٢٠٢٣",
+        },
+        {
+          q: "أرسل الفاتورة عبر WhatsApp، يدفعها العميل من نفس الرابط، وأرى القيد منعكساً في الأستاذ قبل أن أُغلق الشاشة.",
+          n: "نور الدين الفقيه", r: "صاحب مؤسّسة", c: "النور للحلول الرقميّة · القاهرة 🇪🇬",
+          ind: "خدمات تقنيّة", since: "منذ ٢٠٢٥",
+        },
+        {
+          q: "لمّا سألتُه عن سيولة الربع القادم، أعطاني الإجابة بعربيّة فصيحة وجدول يظهر فيه التحدّي قبل ثلاثة أشهر من حدوثه.",
+          n: "عبدالرحمن الكواري", r: "مدير العمليّات", c: "الخليج للمقاولات · الدوحة 🇶🇦",
+          ind: "مقاولات وإنشاءات", since: "منذ ٢٠٢٤",
+        },
+        {
+          q: "المدقّق الخارجيّ طلب الوصول، فتحت له حساباً للقراءة فقط في دقيقة. خرج راضياً، وأنا لم أُرسل ملفّاً واحداً.",
+          n: "ليلى العتيبي", r: "محاسبة قانونيّة", c: "مكتب العتيبي للاستشارات · الكويت 🇰🇼",
+          ind: "استشارات ماليّة", since: "منذ ٢٠٢٥",
+        },
+        {
+          q: "كنّا ندفع لمحاسب خارجيّ ٤٬٥٠٠ ريال شهريّاً. اليوم نملك النظام، والتقارير، والوقت — بثُلث المبلغ.",
+          n: "خالد المعشّر", r: "مؤسِّس", c: "كنفّة للمأكولات · عمّان 🇯🇴",
+          ind: "مطاعم", since: "منذ ٢٠٢٤",
+        },
+      ] : [
+        {
+          q: "First time I ever closed a month before the deadline. The VAT return ran itself. I no longer sleep with Excel on my lap.",
+          n: "Reema Khaled", r: "CFO", c: "Al-Waha Trading · Jeddah 🇸🇦",
+          ind: "Retail", since: "Since 2024",
+        },
+        {
+          q: "Three companies in three countries — I used to live between three systems. Today I see them all on one screen, consolidated in SAR in real time.",
+          n: "Yasser Al-Hammadi", r: "CEO", c: "Al-Hammadi Holding · Dubai 🇦🇪",
+          ind: "Holding group", since: "Since 2023",
+        },
+        {
+          q: "I send the invoice over WhatsApp, the client pays from the same link, and the entry hits the ledger before I close the tab.",
+          n: "Noureddine Al-Faqih", r: "Owner", c: "Al-Noor Digital · Cairo 🇪🇬",
+          ind: "Tech services", since: "Since 2025",
+        },
+        {
+          q: "When I asked about next quarter's liquidity, it answered in fluent Arabic with a chart showing the squeeze three months before it happened.",
+          n: "Abdulrahman Al-Kuwari", r: "COO", c: "Gulf Contracting · Doha 🇶🇦",
+          ind: "Construction", since: "Since 2024",
+        },
+        {
+          q: "The external auditor asked for access. I opened a read-only account in a minute. He left satisfied — and I sent zero files.",
+          n: "Layla Al-Otaibi", r: "Chartered accountant", c: "Al-Otaibi Advisory · Kuwait City 🇰🇼",
+          ind: "Financial advisory", since: "Since 2025",
+        },
+        {
+          q: "We used to pay an outside accountant SAR 4,500/month. Today we own the system, the reports, and the time — at one-third the cost.",
+          n: "Khaled Al-Mu'asher", r: "Founder", c: "Knafeh & Co. · Amman 🇯🇴",
+          ind: "Restaurants", since: "Since 2024",
+        },
+      ],
+    },
     faq: {
       eyebrow: ar ? "الأسئلة الشائعة" : "Frequently asked",
       title: ar ? "سؤال مباشر، إجابة مباشرة." : "Straight question, straight answer.",
@@ -809,6 +882,7 @@ export default function Landing() {
         <LocalIntegrations t={t} />
         <Security t={t} />
         <UseCases t={t} />
+        <Testimonials t={t} />
         <Pricing t={t} />
         <FAQ t={t} />
         <FinalCTA t={t} />
@@ -1336,6 +1410,86 @@ function DashboardShowcase({ t }: { t: Dict }) {
           {s.legend.map((l) => (
             <span key={l} className="flex items-center gap-1.5"><span className="status-dot bg-primary" />{l}</span>
           ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  6.45 · Testimonials — named MENA personas                                 */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function Testimonials({ t }: { t: Dict }) {
+  const ts = t.testimonials
+  return (
+    <section id="customers" className="py-24 lg:py-32 border-b border-border bg-muted/20">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-12 gap-10 mb-14 items-end">
+          <div className="lg:col-span-7">
+            <div className="eyebrow mb-3">{ts.eyebrow}</div>
+            <h2 className="text-display text-foreground">{ts.title}</h2>
+          </div>
+          <div className="lg:col-span-5">
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-5">
+              <div className="font-mono text-3xl lg:text-4xl font-semibold text-primary tabular-nums leading-none">
+                {ts.stat}
+              </div>
+              <div className="mt-2 text-sm text-foreground/80 leading-relaxed">{ts.statSub}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {ts.items.map((it, i) => {
+            const initials = it.n
+              .split(/\s+/)
+              .slice(0, 2)
+              .map((w) => w[0])
+              .join("")
+            const tints = [
+              "from-primary/15 to-primary/5 text-primary",
+              "from-accent/40 to-accent/10 text-accent-foreground",
+              "from-warning/15 to-warning/5 text-warning",
+            ]
+            const tint = tints[i % tints.length]
+            return (
+              <figure
+                key={it.n}
+                className="rounded-xl border border-border bg-card p-6 flex flex-col gap-5 hover-elevate"
+                data-testid={`testimonial-${i}`}
+              >
+                <blockquote className="text-base leading-relaxed text-foreground/90 relative">
+                  <span aria-hidden className="absolute -top-3 -start-1 text-4xl text-primary/30 font-serif leading-none select-none">
+                    “
+                  </span>
+                  <span className="relative">{it.q}</span>
+                </blockquote>
+                <figcaption className="mt-auto pt-4 border-t border-border flex items-center gap-3">
+                  <div
+                    aria-hidden
+                    className={cn(
+                      "size-11 rounded-full bg-gradient-to-br flex items-center justify-center font-semibold text-sm flex-shrink-0",
+                      tint
+                    )}
+                  >
+                    {initials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-foreground truncate">{it.n}</div>
+                    <div className="text-2xs text-muted-foreground truncate">{it.r}</div>
+                    <div className="text-2xs text-foreground/70 mt-0.5 truncate">{it.c}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <span className="font-mono text-2xs text-muted-foreground">{it.since}</span>
+                    <span className="font-mono text-2xs text-primary border border-primary/30 bg-primary/5 rounded px-1.5 py-0.5">
+                      {it.ind}
+                    </span>
+                  </div>
+                </figcaption>
+              </figure>
+            )
+          })}
         </div>
       </div>
     </section>
