@@ -1,12 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import { useChatMessages, useSendMessage } from "@/hooks/use-chat"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Card } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import {
-  Send,
   Sparkles,
   Loader2,
   ImagePlus,
@@ -18,92 +15,72 @@ import {
   FileText,
   CheckCircle2,
   BookOpen,
+  Wand2,
+  Command,
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
 import { cn } from "@/lib/utils"
 
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  AI Assistant — command center                                            */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
 export default function AiAssistant() {
   const { locale } = useLocale()
+  const isAr = locale === "ar"
   const { data: messages, isLoading } = useChatMessages()
   const sendMessage = useSendMessage()
   const { toast } = useToast()
+
   const [input, setInput] = useState("")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const t = useMemo(
     () => ({
-      eyebrow: locale === "ar" ? "المساعد التنفيذي" : "Executive assistant",
-      title:
-        locale === "ar"
-          ? "اطلب. أنفّذ."
-          : "Ask. I execute.",
-      subtitle:
-        locale === "ar"
-          ? "سجّل معاملات، اكتب قيود مزدوجة، ولّد تقارير Excel و PDF جاهزة للتنزيل — كله من المحادثة."
-          : "Post transactions, write double-entry journals, and generate ready-to-download Excel & PDF reports — all from chat.",
-      welcome:
-        locale === "ar"
-          ? "أنا مساعدك المحاسبي. لست أرد فقط — أنفّذ. اطلب أي شيء من القائمة وانتظر النتيجة."
-          : "I'm your accounting copilot. I don't just answer — I execute. Ask for anything below and watch it happen.",
-      welcomeBullets:
-        locale === "ar"
-          ? [
-              "ولّد ميزان مراجعة بصيغة Excel أو قائمة دخل PDF بنقرة",
-              "اكتب قيد يومية مزدوج بحسابات حقيقية من دليلك المحاسبي",
-              "سجّل معاملات من جملة واحدة أو من صورة فاتورة فوراً",
-              "اسأل عن رصيدك الحالي أو أكبر فئة إنفاق في الفترة",
-            ]
-          : [
-              "Generate a Trial Balance in Excel or a P&L in PDF in one click",
-              "Post a double-entry journal using real accounts from your CoA",
-              "Record transactions from a single sentence or a receipt photo",
-              "Query your live balance or top spending category instantly",
-            ],
-      tryThese: locale === "ar" ? "أطلق إحدى القدرات" : "Trigger a capability",
-      placeholder:
-        locale === "ar"
-          ? "اكتب رسالتك… مثل: استلمت دفعة 3,500 من العميل"
-          : "Type your message… e.g. Received a $3,500 payment from client",
-      placeholderWithImage:
-        locale === "ar"
-          ? "أضف ملاحظة (اختياري)…"
-          : "Add a note (optional)…",
-      sizeError: locale === "ar" ? "حجم كبير جداً" : "File too large",
-      sizeErrorDesc:
-        locale === "ar" ? "الحد الأقصى ١٠ ميجابايت." : "Maximum size is 10MB.",
-      typeError: locale === "ar" ? "نوع غير مدعوم" : "Unsupported type",
-      typeErrorDesc:
-        locale === "ar" ? "الرجاء اختيار صورة فقط." : "Please choose an image file.",
-      footnote:
-        locale === "ar"
-          ? "كل قيد يظهر هنا يُرحَّل تلقائياً إلى اليومية. راجع الدفاتر دائماً."
-          : "Every entry posted here flows into the journal. Always review your books.",
-      uploadAria: locale === "ar" ? "ارفع صورة فاتورة" : "Upload a receipt image",
-      sendAria: locale === "ar" ? "إرسال" : "Send",
-      receipt: locale === "ar" ? "فاتورة" : "Receipt",
+      eyebrow: isAr ? "المساعد التنفيذي" : "Executive Assistant",
+      live: isAr ? "متّصل" : "Live",
+      model: isAr ? "نموذج محاسبي مدرّب" : "Accounting-tuned model",
+      title: isAr
+        ? "اطلب. أنفّذ."
+        : "Ask. I execute.",
+      subtitle: isAr
+        ? "سجّل المعاملات، اكتب القيود المزدوجة، وولّد تقارير Excel و PDF جاهزة — كله من سطر محادثة واحد."
+        : "Post transactions, write double-entry journals, and generate ready-to-download Excel & PDF reports — from a single line of chat.",
+      tryHeader: isAr ? "ابدأ من قدرة" : "Start from a capability",
+      placeholder: isAr
+        ? "اطلب أي شيء… مثل: ولّد ميزان مراجعة Excel"
+        : "Ask anything… e.g. Generate a Trial Balance in Excel",
+      placeholderWithImage: isAr ? "أضف ملاحظة (اختياري)…" : "Add a note (optional)…",
+      sizeError: isAr ? "حجم كبير جداً" : "File too large",
+      sizeErrorDesc: isAr ? "الحد الأقصى ١٠ ميجابايت." : "Maximum size is 10MB.",
+      typeError: isAr ? "نوع غير مدعوم" : "Unsupported type",
+      typeErrorDesc: isAr ? "الرجاء اختيار صورة فقط." : "Please choose an image file.",
+      footnote: isAr
+        ? "كل قيد ينفّذه المساعد يُرحَّل تلقائياً إلى اليومية. راجع الدفاتر دائماً."
+        : "Every entry the assistant posts is logged to the journal. Always review your books.",
+      uploadAria: isAr ? "ارفع صورة فاتورة" : "Upload a receipt image",
+      sendAria: isAr ? "إرسال" : "Send",
+      receipt: isAr ? "فاتورة" : "Receipt",
+      kbdHint: isAr ? "Enter للإرسال · Shift+Enter لسطر جديد" : "Enter to send · Shift+Enter newline",
+      capabilities: isAr ? [
+        { icon: FileSpreadsheet, title: "ميزان مراجعة Excel", subtitle: "ملف XLSX جاهز فوراً", prompt: "ولّد لي ميزان مراجعة بصيغة Excel", tone: "emerald" as const },
+        { icon: FileText, title: "قائمة دخل PDF", subtitle: "تقرير مهنّي في ثانية", prompt: "اطبع قائمة الدخل بصيغة PDF", tone: "rose" as const },
+        { icon: BookOpen, title: "قيد يومية مزدوج", subtitle: "حسابات حقيقية من دليلك", prompt: "اكتب قيد: ١٠٠٠ نقدية مدين، ١٠٠٠ مبيعات دائن، وصف: مبيعات نقدية", tone: "blue" as const },
+        { icon: CheckCircle2, title: "ملخّص لحظي", subtitle: "رصيدك وأكبر فئة إنفاق", prompt: "ما رصيدي الحالي وأكبر فئة إنفاقاً هذا الشهر؟", tone: "violet" as const },
+      ] : [
+        { icon: FileSpreadsheet, title: "Trial Balance · Excel", subtitle: "Ready XLSX in seconds", prompt: "Generate a Trial Balance in Excel", tone: "emerald" as const },
+        { icon: FileText, title: "P&L · PDF", subtitle: "Polished, board-ready", prompt: "Print the Profit & Loss statement as PDF", tone: "rose" as const },
+        { icon: BookOpen, title: "Double-entry journal", subtitle: "Real accounts from your CoA", prompt: "Post a journal: debit Cash 1000, credit Sales 1000, memo: cash sale", tone: "blue" as const },
+        { icon: CheckCircle2, title: "Live snapshot", subtitle: "Balance & top spend now", prompt: "What's my current balance and top expense this month?", tone: "violet" as const },
+      ],
     }),
-    [locale]
+    [isAr]
   )
 
-  const QUICK_PROMPTS = useMemo(
-    () =>
-      locale === "ar"
-        ? [
-            { icon: FileSpreadsheet, label: "ولّد ميزان مراجعة Excel", prompt: "ولّد لي ميزان مراجعة بصيغة Excel" },
-            { icon: FileText, label: "قائمة دخل PDF", prompt: "اطبع قائمة الدخل بصيغة PDF" },
-            { icon: BookOpen, label: "قيد يومية مزدوج", prompt: "اكتب قيد: ١٠٠٠ نقدية مدين، ١٠٠٠ مبيعات دائن، وصف: مبيعات نقدية" },
-            { icon: CheckCircle2, label: "ما رصيدي الآن؟", prompt: "ما رصيدي الحالي وأكبر مصروف هذا الشهر؟" },
-          ]
-        : [
-            { icon: FileSpreadsheet, label: "Trial Balance · Excel", prompt: "Generate a Trial Balance in Excel" },
-            { icon: FileText, label: "P&L · PDF", prompt: "Print the Profit & Loss statement as PDF" },
-            { icon: BookOpen, label: "Double-entry journal", prompt: "Post a journal: debit Cash 1000, credit Sales 1000, memo: cash sale" },
-            { icon: CheckCircle2, label: "What's my balance?", prompt: "What's my current balance and top expense this month?" },
-          ],
-    [locale]
-  )
+  /* ───────────────────────── side-effects ───────────────────────── */
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -114,6 +91,16 @@ export default function AiAssistant() {
       else scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages, sendMessage.isPending])
+
+  // Auto-grow textarea
+  useEffect(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = "auto"
+    ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
+  }, [input])
+
+  /* ───────────────────────── handlers ───────────────────────── */
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -132,15 +119,23 @@ export default function AiAssistant() {
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const submit = () => {
     if ((!input.trim() && !imagePreview) || sendMessage.isPending) return
-    sendMessage.mutate({
-      content: input.trim(),
-      imageData: imagePreview || undefined,
-    })
+    sendMessage.mutate({ content: input.trim(), imageData: imagePreview || undefined })
     setInput("")
     setImagePreview(null)
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    submit()
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      submit()
+    }
   }
 
   const handleQuickPrompt = (prompt: string) => {
@@ -148,118 +143,90 @@ export default function AiAssistant() {
     sendMessage.mutate({ content: prompt })
   }
 
-  const showQuickPrompts = !isLoading && (!messages || messages.length <= 1)
+  const showEmpty = !isLoading && (!messages || messages.length === 0)
+
+  /* ───────────────────────── render ───────────────────────── */
 
   return (
-    <div className="h-[calc(100vh-9rem)] md:h-[calc(100vh-8rem)] flex flex-col" data-testid="page-ai-assistant">
-      {/* Header */}
-      <header className="mb-5 flex items-end justify-between gap-4 flex-wrap">
-        <div className="space-y-2 max-w-2xl">
-          <div className="eyebrow text-muted-foreground/80 flex items-center gap-2">
+    <div
+      className="h-[calc(100vh-9rem)] md:h-[calc(100vh-8rem)] flex flex-col"
+      data-testid="page-ai-assistant"
+    >
+      {/* ── Workspace strip ── */}
+      <div className="mb-4 flex items-center justify-between gap-3 px-1">
+        <div className="flex items-center gap-2.5">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground">
             <Sparkles className="w-3 h-3 text-primary" />
-            {t.eyebrow}
-          </div>
-          <h1
-            className="text-2xl md:text-[28px] font-semibold tracking-tight text-foreground leading-tight"
-            data-testid="text-assistant-title"
-          >
-            {t.title}
-          </h1>
-          <p className="text-sm text-muted-foreground">{t.subtitle}</p>
+            <span className="font-medium text-foreground">{t.eyebrow}</span>
+          </span>
+          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            {t.live}
+          </span>
         </div>
-      </header>
+        <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
+          <Wand2 className="w-3 h-3" />
+          {t.model}
+        </span>
+      </div>
 
-      {/* Chat surface */}
-      <Card variant="default" className="flex-1 flex flex-col overflow-hidden p-0 min-h-0">
+      {/* ── Surface ── */}
+      <div className="flex-1 flex flex-col overflow-hidden rounded-xl border border-border bg-card min-h-0 shadow-sm">
         <ScrollArea className="flex-1" ref={scrollRef}>
-          <div className="px-4 sm:px-6 py-6 space-y-5 max-w-3xl mx-auto">
-            {/* Welcome bubble */}
-            <Bubble role="assistant" data-testid="message-welcome">
-              <p className="text-sm leading-relaxed text-foreground">{t.welcome}</p>
-              <ul className="mt-3 space-y-1.5">
-                {t.welcomeBullets.map((b, i) => (
-                  <li
-                    key={i}
-                    className="text-[13px] text-muted-foreground flex items-start gap-2"
-                  >
-                    <span className="mt-1.5 inline-block h-1 w-1 rounded-full bg-primary shrink-0" />
-                    <span>{b}</span>
-                  </li>
-                ))}
-              </ul>
-            </Bubble>
-
-            {isLoading ? (
-              <div className="flex justify-center py-6">
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-              </div>
+          <div className={cn("mx-auto max-w-3xl px-4 sm:px-8", showEmpty ? "py-10 sm:py-14" : "py-6 space-y-5")}>
+            {showEmpty ? (
+              <EmptyState
+                title={t.title}
+                subtitle={t.subtitle}
+                tryHeader={t.tryHeader}
+                capabilities={t.capabilities}
+                onPick={handleQuickPrompt}
+                isAr={isAr}
+              />
             ) : (
-              messages?.map((msg) => {
-                const { text, artifacts } = parseAssistantContent(msg.content)
-                return (
-                  <Bubble
-                    key={msg.id}
-                    role={msg.role as "user" | "assistant"}
-                    data-testid={`message-${msg.role}-${msg.id}`}
-                  >
-                    {text && (
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {text}
-                      </p>
-                    )}
-                    {artifacts.length > 0 && (
-                      <div className={cn("space-y-2", text && "mt-3")}>
-                        {artifacts.map((a, i) => (
-                          <ArtifactCard key={i} artifact={a} locale={locale} />
-                        ))}
-                      </div>
-                    )}
-                  </Bubble>
-                )
-              })
-            )}
-
-            {sendMessage.isPending && (
-              <Bubble role="assistant" data-testid="status-thinking">
-                <div className="flex gap-1.5 items-center h-4" aria-label="thinking">
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
-                </div>
-              </Bubble>
-            )}
-
-            {showQuickPrompts && (
-              <div className="pt-2">
-                <div className="eyebrow text-muted-foreground/80 mb-2.5">{t.tryThese}</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {QUICK_PROMPTS.map((p) => {
-                    const Icon = p.icon
+              <>
+                {isLoading ? (
+                  <div className="flex justify-center py-10">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  messages?.map((msg) => {
+                    const { text, artifacts } = parseAssistantContent(msg.content)
                     return (
-                      <button
-                        key={p.label}
-                        type="button"
-                        onClick={() => handleQuickPrompt(p.prompt)}
-                        data-testid={`button-suggestion-${p.label}`}
-                        className="group flex items-center gap-3 text-start px-3.5 py-3 rounded-md border border-border bg-card hover:border-primary/40 hover:bg-primary/[0.03] transition-colors"
+                      <Bubble
+                        key={msg.id}
+                        role={msg.role as "user" | "assistant"}
+                        data-testid={`message-${msg.role}-${msg.id}`}
                       >
-                        <span className="shrink-0 grid place-items-center w-7 h-7 rounded-md bg-primary/10 text-primary group-hover:bg-primary/15">
-                          <Icon className="w-3.5 h-3.5" />
-                        </span>
-                        <span className="text-[13px] text-foreground font-medium leading-tight">
-                          {p.label}
-                        </span>
-                      </button>
+                        {text && (
+                          <p className="text-[14px] leading-relaxed whitespace-pre-wrap">
+                            {text}
+                          </p>
+                        )}
+                        {artifacts.length > 0 && (
+                          <div className={cn("space-y-2", text && "mt-3")}>
+                            {artifacts.map((a, i) => (
+                              <ArtifactCard key={i} artifact={a} isAr={isAr} />
+                            ))}
+                          </div>
+                        )}
+                      </Bubble>
                     )
-                  })}
-                </div>
-              </div>
+                  })
+                )}
+
+                {sendMessage.isPending && (
+                  <Bubble role="assistant" data-testid="status-thinking">
+                    <ThinkingIndicator />
+                  </Bubble>
+                )}
+              </>
             )}
           </div>
         </ScrollArea>
 
-        {/* Composer */}
-        <div className="border-t border-border bg-background/60 backdrop-blur px-4 sm:px-6 py-3">
+        {/* ── Composer ── */}
+        <div className="border-t border-border bg-background/40 backdrop-blur-sm px-4 sm:px-6 py-3.5">
           {imagePreview && (
             <div className="max-w-3xl mx-auto mb-2.5">
               <div className="relative inline-block">
@@ -287,69 +254,206 @@ export default function AiAssistant() {
 
           <form
             onSubmit={handleSubmit}
-            className="max-w-3xl mx-auto flex items-center gap-2"
+            className="max-w-3xl mx-auto"
             data-testid="form-composer"
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleFileSelect}
-              className="hidden"
-              data-testid="input-file-upload"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={sendMessage.isPending}
-              className="text-muted-foreground hover:text-foreground shrink-0"
-              data-testid="button-upload-image"
-              aria-label={t.uploadAria}
-              title={t.uploadAria}
-            >
-              <ImagePlus className="w-4 h-4" />
-            </Button>
+            <div className="flex items-end gap-2 rounded-xl border border-border bg-card focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15 transition-colors p-1.5">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileSelect}
+                className="hidden"
+                data-testid="input-file-upload"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sendMessage.isPending}
+                className="text-muted-foreground hover:text-foreground shrink-0"
+                data-testid="button-upload-image"
+                aria-label={t.uploadAria}
+                title={t.uploadAria}
+              >
+                <ImagePlus className="w-4 h-4" />
+              </Button>
 
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={imagePreview ? t.placeholderWithImage : t.placeholder}
-              className="flex-1 h-10"
-              disabled={sendMessage.isPending}
-              data-testid="input-chat-message"
-            />
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={1}
+                placeholder={imagePreview ? t.placeholderWithImage : t.placeholder}
+                className="flex-1 resize-none bg-transparent border-0 outline-none focus:ring-0 text-[14px] leading-6 py-1.5 px-1 text-foreground placeholder:text-muted-foreground/70 max-h-[200px]"
+                disabled={sendMessage.isPending}
+                data-testid="input-chat-message"
+              />
 
-            <Button
-              type="submit"
-              size="icon"
-              className={cn(
-                "h-10 w-10 shrink-0",
-                (!input.trim() && !imagePreview) && "opacity-60"
-              )}
-              disabled={(!input.trim() && !imagePreview) || sendMessage.isPending}
-              data-testid="button-send-message"
-              aria-label={t.sendAria}
-            >
-              <ArrowUp className="w-4 h-4" />
-            </Button>
+              <Button
+                type="submit"
+                size="icon"
+                className={cn(
+                  "h-9 w-9 shrink-0 rounded-lg",
+                  (!input.trim() && !imagePreview) && "opacity-50"
+                )}
+                disabled={(!input.trim() && !imagePreview) || sendMessage.isPending}
+                data-testid="button-send-message"
+                aria-label={t.sendAria}
+              >
+                {sendMessage.isPending
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <ArrowUp className="w-4 h-4" />
+                }
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between mt-2 px-1">
+              <span className="text-[10.5px] text-muted-foreground/70 hidden sm:inline-flex items-center gap-1.5">
+                <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-border bg-card text-[10px] font-mono text-muted-foreground">
+                  <Command className="w-2.5 h-2.5" />K
+                </kbd>
+                {t.kbdHint}
+              </span>
+              <span className="text-[10.5px] text-muted-foreground/70 inline-flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5" />
+                {t.footnote}
+              </span>
+            </div>
           </form>
-
-          <p className="text-center text-[11px] text-muted-foreground/80 mt-2.5 flex items-center justify-center gap-1.5">
-            <Sparkles className="w-3 h-3" />
-            {t.footnote}
-          </p>
         </div>
-      </Card>
+      </div>
     </div>
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Artifact parsing + rendering                                         */
-/* ------------------------------------------------------------------ */
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Empty state (hero + capability grid)                                     */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+type Cap = { icon: typeof FileSpreadsheet; title: string; subtitle: string; prompt: string; tone: "emerald" | "rose" | "blue" | "violet" }
+
+const TONE: Record<Cap["tone"], { bg: string; text: string; ring: string }> = {
+  emerald: { bg: "bg-emerald-500/10", text: "text-emerald-600 dark:text-emerald-400", ring: "group-hover:ring-emerald-500/30" },
+  rose:    { bg: "bg-rose-500/10",    text: "text-rose-600 dark:text-rose-400",       ring: "group-hover:ring-rose-500/30" },
+  blue:    { bg: "bg-blue-500/10",    text: "text-blue-600 dark:text-blue-400",       ring: "group-hover:ring-blue-500/30" },
+  violet:  { bg: "bg-violet-500/10",  text: "text-violet-600 dark:text-violet-400",   ring: "group-hover:ring-violet-500/30" },
+}
+
+function EmptyState({
+  title, subtitle, tryHeader, capabilities, onPick, isAr,
+}: {
+  title: string; subtitle: string; tryHeader: string;
+  capabilities: Cap[]; onPick: (p: string) => void; isAr: boolean
+}) {
+  return (
+    <div className="space-y-10">
+      <div className="text-center space-y-3 max-w-2xl mx-auto">
+        <h1
+          className="text-3xl sm:text-4xl md:text-[44px] font-semibold tracking-tight text-foreground leading-[1.1]"
+          data-testid="text-assistant-title"
+        >
+          {title}
+        </h1>
+        <p className="text-[15px] sm:text-base text-muted-foreground leading-relaxed">
+          {subtitle}
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground/80 font-medium">
+          <span className="h-px flex-1 bg-border" />
+          <span>{tryHeader}</span>
+          <span className="h-px flex-1 bg-border" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {capabilities.map((c) => {
+            const Icon = c.icon
+            const tone = TONE[c.tone]
+            return (
+              <button
+                key={c.title}
+                type="button"
+                onClick={() => onPick(c.prompt)}
+                data-testid={`button-capability-${c.title}`}
+                className={cn(
+                  "group relative flex items-start gap-3.5 text-start p-4 rounded-xl border border-border bg-background hover:border-foreground/20 hover:shadow-md hover:shadow-black/[0.04] transition-all",
+                  "ring-1 ring-transparent",
+                  tone.ring
+                )}
+              >
+                <span className={cn("shrink-0 grid place-items-center w-10 h-10 rounded-lg", tone.bg, tone.text)}>
+                  <Icon className="w-5 h-5" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-semibold text-foreground leading-tight">
+                    {c.title}
+                  </div>
+                  <div className="text-[12px] text-muted-foreground mt-0.5 leading-snug">
+                    {c.subtitle}
+                  </div>
+                </div>
+                <ArrowUp className={cn(
+                  "w-4 h-4 text-muted-foreground/40 group-hover:text-foreground transition-colors shrink-0 mt-1",
+                  isAr ? "-rotate-45" : "rotate-45"
+                )} />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Bubble — assistant has avatar, user is solid                             */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+function Bubble({
+  role, children, ...rest
+}: {
+  role: "user" | "assistant"
+  children: React.ReactNode
+} & React.HTMLAttributes<HTMLDivElement>) {
+  const isUser = role === "user"
+  return (
+    <div className={cn("flex gap-3", isUser ? "justify-end" : "justify-start")} {...rest}>
+      {!isUser && (
+        <div className="shrink-0 grid place-items-center w-7 h-7 rounded-md bg-primary/10 text-primary mt-0.5">
+          <Sparkles className="w-3.5 h-3.5" />
+        </div>
+      )}
+      <div
+        className={cn(
+          "max-w-[85%] sm:max-w-[78%] px-4 py-2.5 rounded-2xl text-foreground",
+          isUser
+            ? "bg-foreground text-background rounded-br-md rtl:rounded-br-2xl rtl:rounded-bl-md"
+            : "bg-muted/50 border border-border/70 rounded-bl-md rtl:rounded-bl-2xl rtl:rounded-br-md"
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ThinkingIndicator() {
+  return (
+    <div className="flex gap-1 items-center h-4" aria-label="thinking">
+      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  Artifact parsing + rendering                                             */
+/* ══════════════════════════════════════════════════════════════════════════ */
 
 type Artifact =
   | { kind: "transaction"; type: "income" | "expense"; amount: number; description: string; category: string }
@@ -364,48 +468,60 @@ function parseAssistantContent(content: string): { text: string; artifacts: Arti
   try {
     const parsed = JSON.parse(m[1])
     if (Array.isArray(parsed)) artifacts = parsed as Artifact[]
-  } catch {
-    /* ignore malformed */
-  }
+  } catch { /* ignore malformed */ }
   const text = content.replace(/<<ARTIFACTS>>[\s\S]*?<<END>>/, "").trim()
   return { text, artifacts }
 }
 
-function ArtifactCard({ artifact, locale }: { artifact: Artifact; locale: string }) {
-  const isAr = locale === "ar"
+function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean }) {
   if (artifact.kind === "file") {
     const isExcel = artifact.format === "excel"
     const Icon = isExcel ? FileSpreadsheet : FileText
     const reportLabel =
-      artifact.report === "trial_balance"
-        ? isAr ? "ميزان المراجعة" : "Trial Balance"
-        : artifact.report === "profit_loss"
-        ? isAr ? "قائمة الدخل" : "Profit & Loss"
-        : isAr ? "قائمة المركز المالي" : "Balance Sheet"
+      artifact.report === "trial_balance" ? (isAr ? "ميزان المراجعة" : "Trial Balance")
+      : artifact.report === "profit_loss" ? (isAr ? "قائمة الدخل" : "Profit & Loss")
+      : (isAr ? "قائمة المركز المالي" : "Balance Sheet")
+
     return (
       <a
         href={`/api/files/${artifact.fileId}/download`}
         download={artifact.filename}
         data-testid={`link-download-${artifact.fileId}`}
-        className="flex items-center gap-3 rounded-md border border-border bg-background hover:border-primary/40 hover:bg-primary/[0.03] transition-colors p-3 group"
+        className={cn(
+          "group flex items-center gap-3 rounded-xl border border-border bg-background p-3.5",
+          "hover:border-foreground/20 hover:shadow-md hover:shadow-black/[0.04] transition-all"
+        )}
       >
         <div
           className={cn(
-            "shrink-0 grid place-items-center w-10 h-10 rounded-md",
+            "shrink-0 grid place-items-center w-11 h-11 rounded-lg ring-1",
             isExcel
-              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-              : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/15"
+              : "bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-rose-500/15"
           )}
         >
           <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-medium text-foreground truncate">{reportLabel}</div>
-          <div className="text-[11px] text-muted-foreground truncate">
-            {artifact.filename} · {artifact.sizeKB} KB · {isExcel ? "Excel" : "PDF"}
+          <div className="flex items-center gap-2">
+            <span className="text-[13.5px] font-semibold text-foreground truncate">{reportLabel}</span>
+            <span className={cn(
+              "text-[10px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded",
+              isExcel ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+            )}>
+              {isExcel ? "XLSX" : "PDF"}
+            </span>
+          </div>
+          <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+            {artifact.filename} · {artifact.sizeKB} KB
           </div>
         </div>
-        <Download className="w-4 h-4 text-muted-foreground group-hover:text-foreground shrink-0" />
+        <div className={cn(
+          "shrink-0 inline-flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground group-hover:text-foreground"
+        )}>
+          <Download className="w-4 h-4" />
+          <span className="hidden sm:inline">{isAr ? "تنزيل" : "Download"}</span>
+        </div>
       </a>
     )
   }
@@ -415,32 +531,30 @@ function ArtifactCard({ artifact, locale }: { artifact: Artifact; locale: string
     return (
       <div
         data-testid={`card-tx-${artifact.description}`}
-        className="flex items-center gap-3 rounded-md border border-border bg-background p-3"
+        className="flex items-center gap-3 rounded-xl border border-border bg-background p-3.5"
       >
         <div
           className={cn(
-            "shrink-0 grid place-items-center w-10 h-10 rounded-md",
+            "shrink-0 grid place-items-center w-11 h-11 rounded-lg ring-1",
             isIncome
-              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-              : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/15"
+              : "bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-rose-500/15"
           )}
         >
           <CheckCircle2 className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-medium text-foreground truncate">
+          <div className="text-[13.5px] font-semibold text-foreground truncate">
             {artifact.description}
           </div>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-[11px] text-muted-foreground mt-0.5">
             {artifact.category} · {isAr ? (isIncome ? "إيراد" : "مصروف") : (isIncome ? "Income" : "Expense")}
           </div>
         </div>
-        <div
-          className={cn(
-            "text-[14px] font-semibold tabular-nums shrink-0",
-            isIncome ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-          )}
-        >
+        <div className={cn(
+          "text-[15px] font-semibold tabular-nums shrink-0",
+          isIncome ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+        )}>
           {isIncome ? "+" : "−"}
           {artifact.amount.toLocaleString()}
         </div>
@@ -452,50 +566,23 @@ function ArtifactCard({ artifact, locale }: { artifact: Artifact; locale: string
   return (
     <div
       data-testid={`card-je-${artifact.id}`}
-      className="flex items-center gap-3 rounded-md border border-border bg-background p-3"
+      className="rounded-xl border border-border bg-background p-3.5"
     >
-      <div className="shrink-0 grid place-items-center w-10 h-10 rounded-md bg-primary/10 text-primary">
-        <BookOpen className="w-5 h-5" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-medium text-foreground truncate">
-          {isAr ? `قيد #${artifact.id}` : `Journal Entry #${artifact.id}`} — {artifact.description}
+      <div className="flex items-center gap-3">
+        <div className="shrink-0 grid place-items-center w-11 h-11 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/15">
+          <BookOpen className="w-5 h-5" />
         </div>
-        <div className="text-[11px] text-muted-foreground">
-          {artifact.lines} {isAr ? "سطر" : "lines"} · {isAr ? "مدين" : "Dr"} {artifact.totalDebit.toLocaleString()} = {isAr ? "دائن" : "Cr"} {artifact.totalCredit.toLocaleString()}
+        <div className="flex-1 min-w-0">
+          <div className="text-[13.5px] font-semibold text-foreground truncate">
+            {isAr ? `قيد #${artifact.id}` : `Journal #${artifact.id}`} — {artifact.description}
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
+            {artifact.lines} {isAr ? "سطر" : "lines"} · {isAr ? "مدين" : "Dr"} {artifact.totalDebit.toLocaleString()} = {isAr ? "دائن" : "Cr"} {artifact.totalCredit.toLocaleString()}
+          </div>
         </div>
-      </div>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Bubble                                                               */
-/* ------------------------------------------------------------------ */
-
-function Bubble({
-  role,
-  children,
-  ...rest
-}: {
-  role: "user" | "assistant"
-  children: React.ReactNode
-} & React.HTMLAttributes<HTMLDivElement>) {
-  const isUser = role === "user"
-  return (
-    <div
-      className={cn("flex", isUser ? "justify-end" : "justify-start")}
-      {...rest}
-    >
-      <div
-        className={cn(
-          "max-w-[88%] sm:max-w-[80%] px-4 py-2.5 rounded-xl",
-          isUser
-            ? "bg-foreground text-background rounded-br-sm rtl:rounded-br-xl rtl:rounded-bl-sm"
-            : "bg-muted/60 border border-border text-foreground rounded-bl-sm rtl:rounded-bl-xl rtl:rounded-br-sm"
-        )}
-      >
-        {children}
+        <span className="text-[10px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+          {isAr ? "متوازن" : "Balanced"}
+        </span>
       </div>
     </div>
   )
