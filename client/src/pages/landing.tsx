@@ -3,7 +3,7 @@ import {
   ArrowLeft, ArrowRight, Check, FileText, Receipt, Bot,
   Sparkles, ShieldCheck, Globe2, Workflow, BarChart3, Briefcase,
   Users, Wallet, TrendingUp, AlertTriangle, Lock, Database, ScrollText,
-  MapPin, Activity, Scale, Radar, Brain, LineChart,
+  MapPin, Activity, Scale, Radar, Brain, LineChart, Clock, Zap,
 } from "lucide-react"
 import { AppNavbar } from "@/components/layout/AppNavbar"
 import { AppFooter } from "@/components/layout/AppFooter"
@@ -76,11 +76,22 @@ function getCopy(locale: Locale) {
       },
     },
     trust: {
-      eyebrow: ar ? "يثق بنا" : "Trusted by",
-      headline: ar ? "٢٠٠٠+" : "2,000+",
-      sub1: ar ? "شركة وفريق ماليّ" : "businesses & finance teams",
-      sub2: ar ? "في" : "across",
-      sub3: ar ? "٧ دول" : "7 countries",
+      eyebrow: ar ? "البنية التي تحتها" : "What's underneath",
+      headline: ar ? "ليست ادّعاءً." : "Not a claim.",
+      sub1: ar ? "بنية مُعتمدة، وأطر تنظيميّة محسومة، وأرقام تشغيليّة قابلة للقياس." : "Audited posture, settled regulatory frames, and operating numbers you can measure.",
+      sub2: ar ? "" : "",
+      sub3: ar ? "" : "",
+      pillars: ar ? [
+        { l: "ZATCA المرحلة ٢", c: "فوترة إلكترونيّة معتمدة (Cleared)", k: "shield" },
+        { l: "IFRS 15 · 16 · 9", c: "إيراد · إيجار · أدوات ماليّة", k: "scale" },
+        { l: "PDPL · GDPR", c: "خصوصيّة بمعيار التحالف الأوروبيّ", k: "lock" },
+        { l: "٧ هيئات تنظيميّة", c: "ZATCA · FTA · ETA · GAZT · CBB · QFC · OTA", k: "globe" },
+      ] : [
+        { l: "ZATCA Phase 2", c: "Cleared e-invoicing, end-to-end", k: "shield" },
+        { l: "IFRS 15 · 16 · 9", c: "Revenue · leases · instruments", k: "scale" },
+        { l: "PDPL · GDPR", c: "EU-grade privacy posture, day one", k: "lock" },
+        { l: "7 regulators covered", c: "ZATCA · FTA · ETA · GAZT · CBB · QFC · OTA", k: "globe" },
+      ],
       metrics: [
         { v: ar ? "٢.٤ مليار+" : "$2.4B+",  l: ar ? "قيمة قيود مُسجَّلة" : "in posted entries" },
         { v: ar ? "٩٩.٩٩٪"     : "99.99%",  l: ar ? "جاهزيّة المنصّة" : "platform uptime" },
@@ -503,9 +514,39 @@ function getCopy(locale: Locale) {
       lead: ar
         ? "من لحظة وصول الفاتورة إلى بريدك، حتى ظهور أثرها في تقريرك الماليّ — بلا خطوة يدويّة واحدة بينهما."
         : "From the moment an invoice hits your inbox to its impact showing up in your reports — not one manual step in between.",
-      flow: ar
-        ? ["ارفع الفاتورة", "الذكاء يقرأ ويصنّف", "يُسجّل القيد", "يُحدّث الميزانيّة", "التقرير حيّ"]
-        : ["Drop the invoice", "AI reads & classifies", "Posts the entry", "Updates the budget", "Live report"],
+      beforeTitle: ar ? "اليوم بدون النظام" : "Your day without the system",
+      beforeSub:   ar ? "خمس خطوات يدويّة، يوم ونصف انتظار" : "Five manual steps. A day-and-a-half of waiting.",
+      afterTitle:  ar ? "اليوم مع محاسب ذكي" : "Your day with Smart Accountant",
+      afterSub:    ar ? "خطوة واحدة منك، الباقي يحدث وحده" : "One step from you. The rest just happens.",
+      totalLabel:  ar ? "الإجمالي" : "Total",
+      manualTotal: ar ? "≈ ١٣ ساعة في الأسبوع" : "≈ 13 hrs / week",
+      autoTotal:   ar ? "أقلّ من ١٥ دقيقة" : "Under 15 min",
+      manual: ar ? [
+        { t: "تجمع الفواتير من ٣ صناديق بريد", time: "٢٢ دقيقة" },
+        { t: "تكتب البنود يدويّاً في Excel", time: "١٤ دقيقة" },
+        { t: "تختار الحساب الصحيح من ٢٤٠ حساباً", time: "٧ دقائق" },
+        { t: "تنتظر موافقة المدير الماليّ", time: "يوم ونصف" },
+        { t: "تُحدِّث القائمة الماليّة بنفسك", time: "١١ دقيقة" },
+      ] : [
+        { t: "Collect invoices from 3 inboxes", time: "22 min" },
+        { t: "Type line items into Excel by hand", time: "14 min" },
+        { t: "Pick the right account out of 240", time: "7 min" },
+        { t: "Wait for the CFO's approval", time: "1.5 days" },
+        { t: "Refresh the financial statement yourself", time: "11 min" },
+      ],
+      auto: ar ? [
+        { t: "ينسحب البريد إلى المنصّة", time: "لحظيّ" },
+        { t: "النظام يقرأ، يفهم، يقترح القيد", time: "ثانية" },
+        { t: "يطابق الحساب الصحيح وفق سياقك", time: "ثانية" },
+        { t: "يُوجَّه للموافقة بالقواعد التي وضعتها", time: "دقيقتان" },
+        { t: "تنعكس التقارير لحظيّاً", time: "فوريّ" },
+      ] : [
+        { t: "Inbox auto-syncs into the platform", time: "Instant" },
+        { t: "AI reads, understands, drafts the entry", time: "1 sec" },
+        { t: "Right account chosen from your context", time: "1 sec" },
+        { t: "Routed for approval by your own rules", time: "2 min" },
+        { t: "Reports re-render in real time", time: "Instant" },
+      ],
       cases: ar ? [
         { t: "فاتورة مورّد", d: "صورة ← استخراج ← قيد مدين/دائن متوازن في الحساب الصحيح، بلا نقرة واحدة.", m: "5210 / 2110 · ٤٥٠.٠٠" },
         { t: "موظّف جديد", d: "أدخل البيانات مرّة واحدة. الراتب الشهريّ، التأمينات (الموظّف والشركة)، ومخصّص نهاية الخدمة — تُحسب آليّاً وفق IAS 19.", m: "6010 / 6011 / 6012" },
@@ -850,29 +891,54 @@ function HeroProductMockup({ t }: { t: Dict }) {
 /* ────────────────────────────────────────────────────────────────────────── */
 
 function TrustStrip({ t }: { t: Dict }) {
-  const wordmarks = ["ARAMEX", "Almosafer", "TALABAT", "Anghami", "Mubadala", "STC pay", "Careem"]
+  const pillarIcon: Record<string, React.ReactNode> = {
+    shield: <ShieldCheck className="size-4" />,
+    scale:  <Scale       className="size-4" />,
+    lock:   <Lock        className="size-4" />,
+    globe:  <Globe2      className="size-4" />,
+  }
   return (
     <section className="border-y border-border bg-card/40">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 lg:py-12">
-        <div className="grid lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-3">
+        <div className="grid lg:grid-cols-12 gap-8 items-start">
+          <div className="lg:col-span-4">
             <div className="eyebrow mb-2">{t.trust.eyebrow}</div>
             <div className="text-sm text-foreground/85 leading-relaxed">
-              <span className="font-semibold text-foreground">{t.trust.headline}</span> {t.trust.sub1}
-              <br />{t.trust.sub2} <span className="font-semibold text-foreground">{t.trust.sub3}</span>
+              <span className="font-semibold text-foreground">{t.trust.headline}</span>{" "}
+              {t.trust.sub1}
             </div>
           </div>
-          <div className="lg:col-span-9">
-            <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-5 opacity-70">
-              {wordmarks.map((w) => (
-                <span key={w} className="font-display text-sm md:text-base font-semibold tracking-wide text-foreground/70 whitespace-nowrap">
-                  {w}
-                </span>
+          <div className="lg:col-span-8">
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-border rounded-lg overflow-hidden border border-border">
+              {t.trust.pillars.map((p) => (
+                <li
+                  key={p.l}
+                  className="bg-card p-4 lg:p-5 flex flex-col gap-1.5"
+                  data-testid={`pillar-${p.k}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="size-7 rounded-md bg-accent text-accent-foreground border border-accent-border flex items-center justify-center flex-shrink-0">
+                      {pillarIcon[p.k]}
+                    </span>
+                    <div className="font-mono text-2xs text-foreground tracking-wide flex items-center gap-1.5 min-w-0">
+                      <span className="truncate">{p.l}</span>
+                      {p.k === "shield" && (
+                        <span className="relative inline-flex size-1.5 flex-shrink-0" aria-hidden>
+                          <span className="absolute inset-0 rounded-full bg-success animate-ping opacity-60 motion-reduce:animate-none" />
+                          <span className="relative inline-flex size-1.5 rounded-full bg-success" />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-2xs text-muted-foreground leading-relaxed break-words">
+                    {p.c}
+                  </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         </div>
-        <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-lg overflow-hidden border border-border">
+        <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-lg overflow-hidden border border-border">
           {t.trust.metrics.map((m) => (
             <Metric key={m.l} value={m.v} label={m.l} mono={m.mono} />
           ))}
@@ -1325,13 +1391,6 @@ function ForecastChart() {
 
 function Automation({ t }: { t: Dict }) {
   const aut = t.automation
-  const flowIcons = [
-    <Receipt className="size-4" />,
-    <Bot className="size-4" />,
-    <FileText className="size-4" />,
-    <Workflow className="size-4" />,
-    <BarChart3 className="size-4" />,
-  ]
 
   return (
     <section id="automation" className="py-24 lg:py-32 border-b border-border">
@@ -1346,24 +1405,85 @@ function Automation({ t }: { t: Dict }) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-6 lg:p-10 overflow-x-auto">
-          <div className="flex items-center justify-between gap-3 min-w-[640px]">
-            {aut.flow.map((label, i) => (
-              <div key={label} className="flex items-center gap-3 flex-1">
-                <div className="flex flex-col items-center text-center flex-1">
-                  <div className="size-10 rounded-full bg-accent text-accent-foreground border border-accent-border flex items-center justify-center mb-2.5">
-                    {flowIcons[i]}
-                  </div>
-                  <div className="text-xs font-medium text-foreground">{label}</div>
-                  <div className="font-mono text-2xs text-muted-foreground mt-1">0{i + 1}</div>
+        {/* Before / After lanes */}
+        <div className="grid md:grid-cols-2 gap-px bg-border border border-border rounded-xl overflow-hidden">
+          {/* Before lane — manual */}
+          <div className="bg-muted/30 p-6 lg:p-8">
+            <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-border/70">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Clock className="size-3.5 text-loss/80 flex-shrink-0" />
+                  <span className="eyebrow">{aut.beforeTitle}</span>
                 </div>
-                {i < aut.flow.length - 1 && (
-                  <div className="flex-shrink-0 w-8 h-px bg-border relative">
-                    <CtaArrow ar={t.ar} />
-                  </div>
-                )}
+                <p className="text-2xs text-muted-foreground leading-relaxed">{aut.beforeSub}</p>
               </div>
-            ))}
+              <div className="text-end flex-shrink-0">
+                <div className="text-2xs text-muted-foreground">{aut.totalLabel}</div>
+                <div className="font-mono text-sm text-loss tabular-nums mt-0.5">{aut.manualTotal}</div>
+              </div>
+            </div>
+            <ol className="space-y-3">
+              {aut.manual.map((s, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-3 group"
+                  data-testid={`manual-step-${i}`}
+                >
+                  <span className="font-mono text-2xs text-muted-foreground tabular-nums pt-0.5 w-5 flex-shrink-0">
+                    0{i + 1}
+                  </span>
+                  <span className="text-sm text-foreground/65 line-through decoration-loss/50 decoration-1 leading-relaxed flex-1">
+                    {s.t}
+                  </span>
+                  <span className="font-mono text-2xs text-loss/80 tabular-nums whitespace-nowrap pt-0.5">
+                    {s.time}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {/* After lane — autonomous */}
+          <div className="bg-card p-6 lg:p-8 relative">
+            {/* Subtle brand glow */}
+            <div
+              aria-hidden
+              className="absolute inset-0 -z-0 opacity-30 dark:opacity-20 brand-mesh [mask-image:radial-gradient(70%_60%_at_50%_30%,black,transparent)] pointer-events-none"
+            />
+            <div className="relative">
+              <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-primary/15">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Zap className="size-3.5 text-primary flex-shrink-0" />
+                    <span className="eyebrow text-primary">{aut.afterTitle}</span>
+                  </div>
+                  <p className="text-2xs text-muted-foreground leading-relaxed">{aut.afterSub}</p>
+                </div>
+                <div className="text-end flex-shrink-0">
+                  <div className="text-2xs text-muted-foreground">{aut.totalLabel}</div>
+                  <div className="font-mono text-sm text-primary tabular-nums mt-0.5">{aut.autoTotal}</div>
+                </div>
+              </div>
+              <ol className="space-y-3">
+                {aut.auto.map((s, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-3"
+                    data-testid={`auto-step-${i}`}
+                  >
+                    <span className="size-5 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Check className="size-3 text-primary" />
+                    </span>
+                    <span className="text-sm text-foreground leading-relaxed flex-1">
+                      {s.t}
+                    </span>
+                    <span className="font-mono text-2xs text-primary tabular-nums whitespace-nowrap pt-0.5">
+                      {s.time}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           </div>
         </div>
 
