@@ -21,7 +21,7 @@ import {
   Calculator,
   Target,
   Receipt,
-  Sparkles,
+  Brain,
   CheckCircle2,
   AlertCircle,
   Info,
@@ -101,7 +101,7 @@ export default function InsightsPage() {
             <TabsTrigger value="cash"    data-testid="tab-cash">   <TrendingUp className="w-3.5 h-3.5 ms-1.5" />تنبؤ النقد</TabsTrigger>
             <TabsTrigger value="sim"     data-testid="tab-sim">    <Calculator className="w-3.5 h-3.5 ms-1.5" />المحاكي</TabsTrigger>
             <TabsTrigger value="budget"  data-testid="tab-budget"> <Target     className="w-3.5 h-3.5 ms-1.5" />الميزانية</TabsTrigger>
-            <TabsTrigger value="coach"   data-testid="tab-coach">  <Sparkles   className="w-3.5 h-3.5 ms-1.5" />المستشار</TabsTrigger>
+            <TabsTrigger value="coach"   data-testid="tab-coach">  <Brain      className="w-3.5 h-3.5 ms-1.5" strokeWidth={1.75} />المستشار</TabsTrigger>
           </TabsList>
         </div>
 
@@ -607,7 +607,7 @@ function CoachTab() {
     <div className="grid lg:grid-cols-3 gap-4">
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Sparkles className="w-5 h-5 text-primary" />اسأل المستشار المالي</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Brain className="w-5 h-5 text-foreground/70" strokeWidth={1.75} />اسأل المستشار المالي</CardTitle>
           <CardDescription>سؤالك يُحلَّل بالاعتماد على أرقامك الفعلية اللحظية</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -619,7 +619,7 @@ function CoachTab() {
             data-testid="input-coach-question"
           />
           <Button onClick={() => ask.mutate()} disabled={!question.trim() || ask.isPending} className="w-full" data-testid="button-ask-coach">
-            {ask.isPending ? <span className="animate-pulse">جارٍ التحليل...</span> : <><Send className="w-4 h-4 ml-2" />اسأل</>}
+            {ask.isPending ? <span>جارٍ التحليل…</span> : <><Send className="w-4 h-4 ml-2" />اسأل</>}
           </Button>
 
           <div className="space-y-3 max-h-[500px] overflow-y-auto pt-2">

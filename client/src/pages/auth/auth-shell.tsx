@@ -48,7 +48,7 @@ export function AuthShell({ title, subtitle, side, children, footer }: AuthShell
           {/* Hairline divider against form side */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-y-8 end-0 w-px bg-gradient-to-b from-transparent via-border to-transparent"
+            className="pointer-events-none absolute inset-y-8 end-0 w-px bg-border"
           />
 
           <div className="flex items-center justify-between relative">
@@ -83,7 +83,7 @@ export function AuthShell({ title, subtitle, side, children, footer }: AuthShell
             </ul>
 
             {/* Quiet "live ledger" preview — mirrors landing's product surface */}
-            <div className="mt-9 rounded-xl border border-border/80 bg-card/80 backdrop-blur-sm p-4 shadow-sm">
+            <div className="mt-9 rounded-xl border border-border bg-card p-4">
               <div className="flex items-center justify-between">
                 <div className="eyebrow">{ar ? "آخر قيد · #٢٤٧٨" : "Latest entry · #2478"}</div>
                 <span className="inline-flex items-center gap-1 rounded-md bg-gain-tint px-1.5 py-0.5 text-[11px] font-medium text-gain">

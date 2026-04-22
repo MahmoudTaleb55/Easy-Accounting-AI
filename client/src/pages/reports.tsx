@@ -5,7 +5,7 @@ import { ar, enUS } from "date-fns/locale"
 import {
   Printer,
   Download,
-  Sparkles,
+  Activity,
   FileText,
   LayoutDashboard,
   Scale,
@@ -140,7 +140,7 @@ export default function Reports() {
     { key: "ifrs", label: t.ifrs, icon: FileText },
     { key: "trial-balance", label: t.trial, icon: Scale },
     { key: "balance-sheet", label: t.balance, icon: Building2 },
-    { key: "analysis", label: t.analysis, icon: Sparkles },
+    { key: "analysis", label: t.analysis, icon: Activity },
   ]
 
   const range = useMemo(() => {
@@ -477,7 +477,7 @@ function AnalyticsView({
         <Card className="rounded-xl">
           <div className="p-6 flex items-start gap-4">
             <div className="p-2 rounded-lg bg-muted/60 shrink-0">
-              <Sparkles className="w-4 h-4 text-foreground" />
+              <Activity className="w-4 h-4 text-foreground" strokeWidth={1.75} />
             </div>
             <div className="flex-1">
               <h3 className="text-sm font-semibold text-foreground mb-3">

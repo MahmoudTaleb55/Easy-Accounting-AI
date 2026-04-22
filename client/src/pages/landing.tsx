@@ -1,7 +1,7 @@
 import { useRef, useState } from "react"
 import {
   ArrowLeft, ArrowRight, Check, FileText, Receipt, Bot,
-  Sparkles, ShieldCheck, Globe2, Workflow, BarChart3, Briefcase,
+  ShieldCheck, Globe2, Workflow, BarChart3, Briefcase,
   Users, Wallet, TrendingUp, AlertTriangle, Lock, Database, ScrollText,
   MapPin, Activity, Scale, Radar, Brain, LineChart, Clock, Zap,
   Send, Search, Calendar, Building2, Command,
@@ -1105,7 +1105,7 @@ function Hero({ t }: { t: Dict }) {
       {/* ── Headline column — single, centered, monumental ──────────────── */}
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 text-center">
         {/* One restrained eyebrow combining live status + ZATCA cert */}
-        <div className="inline-flex items-center gap-2.5 rounded-full border border-border bg-card/70 backdrop-blur px-3 py-1.5 shadow-xs">
+        <div className="inline-flex items-center gap-2.5 rounded-full border border-border bg-card px-3 py-1.5">
           <span className="status-dot bg-success" />
           <span className="text-2xs text-foreground/70">{t.hero.tag}</span>
           <span aria-hidden className="text-border">·</span>
@@ -1559,8 +1559,8 @@ function DashboardShowcase({ t }: { t: Dict }) {
                   </div>
                 </div>
               </div>
-              <div className="rounded-md border border-primary/20 bg-accent/40 p-3 flex items-start gap-3">
-                <Sparkles className="size-4 text-primary flex-shrink-0 mt-0.5" />
+              <div className="rounded-md border border-border bg-muted/40 p-3 flex items-start gap-3">
+                <Brain className="size-4 text-foreground/70 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
                 <div className="text-2xs leading-relaxed text-foreground/85">
                   <span className="font-medium text-foreground">{s.coachLabel}</span>
                   {s.coachBody}
@@ -1610,8 +1610,8 @@ function Manifesto({ t }: { t: Dict }) {
         }}
       />
       {/* Top hairline */}
-      <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
-      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+      <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-border" />
+      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-border" />
 
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         {/* Eyebrow with chapter mark */}
@@ -1696,7 +1696,7 @@ function Testimonials({ t }: { t: Dict }) {
         </div>
 
         {/* Proof-stats strip */}
-        <div className="rounded-2xl border border-border bg-card/70 backdrop-blur-sm overflow-hidden mb-12">
+        <div className="rounded-2xl border border-border bg-card overflow-hidden mb-12">
           <div className="grid grid-cols-2 lg:grid-cols-4 divide-y divide-border lg:divide-y-0 lg:divide-x lg:rtl:divide-x-reverse">
             {ts.stats.map((s, i) => (
               <div key={i} className="p-6 lg:p-7" data-testid={`testimonial-stat-${i}`}>
@@ -1715,11 +1715,7 @@ function Testimonials({ t }: { t: Dict }) {
           className="relative rounded-2xl border border-primary/25 bg-card overflow-hidden mb-10 shadow-xl"
           data-testid="testimonial-featured"
         >
-          {/* Decorative emerald wash */}
-          <div
-            aria-hidden
-            className="absolute inset-0 -z-0 bg-gradient-to-br from-primary/8 via-transparent to-transparent"
-          />
+          {/* (decorative wash removed for restraint) */}
           {/* Gigantic quote glyph */}
           <span
             aria-hidden
@@ -1748,7 +1744,7 @@ function Testimonials({ t }: { t: Dict }) {
               <figcaption className="mt-8 pt-6 border-t border-border flex items-center gap-4">
                 <div
                   aria-hidden
-                  className="size-14 lg:size-16 rounded-full bg-gradient-to-br from-primary to-primary/60 text-primary-foreground flex items-center justify-center font-semibold text-lg shadow-md flex-shrink-0"
+                  className="size-14 lg:size-16 rounded-full bg-foreground text-background flex items-center justify-center font-semibold text-lg flex-shrink-0"
                 >
                   {fInit}
                 </div>
@@ -1790,9 +1786,9 @@ function Testimonials({ t }: { t: Dict }) {
           {ts.items.map((it, i) => {
             const initials = it.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")
             const tints = [
-              "from-primary to-primary/60 text-primary-foreground",
-              "from-foreground to-foreground/70 text-background",
-              "from-warning to-warning/70 text-warning-foreground",
+              "bg-foreground text-background",
+              "bg-foreground text-background",
+              "bg-foreground text-background",
             ]
             const tint = tints[i % tints.length]
             return (
@@ -1838,7 +1834,7 @@ function Testimonials({ t }: { t: Dict }) {
                   <div
                     aria-hidden
                     className={cn(
-                      "size-11 rounded-full bg-gradient-to-br flex items-center justify-center font-semibold text-sm flex-shrink-0 shadow-sm",
+                      "size-11 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0",
                       tint
                     )}
                   >
@@ -2299,8 +2295,8 @@ function MultiOrgMock({ t }: { t: Dict }) {
           ))}
         </ul>
 
-        <div className="mt-4 rounded-md border border-primary/20 bg-accent/40 px-3 py-2.5 flex items-center gap-2.5">
-          <Sparkles className="size-3.5 text-primary flex-shrink-0" />
+        <div className="mt-4 rounded-md border border-border bg-muted/40 px-3 py-2.5 flex items-center gap-2.5">
+          <Activity className="size-3.5 text-foreground/70 flex-shrink-0" strokeWidth={1.75} />
           <div className="text-2xs text-foreground/85 leading-relaxed">
             {ar
               ? "التوحيد يجري لحظيّاً عند سعر الصرف الحقيقيّ · IFRS 10"
@@ -2806,7 +2802,7 @@ function LocalIntegrations({ t }: { t: Dict }) {
   )
 
   return (
-    <section id="integrations" className="py-24 lg:py-32 border-b border-border bg-gradient-to-b from-background to-card/20">
+    <section id="integrations" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Heading */}
         <div className="grid lg:grid-cols-12 gap-8 mb-12 lg:mb-16">
@@ -2857,20 +2853,7 @@ function LocalIntegrations({ t }: { t: Dict }) {
           </div>
 
           {/* Spine — the unified compliance layer */}
-          <div className="relative rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/[0.08] via-primary/[0.04] to-primary/[0.08] px-6 py-6 lg:px-8 lg:py-7 mb-10 lg:mb-14 overflow-hidden">
-            {/* Pulse line */}
-            <svg aria-hidden="true" className="absolute inset-x-0 bottom-0 w-full h-6" viewBox="0 0 400 24" preserveAspectRatio="none">
-              <path
-                d="M0 12 Q 50 4, 100 12 T 200 12 T 300 12 T 400 12"
-                fill="none"
-                stroke="hsl(var(--primary))"
-                strokeWidth="1"
-                strokeOpacity="0.55"
-                strokeDasharray="4 4"
-              >
-                <animate attributeName="stroke-dashoffset" from="0" to="-16" dur="1.6s" repeatCount="indefinite" />
-              </path>
-            </svg>
+          <div className="relative rounded-xl border border-border bg-card px-6 py-6 lg:px-8 lg:py-7 mb-10 lg:mb-14 overflow-hidden">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 relative">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
@@ -2881,14 +2864,14 @@ function LocalIntegrations({ t }: { t: Dict }) {
                 <div className="text-xs lg:text-sm text-muted-foreground mt-1 leading-relaxed max-w-xl">{i.spineSub}</div>
               </div>
               <div className="flex items-center gap-2">
-                <div className="size-9 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
-                  <Sparkles className="size-4 text-primary" />
+                <div className="size-9 rounded-md border border-border flex items-center justify-center">
+                  <Workflow className="size-4 text-foreground/70" strokeWidth={1.75} />
                 </div>
-                <div className="size-9 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
-                  <ShieldCheck className="size-4 text-primary" />
+                <div className="size-9 rounded-md border border-border flex items-center justify-center">
+                  <ShieldCheck className="size-4 text-foreground/70" strokeWidth={1.75} />
                 </div>
-                <div className="size-9 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
-                  <Activity className="size-4 text-primary" />
+                <div className="size-9 rounded-md border border-border flex items-center justify-center">
+                  <Activity className="size-4 text-foreground/70" strokeWidth={1.75} />
                 </div>
               </div>
             </div>
@@ -3408,8 +3391,8 @@ function Pricing({ t }: { t: Dict }) {
                   "relative rounded-2xl border bg-card flex flex-col",
                   tierSpan(tier.k),
                   popular
-                    ? "border-primary/40 shadow-lg ring-1 ring-primary/15 lg:-my-4 p-7 lg:p-9 bg-gradient-to-b from-primary/[0.04] to-card"
-                    : "border-card-border shadow-xs p-7 lg:p-7",
+                    ? "border-foreground/30 lg:-my-4 p-7 lg:p-9"
+                    : "border-card-border p-7 lg:p-7",
                 )}
               >
                 {popular && (
@@ -3553,9 +3536,7 @@ function FinalCTA({ t }: { t: Dict }) {
     <section id="cta" className="py-24 lg:py-32 scroll-mt-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className={cn(
-          "relative overflow-hidden rounded-2xl border border-primary/20 p-10 lg:p-16",
-          t.ar ? "bg-gradient-to-bl from-primary/[0.08] via-background to-background"
-              : "bg-gradient-to-br from-primary/[0.08] via-background to-background"
+          "relative overflow-hidden rounded-2xl border border-border bg-card p-10 lg:p-16",
         )}>
           <div
             aria-hidden
@@ -3722,7 +3703,7 @@ function FloatingChip({
   icon, title, subtitle, accent,
 }: { icon: React.ReactNode; title: string; subtitle: string; accent?: "success" }) {
   return (
-    <div className="rounded-lg border border-border bg-card shadow-md px-3 py-2.5 flex items-center gap-2.5 backdrop-blur">
+    <div className="rounded-lg border border-border bg-card px-3 py-2.5 flex items-center gap-2.5">
       <div className={cn(
         "size-7 rounded-md flex items-center justify-center",
         accent === "success"
