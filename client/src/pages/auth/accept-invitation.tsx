@@ -13,7 +13,18 @@ export default function AcceptInvitationPage() {
   const token = params?.token ?? "";
   const [, navigate] = useLocation();
   const { isAuthenticated, isLoading, user, signOut, isSigningOut } = useAuth();
-  const { locale } = useLocale();
+  const { locale, setLocale } = useLocale();
+
+  // Honor ?lang=ar|en from the invitation email link, persisting the choice
+  // for the rest of the sign-up flow (locale provider writes to localStorage).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search).get("lang");
+    if (q === "ar" || q === "en") {
+      if (q !== locale) setLocale(q);
+    }
+  }, [locale, setLocale]);
+
   const ar = locale === "ar";
 
   const { data: invite, isLoading: loadingInvite } = useQuery<{ email: string; role: string; companyId: number } | null>({
