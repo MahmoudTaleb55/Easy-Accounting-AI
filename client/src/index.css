@@ -15,10 +15,12 @@
 @layer base {
   :root {
     /* — Typography stack — */
-    --font-arabic: 'IBM Plex Sans Arabic', 'Tajawal', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-sans:   'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-display:'Inter', system-ui, -apple-system, sans-serif;
-    --font-mono:   'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-arabic:     'IBM Plex Sans Arabic', 'Tajawal', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-sans:       'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display-en: 'Instrument Serif', 'Times New Roman', Georgia, serif;
+    --font-display-ar: 'Tajawal', 'IBM Plex Sans Arabic', 'Cairo', system-ui, sans-serif;
+    --font-display:    'Instrument Serif', 'Inter', system-ui, sans-serif;
+    --font-mono:       'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
     /* — Surface & ink (light) — */
     --background:           36 14% 98%;      /* warm paper */
@@ -295,10 +297,32 @@
     font-weight: 500;
   }
 
-  /* — Display heading scale (for marketing surfaces, not app chrome) — */
-  .text-display-xl { font-size: clamp(3rem, 6vw, 4.5rem); line-height: 1.02; letter-spacing: -0.035em; font-weight: 600; }
-  .text-display-lg { font-size: clamp(2.25rem, 4.5vw, 3.5rem); line-height: 1.05; letter-spacing: -0.03em; font-weight: 600; }
-  .text-display    { font-size: clamp(1.875rem, 3.5vw, 2.5rem); line-height: 1.1; letter-spacing: -0.025em; font-weight: 600; }
+  /* — Display heading scale (for marketing surfaces, not app chrome) —
+     Arabic uses Tajawal Black (900); Latin uses Instrument Serif (400/italic).
+     Both feel monumental at marketing scales. */
+  .text-display-mega { font-family: var(--font-display-en); font-size: clamp(3.5rem, 8.5vw, 7rem);  line-height: 0.95; letter-spacing: -0.04em;  font-weight: 400; }
+  .text-display-xl   { font-family: var(--font-display-en); font-size: clamp(3rem, 6vw, 4.75rem);   line-height: 1.0;  letter-spacing: -0.035em; font-weight: 400; }
+  .text-display-lg   { font-family: var(--font-display-en); font-size: clamp(2.5rem, 5vw, 4rem);    line-height: 1.04; letter-spacing: -0.03em;  font-weight: 400; }
+  .text-display      { font-family: var(--font-display-en); font-size: clamp(2rem, 3.8vw, 3rem);    line-height: 1.1;  letter-spacing: -0.025em; font-weight: 400; }
+
+  /* Arabic display: Tajawal Black. Arabic glyphs prefer near-zero or slight POSITIVE
+     tracking — negative tracking collapses joins. Keep weight 900 for monumental scale. */
+  [lang="ar"] .text-display-mega,
+  [lang="ar"] .text-display-xl,
+  [lang="ar"] .text-display-lg,
+  [lang="ar"] .text-display {
+    font-family: var(--font-display-ar);
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+  [lang="ar"] .text-display-mega { line-height: 1.05; }
+  [lang="ar"] .text-display-xl   { line-height: 1.1; }
+  [lang="ar"] .text-display-lg   { line-height: 1.15; }
+  [lang="ar"] .text-display      { line-height: 1.2; }
+
+  /* Inline italic accent — works for English serif. Arabic ignores. */
+  .display-italic { font-style: italic; }
+  [lang="ar"] .display-italic { font-style: normal; color: hsl(var(--primary)); }
 
   /* — App heading scale (used in styleguide + dense product chrome) — */
   .text-h1       { font-size: 2rem;     line-height: 1.15; letter-spacing: -0.02em;  font-weight: 600; }

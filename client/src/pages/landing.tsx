@@ -668,6 +668,23 @@ function getCopy(locale: Locale) {
         },
       ],
     },
+    manifesto: {
+      eyebrow: ar ? "بيان" : "Manifesto",
+      kicker: ar ? "نحن نؤمن بأنّ" : "We believe that",
+      lines: ar ? [
+        { t: "الماليّة لغةٌ", em: "تستحقّ من يُتقنها" },
+        { t: "والمحاسبة ذاكرةٌ", em: "تستحقّ من يحرسها" },
+        { t: "وكلّ قرارٍ مُؤجَّل", em: "ضريبةٌ على المستقبل" },
+      ] : [
+        { t: "Finance is a language",   em: "that deserves to be spoken well." },
+        { t: "Accounting is a memory",  em: "that deserves to be guarded." },
+        { t: "Every deferred decision", em: "is a tax on the future." },
+      ],
+      footnote: ar
+        ? "لذلك بنينا منصّةً لا تعدّ لك فحسب — بل تُفكّر معك."
+        : "That is why we built a platform that doesn't just count — it thinks with you.",
+      sig: ar ? "محاسب ذكي · فريق التأسيس" : "Smart Accountant · founding team",
+    },
     productTour: {
       eyebrow: ar ? "داخل المنتج" : "Inside the product",
       title: ar ? "هذه ليست رسومات. هذه الشاشات نفسها." : "Not diagrams. These are the actual screens.",
@@ -943,6 +960,7 @@ export default function Landing() {
       />
       <main className="overflow-x-clip">
         <Hero t={t} />
+        <Manifesto t={t} />
         <TrustStrip t={t} />
         <WhyDifferent t={t} />
         <CoreCapabilities t={t} />
@@ -1017,7 +1035,7 @@ function Hero({ t }: { t: Dict }) {
             <h1 className="mt-6 text-display-lg text-foreground">
               {t.hero.h1a}
               <br />
-              <span className="text-primary">{t.hero.h1b}</span>
+              <span className="display-italic text-primary">{t.hero.h1b}</span>
             </h1>
 
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
@@ -1483,6 +1501,94 @@ function DashboardShowcase({ t }: { t: Dict }) {
           {s.legend.map((l) => (
             <span key={l} className="flex items-center gap-1.5"><span className="status-dot bg-primary" />{l}</span>
           ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  2.5 · Manifesto — full-bleed typographic anchor                           */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function Manifesto({ t }: { t: Dict }) {
+  const m = t.manifesto
+  return (
+    <section
+      className="relative isolate overflow-hidden bg-foreground text-background py-24 lg:py-36"
+      data-testid="section-manifesto"
+    >
+      {/* Layered ambient mesh — emerald glow on dark canvas */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10"
+        style={{
+          background:
+            "radial-gradient(60% 50% at 20% 30%, hsl(158 64% 28% / 0.32), transparent 60%), radial-gradient(50% 45% at 85% 75%, hsl(158 64% 28% / 0.22), transparent 65%)",
+        }}
+      />
+      {/* Fine grain */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 opacity-[0.04] pointer-events-none mix-blend-overlay"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+        }}
+      />
+      {/* Top hairline */}
+      <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+
+      <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        {/* Eyebrow with chapter mark */}
+        <div className="flex items-center gap-3 mb-10 lg:mb-14">
+          <span className="font-mono text-xs uppercase tracking-[0.3em] text-primary-foreground bg-primary/30 ring-1 ring-primary/50 px-2.5 py-1 rounded-full">
+            00 · {m.eyebrow}
+          </span>
+          <span aria-hidden className="h-px flex-1 bg-background/20" />
+          <span className="font-mono text-xs text-background/75">{t.ar ? "اقرأ ببطء" : "Read slowly"}</span>
+        </div>
+
+        {/* Kicker */}
+        <p className="font-mono text-xs sm:text-sm uppercase tracking-[0.25em] text-background/80 mb-6 lg:mb-10">
+          {m.kicker}
+        </p>
+
+        {/* Three monumental lines */}
+        <div className="space-y-3 lg:space-y-5">
+          {m.lines.map((l, i) => (
+            <div
+              key={i}
+              className="flex items-baseline gap-4 lg:gap-6"
+              data-testid={`manifesto-line-${i}`}
+            >
+              <span className="font-mono text-xs text-primary tracking-widest pt-2 hidden sm:inline">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <h2 className="text-display-mega text-background leading-[1.05]">
+                <span className="text-background">{l.t}</span>
+                <span className="text-background/75">
+                  {" "}
+                  <em className="display-italic">{l.em}</em>
+                </span>
+                <span className="text-primary">.</span>
+              </h2>
+            </div>
+          ))}
+        </div>
+
+        {/* Footnote */}
+        <div className="mt-14 lg:mt-20 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 pt-8 border-t border-background/20">
+          <p className="max-w-xl text-base lg:text-lg leading-relaxed text-background/90">
+            {m.footnote}
+          </p>
+          <div className="flex items-center gap-3 text-end">
+            <span className="font-mono text-xs uppercase tracking-[0.25em] text-background/75">
+              {m.sig}
+            </span>
+            <span aria-hidden className="size-1.5 rounded-full bg-primary animate-pulse motion-reduce:animate-none" />
+          </div>
         </div>
       </div>
     </section>
