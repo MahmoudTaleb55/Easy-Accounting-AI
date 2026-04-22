@@ -300,6 +300,57 @@
   .text-display-lg { font-size: clamp(2.25rem, 4.5vw, 3.5rem); line-height: 1.05; letter-spacing: -0.03em; font-weight: 600; }
   .text-display    { font-size: clamp(1.875rem, 3.5vw, 2.5rem); line-height: 1.1; letter-spacing: -0.025em; font-weight: 600; }
 
+  /* — App heading scale (used in styleguide + dense product chrome) — */
+  .text-h1       { font-size: 2rem;     line-height: 1.15; letter-spacing: -0.02em;  font-weight: 600; }
+  .text-h2       { font-size: 1.5rem;   line-height: 1.2;  letter-spacing: -0.015em; font-weight: 600; }
+  .text-h3       { font-size: 1.25rem;  line-height: 1.25; letter-spacing: -0.01em;  font-weight: 600; }
+  .text-h4       { font-size: 1.0625rem;line-height: 1.3;  letter-spacing: -0.005em; font-weight: 600; }
+  .text-body-lg  { font-size: 1.0625rem;line-height: 1.55; }
+  .text-body     { font-size: 0.9375rem;line-height: 1.55; }
+  .text-small    { font-size: 0.8125rem;line-height: 1.45; }
+  .text-caption  { font-size: 0.6875rem;line-height: 1.35; }
+
+  /* — Semantic shadow aliases (kept for back-compat with earlier system) — */
+  .shadow-flat    { box-shadow: none; }
+  .shadow-subtle  { box-shadow: var(--shadow-xs); }
+  .shadow-raised  { box-shadow: var(--shadow-md); }
+  .shadow-overlay { box-shadow: var(--shadow-lg); }
+
+  /* — Surface aliases — surface is the slightly-elevated app workspace, danger
+     is a friendlier name for destructive in error/delete contexts. — */
+  .bg-surface             { background-color: hsl(var(--card)); }
+  .text-surface-foreground{ color: hsl(var(--card-foreground)); }
+  .bg-danger              { background-color: hsl(var(--destructive)); }
+  .text-danger-foreground { color: hsl(var(--destructive-foreground)); }
+
+  /* — Brand-mesh: signature surface treatment for hero / brand moments.
+     Two soft, off-axis radials in the brand palette over the page background.
+     Use sparingly — never on dense product chrome. Pair with an inset radial
+     mask to keep edges feathered. — */
+  .brand-mesh {
+    background-image:
+      radial-gradient(60% 50% at 22% 28%, hsl(var(--primary) / 0.16), transparent 60%),
+      radial-gradient(50% 45% at 82% 18%, hsl(var(--info) / 0.12), transparent 65%),
+      radial-gradient(70% 60% at 50% 100%, hsl(var(--accent) / 0.10), transparent 60%);
+  }
+  .dark .brand-mesh {
+    background-image:
+      radial-gradient(60% 50% at 22% 28%, hsl(var(--primary) / 0.22), transparent 60%),
+      radial-gradient(50% 45% at 82% 18%, hsl(var(--info) / 0.18), transparent 65%),
+      radial-gradient(70% 60% at 50% 100%, hsl(var(--accent) / 0.14), transparent 60%);
+  }
+  .brand-grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.025;
+    mix-blend-mode: overlay;
+    background-image: radial-gradient(hsl(var(--foreground)) 1px, transparent 1px);
+    background-size: 3px 3px;
+  }
+  .dark .brand-grain::after { opacity: 0.04; }
+
   /* — Refined hover/active interactions (replaces translate-Y "lift" with subtle bg shift + shadow) — */
   .hover-elevate {
     transition: background-color 180ms ease, box-shadow 180ms ease, border-color 180ms ease;

@@ -441,14 +441,15 @@ function CtaArrow({ ar }: { ar: boolean }) {
 
 function Hero({ t }: { t: Dict }) {
   return (
-    <section className="relative pt-16 pb-24 lg:pt-24 lg:pb-32">
+    <section className="relative pt-16 pb-24 lg:pt-24 lg:pb-32 brand-grain">
       <div
         aria-hidden
-        className="absolute inset-0 -z-10 [mask-image:radial-gradient(60%_50%_at_50%_30%,black,transparent)]"
-      >
-        <div className="absolute top-32 left-1/4 w-[42rem] h-[42rem] rounded-full bg-primary/[0.06] blur-3xl" />
-        <div className="absolute top-48 right-1/4 w-[32rem] h-[32rem] rounded-full bg-info/[0.05] blur-3xl" />
-      </div>
+        className="absolute inset-0 -z-10 brand-mesh [mask-image:radial-gradient(70%_55%_at_50%_30%,black,transparent)]"
+      />
+      <div
+        aria-hidden
+        className="absolute inset-x-0 -z-10 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent"
+      />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-center">
