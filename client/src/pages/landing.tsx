@@ -1166,7 +1166,7 @@ function TrustStrip({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 lg:py-12">
         <div className="grid lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-4">
-            <div className="eyebrow mb-2">{t.trust.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-2"><span className="chapter-index">01</span>{t.trust.eyebrow}</div>
             <div className="text-sm text-foreground/85 leading-relaxed">
               <span className="font-semibold text-foreground">{t.trust.headline}</span>{" "}
               {t.trust.sub1}
@@ -1222,7 +1222,7 @@ function WhyDifferent({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-12 mb-16">
           <div className="lg:col-span-5">
-            <div className="eyebrow mb-4">{t.why.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-4"><span className="chapter-index">02</span>{t.why.eyebrow}</div>
             <h2 className="text-display text-foreground">
               {t.why.title1}
               <br />
@@ -1439,7 +1439,7 @@ function DashboardShowcase({ t }: { t: Dict }) {
     <section id="showcase" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto mb-14">
-          <div className="eyebrow mb-3">{s.eyebrow}</div>
+          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">03</span>{s.eyebrow}</div>
           <h2 className="text-display text-foreground">{s.title}</h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">{s.lead}</p>
         </div>
@@ -1614,7 +1614,7 @@ function Testimonials({ t }: { t: Dict }) {
         {/* Header */}
         <div className="grid lg:grid-cols-12 gap-10 mb-14 items-end">
           <div className="lg:col-span-7">
-            <div className="eyebrow mb-3">{ts.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">10</span>{ts.eyebrow}</div>
             <h2 className="text-display text-foreground">{ts.title}</h2>
           </div>
           <div className="lg:col-span-5">
@@ -1835,7 +1835,7 @@ function ProductTour({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-8 mb-16">
           <div className="lg:col-span-7">
-            <div className="eyebrow mb-3">{p.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">04</span>{p.eyebrow}</div>
             <h2 className="text-display text-foreground">{p.title}</h2>
           </div>
           <div className="lg:col-span-5 self-end">
@@ -2355,7 +2355,7 @@ function PredictiveCapital({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-8 mb-14">
           <div className="lg:col-span-7">
-            <div className="eyebrow mb-3">{p.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">05</span>{p.eyebrow}</div>
             <h2 className="text-display text-foreground">
               {p.title}
               <br />
@@ -2489,7 +2489,7 @@ function Automation({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-8 mb-14">
           <div className="lg:col-span-6">
-            <div className="eyebrow mb-3">{aut.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">06</span>{aut.eyebrow}</div>
             <h2 className="text-display text-foreground">{aut.title}</h2>
           </div>
           <div className="lg:col-span-5 lg:col-start-8 self-end">
@@ -2738,7 +2738,7 @@ function LocalIntegrations({ t }: { t: Dict }) {
         {/* Heading */}
         <div className="grid lg:grid-cols-12 gap-8 mb-12 lg:mb-16">
           <div className="lg:col-span-7">
-            <div className="eyebrow mb-3">{i.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">07</span>{i.eyebrow}</div>
             <h2 className="text-display text-foreground">{i.title}</h2>
           </div>
           <div className="lg:col-span-5 self-end">
@@ -2863,7 +2863,7 @@ function Security({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-12 gap-12 mb-14 items-end">
           <div className="lg:col-span-7">
-            <div className="eyebrow mb-3">{sec.eyebrow}</div>
+            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">08</span>{sec.eyebrow}</div>
             <h2 className="text-display text-foreground">{sec.title}</h2>
           </div>
           <div className="lg:col-span-4 lg:col-start-9">
@@ -2902,7 +2902,7 @@ function UseCases({ t }: { t: Dict }) {
     <section id="use-cases" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl mb-12">
-          <div className="eyebrow mb-3">{u.eyebrow}</div>
+          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">09</span>{u.eyebrow}</div>
           <h2 className="text-display text-foreground">{u.title}</h2>
         </div>
 
@@ -3072,7 +3072,7 @@ function Pricing({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section heading */}
         <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="eyebrow mb-3">{p.eyebrow}</div>
+          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">11</span>{p.eyebrow}</div>
           <h2 className="text-display text-foreground">{p.title}</h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">{p.lead}</p>
         </div>
@@ -3262,7 +3262,7 @@ function FAQ({ t }: { t: Dict }) {
     <section id="faq" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <div className="eyebrow mb-3">{t.faq.eyebrow}</div>
+          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">12</span>{t.faq.eyebrow}</div>
           <h2 className="text-display text-foreground">{t.faq.title}</h2>
         </div>
         <Accordion type="single" collapsible className="border-t border-border">
