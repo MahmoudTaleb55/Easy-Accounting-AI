@@ -92,12 +92,13 @@
     /* — Radii: refined fintech, not consumer-rounded — */
     --radius:               0.625rem;        /* 10px base */
 
-    /* — Shadow tokens (soft, premium, not heavy) — */
-    --shadow-xs: 0 1px 0 rgb(15 23 42 / 0.04);
-    --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05), 0 1px 1px rgb(15 23 42 / 0.03);
-    --shadow-md: 0 4px 12px rgb(15 23 42 / 0.06), 0 2px 4px rgb(15 23 42 / 0.04);
-    --shadow-lg: 0 12px 32px rgb(15 23 42 / 0.08), 0 4px 8px rgb(15 23 42 / 0.04);
-    --shadow-xl: 0 24px 56px rgb(15 23 42 / 0.10), 0 8px 16px rgb(15 23 42 / 0.05);
+    /* — Shadow tokens (premium fintech: present, not heavy) —
+       Lifted in v6 from near-invisible to clearly material on warm paper. */
+    --shadow-xs: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 1px rgb(15 23 42 / 0.04);
+    --shadow-sm: 0 2px 4px rgb(15 23 42 / 0.07), 0 1px 2px rgb(15 23 42 / 0.05);
+    --shadow-md: 0 6px 18px rgb(15 23 42 / 0.09), 0 2px 6px rgb(15 23 42 / 0.06);
+    --shadow-lg: 0 18px 44px rgb(15 23 42 / 0.12), 0 6px 12px rgb(15 23 42 / 0.07);
+    --shadow-xl: 0 32px 72px rgb(15 23 42 / 0.16), 0 12px 24px rgb(15 23 42 / 0.08);
     --shadow-ring: 0 0 0 4px hsl(var(--primary) / 0.12);
 
     /* — Semantic spacing rhythm — */
@@ -325,6 +326,35 @@
       hsl(var(--foreground) / 0.2) 100%
     );
   }
+  /* Premium card treatment — subtle inner highlight at top edge gives surfaces
+     a sense of materiality. Pairs with shadow-sm/md on .card-premium hosts.   */
+  .card-premium {
+    position: relative;
+    isolation: isolate;
+  }
+  .card-premium::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      hsl(0 0% 100% / 0.7) 0%,
+      hsl(0 0% 100% / 0) 35%
+    );
+    mix-blend-mode: overlay;
+    z-index: 0;
+  }
+  .card-premium > * { position: relative; z-index: 1; }
+  .dark .card-premium::before {
+    background: linear-gradient(
+      to bottom,
+      hsl(0 0% 100% / 0.05) 0%,
+      hsl(0 0% 100% / 0) 50%
+    );
+  }
+
   /* Chapter index — small mono number that pairs with eyebrow */
   .chapter-index {
     font-family: var(--font-mono);

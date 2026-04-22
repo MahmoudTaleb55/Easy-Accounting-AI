@@ -3495,7 +3495,8 @@ function Metric({ value, label, mono }: { value: string; label: string; mono?: b
 function BentoCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn(
-      "rounded-xl border border-card-border bg-card p-6 lg:p-7 shadow-xs hover:shadow-sm transition-shadow",
+      "card-premium rounded-xl border border-card-border bg-card p-6 lg:p-7",
+      "shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200",
       className
     )}>
       {children}
