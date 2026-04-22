@@ -46,7 +46,7 @@ export default function ResetPasswordPage() {
       subtitle={ar ? "ستُسجّل الدخول بكلمة المرور الجديدة." : "You'll sign in with the new password next."}
       footer={
         <p>
-          <Link href="/signin"><a className="text-primary underline-offset-4 hover:underline">{ar ? "العودة" : "Back"}</a></Link>
+          <Link href="/signin" className="text-primary underline-offset-4 hover:underline">{ar ? "العودة" : "Back"}</Link>
         </p>
       }
     >

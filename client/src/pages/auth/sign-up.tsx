@@ -101,10 +101,12 @@ export default function SignUpPage() {
       footer={
         <p>
           {ar ? "لديك حساب؟ " : "Already have an account? "}
-          <Link href="/signin">
-            <a className="font-medium text-primary underline-offset-4 hover:underline" data-testid="link-to-signin">
-              {ar ? "تسجيل الدخول" : "Sign in"}
-            </a>
+          <Link
+            href="/signin"
+            data-testid="link-to-signin"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            {ar ? "تسجيل الدخول" : "Sign in"}
           </Link>
         </p>
       }

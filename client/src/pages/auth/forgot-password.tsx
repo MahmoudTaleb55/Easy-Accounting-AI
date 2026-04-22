@@ -35,10 +35,12 @@ export default function ForgotPasswordPage() {
       subtitle={ar ? "أدخل بريدك وسنرسل لك رابط استعادة." : "Enter your email and we'll send you a reset link."}
       footer={
         <p>
-          <Link href="/signin">
-            <a className="text-primary underline-offset-4 hover:underline" data-testid="link-back-signin">
-              {ar ? "العودة لتسجيل الدخول" : "Back to sign in"}
-            </a>
+          <Link
+            href="/signin"
+            data-testid="link-back-signin"
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            {ar ? "العودة لتسجيل الدخول" : "Back to sign in"}
           </Link>
         </p>
       }

@@ -62,7 +62,7 @@ export default function AcceptInvitationPage() {
         <p className="text-sm text-muted-foreground" data-testid="text-invite-invalid">
           {ar ? "ربما تم سحبها أو انتهت صلاحيتها." : "It may have been revoked or expired."}
         </p>
-        <Link href="/signin"><a className="mt-4 inline-block text-primary hover:underline">{ar ? "تسجيل الدخول" : "Sign in"}</a></Link>
+        <Link href="/signin" className="mt-4 inline-block text-primary hover:underline">{ar ? "تسجيل الدخول" : "Sign in"}</Link>
       </AuthShell>
     );
   }

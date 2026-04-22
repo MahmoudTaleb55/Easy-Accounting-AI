@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useT, type StringKey } from "@/i18n/dict";
 import { useLocale } from "@/contexts/locale-context";
+import { BrandMark } from "@/components/brand/mark";
 
 interface NavItem { key: StringKey; url: string; icon: LucideIcon; }
 interface NavGroup { label: StringKey; items: NavItem[]; }
@@ -77,10 +78,8 @@ export function AppSidebar() {
       className={`${dir === "rtl" ? "border-l" : "border-r"} border-border bg-sidebar`}
     >
       <SidebarHeader className="px-3 py-3 border-b border-sidebar-border">
-        <div className="flex items-center gap-2.5">
-          <div className="bg-primary/10 p-1.5 rounded-md shrink-0">
-            <Wallet className="w-4 h-4 text-primary" />
-          </div>
+        <div className="flex items-center gap-2.5 text-foreground">
+          <BrandMark size="sm" />
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold tracking-tight truncate">{t("brand")}</div>
@@ -209,8 +208,8 @@ export function MobileHeader() {
   const t = useT();
   return (
     <div className="md:hidden flex items-center justify-between px-4 h-12 bg-card border-b border-border sticky top-0 z-50">
-      <div className="flex items-center gap-2">
-        <Wallet className="w-5 h-5 text-primary" />
+      <div className="flex items-center gap-2 text-foreground">
+        <BrandMark size="sm" />
         <h2 className="font-semibold text-sm text-foreground">{t("brand")}</h2>
       </div>
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar}>

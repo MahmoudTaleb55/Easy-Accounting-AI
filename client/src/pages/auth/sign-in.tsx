@@ -73,10 +73,12 @@ export default function SignInPage() {
       footer={
         <p>
           {ar ? "ليس لديك حساب؟ " : "Don't have an account? "}
-          <Link href="/signup" data-testid="link-to-signup">
-            <a className="font-medium text-primary underline-offset-4 hover:underline">
-              {ar ? "أنشئ حساباً" : "Create one"}
-            </a>
+          <Link
+            href="/signup"
+            data-testid="link-to-signup"
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            {ar ? "أنشئ حساباً" : "Create one"}
           </Link>
         </p>
       }
@@ -108,13 +110,12 @@ export default function SignInPage() {
         <div className="space-y-2">
           <div className="flex items-baseline justify-between">
             <Label htmlFor="password">{ar ? "كلمة المرور" : "Password"}</Label>
-            <Link href="/forgot-password">
-              <a
-                className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                data-testid="link-forgot-password"
-              >
-                {ar ? "نسيت كلمة المرور؟" : "Forgot password?"}
-              </a>
+            <Link
+              href="/forgot-password"
+              data-testid="link-forgot-password"
+              className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              {ar ? "نسيت كلمة المرور؟" : "Forgot password?"}
             </Link>
           </div>
           <Input
