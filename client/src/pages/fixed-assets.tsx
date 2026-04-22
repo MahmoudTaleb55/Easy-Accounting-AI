@@ -11,8 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
+import { WriteGuard } from "@/components/auth/write-guard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck } from "lucide-react";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
@@ -229,11 +230,11 @@ function AssetRegister({ company }: { company: Company }) {
               </SelectContent>
             </Select>
             <Dialog open={openAdd} onOpenChange={setOpenAdd}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-add-asset" disabled={!cats || cats.length === 0}>
+              <WriteGuard forceDisabled={!cats || cats.length === 0}>
+                <Button data-testid="button-add-asset" onClick={() => setOpenAdd(true)}>
                   <Plus className="w-4 h-4 ml-1" /> إضافة أصل
                 </Button>
-              </DialogTrigger>
+              </WriteGuard>
               <AddAssetDialog
                 company={company}
                 categories={cats || []}
@@ -286,23 +287,31 @@ function AssetRegister({ company }: { company: Company }) {
                         <td className="py-2 px-2"><Badge variant="secondary">{STATUS_LABEL[a.status] || a.status}</Badge></td>
                         <td className="py-2 px-2">
                           <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" disabled={a.status !== "active"} title="انخفاض القيمة"
-                              onClick={() => { setOpAssetId(a.id); setOpType("impairment"); }} data-testid={`button-impairment-${a.id}`}>
-                              <ArrowDownCircle className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" disabled={a.status !== "active"} title="إعادة تقييم"
-                              onClick={() => { setOpAssetId(a.id); setOpType("revaluation"); }} data-testid={`button-revaluation-${a.id}`}>
-                              <RefreshCw className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" disabled={a.status !== "active"} title="استبعاد"
-                              onClick={() => { setOpAssetId(a.id); setOpType("dispose"); }} data-testid={`button-dispose-${a.id}`}>
-                              <Truck className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" title="حذف"
-                              onClick={() => { if (confirm("حذف الأصل وكل قيوده المخططة؟")) deleteMutation.mutate(a.id); }}
-                              data-testid={`button-delete-${a.id}`}>
-                              <Trash2 className="w-4 h-4 text-rose-600" />
-                            </Button>
+                            <WriteGuard forceDisabled={a.status !== "active"}>
+                              <Button size="sm" variant="ghost" title="انخفاض القيمة"
+                                onClick={() => { setOpAssetId(a.id); setOpType("impairment"); }} data-testid={`button-impairment-${a.id}`}>
+                                <ArrowDownCircle className="w-4 h-4" />
+                              </Button>
+                            </WriteGuard>
+                            <WriteGuard forceDisabled={a.status !== "active"}>
+                              <Button size="sm" variant="ghost" title="إعادة تقييم"
+                                onClick={() => { setOpAssetId(a.id); setOpType("revaluation"); }} data-testid={`button-revaluation-${a.id}`}>
+                                <RefreshCw className="w-4 h-4" />
+                              </Button>
+                            </WriteGuard>
+                            <WriteGuard forceDisabled={a.status !== "active"}>
+                              <Button size="sm" variant="ghost" title="استبعاد"
+                                onClick={() => { setOpAssetId(a.id); setOpType("dispose"); }} data-testid={`button-dispose-${a.id}`}>
+                                <Truck className="w-4 h-4" />
+                              </Button>
+                            </WriteGuard>
+                            <WriteGuard>
+                              <Button size="sm" variant="ghost" title="حذف"
+                                onClick={() => { if (confirm("حذف الأصل وكل قيوده المخططة؟")) deleteMutation.mutate(a.id); }}
+                                data-testid={`button-delete-${a.id}`}>
+                                <Trash2 className="w-4 h-4 text-rose-600" />
+                              </Button>
+                            </WriteGuard>
                           </div>
                         </td>
                       </tr>
@@ -880,9 +889,11 @@ function DepreciationPanel({ company }: { company: Company }) {
             <Button variant="outline" onClick={() => previewMut.mutate()} disabled={previewMut.isPending} data-testid="button-preview-dep">
               <Calculator className="w-4 h-4 ml-1" /> معاينة
             </Button>
-            <Button onClick={() => postMut.mutate()} disabled={postMut.isPending || !preview} data-testid="button-post-dep">
-              ترحيل قيد الإهلاك
-            </Button>
+            <WriteGuard forceDisabled={postMut.isPending || !preview}>
+              <Button onClick={() => postMut.mutate()} data-testid="button-post-dep">
+                ترحيل قيد الإهلاك
+              </Button>
+            </WriteGuard>
           </div>
           {preview && (
             <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-2" data-testid="text-dep-preview">
@@ -1022,7 +1033,7 @@ function CategoriesPanel({ company }: { company: Company }) {
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-lg">تصنيفات الأصول</CardTitle>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button data-testid="button-add-category"><Plus className="w-4 h-4 ml-1" /> إضافة تصنيف</Button></DialogTrigger>
+          <WriteGuard><Button data-testid="button-add-category" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-1" /> إضافة تصنيف</Button></WriteGuard>
           <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>تصنيف أصول جديد</DialogTitle>
@@ -1110,7 +1121,7 @@ export function CompaniesPanel() {
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-lg">الشركات</CardTitle>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button data-testid="button-add-company"><Plus className="w-4 h-4 ml-1" /> إضافة شركة</Button></DialogTrigger>
+          <WriteGuard><Button data-testid="button-add-company" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-1" /> إضافة شركة</Button></WriteGuard>
           <DialogContent dir="rtl">
             <DialogHeader><DialogTitle>شركة جديدة</DialogTitle></DialogHeader>
             <div className="grid gap-3">
@@ -1177,7 +1188,9 @@ export function FxPanel({ company }: { company: Company }) {
           <div><Label>إلى</Label><Input value={form.toCurrency} onChange={(e) => setForm({ ...form, toCurrency: e.target.value.toUpperCase() })} data-testid="input-fx-to" /></div>
           <div><Label>التاريخ</Label><Input type="date" value={form.rateDate} onChange={(e) => setForm({ ...form, rateDate: e.target.value })} data-testid="input-fx-date" /></div>
           <div><Label>السعر</Label><Input type="number" step="0.0001" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} data-testid="input-fx-rate-value" /></div>
-          <Button onClick={() => m.mutate()} disabled={m.isPending} data-testid="button-save-fx"><Plus className="w-4 h-4 ml-1" /> إضافة</Button>
+          <WriteGuard forceDisabled={m.isPending}>
+            <Button onClick={() => m.mutate()} data-testid="button-save-fx"><Plus className="w-4 h-4 ml-1" /> إضافة</Button>
+          </WriteGuard>
         </div>
         {!rates || rates.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد أسعار صرف.</div> : (
           <div className="table-sticky-first"><table className="w-full text-sm">
@@ -1188,7 +1201,7 @@ export function FxPanel({ company }: { company: Company }) {
                 <td className="py-2">{r.fromCurrency}</td>
                 <td className="py-2">{r.toCurrency}</td>
                 <td className="py-2 tabular-nums">{r.rate}</td>
-                <td className="py-2"><Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)} data-testid={`button-delete-fx-${r.id}`}><Trash2 className="w-4 h-4 text-rose-600" /></Button></td>
+                <td className="py-2"><WriteGuard><Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)} data-testid={`button-delete-fx-${r.id}`}><Trash2 className="w-4 h-4 text-rose-600" /></Button></WriteGuard></td>
               </tr>
             ))}</tbody>
           </table></div>

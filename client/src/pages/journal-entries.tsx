@@ -14,10 +14,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog"
+import { WriteGuard } from "@/components/auth/write-guard"
 import {
   Select,
   SelectContent,
@@ -172,12 +172,12 @@ export default function JournalEntriesPage() {
         </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-new-entry">
+          <WriteGuard>
+            <Button data-testid="button-new-entry" onClick={() => setOpen(true)}>
               <Plus className="w-4 h-4" />
               {t.add}
             </Button>
-          </DialogTrigger>
+          </WriteGuard>
           <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{t.addTitle}</DialogTitle>
@@ -422,16 +422,18 @@ export default function JournalEntriesPage() {
                       <History className="w-3.5 h-3.5" />
                     </Button>
                     {je.source !== "transaction" && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => deleteMutation.mutate(je.id)}
-                        data-testid={`button-delete-entry-${je.id}`}
-                        aria-label={locale === "ar" ? "حذف القيد" : "Delete entry"}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                      <WriteGuard>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => deleteMutation.mutate(je.id)}
+                          data-testid={`button-delete-entry-${je.id}`}
+                          aria-label={locale === "ar" ? "حذف القيد" : "Delete entry"}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </WriteGuard>
                     )}
                   </div>
                 </div>

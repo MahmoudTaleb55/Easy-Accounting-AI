@@ -13,7 +13,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import {
   AlertDialog,
@@ -26,6 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { WriteGuard, useCanWrite } from "@/components/auth/write-guard"
 import {
   Plus,
   ArrowDownRight,
@@ -52,6 +52,7 @@ export default function Transactions() {
   const dfLocale = locale === "ar" ? ar : enUS
   const { data: transactions, isLoading, isError, refetch } = useTransactions()
   const deleteMutation = useDeleteTransaction()
+  const canWrite = useCanWrite()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
@@ -136,12 +137,15 @@ export default function Transactions() {
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-transaction">
+          <WriteGuard>
+            <Button
+              data-testid="button-add-transaction"
+              onClick={() => setIsDialogOpen(true)}
+            >
               <Plus className="w-4 h-4" />
               {t.add}
             </Button>
-          </DialogTrigger>
+          </WriteGuard>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>{t.addDialogTitle}</DialogTitle>
@@ -217,7 +221,7 @@ export default function Transactions() {
           title={search || filter !== "all" ? t.emptyTitleHas : t.emptyTitleNone}
           description={search || filter !== "all" ? t.emptyBodyHas : t.emptyBodyNone}
           action={
-            !(search || filter !== "all")
+            !(search || filter !== "all") && canWrite
               ? { label: t.add, onClick: () => setIsDialogOpen(true), testId: "button-empty-add-transaction" }
               : undefined
           }
@@ -287,6 +291,7 @@ export default function Transactions() {
                       <History className="w-3.5 h-3.5" />
                     </Button>
 
+                    {canWrite ? (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
@@ -318,6 +323,19 @@ export default function Transactions() {
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    ) : (
+                      <WriteGuard>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          data-testid={`button-delete-${tx.id}`}
+                          aria-label={t.delConfirm}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </WriteGuard>
+                    )}
                   </div>
                 </li>
               )

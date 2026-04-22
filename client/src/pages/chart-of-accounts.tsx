@@ -13,10 +13,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog"
+import { WriteGuard } from "@/components/auth/write-guard"
 import {
   Select,
   SelectContent,
@@ -166,11 +166,11 @@ export default function ChartOfAccountsPage() {
           </div>
 
           <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-account">
+            <WriteGuard>
+              <Button data-testid="button-add-account" onClick={() => setOpen(true)}>
                 <Plus className="w-4 h-4" /> {t.add}
               </Button>
-            </DialogTrigger>
+            </WriteGuard>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>{t.addTitle}</DialogTitle>

@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { WriteGuard } from "@/components/auth/write-guard";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -109,9 +110,9 @@ function EmployeesTab() {
           <CardDescription>سجل الموظفين النشطين بالمنشأة</CardDescription>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-employee"><Plus className="w-4 h-4 ml-2" /> موظف جديد</Button>
-          </DialogTrigger>
+          <WriteGuard>
+            <Button data-testid="button-add-employee" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-2" /> موظف جديد</Button>
+          </WriteGuard>
           <DialogContent className="max-w-lg" dir="rtl">
             <DialogHeader>
               <DialogTitle>إضافة موظف</DialogTitle>
@@ -185,9 +186,11 @@ function EmployeesTab() {
                     {e.isActive ? <Badge variant="default">نشط</Badge> : <Badge variant="secondary">معطل</Badge>}
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => remove.mutate(e.id)} data-testid={`button-delete-employee-${e.id}`}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                    <WriteGuard>
+                      <Button variant="ghost" size="icon" onClick={() => remove.mutate(e.id)} data-testid={`button-delete-employee-${e.id}`}>
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </WriteGuard>
                   </TableCell>
                 </TableRow>
               ))}
@@ -274,9 +277,11 @@ function AttendanceTab() {
             <label className="text-sm font-medium">ساعات إضافية</label>
             <Input type="number" step="0.5" value={overtime} onChange={(e) => setOvertime(e.target.value)} data-testid="input-att-overtime" />
           </div>
-          <Button className="w-full" onClick={() => save.mutate()} disabled={!employeeId || save.isPending} data-testid="button-save-attendance">
-            {save.isPending ? "..." : "حفظ"}
-          </Button>
+          <WriteGuard forceDisabled={!employeeId || save.isPending}>
+            <Button className="w-full" onClick={() => save.mutate()} data-testid="button-save-attendance">
+              {save.isPending ? "..." : "حفظ"}
+            </Button>
+          </WriteGuard>
         </CardContent>
       </Card>
 
@@ -393,9 +398,11 @@ function LeavesTab() {
             </Select>
           </div>
           {days > 0 && <p className="text-sm text-muted-foreground">عدد الأيام: <span className="font-bold">{days}</span></p>}
-          <Button className="w-full" onClick={() => create.mutate()} disabled={!employeeId || !start || !end || create.isPending} data-testid="button-save-leave">
-            {create.isPending ? "..." : "حفظ"}
-          </Button>
+          <WriteGuard forceDisabled={!employeeId || !start || !end || create.isPending}>
+            <Button className="w-full" onClick={() => create.mutate()} data-testid="button-save-leave">
+              {create.isPending ? "..." : "حفظ"}
+            </Button>
+          </WriteGuard>
         </CardContent>
       </Card>
 
@@ -423,9 +430,11 @@ function LeavesTab() {
                     <TableCell>{l.days}</TableCell>
                     <TableCell><Badge variant="outline">{typeLabel[l.type] || l.type}</Badge></TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => remove.mutate(l.id)} data-testid={`button-delete-leave-${l.id}`}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
+                      <WriteGuard>
+                        <Button variant="ghost" size="icon" onClick={() => remove.mutate(l.id)} data-testid={`button-delete-leave-${l.id}`}>
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </WriteGuard>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -508,15 +517,16 @@ function PayrollTab() {
               <label className="text-sm font-medium">الشهر</label>
               <Input type="number" min="1" max="12" value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-24" data-testid="input-month" />
             </div>
-            <Button
-              size="lg"
-              onClick={() => run.mutate()}
-              disabled={lines.length === 0 || run.isPending}
-              data-testid="button-run-payroll"
-            >
-              <PlayCircle className="w-5 h-5 ml-2" />
-              {run.isPending ? "جاري الاعتماد..." : "اعتماد الرواتب وتسجيل القيد"}
-            </Button>
+            <WriteGuard forceDisabled={lines.length === 0 || run.isPending}>
+              <Button
+                size="lg"
+                onClick={() => run.mutate()}
+                data-testid="button-run-payroll"
+              >
+                <PlayCircle className="w-5 h-5 ml-2" />
+                {run.isPending ? "جاري الاعتماد..." : "اعتماد الرواتب وتسجيل القيد"}
+              </Button>
+            </WriteGuard>
           </div>
 
           {isLoading ? (
