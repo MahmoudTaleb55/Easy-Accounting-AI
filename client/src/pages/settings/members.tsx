@@ -17,6 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Mail, RotateCw, Trash2, Loader2, Copy, Check, Activity as ActivityIcon, AlertTriangle, MailCheck, MailX, MailWarning, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { WriteGuard } from "@/components/auth/write-guard";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface MemberSession {
@@ -244,11 +245,13 @@ export default function MembersPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button type="submit" disabled={invite.isPending} data-testid="button-send-invite">
-                {invite.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <Mail className="mr-2 h-4 w-4" />
-                {ar ? "إرسال" : "Send invite"}
-              </Button>
+              <WriteGuard forceDisabled={invite.isPending}>
+                <Button type="submit" data-testid="button-send-invite">
+                  {invite.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Mail className="mr-2 h-4 w-4" />
+                  {ar ? "إرسال" : "Send invite"}
+                </Button>
+              </WriteGuard>
             </form>
           </CardContent>
         </Card>
@@ -330,22 +333,24 @@ export default function MembersPage() {
                           </Button>
                         )}
                         {can.manageMembers && !isMe && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              const ok = window.confirm(
-                                ar
-                                  ? `إزالة ${fullName} من مساحة العمل؟ سيفقد الوصول فوراً.`
-                                  : `Remove ${fullName} from this workspace? They'll lose access immediately.`
-                              );
-                              if (ok) removeMember.mutate(m.id);
-                            }}
-                            data-testid={`button-remove-${m.id}`}
-                            aria-label="Remove"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          <WriteGuard>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                const ok = window.confirm(
+                                  ar
+                                    ? `إزالة ${fullName} من مساحة العمل؟ سيفقد الوصول فوراً.`
+                                    : `Remove ${fullName} from this workspace? They'll lose access immediately.`
+                                );
+                                if (ok) removeMember.mutate(m.id);
+                              }}
+                              data-testid={`button-remove-${m.id}`}
+                              aria-label="Remove"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </WriteGuard>
                         )}
                       </li>
                     );
@@ -431,25 +436,28 @@ export default function MembersPage() {
                                 </Button>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Button
-                                      variant={failed ? "outline" : "ghost"}
-                                      size="sm"
-                                      onClick={() => resend.mutate(inv.id)}
-                                      disabled={resend.isPending}
-                                      data-testid={`button-resend-${inv.id}`}
-                                      className={failed ? "border-destructive/40 text-destructive hover:bg-destructive/10" : undefined}
-                                    >
-                                      <RotateCw className={`h-3.5 w-3.5 ${failed ? "mr-1.5" : ""}`} />
-                                      {failed && (ar ? "أعد الإرسال" : "Resend")}
-                                    </Button>
+                                    <WriteGuard forceDisabled={resend.isPending}>
+                                      <Button
+                                        variant={failed ? "outline" : "ghost"}
+                                        size="sm"
+                                        onClick={() => resend.mutate(inv.id)}
+                                        data-testid={`button-resend-${inv.id}`}
+                                        className={failed ? "border-destructive/40 text-destructive hover:bg-destructive/10" : undefined}
+                                      >
+                                        <RotateCw className={`h-3.5 w-3.5 ${failed ? "mr-1.5" : ""}`} />
+                                        {failed && (ar ? "أعد الإرسال" : "Resend")}
+                                      </Button>
+                                    </WriteGuard>
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     {ar ? "إعادة إرسال الدعوة" : "Resend invitation"}
                                   </TooltipContent>
                                 </Tooltip>
-                                <Button variant="ghost" size="sm" onClick={() => revoke.mutate(inv.id)} data-testid={`button-revoke-${inv.id}`}>
-                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                                </Button>
+                                <WriteGuard>
+                                  <Button variant="ghost" size="sm" onClick={() => revoke.mutate(inv.id)} data-testid={`button-revoke-${inv.id}`}>
+                                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                  </Button>
+                                </WriteGuard>
                               </>
                             )}
                           </li>

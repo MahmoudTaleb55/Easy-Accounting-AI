@@ -21,6 +21,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { UserPlus, Users, Copy, Trash2, Check, AlertCircle, ShieldCheck } from "lucide-react";
 import { WORKSPACE_ROLES, type WorkspaceRole } from "@shared/schema";
+import { WriteGuard } from "@/components/auth/write-guard";
 
 interface Member {
   id: number;
@@ -196,14 +197,16 @@ export function TeamPanel() {
           </p>
         </div>
         {isOwner && (
-          <Button
-            size="sm"
-            onClick={() => setShowInvite((v) => !v)}
-            data-testid="button-toggle-invite"
-          >
-            <UserPlus className="w-4 h-4 me-1.5" />
-            {locale === "ar" ? "دعوة عضو" : "Invite member"}
-          </Button>
+          <WriteGuard>
+            <Button
+              size="sm"
+              onClick={() => setShowInvite((v) => !v)}
+              data-testid="button-toggle-invite"
+            >
+              <UserPlus className="w-4 h-4 me-1.5" />
+              {locale === "ar" ? "دعوة عضو" : "Invite member"}
+            </Button>
+          </WriteGuard>
         )}
       </CardHeader>
       <CardContent className="space-y-6">
@@ -304,20 +307,21 @@ export function TeamPanel() {
                 >
                   {locale === "ar" ? "إلغاء" : "Cancel"}
                 </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={inviteMutation.isPending}
-                  data-testid="button-submit-invite"
-                >
-                  {inviteMutation.isPending
-                    ? locale === "ar"
-                      ? "جاري الإنشاء..."
-                      : "Creating..."
-                    : locale === "ar"
-                    ? "إنشاء رابط الدعوة"
-                    : "Create invite link"}
-                </Button>
+                <WriteGuard forceDisabled={inviteMutation.isPending}>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    data-testid="button-submit-invite"
+                  >
+                    {inviteMutation.isPending
+                      ? locale === "ar"
+                        ? "جاري الإنشاء..."
+                        : "Creating..."
+                      : locale === "ar"
+                      ? "إنشاء رابط الدعوة"
+                      : "Create invite link"}
+                  </Button>
+                </WriteGuard>
               </div>
             </form>
           </Form>
@@ -378,16 +382,18 @@ export function TeamPanel() {
                   </Badge>
                 )}
                 {isOwner && me?.id !== m.id && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => removeMutation.mutate(m.id)}
-                    aria-label={locale === "ar" ? "حذف العضو" : "Remove member"}
-                    data-testid={`button-remove-member-${m.id}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <WriteGuard>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeMutation.mutate(m.id)}
+                      aria-label={locale === "ar" ? "حذف العضو" : "Remove member"}
+                      data-testid={`button-remove-member-${m.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </WriteGuard>
                 )}
                 {/* Dev-only helper to switch identity. The matching server
                     endpoint is also gated to non-production and to owners. */}
@@ -440,16 +446,18 @@ export function TeamPanel() {
                     {locale === "ar" ? "نسخ الرابط" : "Copy link"}
                   </Button>
                   {isOwner && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => revokeMutation.mutate(inv.id)}
-                      aria-label={locale === "ar" ? "إلغاء الدعوة" : "Revoke invite"}
-                      data-testid={`button-revoke-invite-${inv.id}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <WriteGuard>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => revokeMutation.mutate(inv.id)}
+                        aria-label={locale === "ar" ? "إلغاء الدعوة" : "Revoke invite"}
+                        data-testid={`button-revoke-invite-${inv.id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </WriteGuard>
                   )}
                 </li>
               ))}
