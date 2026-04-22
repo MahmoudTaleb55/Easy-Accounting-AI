@@ -2,224 +2,113 @@
 
 ## Overview
 
-This is an Arabic-language personal finance management application called "محاسب ذكي" (Smart Accountant). It allows users to:
+This project is an Arabic-language personal finance management application named "محاسب ذكي" (Smart Accountant). Its primary purpose is to provide users with comprehensive financial tracking, analysis, and intelligent assistance, designed to meet the specific needs of the MENA region.
 
-- Track income and expenses via a transactions dashboard
-- View financial summaries and charts (pie charts and bar charts via Recharts)
-- Interact with an AI assistant (powered by OpenAI) to log transactions via natural language chat, including image uploads (e.g., receipts)
-- Full IFRS-compliant double-entry accounting (Chart of Accounts, Journal Entries, IFRS statements)
-- Decision Cockpit (`/insights`): health score, alerts, cash forecast, what-if simulator, budgets, AI coach
-- **Multi-country localization** (`/settings`): 7 country packs (INTL, SA, AE, EG, KW, QA, JO) with configurable currency, VAT rate, zakat toggle, weekend days, social-insurance rates, and end-of-service formulas. IFRS is the universal core; country specifics are pluggable.
-- **HR & Payroll** (`/hr`): Employees, attendance, leaves, monthly payroll runs with auto-posted journal entries (IAS 19 end-of-service & accrued-leave provisions, social-insurance employer + employee shares, configurable per country pack)
+Key capabilities include:
+- Tracking income and expenses through a dynamic transactions dashboard.
+- Visualizing financial data with summary charts.
+- Interacting with an AI assistant to log transactions via natural language chat, supporting image uploads for receipts.
+- Implementing IFRS-compliant double-entry accounting with a Chart of Accounts, Journal Entries, and IFRS statements.
+- A "Decision Cockpit" offering financial health scores, alerts, cash flow forecasting, a what-if simulator, budgeting tools, and an AI financial coach.
+- Multi-country localization with configurable currency, VAT rates, Zakat toggles, weekend days, social insurance rates, and end-of-service formulas for 7 different country packs (INTL, SA, AE, EG, KW, QA, JO).
+- Integrated HR & Payroll module supporting employee management, attendance, leaves, and monthly payroll runs with auto-posted journal entries adhering to IAS 19 provisions.
 
-### Key files for the localization + HR layer
-- `shared/localization.ts` — country packs and IAS 19 helpers
-- `shared/coa-seed.ts` — `PAYROLL_EXTRA_ACCOUNTS` adds 6011/6012/2150/2160/2220 on top of base COA
-- `server/payroll.ts` — `computePayrollPreview` + `runPayroll` (30-day standard divisor, fractional EoS rate)
-- `server/init-coa.ts` — bootstraps base COA + payroll accounts on every startup
-- Settings is a singleton row at `id=1` in the `settings` table
-- Currency display in new code uses `useFormatMoney()` from `client/src/lib/format.ts` (older pages still hardcode ر.س; can be migrated incrementally)
-
-The app is built as a full-stack TypeScript monorepo with a React frontend and an Express backend, sharing schema and route definitions through a `shared/` directory.
-
----
+The application aims to provide a sophisticated, localized financial management solution with a focus on intuitive user experience and robust accounting principles.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
 
----
-
 ## System Architecture
+
+The application is a full-stack TypeScript monorepo utilizing a React frontend and an Express backend, with shared schema and route definitions for consistency.
 
 ### Frontend Architecture
 
-- **Framework**: React (with Vite as the bundler)
-- **Routing**: `wouter` (lightweight client-side router)
-- **State/Data fetching**: TanStack React Query (v5) for server state management, with optimistic updates on mutations
-- **UI Components**: shadcn/ui (New York style) built on Radix UI primitives — refined under the v2 visual design system (see "Visual Design System" section below).
-
-### Visual Design System (Phase 1 — April 2026)
-
-A premium fintech aesthetic foundation. Source of truth: `client/src/index.css` (tokens) + `tailwind.config.ts` (mapping).
-
-- **Typography stack**: IBM Plex Sans Arabic (primary, RTL), Inter (Latin pairing), JetBrains Mono (tabular figures, codes, KPIs). Loaded non-blocking from `client/index.html`. Cairo retained as fallback only. All numerals are tabular by default (`font-variant-numeric: tabular-nums` applied globally to `td`, `th`, `.tabular-nums`, `[data-num]`).
-- **Color palette**: warm off-white paper (`36 14% 98%`) + deep ink foreground (`222 24% 11%`) on light; near-black (`220 18% 7%`) + warm white on dark. Single brand action color = deep emerald (`158 64% 28%` light / `158 56% 52%` dark). Earthy 5-color chart palette (emerald / ink-blue / ochre / coral / slate). No generic SaaS blue, no purple gradients, no rainbow charts.
-- **Radii**: `--radius: 0.625rem` (10px) base, with Tailwind's `xl`/`lg`/`md`/`sm`/`xs` mapped relatively (14/10/8/6/4 px). The previous 1rem (16px) "very rounded friendly corners" is gone — refined fintech, not consumer-app.
-- **Shadow tokens**: `--shadow-xs/sm/md/lg/xl` (soft, premium, low-opacity slate) + `--shadow-ring` for focus states. Replaces the `translate-Y` "lift" hover with a subtler `bg-accent` hover transition.
-- **Spacing rhythm tokens**: `--space-section` (96px), `--space-block` (64px), `--space-card` (24px), `--space-tight` (12px). Use these to keep section/block spacing consistent across pages.
-- **Refined primitives**: `Button` (added `subtle`, `link` variants and `xl`, `icon-sm` sizes; brand emerald default with hairline darker border), `Card` (variants: `default`, `flat`, `raised`, `ghost`), `Input` (refined hairline border, tabular numerals, focus uses brand color), `Badge` (tonal status pills: `success`, `warning`, `info`, `destructive`, `brand`, `muted` + `sm`/`md`/`lg` sizes), `Table` (eyebrow-style uppercase headers, tabular figures, density `compact`/`comfortable`).
-- **Layout shells**: `client/src/components/layout/Brand.tsx` (typographic wordmark — no icon-in-circle), `AppNavbar.tsx` (sticky, glass-on-scroll, hairline, restrained), `AppFooter.tsx` (multi-column, eyebrow labels, hairline meta bar). Standalone, ready for Phase 2 landing page and Phase 3 app-shell consumption.
-- **New utilities**: `.eyebrow` (mono uppercase tracked label), `.text-display`/`-lg`/`-xl` (clamp-based marketing display sizes), `.glass-surface` (translucent backdrop-blur), `.hairline` / `.hairline-v` (1px rules). Custom focus ring via global `:where` rule using `--shadow-ring`.
-- **v2 polish (April 2026, Task #14 — world-class redesign)**:
-  - Filled in the missing app-chrome heading utilities (`.text-h1`/`h2`/`h3`/`h4`, `.text-body-lg`/`body`/`small`/`caption`) so dense product surfaces have a documented type scale alongside the marketing display scale.
-  - Added back-compat shadow aliases (`.shadow-flat`/`subtle`/`raised`/`overlay`) and surface aliases (`.bg-surface`, `.bg-danger` + foregrounds) so older component code (Tooltip, Select, Card variants) renders against real tokens instead of falling back silently.
-  - Introduced **`.brand-mesh`** + **`.brand-grain`** — a signature surface treatment using two off-axis emerald/info radials over the page background, with a faint dot-grain overlay. Used sparingly on the landing hero and the styleguide brand surface to give the product a recognizable first paint. Both have explicit dark-mode opacity tuning.
-  - Rewrote **`/styleguide`** as a real, accurate design-system source-of-truth: every token shown corresponds to a real CSS variable or utility, organized as Foundation / Typography / Geometry / Depth / Motion vocabulary / Components / Patterns. Includes a brand-surface preview, a 5-color chart palette swatch, an RTL/LTR direction switcher, light/dark toggle, ledger-tabs sample, and the canonical page-header pattern (eyebrow + display title + muted subtitle).
-
-The dashboard widgets (`dashboard.tsx`) and other page-level surfaces still use legacy hardcoded colors (e.g. blue-cyan gradient on the balance card, rose/emerald icon-on-circle treatments). These are out of scope for Phase 1 and will be addressed in Phase 3 (Dashboard & app-shell redesign).
-
-### App Shell & Cockpit Redesign (Phase 3 — April 2026)
-
-The authenticated product shell at `/app/*` was rewritten to match the public surface. Three files changed:
-
-- `client/src/components/layout/app-sidebar.tsx` — replaced the legacy Wallet-icon-in-circle header and tall `py-6 rounded-xl` items with the typographic `<Brand>` wordmark, dense `h-9` items grouped by section (Overview / Books / People & assets / System) with eyebrow labels and a 2px primary active-indicator. Labels are bilingual via `useLocale`. RTL-aware: `side="right"` + left border in RTL, `side="left"` + right border in LTR. Footer carries a pulsing "متصل · مزامنة لحظية" / "Connected · live sync" status pill. `MobileHeader` now uses `<Brand size="sm">`.
-
-- `client/src/components/layout/main-layout.tsx` — new `<TopBar>` with `<SidebarTrigger>`, a ⌘K-style global-search placeholder (cosmetic), the company switcher, language/theme/notifications buttons, and a sticky `top-0` glass background. Sidebar width tightened (`18rem → 16rem`), main content widened (`max-w-7xl → max-w-[1400px]`).
-
-- `client/src/pages/dashboard.tsx` — full rewrite as the **Cockpit**. Uses `useLocale` for bilingual copy, `useFormatMoney` for currency, and design-system tokens throughout. Layout:
-  - **Header** — eyebrow + display title + subtitle + outline "open ledger" / primary "new entry" actions (arrow icons mirror under RTL).
-  - **KPI band (4-up)** — one dark inverse hero KPI for Net balance (background = `foreground`, text = `background`) plus three flat siblings (Revenue / Expenses / Margin). Each KPI carries an eyebrow label, a tabular-numeric value, an optional hint, and a delta pill colored by `--success` / `--expense`. No icon-on-circle treatments.
-  - **Cash flow** — 30-day cumulative area chart drawn in `--chart-1` over a soft gradient with a reference line at 0; chart container is forced `dir="ltr"` so the time axis flows naturally even in RTL pages.
-  - **Top spending categories** — horizontal mini-bars (`h-1.5` track, `--chart-1..5` per-rank fill, share labels via `font-numeric tabular-nums`).
-  - **AI insight banner** — a dynamic sentence built from the top expense category, including a "reduce by 10% would free X/month" projection. Bilingual.
-  - **Recent activity** — hairline-divided list with subtle `bg-success/10` / `bg-expense/10` icon chips, eyebrow category label, mono date, and right-aligned signed amount in `font-numeric tabular-nums`.
-
-The Phase 1 visual system tokens (`--chart-1..5`, `--income/--expense/--success/--warning`, `--sidebar-*`, `--shadow-*`) are now exercised end-to-end on the most-trafficked surface.
-
-### Inner-page polish (Phase 4 — April 2026)
-
-Four high-traffic inner pages were rewritten to share the cockpit's language. All use `useLocale` for AR/EN copy and `useFormatMoney` for currency; legacy patterns (`rounded-2xl/3xl`, `font-extrabold/black`, gradient CTAs, `bg-emerald-100`/`bg-rose-100` icon circles, hardcoded `ر.س`, oversized `h-12/h-14` controls, `shadow-lg shadow-primary/20`) were removed.
-
-- `client/src/pages/transactions.tsx` — eyebrow + display title header, single primary CTA, segmented filter pills (`bg-muted/50` with `bg-background` selected state), Card-as-table with hairline-divided rows. Each row carries a small token-colored icon chip (`bg-success/10` or `bg-expense/10` with matching border), uppercase eyebrow category, mono date, and right-aligned signed amount in `font-numeric tabular-nums`. Income amounts are the only colored values (Mercury convention); expenses stay foreground.
-
-- `client/src/pages/ai-assistant.tsx` — full chat-surface rewrite. Pulsing-dot eyebrow, big bilingual title ("اوصف معاملتك. سأكتب القيد." / "Describe a transaction. I'll write the entry."), welcome bubble with bullet hints. New `<Bubble>` component: user bubbles use `bg-foreground text-background` (dark inverse), assistant bubbles use `bg-muted/60` with hairline border, both with asymmetric corner radius for direction. Composer is a single sticky strip — `ImagePlus` ghost icon, plain `Input`, `ArrowUp` send button — plus an inline image-preview chip. Quick-prompt suggestions render as bordered cards instead of gradient pills.
-
-- `client/src/pages/chart-of-accounts.tsx` — eyebrow + IFRS-aligned display title. Five account-type buckets each render in a Card with a 1px×14px accent bar mapped to a `--chart-N` token (assets→chart-1, liabilities→chart-3, equity→chart-5, revenue→chart-2, expenses→chart-4) and a small count chip. Account rows are hairline-divided list items with a fixed-width `font-numeric` code column, Arabic name in foreground, English name in muted (right-aligned). Header rows use `bg-muted/30` and reduced indentation.
-
-- `client/src/pages/journal-entries.tsx` — eyebrow + display title ("كل قيد، متوازن، مرحَّل."). Each entry renders as a Card with a metadata header (reference chip, memo, date · source · total) followed by a real ledger-style table: `<thead>` with uppercase tracked column labels, debit/credit columns right-aligned in `font-numeric tabular-nums`, source badge for manual/auto/AI. The "new entry" dialog has a trimmed table with `h-9` controls, an outline "add line" button, and a `--success`/`--warning` balance indicator that shows the live difference until the entry zeros out.
-
-All four pages share the same header pattern (Eyebrow → display title → subtitle → primary CTA right-aligned in LTR / left-aligned in RTL) and the same Card variants from `client/src/components/ui/card.tsx`. The `bg-rose-100` / `bg-emerald-100` icon-circle pattern is now extinct from the high-traffic surfaces.
-
-**Phase 4 wrap-up (Apr 21 2026):** the remaining inner pages were aligned to the same system:
-
-- `client/src/pages/reports.tsx` — full rewrite preserving the five view modes (Analytics / IFRS income statement / Trial balance / Balance sheet / AI analysis). Header switched to eyebrow + display title with quiet outline + primary buttons (Print / Export CSV). View-mode and period selectors became a **monochrome `SegmentedControl`** (`role="radiogroup"`, `bg-foreground text-background` for the active option, `focus-visible` ring), replacing the green-pill stack. KPI strip is now four flat `Stat` cards with a single `--chart-N` dot accent (revenue→chart-1, expense→muted, net→chart-1/4 by sign, savings→chart-1/4) — Mercury convention. Smart summary card swaps the mint gradient for a quiet `bg-muted` icon chip + token-dot bullet list. All Recharts call sites moved off hex (`#10b981`/`#f43f5e`) onto `hsl(var(--chart-N))`; tooltips use `--popover` + `--border`; the income/expense areas use `--chart-1` solid + `--chart-5` dashed (mute the spend, hero the inflow). The detail table is ledger-style: uppercase tracked headers on `bg-muted/30`, hairline-divided rows, a 1.5×1.5 token dot for the type column, signed amounts in `font-display tabular-nums` (income tinted, expenses foreground), full bilingual column labels.
-
-- `client/src/pages/settings.tsx`, `client/src/pages/hr.tsx`, `client/src/pages/fixed-assets.tsx`, `client/src/pages/insights.tsx` — each lost its old `Icon-in-rounded-2xl-bg-primary/10` header and adopted the canonical eyebrow + display-title-with-period header + max-w subtitle. Page bodies remain functionally untouched; only the masthead was harmonized with Phase 4.
-
-- `client/src/pages/insights.tsx` (CockpitTab) — the giant red `text-7xl font-bold` health-score `0` was replaced with a **128px SVG radial progress ring**: muted track, token-colored arc (`--chart-1` ≥75, `--chart-3` ≥50, `--chart-4` otherwise), `font-display` numeric in the center, and a small dot-+-label chip beneath. The score is `Math.max(0, Math.min(100, ...))`-clamped before stroke math, and the wrapper carries `role="progressbar"` + `aria-valuenow/min/max` + an Arabic `aria-label` for screen readers; the SVG itself is `aria-hidden`.
-
-### Phase 5 — Hierarchy, hush, and a truer fintech voice (Apr 21 2026)
-
-After Phase 4 closed, an honest critique surfaced that the surfaces were "good but not category-leading": the dashboard had no anchor (5 equal-weight KPI tiles), the topbar carried 9 controls competing for the eye, negative numbers shouted in destructive scarlet, and the insights tab strip was a generic shadcn rounded segment. Phase 5 fixes those four root causes.
-
-**Dashboard hero (`client/src/components/dashboard/kpi-strip.tsx`)** — full rewrite. The flat 5-up `grid-cols-5` strip became an asymmetric `grid-cols-3 lg:row-span-2` layout: a hero **cash card** (1/3 width, 2 rows tall) on the visual start, plus a 2×2 grid of secondary tiles (revenue, expenses, net, transaction count) on the visual end. The hero card uses the **Mercury / Stripe currency-chip pattern**: a small uppercase `eyebrow`-styled `SAR` chip sits to the left of a huge `font-display tabular-nums tracking-tighter` number rendered with `text-[clamp(1.875rem,3.2vw,2.75rem)]` + `truncate` + `min-w-0`, so very long values (e.g. `1,234,567,890`) ellipsis cleanly instead of clipping or wrapping the currency onto its own line. The number is computed *outside* the standard `formatMoney` to keep currency and digits as separate spans (`Intl.NumberFormat(intlLocale, { maximumFractionDigits: 0 }).format(Math.abs(cash))` with a `−` prefix when negative). A subtle corner glow tinted by `--gain` / `--loss` (depending on sign), an inline runway chip in the header, an inline net-delta delta-chip beneath the number, and a 96px `AreaChart` sparkline complete the card. Secondary tiles use the new `.delta-chip` utility (`bg-gain-tint` / `bg-loss-tint`) for change indicators and a tiny token-colored dot + `eyebrow` label combo for headers — eliminating the previous icon-circle pattern entirely. **Empty-state hero**: when no transactions exist, the cash card is replaced by a dashed-border `EmptyHero` tile linking to `/app/transactions?new=1` with a `Sparkles` glyph and the bilingual "ابدأ بأول معاملة / Start with your first transaction" copy — turning a previously dead surface into a growth moment.
-
-**TopBar declutter (`client/src/components/layout/topbar.tsx`)** — the 9-control bar became a 5-control bar: company switcher (anchored to start, transparent until hover), centered search/command palette (`flex-1 max-w-2xl mx-auto`), `+ إنشاء`, notifications bell, avatar+chevron. Theme toggle, locale toggle, and AI rail toggle were folded into the avatar dropdown via Radix `DropdownMenuSub` (language picker, appearance picker, AI rail entry with `⌘.` shortcut hint). The duplicated period selector was removed entirely (the dashboard's `PeriodBar` already owns that responsibility). The dropdown sub-trigger chevron got `rtl:rotate-180` so submenus point in the right direction in Arabic.
-
-**Refined loss / gain tones** — added `--loss` (warm coral 12 56% 46% light / 12 64% 60% dark) and `--gain` (refined emerald) tokens, exposed as full Tailwind colors (`bg-loss`, `text-loss`, `border-loss`, `bg-gain`, etc.) in `tailwind.config.ts`, plus standalone utilities `.text-loss / .text-gain / .bg-loss-tint / .bg-gain-tint / .delta-chip` in `index.css`. The `--destructive` token is now reserved for actual danger actions (delete, revert) — financial negatives use `--loss` instead. Updated call sites: insights `KpiCard` negative-profit color, KPI-strip delta chips, topbar notification severity dots (`bg-loss` / `bg-gain`), and any net-profit display where negative previously rendered as scarlet.
-
-**Ledger-underline tabs (`.ledger-tabs` in `index.css`, applied in `client/src/pages/insights.tsx`)** — the rounded shadcn `TabsList` was replaced for the insights cockpit (and available for any editorial surface) with a custom underline tab strip: 1px hairline divider beneath the strip, each `[role="tab"]` rendering as a transparent button with a 2px bottom-border in `var(--foreground)` only when `data-state="active"`, font weight stepping from 500 → 600 on activation, smaller icons (`w-3.5 h-3.5`). No fills, no shadows, no rounded bevels — pure editorial.
-
-**Architect review caught and fixed three regressions**: (1) the original `whitespace-nowrap` hero number could clip on narrow viewports — solved via the currency-chip + truncate + min-w-0 restructuring above; (2) `bg-loss` / `bg-gain` were used in markup before being defined as Tailwind colors — now both declared in `tailwind.config.ts`; (3) RTL submenu chevron pointed the wrong way — `rtl:rotate-180` added.
-
-### Public Landing Page (Phase 2 — April 2026)
-
-A new public marketing page lives at `/` (`client/src/pages/landing.tsx`), built fully on the Phase 1 visual system. Authenticated app routes were re-anchored: the dashboard moved from `/` to `/dashboard`, and `client/src/App.tsx` now branches at the route layer — `/` renders **without** `MainLayout` (no sidebar, no company-switcher), while every other route is wrapped in the authenticated app shell. The `Brand` wordmark accepts an `href` prop so it can point at `/` (public) or `/dashboard` (in-app) depending on context.
-
-Eleven sections, deliberately varied in rhythm — no repetition of "three identical feature cards":
-1. **Hero** — asymmetric grid: copy on RTL right + windowed product mockup on the left, with two floating chips (auto-posted entry, profit delta) and a soft dual-glow background.
-2. **Trust strip** — wordmark row + four-up metric band (entries posted, uptime, latency, SOC 2).
-3. **Why different** — editorial intro (display + lede) followed by a 2×2 grid of numbered principles. No icons-in-circles.
-4. **Core capabilities** — 6-column **bento grid**: one large cockpit card (col-span-4 row-span-2), one tall AI card (col-span-2 row-span-2), two wide cards, three small cards. Each card has a distinct internal treatment.
-5. **AI assistant** — split layout, copy on RTL right, full chat-mockup window on the left (achieved via explicit `lg:col-start-1` / `lg:col-start-8` rather than fragile flex `order` swaps, which reverse meaning under RTL).
-6. **Dashboard showcase** — full-width browser-frame mock of the cockpit (sidebar + KPIs + cash-forecast chart + alerts + AI insight callout), with a horizontal feature-toggle strip beneath.
-7. **Automation** — 5-step horizontal flow diagram (chips connected by hairlines + arrows), plus a 3-up case row showing supplier invoice / new employee / fixed asset journey.
-8. **Security** — 4-up dense grid with hairline separators (NOT cards): SOC 2, AES-256/TLS 1.3, immutable IFRS audit trail, MENA data residency.
-9. **Use cases** — accessible WAI-ARIA tab pattern (Founders / Accountants / Teams) with persona quote + outcomes list, RTL-aware arrow-key navigation.
-10. **FAQ** — six Q&A items via shadcn Accordion.
-11. **Final CTA** — full-width bordered band with subtle grid texture and decorative emerald glow, mailto-based primary/secondary CTAs, deep-link to showcase.
-
-Internal landmark sections are linked from the navbar (`#platform`, `#ai`, `#automation`, `#security`, `#use-cases`, `#faq`) and from in-page CTAs (`#cta`, `#showcase`). Self-contained UI primitives (`BrowserFrame`, `MiniKPI`, `SparkChart`, `ChatBubble`, `FloatingChip`, `Metric`, `BentoCard`, `AlertRow`) are defined inside the file to keep the landing page hermetic and easy to evolve without bleeding helpers into the broader component library.
-- **Styling**: Tailwind CSS with CSS variables for theming; Cairo Arabic font loaded via Google Fonts
-- **RTL Layout**: The entire app uses `dir="rtl"` in the main layout wrapper (`main-layout.tsx`), Arabic-first interface
-- **Charts**: Recharts (`PieChart`, `BarChart`) used on the dashboard
-- **Forms**: React Hook Form with Zod resolvers for validation
-- **Path aliases**: `@/` maps to `client/src/`, `@shared/` maps to `shared/`
+- **Framework**: React with Vite.
+- **Routing**: `wouter` for client-side navigation.
+- **State Management**: TanStack React Query (v5) for server state with optimistic updates.
+- **UI Components**: `shadcn/ui` based on Radix UI primitives, adhering to a refined "New York style" v2 visual design system.
+- **Visual Design System**: Emphasizes a premium fintech aesthetic with:
+    - Custom typography stack: IBM Plex Sans Arabic (primary, RTL), Inter (Latin), JetBrains Mono (tabular figures).
+    - Muted color palette: warm off-white/deep ink for light mode, near-black/warm white for dark mode, with a single deep emerald brand color and an earthy 5-color chart palette.
+    - Refined radii, shadow tokens, and spacing rhythm tokens for consistent UI.
+    - Enhanced UI primitives for `Button`, `Card`, `Input`, `Badge`, and `Table`.
+    - Layout shells for `Brand`, `AppNavbar`, and `AppFooter`.
+    - New utilities like `.eyebrow`, `.text-display`, `.glass-surface`, and `.hairline`.
+    - Signature `.brand-mesh` and `.brand-grain` surface treatments.
+    - Comprehensive `/styleguide` as the source of truth for the design system.
+    - Updated app shell and cockpit design for authenticated users, including a redesigned sidebar and main content area.
+    - Standardized inner page layouts (Transactions, AI Assistant, Chart of Accounts, Journal Entries, Reports, Settings, HR, Fixed Assets, Insights) to align with the visual system, eliminating legacy styling.
+    - Improved display of financial metrics with radial progress rings and Mercury/Stripe-inspired currency chips.
+    - Decluttered TopBar by consolidating controls and refining gain/loss tones using dedicated color tokens.
+    - Custom underline tab strip (`.ledger-tabs`) for editorial surfaces.
+- **RTL Layout**: The entire application is built with `dir="rtl"` as a primary consideration, ensuring correct layout for Arabic.
+- **Charts**: Recharts is used for displaying financial data.
+- **Forms**: React Hook Form with Zod resolvers for validation.
+- **Path aliases**: `@/` for `client/src/` and `@shared/` for `shared/`.
 
 ### Backend Architecture
 
-- **Framework**: Express 5 (TypeScript, ESM)
-- **Entry point**: `server/index.ts` → registers routes via `server/routes.ts`
-- **Route definitions**: Shared between frontend and backend via `shared/routes.ts` (typed API contract with Zod schemas for inputs/responses)
-- **Storage layer**: `server/storage.ts` defines `IStorage` interface and `DatabaseStorage` class (clean separation allows future storage swaps)
-- **AI Integration**: OpenAI client (`openai` npm package) used in `server/routes.ts` for the AI chat assistant; uses `AI_INTEGRATIONS_OPENAI_API_KEY` and `AI_INTEGRATIONS_OPENAI_BASE_URL` env vars
-- **Dev server**: Vite middleware is embedded into Express in development mode (`server/vite.ts`)
-- **Production build**: `script/build.ts` runs both Vite (frontend) and esbuild (backend) builds; backend is bundled to `dist/index.cjs` with select dependencies inlined
+- **Framework**: Express 5 (TypeScript, ESM).
+- **Entry Point**: `server/index.ts` handles route registration.
+- **API Contract**: Shared `shared/routes.ts` defines API paths, HTTP methods, and Zod schemas for input/response validation, ensuring client-server consistency.
+- **Storage Layer**: `server/storage.ts` provides an `IStorage` interface for database abstraction.
+- **AI Integration**: OpenAI client integrated for AI chat assistance, using environment variables for API keys and base URLs.
+- **Development**: Vite middleware embedded into Express for dev server.
+- **Production**: `script/build.ts` orchestrates Vite (frontend) and esbuild (backend) builds.
 
 ### Data Storage
 
-- **Database**: PostgreSQL via `drizzle-orm/node-postgres` (`pg` Pool)
-- **ORM**: Drizzle ORM with schema defined in `shared/schema.ts`
-- **Schema**:
-  - `transactions`: id, type (income/expense), amount (numeric 12,2), description, category, date
-  - `chatMessages`: id, role (user/assistant), content, createdAt
-  - `conversations` + `messages`: used by Replit integration modules for structured chat history
-- **Migrations**: Drizzle Kit with `drizzle.config.ts` pointing to `shared/schema.ts`; run via `npm run db:push`
-- **Seed**: `seed.ts` at root populates sample transactions and a welcome chat message
+- **Database**: PostgreSQL.
+- **ORM**: Drizzle ORM with schema defined in `shared/schema.ts`.
+- **Schema**: Includes tables for `transactions`, `chatMessages`, `conversations`, `messages`, and `budgets`.
+- **Migrations**: Managed by Drizzle Kit.
+- **Seed Data**: `seed.ts` populates initial data.
 
 ### Shared Contract Pattern
 
-- `shared/routes.ts` defines the full API surface (paths, HTTP methods, Zod input schemas, response schemas)
-- Both frontend hooks and backend route handlers import from `shared/routes.ts` — this prevents drift between client/server expectations
-- `shared/schema.ts` exports Drizzle table definitions and `drizzle-zod`-generated insert schemas
+- `shared/routes.ts` and `shared/schema.ts` form the core shared contract, defining API endpoints and database schemas that are utilized by both frontend and backend to prevent discrepancies.
 
 ### Replit Integration Modules
 
-The `server/replit_integrations/` and `client/replit_integrations/` directories contain modular, plug-in-style integrations:
-- **chat**: conversation/message storage and OpenAI chat routes
-- **audio**: voice recording (client), PCM16 audio playback via AudioWorklet (client), speech-to-text/TTS via OpenAI (server), WebM→WAV conversion via ffmpeg (server)
-- **image**: image generation and editing via OpenAI `gpt-image-1`
-- **batch**: rate-limited, auto-retry batch processing utility using `p-limit` and `p-retry`
-
----
+Modular, plug-in-style integrations are located in `server/replit_integrations/` and `client/replit_integrations/`:
+- **Chat**: Manages conversation and message storage, and OpenAI chat routes.
+- **Audio**: Handles voice recording, PCM16 audio playback, speech-to-text/TTS via OpenAI, and WebM→WAV conversion via ffmpeg.
+- **Image**: Supports image generation and editing via OpenAI.
+- **Batch**: Provides utilities for rate-limited, auto-retry batch processing.
 
 ## External Dependencies
 
 ### APIs and AI
-- **OpenAI API** (via Replit AI Integrations): Used for the AI chat assistant (natural language transaction parsing), speech-to-text, text-to-speech, voice chat streaming, and image generation. Configured via:
-  - `AI_INTEGRATIONS_OPENAI_API_KEY`
-  - `AI_INTEGRATIONS_OPENAI_BASE_URL`
+- **OpenAI API**: Utilized for AI chat, speech-to-text, text-to-speech, voice chat streaming, and image generation, configured via `AI_INTEGRATIONS_OPENAI_API_KEY` and `AI_INTEGRATIONS_OPENAI_BASE_URL`.
 
 ### Database
-- **PostgreSQL**: Required; connection string via `DATABASE_URL` env var
-- **connect-pg-simple**: Mentioned in dependencies (session store for PostgreSQL, if sessions are added later)
+- **PostgreSQL**: The primary database, requiring a `DATABASE_URL` environment variable.
 
 ### Key npm Dependencies
-| Package | Purpose |
-|---|---|
-| `drizzle-orm` + `drizzle-kit` | ORM and migrations |
-| `drizzle-zod` | Auto-generate Zod schemas from Drizzle tables |
-| `zod` | Runtime validation (shared between client/server) |
-| `@tanstack/react-query` | Client-side data fetching and caching |
-| `wouter` | Lightweight React router |
-| `recharts` | Dashboard charts |
-| `react-hook-form` + `@hookform/resolvers` | Forms with Zod validation |
-| `shadcn/ui` + Radix UI | Accessible UI component primitives |
-| `tailwind-merge` + `clsx` | Class name utilities |
-| `date-fns` | Date formatting (with Arabic locale `ar`) |
-| `openai` | OpenAI SDK (server-side) |
-| `p-limit` + `p-retry` | Batch concurrency and retry logic |
-| `nanoid` | Unique ID generation |
-| `vaul` | Drawer component |
+- **Data & ORM**: `drizzle-orm`, `drizzle-kit`, `drizzle-zod`.
+- **Validation**: `zod`.
+- **Frontend**: `@tanstack/react-query`, `wouter`, `recharts`, `react-hook-form`, `@hookform/resolvers`.
+- **UI**: `shadcn/ui`, `radix-ui`, `tailwind-merge`, `clsx`, `vaul`.
+- **Utilities**: `date-fns`, `nanoid`, `p-limit`, `p-retry`.
+- **Backend**: `openai`.
 
 ### Environment Variables Required
-- `DATABASE_URL` — PostgreSQL connection string
-- `AI_INTEGRATIONS_OPENAI_API_KEY` — OpenAI API key (Replit integration)
-- `AI_INTEGRATIONS_OPENAI_BASE_URL` — OpenAI base URL (Replit integration)
-## Decision Cockpit (مركز القرارات) - Added Apr 2026
+- `DATABASE_URL`
+- `AI_INTEGRATIONS_OPENAI_API_KEY`
+- `AI_INTEGRATIONS_OPENAI_BASE_URL`
 
-A complete decision-support layer at /insights with 6 tabs:
-1. **القيادة (Cockpit)**: 5-component health score (profitability 30% / liquidity 20% / cash 20% / discipline 20% / solvency 10%), KPIs, VAT & Zakat estimates.
-2. **الإنذارات (Alerts)**: 7 alert types (cash runway, expense ratio, net loss, category anomalies, revenue drop, outliers, all-clear).
-3. **تنبؤ النقد (Cash Forecast)**: 30/60/90/180-day projection chart with runway calc.
-4. **المحاكي (What-If Simulator)**: price/cost/expense scenarios + monthly break-even revenue.
-5. **الميزانية (Budget vs Actual)**: per-account monthly budgets with variance bars.
-6. **المستشار (AI Coach)**: GPT-5.2 with full live financial context, Arabic prompt, rate-limited.
+## Automated UI Checks
 
-### Key files
-- shared/schema.ts: budgets table
-- server/insights.ts: analytics engine (~430 lines)
-- server/routes.ts: /api/insights/* + /api/budgets endpoints
-- client/src/pages/insights.tsx: single-file page with 6 tab components
-
+- **Mobile horizontal overflow** — `tests/e2e/mobile-overflow.spec.ts` is a
+  Playwright check that loads every dense-table app page (Journal, Reports,
+  Insights, Fixed Assets, HR, Chart of Accounts, Transactions) at a 360x720
+  viewport in both English (LTR) and Arabic (RTL) and asserts the document
+  itself does not overflow horizontally. This is the regression net for new
+  pages that forget the `.table-sticky-first` table wrapper or ship an
+  `inline-flex` toolbar that would push the page wider than a phone viewport.
+  Run it with `PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test --reporter=line`
+  while the dev server is up, or via the registered `mobile-overflow`
+  validation command. See `tests/mobile-overflow-check.md` for the full
+  rationale and failure-mode playbook.

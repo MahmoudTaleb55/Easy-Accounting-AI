@@ -304,23 +304,27 @@ export default function Reports() {
 
       {/* View mode + period — quiet segmented controls */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between print:hidden">
-        <SegmentedControl
-          options={VIEW_MODES}
-          value={viewMode}
-          onChange={setViewMode}
-          testIdPrefix="button-view"
-        />
-        <div className="flex items-center gap-3">
-          <span className="text-xs uppercase tracking-wider text-muted-foreground/80">
+        <div className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0">
+          <SegmentedControl
+            options={VIEW_MODES}
+            value={viewMode}
+            onChange={setViewMode}
+            testIdPrefix="button-view"
+          />
+        </div>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground/80 shrink-0">
             {t.period}
           </span>
-          <SegmentedControl
-            options={PERIOD_OPTIONS.map((p) => ({ key: p.key, label: p.label }))}
-            value={period}
-            onChange={setPeriod}
-            testIdPrefix="button-period"
-            compact
-          />
+          <div className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0 min-w-0">
+            <SegmentedControl
+              options={PERIOD_OPTIONS.map((p) => ({ key: p.key, label: p.label }))}
+              value={period}
+              onChange={setPeriod}
+              testIdPrefix="button-period"
+              compact
+            />
+          </div>
         </div>
       </div>
 
