@@ -26,7 +26,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Scale } from "lucide-react"
+import { Plus, Trash2, Scale, History } from "lucide-react"
+import { HistoryDrawer, type HistoryEvent, type HistorySource } from "@/components/audit/history-drawer"
+import { EmptyState } from "@/components/feedback/empty-state"
+import { ErrorState } from "@/components/feedback/error-state"
+import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
 import type { Account } from "@shared/schema"
 import { useLocale } from "@/contexts/locale-context"
 import { useFormatMoney } from "@/lib/format"
@@ -44,6 +48,7 @@ interface JE {
   entryDate: string
   description: string
   source: string
+  createdAt?: string
   lines: (JELine & { account?: Account })[]
 }
 
@@ -53,6 +58,7 @@ export default function JournalEntriesPage() {
   const dfLocale = locale === "ar" ? ar : enUS
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
+  const [historyEntry, setHistoryEntry] = useState<JE | null>(null)
 
   const t = useMemo(
     () => ({
@@ -98,7 +104,7 @@ export default function JournalEntriesPage() {
     [locale]
   )
 
-  const { data: entries, isLoading } = useQuery<JE[]>({
+  const { data: entries, isLoading, isError, refetch } = useQuery<JE[]>({
     queryKey: ["/api/journal-entries"],
   })
   const { data: accounts } = useQuery<Account[]>({ queryKey: ["/api/accounts"] })
@@ -358,16 +364,11 @@ export default function JournalEntriesPage() {
 
       {/* Entries list */}
       {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-32 rounded-xl" />
-          ))}
-        </div>
+        <CardGridSkeleton count={4} cols={1} height="h-28" />
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} testId="error-journal" />
       ) : !entries?.length ? (
-        <Card variant="default" className="px-6 py-16 text-center">
-          <h3 className="text-base font-semibold text-foreground mb-1.5">{t.empty}</h3>
-          <p className="text-sm text-muted-foreground max-w-sm mx-auto">{t.emptyHint}</p>
-        </Card>
+        <EmptyState title={t.empty} description={t.emptyHint} testId="empty-journal" />
       ) : (
         <div className="space-y-3">
           {entries.map((je) => {
@@ -409,18 +410,30 @@ export default function JournalEntriesPage() {
                       </span>
                     </div>
                   </div>
-                  {je.source !== "transaction" && (
+                  <div className="flex items-center gap-1 shrink-0">
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      onClick={() => deleteMutation.mutate(je.id)}
-                      data-testid={`button-delete-entry-${je.id}`}
-                      aria-label="Delete entry"
-                      className="text-muted-foreground hover:text-destructive shrink-0"
+                      onClick={() => setHistoryEntry(je)}
+                      data-testid={`button-history-entry-${je.id}`}
+                      aria-label={locale === "ar" ? "السجل" : "History"}
+                      className="text-muted-foreground hover:text-foreground"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <History className="w-3.5 h-3.5" />
                     </Button>
-                  )}
+                    {je.source !== "transaction" && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => deleteMutation.mutate(je.id)}
+                        data-testid={`button-delete-entry-${je.id}`}
+                        aria-label={locale === "ar" ? "حذف القيد" : "Delete entry"}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <table className="w-full text-sm">
                   <thead className="text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
@@ -456,6 +469,46 @@ export default function JournalEntriesPage() {
           })}
         </div>
       )}
+
+      <HistoryDrawer
+        open={!!historyEntry}
+        onOpenChange={(o) => { if (!o) setHistoryEntry(null) }}
+        title={historyEntry?.description || ""}
+        reference={historyEntry?.reference}
+        partialAudit
+        events={
+          historyEntry
+            ? [
+                {
+                  id: `${historyEntry.id}-posted`,
+                  at: historyEntry.createdAt || historyEntry.entryDate,
+                  source: (historyEntry.source === "ai"
+                    ? "ai"
+                    : historyEntry.source === "transaction"
+                    ? "system"
+                    : "user") as HistorySource,
+                  action:
+                    historyEntry.source === "transaction"
+                      ? (locale === "ar" ? "تم الترحيل تلقائياً من معاملة" : "Auto-posted from a transaction")
+                      : historyEntry.source === "ai"
+                      ? (locale === "ar" ? "تم الإنشاء عبر المساعد الذكي" : "Created by the AI assistant")
+                      : (locale === "ar" ? "تم تسجيل القيد يدوياً" : "Entry posted manually"),
+                  changes: historyEntry.lines.map((l) => ({
+                    field: `${l.account?.code || ""} ${l.account?.nameAr || ""}`.trim(),
+                    to:
+                      Number(l.debit) > 0
+                        ? `${locale === "ar" ? "مدين" : "Dr"} ${fmt(Number(l.debit))}`
+                        : `${locale === "ar" ? "دائن" : "Cr"} ${fmt(Number(l.credit))}`,
+                  })),
+                  note:
+                    locale === "ar"
+                      ? "كل قيد محفوظ بمرجع فريد ولا يمكن تعديله بعد الترحيل."
+                      : "Every entry is stored with a unique reference and is immutable after posting.",
+                } as HistoryEvent,
+              ]
+            : []
+        }
+      />
     </div>
   )
 }

@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck } from "lucide-react";
+import { ListSkeleton } from "@/components/feedback/list-skeleton";
+import { EmptyState } from "@/components/feedback/empty-state";
 import type { Account, AssetCategory, AssetComponent, Company, FixedAsset, FxRate, DepreciationMethod } from "@shared/schema";
 
 const METHODS: Array<{ value: DepreciationMethod; label: string }> = [
@@ -242,11 +244,15 @@ function AssetRegister({ company }: { company: Company }) {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <Skeleton className="h-32" />
+            <ListSkeleton rows={4} testId="skeleton-assets" />
           ) : filtered.length === 0 ? (
-            <div className="text-center text-sm text-muted-foreground py-8">لا توجد أصول. أضف أول أصل لتبدأ.</div>
+            <EmptyState
+              title="لا توجد أصول بعد"
+              description="أضف أول أصل ثابت لاحتسابه في جدول الإهلاك وتحديث القوائم المالية."
+              testId="empty-fixed-assets"
+            />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto table-sticky-first">
               <table className="w-full text-sm">
                 <thead className="text-muted-foreground border-b">
                   <tr>

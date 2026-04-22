@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import {
   Plus, Bell, Sun, Moon, Globe, ChevronDown, Bot, Building2, Check,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +20,9 @@ import { useT } from "@/i18n/dict";
 import { useLocale } from "@/contexts/locale-context";
 import { useTheme } from "@/contexts/theme-context";
 import { useCompany } from "@/contexts/company-context";
+import { usePeriod, type PeriodKey } from "@/contexts/period-context";
 import { CommandPaletteTrigger } from "./command-palette";
+import { TrustCluster } from "@/components/trust/trust-cluster";
 import { useQuery } from "@tanstack/react-query";
 
 interface Props {
@@ -33,7 +36,19 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
   const { locale, setLocale } = useLocale();
   const { theme, setTheme } = useTheme();
   const { companies, activeCompanyId, activeCompany, setActiveCompanyId } = useCompany();
+  const { period, setPeriodKey, compareToPrevious, setCompareToPrevious } = usePeriod();
   const [, setLocation] = useLocation();
+
+  const PERIODS: { key: PeriodKey; label: string }[] = [
+    { key: "today", label: t("period_today") },
+    { key: "week", label: t("period_week") },
+    { key: "month", label: t("period_month") },
+    { key: "quarter", label: t("period_quarter") },
+    { key: "ytd", label: t("period_ytd") },
+    { key: "30d", label: t("period_30d") },
+  ];
+
+  const periodLabel = PERIODS.find((p) => p.key === period.key)?.label || period.key;
 
   // Notifications: pull alert count from insights
   const { data: alertsData } = useQuery<{ alerts: { severity: string }[] }>({
@@ -48,7 +63,6 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
       className="sticky top-0 z-40 hidden md:flex h-14 items-center gap-2 border-b border-border bg-background/85 backdrop-blur-md px-4 lg:px-6"
       data-testid="app-topbar"
     >
-      {/* Company switcher — anchored to start */}
       {companies.length > 0 && (
         <Select
           value={activeCompanyId ? String(activeCompanyId) : ""}
@@ -77,6 +91,53 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
           </SelectContent>
         </Select>
       )}
+
+      {/* Period selector */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="h-9 gap-2" data-testid="button-period-selector">
+            <Calendar className="w-4 h-4 opacity-70" />
+            <span className="font-medium">{periodLabel}</span>
+            <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-2" align="end">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 py-1">
+            {t("period_month")} / {t("period_quarter")}
+          </div>
+          <div className="grid grid-cols-2 gap-1 mb-2">
+            {PERIODS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setPeriodKey(p.key)}
+                data-testid={`period-${p.key}`}
+                className={`text-xs rounded-md px-2 py-1.5 text-start transition-colors ${
+                  period.key === p.key
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "hover:bg-accent text-foreground/80"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="border-t border-border pt-2 px-2">
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={compareToPrevious}
+                onChange={(e) => setCompareToPrevious(e.target.checked)}
+                className="accent-primary"
+                data-testid="checkbox-compare-prev"
+              />
+              <span>{t("compare_prev")}</span>
+            </label>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      {/* Trust cluster: data freshness + integration health */}
+      <TrustCluster />
 
       {/* Search / command — primary */}
       <div className="flex-1 max-w-2xl mx-auto">

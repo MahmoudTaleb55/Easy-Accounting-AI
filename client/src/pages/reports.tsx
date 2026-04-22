@@ -20,6 +20,7 @@ import { TrialBalance } from "@/components/reports/trial-balance"
 import { BalanceSheet } from "@/components/reports/balance-sheet"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
 import { Button } from "@/components/ui/button"
 import {
   ResponsiveContainer,
@@ -258,14 +259,10 @@ export default function Reports() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" aria-busy="true">
         <Skeleton className="h-12 w-72" />
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-xl" />
-          ))}
-        </div>
-        <Skeleton className="h-80 rounded-xl" />
+        <CardGridSkeleton count={4} cols={4} height="h-28" />
+        <CardGridSkeleton count={1} cols={1} height="h-80" />
       </div>
     )
   }

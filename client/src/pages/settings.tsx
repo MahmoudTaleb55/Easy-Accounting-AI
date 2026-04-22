@@ -15,6 +15,7 @@ import { Settings as SettingsIcon, Save, Globe, Building2 } from "lucide-react";
 import type { OrgSettings } from "@/lib/format";
 import { CompaniesPanel, FxPanel } from "@/pages/fixed-assets";
 import { useCompany } from "@/contexts/company-context";
+import { SecurityCompliance } from "@/components/trust/security-compliance";
 
 interface LocalizationPack {
   code: string;
@@ -208,6 +209,8 @@ export default function SettingsPage() {
           <CompaniesPanel />
         </CardContent>
       </Card>
+
+      <SecurityCompliance />
 
       <Card data-testid="card-settings-fx">
         <CardHeader>

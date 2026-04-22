@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
+import { EmptyState } from "@/components/feedback/empty-state"
 import {
   Dialog,
   DialogContent,
@@ -253,15 +255,17 @@ export default function ChartOfAccountsPage() {
 
       {/* Grid */}
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-56 rounded-xl" />
-          ))}
-        </div>
+        <CardGridSkeleton count={4} cols={2} height="h-56" />
       ) : TYPE_ORDER.filter((tt) => grouped[tt]?.length).length === 0 ? (
-        <Card variant="default" className="px-6 py-16 text-center text-muted-foreground text-sm">
-          {t.empty}
-        </Card>
+        <EmptyState
+          title={t.empty}
+          description={
+            locale === "ar"
+              ? "ابدأ بإضافة حساب أو استورد دليلاً جاهزاً متوافقاً مع IFRS."
+              : "Add an account to begin, or import an IFRS-ready chart."
+          }
+          testId="empty-coa"
+        />
       ) : (
         <div className="grid gap-5 md:grid-cols-2">
           {TYPE_ORDER.filter((tt) => grouped[tt]?.length).map((type) => (

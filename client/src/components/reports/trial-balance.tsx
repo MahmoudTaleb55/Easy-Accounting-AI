@@ -43,7 +43,7 @@ export function TrialBalance() {
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto table-sticky-first">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase">
               <tr>

@@ -33,10 +33,16 @@ import {
   Trash2,
   Search,
   Inbox,
+  History,
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
 import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { HistoryDrawer, type HistoryEvent } from "@/components/audit/history-drawer"
+import { EmptyState } from "@/components/feedback/empty-state"
+import { ErrorState } from "@/components/feedback/error-state"
+import { ListSkeleton } from "@/components/feedback/list-skeleton"
+import type { Transaction } from "@shared/schema"
 
 type Filter = "all" | "income" | "expense"
 
@@ -44,11 +50,12 @@ export default function Transactions() {
   const { locale } = useLocale()
   const fmt = useFormatMoney()
   const dfLocale = locale === "ar" ? ar : enUS
-  const { data: transactions, isLoading } = useTransactions()
+  const { data: transactions, isLoading, isError, refetch } = useTransactions()
   const deleteMutation = useDeleteTransaction()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
+  const [historyTx, setHistoryTx] = useState<Transaction | null>(null)
 
   const t = useMemo(
     () => ({
@@ -198,31 +205,24 @@ export default function Transactions() {
 
       {/* List */}
       {isLoading ? (
-        <Card variant="default" className="p-0 overflow-hidden">
-          <div className="divide-y divide-border">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="px-6 py-4 flex items-center justify-between">
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-48" />
-                  <Skeleton className="h-3 w-28" />
-                </div>
-                <Skeleton className="h-4 w-24" />
-              </div>
-            ))}
-          </div>
-        </Card>
+        <ListSkeleton rows={6} testId="skeleton-transactions" />
+      ) : isError ? (
+        <ErrorState
+          onRetry={() => refetch()}
+          testId="error-transactions"
+        />
       ) : filtered.length === 0 ? (
-        <Card variant="default" className="px-6 py-16 text-center">
-          <div className="mx-auto w-10 h-10 rounded-md bg-muted flex items-center justify-center mb-4">
-            <Inbox className="w-5 h-5 text-muted-foreground" />
-          </div>
-          <h3 className="text-base font-semibold text-foreground mb-1.5">
-            {search || filter !== "all" ? t.emptyTitleHas : t.emptyTitleNone}
-          </h3>
-          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-            {search || filter !== "all" ? t.emptyBodyHas : t.emptyBodyNone}
-          </p>
-        </Card>
+        <EmptyState
+          icon={<Inbox className="w-5 h-5" />}
+          title={search || filter !== "all" ? t.emptyTitleHas : t.emptyTitleNone}
+          description={search || filter !== "all" ? t.emptyBodyHas : t.emptyBodyNone}
+          action={
+            !(search || filter !== "all")
+              ? { label: t.add, onClick: () => setIsDialogOpen(true), testId: "button-empty-add-transaction" }
+              : undefined
+          }
+          testId="empty-transactions"
+        />
       ) : (
         <Card variant="default" className="p-0 overflow-hidden">
           <ul className="divide-y divide-border" data-testid="list-transactions">
@@ -276,6 +276,17 @@ export default function Transactions() {
                       {isIncome ? "+" : "−"} {fmt(Number(tx.amount))}
                     </div>
 
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-foreground"
+                      data-testid={`button-history-${tx.id}`}
+                      aria-label={locale === "ar" ? "السجل" : "History"}
+                      onClick={() => setHistoryTx(tx)}
+                    >
+                      <History className="w-3.5 h-3.5" />
+                    </Button>
+
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
@@ -314,6 +325,37 @@ export default function Transactions() {
           </ul>
         </Card>
       )}
+
+      <HistoryDrawer
+        open={!!historyTx}
+        onOpenChange={(o) => { if (!o) setHistoryTx(null) }}
+        title={historyTx?.description || ""}
+        reference={historyTx ? `TX-${historyTx.id}` : undefined}
+        partialAudit
+        events={
+          historyTx
+            ? [
+                {
+                  id: `${historyTx.id}-created`,
+                  at: historyTx.date || new Date(),
+                  source: "user",
+                  action:
+                    locale === "ar"
+                      ? `تم إنشاء معاملة ${historyTx.type === "income" ? "إيراد" : "مصروف"}`
+                      : `Created ${historyTx.type} transaction`,
+                  changes: [
+                    { field: locale === "ar" ? "المبلغ" : "Amount", to: fmt(Number(historyTx.amount)) },
+                    { field: locale === "ar" ? "الفئة" : "Category", to: historyTx.category },
+                  ],
+                  note:
+                    locale === "ar"
+                      ? "نُشِر تلقائياً إلى دفتر اليومية كقيد مزدوج."
+                      : "Auto-posted to the journal as a double-entry record.",
+                } as HistoryEvent,
+              ]
+            : []
+        }
+      />
     </div>
   )
 }

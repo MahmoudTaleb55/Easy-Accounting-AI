@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState as SharedErrorState } from "@/components/feedback/error-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -42,13 +43,13 @@ import {
   Legend,
 } from "recharts";
 
-function ErrorState() {
+function ErrorState({ onRetry }: { onRetry?: () => void }) {
   return (
-    <Card className="bg-destructive/5 border-destructive/30">
-      <CardContent className="p-6 text-center text-destructive">
-        تعذّر تحميل البيانات. حاول التحديث.
-      </CardContent>
-    </Card>
+    <SharedErrorState
+      title="تعذّر تحميل البيانات"
+      cause="حدث خطأ أثناء جلب هذا القسم. يمكنك المحاولة مرة أخرى."
+      onRetry={onRetry}
+    />
   );
 }
 
@@ -119,10 +120,10 @@ export default function InsightsPage() {
 // 1) Cockpit (overview)
 // ============================================================================
 function CockpitTab() {
-  const { data, isLoading, isError } = useQuery<Health>({ queryKey: ["/api/insights/health"] });
+  const { data, isLoading, isError, refetch } = useQuery<Health>({ queryKey: ["/api/insights/health"] });
   const { data: taxes } = useQuery<any>({ queryKey: ["/api/insights/taxes"] });
   if (isLoading) return <Skeleton className="h-96 w-full" />;
-  if (isError || !data) return <ErrorState />;
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
   const k = data.kpis;
   const h = data.health;
   const scoreClamped = Math.max(0, Math.min(100, Number(h.score) || 0));
@@ -257,9 +258,9 @@ function KpiCard({ label, value, sub, positive }: { label: string; value: string
 // 2) Alerts
 // ============================================================================
 function AlertsTab() {
-  const { data, isLoading, isError } = useQuery<{ alerts: Alert[] }>({ queryKey: ["/api/insights/alerts"] });
+  const { data, isLoading, isError, refetch } = useQuery<{ alerts: Alert[] }>({ queryKey: ["/api/insights/alerts"] });
   if (isLoading) return <Skeleton className="h-64 w-full" />;
-  if (isError || !data) return <ErrorState />;
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
   return (
     <div className="space-y-3">
       {data.alerts.map((a) => {
@@ -289,12 +290,12 @@ function AlertsTab() {
 // ============================================================================
 function CashTab() {
   const [days, setDays] = useState(90);
-  const { data, isLoading, isError } = useQuery<any>({
+  const { data, isLoading, isError, refetch } = useQuery<any>({
     queryKey: ["/api/insights/cash-forecast", days],
     queryFn: async () => fetch(`/api/insights/cash-forecast?days=${days}`).then((r) => r.json()),
   });
   if (isLoading) return <Skeleton className="h-96 w-full" />;
-  if (isError || !data) return <ErrorState />;
+  if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
   const cushion = data.runwayDays;
   return (
     <div className="space-y-4">

@@ -17,6 +17,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Users, Plus, Trash2, Calendar, FileText, PlayCircle, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ListSkeleton } from "@/components/feedback/list-skeleton";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { ErrorState } from "@/components/feedback/error-state";
 import type { Employee, Leave } from "@shared/schema";
 
 // ====================================================================
@@ -149,12 +152,14 @@ function EmployeesTab() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <p className="text-muted-foreground">جاري التحميل...</p>
+          <ListSkeleton rows={4} testId="skeleton-employees" />
         ) : employees.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>لا يوجد موظفون بعد. أضف أول موظف للبدء.</p>
-          </div>
+          <EmptyState
+            icon={<Users className="w-5 h-5" />}
+            title="لا يوجد موظفون بعد"
+            description="أضف أول موظف لتبدأ بتشغيل الرواتب وحساب نهاية الخدمة."
+            testId="empty-employees"
+          />
         ) : (
           <Table>
             <TableHeader>
@@ -279,7 +284,12 @@ function AttendanceTab() {
         <CardHeader><CardTitle>سجلات شهر {yearMonth}</CardTitle></CardHeader>
         <CardContent>
           {records.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">لا توجد سجلات حتى الآن.</p>
+            <EmptyState
+              icon={<Calendar className="w-5 h-5" />}
+              title="لا توجد سجلات حضور بعد"
+              description="اختر موظفاً وتاريخاً ثم سجّل أول حضور أو غياب لتظهر السجلات هنا."
+              testId="empty-attendance"
+            />
           ) : (
             <Table>
               <TableHeader>
@@ -393,7 +403,12 @@ function LeavesTab() {
         <CardHeader><CardTitle>سجل الإجازات</CardTitle></CardHeader>
         <CardContent>
           {leaves.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">لا توجد إجازات.</p>
+            <EmptyState
+              icon={<Calendar className="w-5 h-5" />}
+              title="لا توجد إجازات مسجَّلة"
+              description="أضف أول طلب إجازة لتظهر مع رصيد المتبقي وتحتسب في كشف الراتب."
+              testId="empty-leaves"
+            />
           ) : (
             <Table>
               <TableHeader>
@@ -441,7 +456,7 @@ function PayrollTab() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
 
-  const { data, isLoading, error } = useQuery<{ year: number; month: number; lines: PreviewLine[] }>({
+  const { data, isLoading, error, refetch } = useQuery<{ year: number; month: number; lines: PreviewLine[] }>({
     queryKey: ["/api/hr/payroll/preview", { year, month }],
     queryFn: async () => {
       const res = await fetch(`/api/hr/payroll/preview?year=${year}&month=${month}`);
@@ -505,14 +520,21 @@ function PayrollTab() {
           </div>
 
           {isLoading ? (
-            <p className="text-muted-foreground">جاري حساب المعاينة...</p>
+            <ListSkeleton rows={5} testId="skeleton-payroll" />
           ) : error ? (
-            <p className="text-destructive flex items-center gap-2"><AlertCircle className="w-4 h-4" /> تعذر التحميل</p>
+            <ErrorState
+              title="تعذّر تحميل معاينة الرواتب"
+              cause="حدث خلل أثناء حساب الكشف. حاول مرة أخرى أو راجع بيانات الموظفين."
+              onRetry={() => refetch()}
+              testId="error-payroll"
+            />
           ) : lines.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>أضف موظفين أولاً لحساب الرواتب.</p>
-            </div>
+            <EmptyState
+              icon={<Users className="w-5 h-5" />}
+              title="لا يوجد موظفون لحساب الرواتب"
+              description="أضف موظفين من تبويب الموظفين أولاً، وستظهر معاينة كشف الرواتب هنا تلقائياً."
+              testId="empty-payroll"
+            />
           ) : (
             <>
               <div className="overflow-x-auto">
