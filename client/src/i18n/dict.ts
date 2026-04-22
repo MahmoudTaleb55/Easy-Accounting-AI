@@ -105,6 +105,17 @@ export const STRINGS = {
   cp_search:   { ar: "بحث",    en: "Search" },
   cp_actions:  { ar: "إجراءات", en: "Run" },
   cp_no_results:{ ar: "لا نتائج.", en: "No results." },
+
+  // Read-only banner
+  readonly_banner_reviewer: {
+    ar: "أنت مسجَّل دخول كـ«مراجِع»: يمكنك الاطلاع والتعليق فقط، وأي تعديل معطَّل.",
+    en: "You're signed in as a Reviewer — view and comment only. Editing is disabled.",
+  },
+  readonly_banner_readonly: {
+    ar: "أنت مسجَّل دخول بصلاحية «قراءة فقط»: يمكنك تصفّح البيانات دون إجراء تغييرات.",
+    en: "You're signed in with Read-only access — you can browse data but not make changes.",
+  },
+  readonly_banner_dismiss: { ar: "إخفاء", en: "Dismiss" },
 } as const satisfies Dict;
 
 export type StringKey = keyof typeof STRINGS;
