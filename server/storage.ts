@@ -145,8 +145,11 @@ export interface IStorage {
   createLeave(companyId: number, input: InsertLeave, ctx?: AuditContext): Promise<Leave>;
   deleteLeave(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
 
-  // Audit log
-  getAuditLog(entityType: AuditEntityType, entityId: number): Promise<AuditLogEntry[]>;
+  // Audit log — scoped: only returns history when the underlying entity
+  // belongs to the caller's active workspace. Cross-workspace lookups return
+  // an empty array (the route layer turns that into a 404).
+  getAuditLog(companyId: number, entityType: AuditEntityType, entityId: number): Promise<AuditLogEntry[]>;
+  entityBelongsToCompany(entityType: AuditEntityType, entityId: number, companyId: number): Promise<boolean>;
 }
 
 const AUDIT_SKIP_FIELDS = new Set(["id", "createdAt", "updatedAt"]);
@@ -969,6 +972,94 @@ export class DatabaseStorage implements IStorage {
       notes: input.notes ?? "",
     }).returning();
     return c;
+  }
+
+  // ----- Audit log (workspace-scoped) -----
+  async entityBelongsToCompany(
+    entityType: AuditEntityType,
+    entityId: number,
+    companyId: number,
+  ): Promise<boolean> {
+    // Strongly-typed per-entity ownership check. Each branch references the
+    // concrete table so Drizzle's column types are preserved end to end —
+    // critical because this function is the gate for the audit history API.
+    switch (entityType) {
+      case "transaction": {
+        const rows = await db
+          .select({ id: transactions.id })
+          .from(transactions)
+          .where(and(eq(transactions.id, entityId), eq(transactions.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "journal_entry": {
+        const rows = await db
+          .select({ id: journalEntries.id })
+          .from(journalEntries)
+          .where(and(eq(journalEntries.id, entityId), eq(journalEntries.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "account": {
+        const rows = await db
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(and(eq(accounts.id, entityId), eq(accounts.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "fixed_asset": {
+        const rows = await db
+          .select({ id: fixedAssets.id })
+          .from(fixedAssets)
+          .where(and(eq(fixedAssets.id, entityId), eq(fixedAssets.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "employee": {
+        const rows = await db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(and(eq(employees.id, entityId), eq(employees.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "attendance": {
+        const rows = await db
+          .select({ id: attendance.id })
+          .from(attendance)
+          .where(and(eq(attendance.id, entityId), eq(attendance.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "leave": {
+        const rows = await db
+          .select({ id: leaves.id })
+          .from(leaves)
+          .where(and(eq(leaves.id, entityId), eq(leaves.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      default: {
+        const _exhaustive: never = entityType;
+        void _exhaustive;
+        return false;
+      }
+    }
+  }
+
+  async getAuditLog(
+    companyId: number,
+    entityType: AuditEntityType,
+    entityId: number,
+  ): Promise<AuditLogEntry[]> {
+    const owned = await this.entityBelongsToCompany(entityType, entityId, companyId);
+    if (!owned) return [];
+    return await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.entityType, entityType), eq(auditLog.entityId, entityId)))
+      .orderBy(desc(auditLog.occurredAt));
   }
 }
 

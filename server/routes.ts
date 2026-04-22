@@ -299,7 +299,9 @@ export async function registerRoutes(
     if (!Number.isFinite(id) || id <= 0) {
       return res.status(400).json({ message: "Invalid id" });
     }
-    const events = await storage.getAuditLog(entityType, id);
+    const owned = await storage.entityBelongsToCompany(entityType, id, cid(req));
+    if (!owned) return res.status(404).json({ message: "Not found" });
+    const events = await storage.getAuditLog(cid(req), entityType, id);
     res.json(events);
   });
 
@@ -474,11 +476,26 @@ export async function registerRoutes(
   app.delete("/api/hr/employees/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      // Prevent deletion if linked payroll history exists
+      // Verify the employee belongs to the active workspace before doing
+      // any cross-table look-ups, so we don't leak information about
+      // employees in other workspaces (or their payroll history).
+      const employees = await storage.getEmployees(cid(req));
+      if (!employees.find((e) => e.id === id)) {
+        return res.status(404).json({ message: "غير موجود" });
+      }
+      // Prevent deletion if linked payroll history exists. Scope the lookup
+      // to this workspace by joining on payroll_runs (payroll_lines itself
+      // has no companyId column, so without the join a leak would be
+      // possible if employee ids ever overlapped).
       const { db } = await import("./db");
-      const { payrollLines } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      const existing = await db.select().from(payrollLines).where(eq(payrollLines.employeeId, id)).limit(1);
+      const { payrollLines, payrollRuns } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const existing = await db
+        .select({ id: payrollLines.id })
+        .from(payrollLines)
+        .innerJoin(payrollRuns, eq(payrollRuns.id, payrollLines.payrollRunId))
+        .where(and(eq(payrollLines.employeeId, id), eq(payrollRuns.companyId, cid(req))))
+        .limit(1);
       if (existing.length > 0) {
         return res.status(409).json({
           message: "لا يمكن حذف الموظف لأنه مرتبط بكشوف رواتب سابقة. يمكنك تعطيله بدلاً من ذلك.",
