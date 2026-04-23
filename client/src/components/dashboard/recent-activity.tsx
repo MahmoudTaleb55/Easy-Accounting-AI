@@ -7,7 +7,7 @@ import { useLocale } from "@/contexts/locale-context";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { ArrowUpRight, ArrowDownRight, ArrowRight } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { RecentActivitySkeleton } from "./skeletons";
 
 export function RecentActivity() {
   const t = useT();
@@ -22,8 +22,10 @@ export function RecentActivity() {
       .slice(0, 8);
   }, [txs]);
 
+  if (isLoading) return <RecentActivitySkeleton />;
+
   return (
-    <section className="border border-border bg-card rounded-md" data-testid="recent-activity">
+    <section className="border border-border bg-card rounded-md motion-safe:animate-fade-in" data-testid="recent-activity">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h2 className="text-sm font-semibold tracking-tight">{t("recent_title")}</h2>
         <Link
@@ -35,9 +37,7 @@ export function RecentActivity() {
           <ArrowRight className={`w-3 h-3 ${dir === "rtl" ? "rotate-180" : ""}`} />
         </Link>
       </div>
-      {isLoading ? (
-        <div className="p-4"><Skeleton className="h-48 w-full" /></div>
-      ) : rows.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="px-4 py-12 text-center text-xs text-muted-foreground">{t("empty_recent")}</div>
       ) : (
         <div className="overflow-x-auto">

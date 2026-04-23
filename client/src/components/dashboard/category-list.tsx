@@ -4,7 +4,7 @@ import { useTransactions } from "@/hooks/use-transactions";
 import { usePeriod } from "@/contexts/period-context";
 import { useT } from "@/i18n/dict";
 import { useFormatMoney } from "@/lib/format";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CategoryListSkeleton } from "./skeletons";
 import { useLocale } from "@/contexts/locale-context";
 
 export function CategoryList() {
@@ -28,10 +28,10 @@ export function CategoryList() {
     return arr.map((r) => ({ ...r, pct: (r.value / max) * 100 }));
   }, [txs, period]);
 
-  if (isLoading) return <Skeleton className="h-72 rounded-md" />;
+  if (isLoading) return <CategoryListSkeleton />;
 
   return (
-    <section className="border border-border bg-card rounded-md flex flex-col" data-testid="category-list">
+    <section className="border border-border bg-card rounded-md flex flex-col motion-safe:animate-fade-in" data-testid="category-list">
       <div className="px-4 py-3 border-b border-border">
         <h2 className="text-sm font-semibold tracking-tight">{t("categories_title")}</h2>
         <p className="text-xs text-muted-foreground mt-0.5">{t("kpi_expenses")}</p>

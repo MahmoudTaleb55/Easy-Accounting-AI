@@ -69,7 +69,7 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
           onValueChange={(v) => setActiveCompanyId(Number(v))}
         >
           <SelectTrigger
-            className="h-9 w-auto min-w-[10rem] max-w-[14rem] gap-2 border-transparent bg-transparent hover-elevate hover:border-border data-[state=open]:bg-accent/60 data-[state=open]:border-border"
+            className="h-9 w-auto min-w-0 max-w-[8rem] lg:min-w-[10rem] lg:max-w-[14rem] gap-2 border-transparent bg-transparent hover-elevate hover:border-border data-[state=open]:bg-accent/60 data-[state=open]:border-border"
             data-testid="select-active-company"
           >
             <Building2 className="size-4 opacity-60" />
@@ -140,7 +140,7 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
       <TrustCluster />
 
       {/* Search / command — primary */}
-      <div className="flex-1 max-w-2xl mx-auto">
+      <div className="flex-1 min-w-0 max-w-2xl mx-auto">
         <CommandPaletteTrigger onClick={onOpenPalette} />
       </div>
 

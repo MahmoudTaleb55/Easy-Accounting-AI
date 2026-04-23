@@ -163,12 +163,12 @@ export function TrustCluster() {
               )}
             />
           </span>
-          <span className="hidden md:inline tabular-nums" data-testid="text-data-freshness">
+          <span className="hidden lg:inline tabular-nums" data-testid="text-data-freshness">
             {freshLabel}
           </span>
           {me && (
             <span
-              className="hidden md:inline-flex items-center gap-1 ms-1 px-1.5 py-0.5 rounded border border-border bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground"
+              className="hidden lg:inline-flex items-center gap-1 ms-1 px-1.5 py-0.5 rounded border border-border bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground"
               data-testid="text-current-role"
             >
               <UserCheck className="w-3 h-3" />

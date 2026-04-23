@@ -8,7 +8,7 @@ import {
   ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
 import { eachDayOfInterval, format, isWithinInterval, startOfDay } from "date-fns";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ActivityChartSkeleton } from "./skeletons";
 import { useLocation } from "wouter";
 
 function bucketNet(transactions: any[], start: Date, end: Date) {
@@ -49,12 +49,12 @@ export function ActivityChart() {
     return cur.map((p, i) => ({ ...p, prev: prev[i]?.net ?? 0, idx: i + 1 }));
   }, [txs, period, previousRange, compareToPrevious]);
 
-  if (isLoading) return <Skeleton className="h-72 rounded-md" />;
+  if (isLoading) return <ActivityChartSkeleton />;
 
   const intl = locale === "ar" ? "ar-SA" : "en-US";
 
   return (
-    <section className="border border-border bg-card rounded-md" data-testid="activity-chart">
+    <section className="border border-border bg-card rounded-md motion-safe:animate-fade-in" data-testid="activity-chart">
       <div className="flex items-baseline justify-between px-4 py-3 border-b border-border">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">{t("activity_title")}</h2>

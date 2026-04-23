@@ -9,7 +9,7 @@ import { useFormatMoney, useSettings } from "@/lib/format";
 import { useTransactions } from "@/hooks/use-transactions";
 import { useLocale } from "@/contexts/locale-context";
 import { startOfDay, eachDayOfInterval, isWithinInterval, format } from "date-fns";
-import { Skeleton } from "@/components/ui/skeleton";
+import { KpiStripSkeleton } from "./skeletons";
 import { cn } from "@/lib/utils";
 
 interface SeriesPoint { day: string; value: number; }
@@ -55,10 +55,16 @@ interface TileProps {
   hasData: boolean;
 }
 
+function usePrefersReducedMotion() {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function Tile({ label, value, fmt, delta, series, href, positiveDirection = "up", testid, accentToken, hasData }: TileProps) {
   const isUp = (delta || 0) >= 0;
   const goodUp = positiveDirection === "up";
   const good = (isUp && goodUp) || (!isUp && !goodUp);
+  const animate = !usePrefersReducedMotion();
 
   return (
     <Link href={href} className="block group" data-testid={testid}>
@@ -93,7 +99,8 @@ function Tile({ label, value, fmt, delta, series, href, positiveDirection = "up"
                   stroke={`hsl(${accentToken})`}
                   strokeWidth={1.5}
                   dot={false}
-                  isAnimationActive={false}
+                  isAnimationActive={animate}
+                  animationDuration={420}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -122,6 +129,7 @@ function HeroCash({ cash, cashSeries, runwayDays, netTotal, netDelta, fmt, hasDa
   const t = useT();
   const settings = useSettings();
   const { locale } = useLocale();
+  const animate = !usePrefersReducedMotion();
   const isUp = (netDelta || 0) >= 0;
   const cashPositive = cash >= 0;
   const heroAccent = cashPositive ? "var(--gain)" : "var(--loss)";
@@ -220,7 +228,8 @@ function HeroCash({ cash, cashSeries, runwayDays, netTotal, netDelta, fmt, hasDa
                     strokeWidth={2}
                     fill="url(#hero-cash-grad)"
                     dot={false}
-                    isAnimationActive={false}
+                    isAnimationActive={animate}
+                    animationDuration={520}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -301,16 +310,7 @@ export function KpiStrip() {
   }, [txs, period, previousRange]);
 
   if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3" data-testid="kpi-strip-loading">
-        <Skeleton className="h-72 lg:row-span-2 rounded-xl" />
-        <div className="grid grid-cols-2 lg:col-span-2 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
+    return <KpiStripSkeleton />;
   }
 
   const cash    = Number(cashForecast?.currentCash ?? 0);
@@ -329,7 +329,7 @@ export function KpiStrip() {
   const fmtCount = (n: number) => Math.round(n).toString();
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3" data-testid="kpi-strip">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 motion-safe:animate-fade-in" data-testid="kpi-strip">
       {hasAnyData ? (
         <HeroCash
           cash={cash}
@@ -344,7 +344,7 @@ export function KpiStrip() {
         <EmptyHero />
       )}
 
-      <div className="grid grid-cols-2 lg:col-span-2 gap-3 auto-rows-fr">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:col-span-2 gap-3 auto-rows-fr">
         <Tile
           label={t("kpi_revenue")}
           value={data.incomeTotal}

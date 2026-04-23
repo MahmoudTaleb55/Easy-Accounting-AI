@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useT } from "@/i18n/dict";
 import { useLocale } from "@/contexts/locale-context";
-import { Skeleton } from "@/components/ui/skeleton";
+import { AttentionQueueSkeleton } from "./skeletons";
 
 interface AttentionItem {
   id: string;
@@ -89,7 +89,7 @@ export function AttentionQueue() {
   }, [alerts, jes, txs, t, dir]);
 
   if (alertsLoading) {
-    return <Skeleton className="h-44 rounded-md" />;
+    return <AttentionQueueSkeleton />;
   }
 
   if (items.length === 0) {
@@ -98,7 +98,7 @@ export function AttentionQueue() {
     const ts = now.toLocaleTimeString(dir === "rtl" ? "ar" : "en", { hour: "2-digit", minute: "2-digit" });
     return (
       <section
-        className="border border-border bg-card rounded-md p-6 flex items-center gap-4"
+        className="border border-border bg-card rounded-md p-6 flex items-center gap-4 motion-safe:animate-fade-in"
         data-testid="attention-empty"
       >
         <div className="rounded-full bg-success/10 p-3 shrink-0">
@@ -119,7 +119,7 @@ export function AttentionQueue() {
   }
 
   return (
-    <section data-testid="attention-queue">
+    <section className="motion-safe:animate-fade-in" data-testid="attention-queue">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-base font-semibold tracking-tight">{t("attention_title")}</h2>
         <span className="text-xs text-muted-foreground tabular-nums">
