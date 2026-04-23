@@ -172,7 +172,7 @@ export function TrustCluster() {
               data-testid="text-current-role"
             >
               <UserCheck className="w-3 h-3" />
-              {ROLE_LABEL[me.role][locale]}
+              {ROLE_LABEL[me.role][locale === "ar" ? "ar" : "en"]}
             </span>
           )}
         </Button>

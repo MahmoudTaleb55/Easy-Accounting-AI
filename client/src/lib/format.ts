@@ -4,7 +4,7 @@ export interface OrgSettings {
   id: number;
   orgName: string;
   countryCode: string;
-  locale: "ar" | "en";
+  locale: string;
   currencyCode: string;
   currencySymbol: string;
   vatRate: string | number;

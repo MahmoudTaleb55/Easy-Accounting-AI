@@ -1,7 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-export type Locale = "ar" | "en";
+export type Locale = "ar" | "en" | "de" | "fr";
 export type Direction = "rtl" | "ltr";
+
+export const LOCALES: Locale[] = ["ar", "en", "de", "fr"];
+
+export const LOCALE_LABELS: Record<Locale, { native: string; en: string }> = {
+  ar: { native: "العربية", en: "Arabic" },
+  en: { native: "English", en: "English" },
+  de: { native: "Deutsch", en: "German" },
+  fr: { native: "Français", en: "French" },
+};
 
 type LocaleContextValue = {
   locale: Locale;
@@ -15,14 +24,19 @@ const LocaleContext = createContext<LocaleContextValue | null>(null);
 const STORAGE_KEY = "app.locale";
 
 function dirFor(locale: Locale): Direction {
+  // Only Arabic is RTL among the four supported languages.
   return locale === "ar" ? "rtl" : "ltr";
+}
+
+function isLocale(v: unknown): v is Locale {
+  return v === "ar" || v === "en" || v === "de" || v === "fr";
 }
 
 export function LocaleProvider({ children, defaultLocale = "ar" as Locale }: { children: React.ReactNode; defaultLocale?: Locale }) {
   const [locale, setLocaleState] = useState<Locale>(() => {
     if (typeof window === "undefined") return defaultLocale;
-    const stored = window.localStorage.getItem(STORAGE_KEY) as Locale | null;
-    return stored === "ar" || stored === "en" ? stored : defaultLocale;
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    return isLocale(stored) ? stored : defaultLocale;
   });
 
   const dir = dirFor(locale);
@@ -37,7 +51,14 @@ export function LocaleProvider({ children, defaultLocale = "ar" as Locale }: { c
   }, [locale, dir]);
 
   const setLocale = useCallback((l: Locale) => setLocaleState(l), []);
-  const toggleLocale = useCallback(() => setLocaleState((p) => (p === "ar" ? "en" : "ar")), []);
+  const toggleLocale = useCallback(
+    () =>
+      setLocaleState((p) => {
+        const idx = LOCALES.indexOf(p);
+        return LOCALES[(idx + 1) % LOCALES.length];
+      }),
+    [],
+  );
 
   const value = useMemo(() => ({ locale, dir, setLocale, toggleLocale }), [locale, dir, setLocale, toggleLocale]);
 

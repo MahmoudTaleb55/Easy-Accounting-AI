@@ -125,9 +125,14 @@ export const STRINGS = {
 
 export type StringKey = keyof typeof STRINGS;
 
-export function t(key: StringKey, locale: "ar" | "en") {
+// The bundled STRINGS dict only carries Arabic + English copies for now.
+// For other supported UI locales (de/fr) we fall back to English so the app
+// still works while translations roll in.
+export function t(key: StringKey, locale: string) {
   const entry = STRINGS[key];
-  return entry ? entry[locale] : String(key);
+  if (!entry) return String(key);
+  if (locale === "ar") return entry.ar;
+  return entry.en;
 }
 
 export function useT() {

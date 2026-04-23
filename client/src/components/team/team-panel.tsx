@@ -57,16 +57,16 @@ const inviteFormSchema = z.object({
 });
 type InviteForm = z.infer<typeof inviteFormSchema>;
 
-function roleLabel(role: WorkspaceRole, locale: "ar" | "en"): string {
+function roleLabel(role: WorkspaceRole, locale: string): string {
   const map: Record<WorkspaceRole, { ar: string; en: string }> = {
     owner: { ar: "مالك", en: "Owner" },
     accountant: { ar: "محاسب", en: "Accountant" },
     viewer: { ar: "مشاهد", en: "Viewer" },
   };
-  return map[role][locale];
+  return map[role][locale === "ar" ? "ar" : "en"];
 }
 
-function roleDescription(role: WorkspaceRole, locale: "ar" | "en"): string {
+function roleDescription(role: WorkspaceRole, locale: string): string {
   if (locale === "ar") {
     return role === "owner"
       ? "كامل الصلاحيات بما فيها الإعدادات والفريق."

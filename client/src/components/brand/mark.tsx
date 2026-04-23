@@ -5,7 +5,7 @@ interface BrandMarkProps {
   /** Render the wordmark next to the glyph. */
   withWordmark?: boolean;
   /** ar | en wordmark, defaults to en if not provided */
-  locale?: "ar" | "en";
+  locale?: string;
   /** Tone of the spark dot. Defaults to var(--primary). */
   sparkTone?: "primary" | "info" | "accent";
   /** Visual size — controls the glyph box. */
