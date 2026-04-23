@@ -1,16 +1,40 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage, isAuditEntityType, type AuditContext } from "./storage";
-import type { Request } from "express";
 
-// Build an AuditContext for user-initiated mutations. Until authentication is
-// wired up, we intentionally do not derive `actor` from any client-controlled
-// input (e.g. request headers/body) — that would let any caller spoof who
-// performed an action and undermine the audit log. The drawer falls back to
-// "Actor unavailable" when actor is null. When auth lands, populate `actor`
-// from the verified session/JWT principal here.
-function userCtx(_req: Request): AuditContext {
-  return { source: "user", actor: null };
+// Build an AuditContext for user-initiated mutations. The `actor` is derived
+// only from the verified session principal (passport `req.user.claims`, set by
+// either OIDC or local-auth login) — never from client-controlled headers or
+// body, which could be spoofed. We prefer "First Last", then email, then sub.
+// If none are available (e.g. unauthenticated edge case), we leave actor null
+// so the History drawer falls back to "Actor unavailable".
+interface SessionClaims {
+  sub?: string;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+}
+
+interface SessionPrincipal {
+  claims?: SessionClaims;
+}
+
+function getSessionClaims(req: Request): SessionClaims | undefined {
+  const principal = req.user as SessionPrincipal | undefined;
+  return principal?.claims;
+}
+
+function userCtx(req: Request): AuditContext {
+  const claims = getSessionClaims(req);
+  let actor: string | null = null;
+  if (claims) {
+    const name = [claims.first_name, claims.last_name]
+      .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+      .join(" ")
+      .trim();
+    actor = name || claims.email || claims.sub || null;
+  }
+  return { source: "user", actor };
 }
 import { api } from "@shared/routes";
 import { z } from "zod";
