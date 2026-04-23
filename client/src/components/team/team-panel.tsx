@@ -159,14 +159,6 @@ export function TeamPanel() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/team/invites"] }),
   });
 
-  const switchMutation = useMutation({
-    mutationFn: async (id: number) => apiRequest("POST", "/api/auth/switch", { memberId: id }),
-    onSuccess: () => {
-      queryClient.invalidateQueries();
-      toast({ title: locale === "ar" ? "تم تبديل الجلسة" : "Switched session" });
-    },
-  });
-
   function inviteLink(token: string): string {
     const base = typeof window !== "undefined" ? window.location.origin : "";
     return `${base}/invite/${token}`;
@@ -394,19 +386,6 @@ export function TeamPanel() {
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </WriteGuard>
-                )}
-                {/* Dev-only helper to switch identity. The matching server
-                    endpoint is also gated to non-production and to owners. */}
-                {import.meta.env.DEV && isOwner && me?.id !== m.id && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-[11px]"
-                    onClick={() => switchMutation.mutate(m.id)}
-                    data-testid={`button-switch-${m.id}`}
-                  >
-                    {locale === "ar" ? "تبديل (تطوير)" : "Switch (dev)"}
-                  </Button>
                 )}
               </li>
             ))}

@@ -1,15 +1,15 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { db } from "./db";
 import { workspaceMembers, workspaceInvites, type WorkspaceMember, type WorkspaceRole } from "@shared/schema";
-import { eq, and, asc, count } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import crypto from "crypto";
+import { authStorage } from "./replit_integrations/auth/storage";
+import { authBizStorage } from "./auth/storage";
+import { resolveActiveCompanyId } from "./auth/middleware";
 
-const COOKIE_NAME = "wm_id";
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year (seconds)
-
-// Anonymous identity used for any request without a valid cookie *after* a
-// workspace owner already exists. It carries the viewer role so the same
-// write-gating logic blocks every mutation. It is never persisted.
+// Anonymous identity used for any request without a real authenticated session.
+// It carries the viewer role so the same write-gating logic blocks every
+// mutation. It is never persisted.
 const ANONYMOUS_MEMBER: WorkspaceMember = {
   id: 0,
   name: "Anonymous",
@@ -27,96 +27,82 @@ declare global {
   }
 }
 
-function parseCookies(header: string | undefined): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!header) return out;
-  for (const part of header.split(";")) {
-    const [k, ...rest] = part.trim().split("=");
-    if (!k) continue;
-    out[k] = decodeURIComponent(rest.join("="));
-  }
-  return out;
-}
-
-// HMAC secret used to sign the identity cookie so a caller cannot impersonate
-// another member by setting `wm_id=<their id>`. Falls back to a random secret
-// generated once per process when no env value is configured (cookies do not
-// need to survive a restart in dev).
-const COOKIE_SECRET =
-  process.env.SESSION_SECRET ||
-  process.env.WM_COOKIE_SECRET ||
-  crypto.randomBytes(32).toString("hex");
-
-function signMemberId(id: number): string {
-  const sig = crypto.createHmac("sha256", COOKIE_SECRET).update(String(id)).digest("hex").slice(0, 32);
-  return `${id}.${sig}`;
-}
-
-function verifyMemberCookie(raw: string | undefined): number | null {
-  if (!raw) return null;
-  const [idStr, sig] = raw.split(".");
-  if (!idStr || !sig) return null;
-  const id = Number(idStr);
-  if (!Number.isFinite(id) || id <= 0) return null;
-  const expected = crypto.createHmac("sha256", COOKIE_SECRET).update(String(id)).digest("hex").slice(0, 32);
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return null;
-  if (!crypto.timingSafeEqual(a, b)) return null;
-  return id;
-}
-
-function setMemberCookie(res: Response, id: number) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  const value = `${COOKIE_NAME}=${signMemberId(id)}; Max-Age=${COOKIE_MAX_AGE}; Path=/; SameSite=Lax; HttpOnly${secure}`;
-  res.setHeader("Set-Cookie", value);
-}
-
-async function workspaceMemberCount(): Promise<number> {
-  const [row] = await db.select({ c: count() }).from(workspaceMembers);
-  return Number(row?.c || 0);
+/**
+ * Map a new-system role (admin|accountant|reviewer|readonly) to the legacy
+ * WorkspaceRole (owner|accountant|viewer) used by the team/RBAC layer.
+ */
+function mapRole(role: string | undefined | null): WorkspaceRole {
+  if (role === "admin") return "owner";
+  if (role === "accountant") return "accountant";
+  return "viewer";
 }
 
 /**
- * Resolves the workspace member behind the current request.
- *
- * The app does not yet have a real auth provider (tracked as a follow-up).
- * To keep that limitation from turning into a privilege-escalation, identity
- * is resolved as follows:
- *
- *   1. If the cookie points to a real, active member -> use them.
- *   2. Otherwise, if NO members exist in the workspace yet, this is the very
- *      first visitor: bootstrap them as the owner and pin the cookie.
- *   3. Otherwise (cookie missing/invalid AND a workspace already exists) the
- *      caller is anonymous. They get the read-only ANONYMOUS_MEMBER, so the
- *      same write-gating that protects viewers blocks every mutation.
+ * Shape of the passport session payload. Both auth providers (Replit OIDC
+ * and the local email+password provider) populate `claims.sub` with the
+ * stable user id; that's all the legacy RBAC layer needs.
  */
-async function resolveCurrentMember(
-  req: Request,
-  res: Response,
-): Promise<WorkspaceMember> {
-  const cookies = parseCookies(req.headers.cookie);
-  const id = verifyMemberCookie(cookies[COOKIE_NAME]);
-  if (id !== null) {
-    const found = await db.select().from(workspaceMembers).where(eq(workspaceMembers.id, id)).limit(1);
-    if (found.length > 0 && found[0].status === "active") return found[0];
+interface SessionUser {
+  claims?: { sub?: string } & Record<string, unknown>;
+}
+
+function getSessionUserId(req: Request): string | null {
+  if (!req.isAuthenticated?.()) return null;
+  const user = req.user as SessionUser | undefined;
+  const sub = user?.claims?.sub;
+  return typeof sub === "string" && sub.length > 0 ? sub : null;
+}
+
+/**
+ * Resolves the workspace member behind the current request from the real
+ * authenticated session (passport).
+ *
+ *   1. If there is no authenticated session → anonymous (read-only).
+ *   2. Otherwise the signed-in user is mirrored into a `workspace_members`
+ *      row keyed by their email, with the role derived from their active
+ *      workspace membership. The mirror is created or refreshed in place so
+ *      role changes in the new system propagate to the legacy team layer.
+ */
+async function resolveCurrentMember(req: Request, _res: Response): Promise<WorkspaceMember> {
+  const userId = getSessionUserId(req);
+  if (!userId) return ANONYMOUS_MEMBER;
+  const u = await authStorage.getUser(userId);
+  if (!u || !u.email) return ANONYMOUS_MEMBER;
+
+  const companyId = await resolveActiveCompanyId(req, userId);
+  let mappedRole: WorkspaceRole = "viewer";
+  if (companyId) {
+    const m = await authBizStorage.getMembership(userId, companyId);
+    if (m) mappedRole = mapRole(m.role);
   }
 
-  if ((await workspaceMemberCount()) === 0) {
-    const [created] = await db
-      .insert(workspaceMembers)
-      .values({
-        name: "Workspace Owner",
-        email: "owner@workspace.local",
-        role: "owner",
-        status: "active",
-      })
-      .returning();
-    setMemberCookie(res, created.id);
-    return created;
+  const email = u.email.trim().toLowerCase();
+  const display = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || email;
+
+  const existing = await db
+    .select()
+    .from(workspaceMembers)
+    .where(eq(workspaceMembers.email, email))
+    .limit(1);
+
+  if (existing.length > 0) {
+    const row = existing[0];
+    if (row.role !== mappedRole || row.name !== display || row.status !== "active") {
+      const [updated] = await db
+        .update(workspaceMembers)
+        .set({ role: mappedRole, name: display, status: "active" })
+        .where(eq(workspaceMembers.id, row.id))
+        .returning();
+      return updated;
+    }
+    return row;
   }
 
-  return ANONYMOUS_MEMBER;
+  const [created] = await db
+    .insert(workspaceMembers)
+    .values({ name: display, email, role: mappedRole, status: "active" })
+    .returning();
+  return created;
 }
 
 // Endpoints that must remain available regardless of role
@@ -207,26 +193,6 @@ export function registerAuthRoutes(app: Express) {
       status: member.status,
     });
   });
-
-  // Development-only helper to switch the active member while a real auth
-  // provider is not yet wired up. Disabled outside development to prevent
-  // privilege escalation, and additionally requires the current caller to
-  // already be an owner so it cannot be used as a foothold.
-  if (process.env.NODE_ENV !== "production") {
-    app.post("/api/auth/switch", async (req, res) => {
-      if (req.member?.role !== "owner") {
-        return res.status(403).json({ message: "owner only" });
-      }
-      const id = Number(req.body?.memberId);
-      if (!Number.isFinite(id) || id <= 0) {
-        return res.status(400).json({ message: "memberId مطلوب" });
-      }
-      const found = await db.select().from(workspaceMembers).where(eq(workspaceMembers.id, id)).limit(1);
-      if (found.length === 0) return res.status(404).json({ message: "العضو غير موجود" });
-      setMemberCookie(res, found[0].id);
-      res.json({ id: found[0].id, name: found[0].name, role: found[0].role });
-    });
-  }
 
   app.get("/api/team/members", async (req, res) => {
     // Only real (active) workspace members can see the team roster — anonymous
@@ -340,7 +306,9 @@ export function registerAuthRoutes(app: Express) {
       .set({ status: "accepted", acceptedMemberId: memberId, acceptedAt: new Date() })
       .where(eq(workspaceInvites.id, invite.id));
 
-    setMemberCookie(res, memberId);
+    // Identity is no longer cookie-pinned here; the invitee must sign in
+    // through the real auth flow (/signin or /accept-invitation/:token) to
+    // be tied to this membership.
     res.json({ memberId, role: invite.role });
   });
 
@@ -388,4 +356,3 @@ export function registerAuthRoutes(app: Express) {
     res.status(204).send();
   });
 }
-
