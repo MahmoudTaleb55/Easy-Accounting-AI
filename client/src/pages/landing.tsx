@@ -1067,6 +1067,7 @@ export default function Landing() {
         <ProductTour t={t} />
         <PredictiveCapital t={t} />
         <Automation t={t} />
+        <CompressionMoment t={t} />
         <LiveAuditor t={t} />
         <LocalIntegrations t={t} />
         <ComplianceCalendar t={t} />
@@ -1847,6 +1848,152 @@ function LiveJournalTheatre({ t }: { t: Dict }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  COMPRESSION MOMENT — single monumental stat, full-bleed ink              */
+/*  Apple-page-grade interruption between sections.                          */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function CompressionMoment({ t }: { t: Dict }) {
+  const ar = t.ar
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [revealed, setRevealed] = useState(false)
+
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setRevealed(true)
+            obs.disconnect()
+            break
+          }
+        }
+      },
+      { threshold: 0.35 },
+    )
+    obs.observe(node)
+    return () => obs.disconnect()
+  }, [])
+
+  return (
+    <section
+      id="compression"
+      ref={ref}
+      data-testid="compression-moment"
+      className="relative bg-foreground text-background py-32 lg:py-48 overflow-hidden"
+    >
+      {/* faint horizon line */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-1/2 h-px bg-background/5 -translate-y-1/2"
+      />
+
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center relative">
+        {/* Eyebrow */}
+        <div
+          className={cn(
+            eyebrowCls(ar, "text-background/55 inline-flex items-center gap-2 mb-8 lg:mb-12"),
+          )}
+        >
+          <span
+            aria-hidden
+            className="size-1.5 rounded-full"
+            style={{ background: "hsl(var(--luxe))" }}
+          />
+          {ar ? "الضغط الزمنيّ" : "Time compression"}
+        </div>
+
+        {/* The number itself — two-state reveal */}
+        <div
+          className={cn(
+            "font-display font-semibold tracking-[-0.045em] leading-[0.95] text-background",
+            "flex flex-col items-center gap-3 lg:gap-5",
+          )}
+          style={{ fontSize: "clamp(3.25rem, 9.5vw, 8rem)" }}
+        >
+          {/* Old state — fades down */}
+          <div
+            className={cn(
+              "transition-all duration-700 ease-out",
+              revealed
+                ? "opacity-30 scale-[0.78] -translate-y-1"
+                : "opacity-90 scale-100 translate-y-0",
+            )}
+          >
+            <span className="line-through decoration-background/30 decoration-[0.06em] underline-offset-[0.18em] tabular-nums">
+              {ar ? "١٤ يوماً" : "14 days"}
+            </span>
+          </div>
+
+          {/* Arrow */}
+          <div
+            aria-hidden
+            className={cn(
+              "transition-all duration-500 delay-300",
+              revealed ? "opacity-60 scale-100" : "opacity-0 scale-75",
+            )}
+            style={{ fontSize: "clamp(1.5rem, 3vw, 2.5rem)", color: "hsl(var(--luxe))" }}
+          >
+            ↓
+          </div>
+
+          {/* New state — bursts in */}
+          <div
+            className={cn(
+              "transition-all duration-700 delay-500 ease-out",
+              revealed
+                ? "opacity-100 scale-100 translate-y-0"
+                : "opacity-0 scale-95 translate-y-4",
+            )}
+          >
+            <span className="tabular-nums">
+              {ar ? "١٤ دقيقة" : "14 minutes"}
+            </span>
+            <span style={{ color: "hsl(var(--luxe))" }}>.</span>
+          </div>
+        </div>
+
+        {/* Caption */}
+        <p
+          className={cn(
+            "mt-12 lg:mt-16 mx-auto max-w-2xl text-base lg:text-xl leading-[1.55] text-background/70 transition-all duration-700 delay-700",
+            revealed ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+          )}
+        >
+          {ar
+            ? "إغلاق نهاية السنة. للمرّة الأولى، بدون ليالٍ بيضاء — ولا فاصلة محاسبيّة منسيّة."
+            : "Year-end close. For the first time, without late nights — and without a single forgotten reconciling item."}
+        </p>
+
+        {/* Footer micro-grid: three quiet stats */}
+        <div
+          className={cn(
+            "mt-16 lg:mt-24 grid grid-cols-3 gap-8 lg:gap-16 max-w-3xl mx-auto pt-10 lg:pt-12 border-t border-background/10 transition-opacity duration-700 delay-1000",
+            revealed ? "opacity-100" : "opacity-0",
+          )}
+        >
+          {[
+            { kAr: "تسوية بنكيّة", kEn: "Bank reconciliation", vAr: "ثوانٍ", vEn: "seconds" },
+            { kAr: "إقفال شهري", kEn: "Monthly close", vAr: "ساعتان", vEn: "2 hours" },
+            { kAr: "تدقيق ZATCA", kEn: "ZATCA audit", vAr: "فوريّ", vEn: "instant" },
+          ].map((s, i) => (
+            <div key={i} className="text-center">
+              <div className={cn(eyebrowCls(ar, "text-background/45 mb-2 justify-center"))}>
+                {ar ? s.kAr : s.kEn}
+              </div>
+              <div className="font-display font-medium text-background text-xl lg:text-2xl tracking-tight">
+                {ar ? s.vAr : s.vEn}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   )
 }
 
