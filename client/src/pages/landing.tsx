@@ -1055,6 +1055,7 @@ export default function Landing() {
         tertiaryLabel={t.nav.signIn}
         tertiaryHref={signInHref}
       />
+      <ReadingProgress ar={t.ar} />
       <ChapterIndex ar={t.ar} />
       <main className="overflow-x-clip">
         <Hero t={t} />
@@ -1279,6 +1280,57 @@ function ChapterIndex({ ar }: { ar: boolean }) {
         )
       })}
     </nav>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Reading progress — 1px emerald hairline at the very top of the viewport,  */
+/*  fills as the reader descends. Long-form journalism convention (NYT, The   */
+/*  Atlantic). Pairs with ChapterIndex: index = where, progress = how far.    */
+/*  Ignored by users on small screens? No — the hairline is universal.        */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function ReadingProgress({ ar }: { ar: boolean }) {
+  const [pct, setPct] = useState(0)
+
+  useEffect(() => {
+    let raf = 0
+    const update = () => {
+      const doc = document.documentElement
+      const total = doc.scrollHeight - window.innerHeight
+      const next = total > 0 ? Math.min(1, Math.max(0, window.scrollY / total)) : 0
+      setPct(next)
+    }
+    const onScroll = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(update)
+    }
+    update()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    window.addEventListener("resize", onScroll)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener("scroll", onScroll)
+      window.removeEventListener("resize", onScroll)
+    }
+  }, [])
+
+  return (
+    <div
+      aria-hidden
+      className="fixed top-0 inset-x-0 z-40 h-px pointer-events-none"
+    >
+      <div
+        className="h-full bg-primary/85"
+        style={{
+          width: `${(pct * 100).toFixed(2)}%`,
+          marginLeft: ar ? "auto" : undefined,
+          marginRight: ar ? undefined : "auto",
+          transition: "width 90ms linear",
+        }}
+        data-testid="reading-progress"
+      />
+    </div>
   )
 }
 
