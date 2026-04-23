@@ -1073,6 +1073,7 @@ export default function Landing() {
         <Security t={t} />
         <UseCases t={t} />
         <Testimonials t={t} />
+        <Interstitial ar={t.ar} />
         <Pricing t={t} />
         <FAQ t={t} />
         <FinalCTA t={t} />
@@ -1278,6 +1279,56 @@ function ChapterIndex({ ar }: { ar: boolean }) {
         )
       })}
     </nav>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Interstitial — an unnumbered "breath" between chapters. Editorial books   */
+/*  use blank pages or epigraphs to mark a tonal shift; SaaS pages never do.  */
+/*  Placed between Voices (14) and Plans (15) to slow the reader before       */
+/*  commerce. Pure typography on quiet ground; no chapter mark.                */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function Interstitial({ ar }: { ar: boolean }) {
+  return (
+    <section
+      className="relative bg-background border-b border-border"
+      data-testid="section-interstitial"
+    >
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-32 lg:py-44 text-center">
+        {/* Top centered hairline mark — like a printer's ornament. */}
+        <div className="mx-auto mb-12 lg:mb-16 inline-flex items-center gap-3 text-muted-foreground">
+          <span aria-hidden className="h-px w-10 bg-border" />
+          <span aria-hidden className="size-1 rounded-full bg-primary/70" />
+          <span aria-hidden className="h-px w-10 bg-border" />
+        </div>
+
+        <p
+          className={cn(
+            "mx-auto max-w-3xl text-balance",
+            ar
+              ? "text-[clamp(1.875rem,4vw,3rem)] font-light tracking-normal leading-[1.4] text-foreground"
+              : "font-display italic text-[clamp(1.875rem,4vw,3rem)] tracking-[-0.015em] leading-[1.12] text-foreground",
+          )}
+        >
+          {ar ? "الأرقامُ لا تكذب." : "Numbers don't lie."}{" "}
+          <span className="text-muted-foreground/85">
+            {ar ? "لكنّها تتأخّر." : "But they arrive late."}
+          </span>
+        </p>
+
+        <div className="mt-12 lg:mt-16 inline-flex items-center gap-3 text-muted-foreground">
+          <span aria-hidden className="h-px w-8 bg-border" />
+          <span className={cn(
+            "text-2xs tracking-[0.28em] uppercase",
+            ar ? "tracking-normal" : "font-mono",
+          )}>
+            {ar ? "بين فصلين" : "between chapters"}
+          </span>
+          <span aria-hidden className="h-px w-8 bg-border" />
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -3964,16 +4015,17 @@ function BrowserFrame({
         subtle ? "shadow-md" : large ? "shadow-xl" : "shadow-lg",
       )}
     >
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
-        <div className="flex gap-1.5">
-          <span className="size-2.5 rounded-full bg-border" />
-          <span className="size-2.5 rounded-full bg-border" />
-          <span className="size-2.5 rounded-full bg-border" />
-        </div>
-        <div className="flex-1 text-center font-mono text-2xs text-muted-foreground tracking-wide">
+      {/* Editorial product caption — replaces cliché macOS traffic-lights.    */}
+      {/* A single emerald accent bar + mono title + tiny static "live" mark.  */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-muted/40">
+        <span aria-hidden className="h-3.5 w-[3px] rounded-sm bg-primary/80" />
+        <div className="flex-1 min-w-0 font-mono text-2xs text-foreground/70 tracking-[0.12em] truncate">
           {title}
         </div>
-        <div className="size-2.5" />
+        <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[9px] tracking-[0.22em] uppercase text-muted-foreground/85">
+          <span aria-hidden className="size-1 rounded-full bg-success" />
+          live
+        </span>
       </div>
       {children}
     </div>
