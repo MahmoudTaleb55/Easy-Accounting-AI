@@ -22,25 +22,25 @@
     --font-display:    'Instrument Serif', 'Inter', system-ui, sans-serif;
     --font-mono:       'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-    /* — Surface & ink (light) — */
-    --background:           36 14% 98%;      /* warm paper */
-    --foreground:           222 24% 11%;     /* deep ink */
-    --card:                 0 0% 100%;
-    --card-foreground:      222 24% 11%;
-    --card-border:          220 14% 92%;
+    /* — Bento palette: cream surface + peach primary + dusty blue secondary — */
+    --background:           36 100% 95%;     /* #FFF5E6 warm cream */
+    --foreground:           220 39% 11%;     /* #111827 ink */
+    --card:                 0 0% 100%;       /* pure white cards on cream */
+    --card-foreground:      220 39% 11%;
+    --card-border:          220 14% 90%;
     --popover:              0 0% 100%;
-    --popover-foreground:   222 24% 11%;
-    --popover-border:       220 14% 90%;
+    --popover-foreground:   220 39% 11%;
+    --popover-border:       220 14% 88%;
 
-    /* — Brand action: deep emerald — */
-    --primary:              158 64% 28%;
-    --primary-foreground:   36 14% 98%;
-    --primary-border:       158 64% 22%;
+    /* — Brand action: peach (Bento primary #FAD4C0) — */
+    --primary:              19 89% 87%;
+    --primary-foreground:   220 39% 11%;     /* peach is light → dark ink for contrast */
+    --primary-border:       19 60% 70%;
 
-    /* — Secondary fill (neutral) — */
-    --secondary:            220 14% 96%;
-    --secondary-foreground: 222 24% 11%;
-    --secondary-border:     220 14% 90%;
+    /* — Secondary: dusty blue (Bento secondary #80A1C1) — */
+    --secondary:            208 35% 63%;
+    --secondary-foreground: 0 0% 100%;
+    --secondary-border:     208 35% 50%;
 
     /* — Muted (subdued text & subtle fills) — */
     --muted:                220 14% 96%;

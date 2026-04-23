@@ -1055,8 +1055,7 @@ export default function Landing() {
         tertiaryLabel={t.nav.signIn}
         tertiaryHref={signInHref}
       />
-      <ReadingProgress ar={t.ar} />
-      <ChapterIndex ar={t.ar} />
+      {/* Editorial chrome removed for Bento layout */}
       <main className="overflow-x-clip">
         <Hero t={t} />
         <Manifesto t={t} />
@@ -1389,302 +1388,202 @@ function Interstitial({ ar }: { ar: boolean }) {
 /* ────────────────────────────────────────────────────────────────────────── */
 
 function Hero({ t }: { t: Dict }) {
-  // Self-contained dark hero — explicit tokens override page theme.
-  // Charcoal with warm undertone (not pure black), warm bone text, brighter emerald.
-  const HERO_BG    = "hsl(220 18% 6%)"
-  const HERO_INK   = "hsl(40 18% 95%)"
-  const HERO_MUTE  = "hsl(40 6% 62%)"
-  const HERO_LINE  = "hsl(220 10% 16%)"
-  const HERO_GLOW  = "hsl(158 70% 52%)"
-  const HERO_GLOW_10 = "hsla(158, 70%, 52%, 0.10)"
-  const HERO_GLOW_18 = "hsla(158, 70%, 52%, 0.18)"
-  const HERO_GLOW_12 = "hsla(158, 70%, 52%, 0.12)"
-  const HERO_CARD  = "hsl(220 14% 9%)"
+  const ar = t.ar
+  const cur = ar ? "ر.س" : "SAR"
+
+  // Bento card primitive — clean white card on cream page
+  const card = "rounded-3xl border border-card-border bg-card"
+  const cardPeach = "rounded-3xl border border-primary-border bg-primary text-primary-foreground"
+  const cardBlue = "rounded-3xl border border-secondary-border bg-secondary text-secondary-foreground"
+  const eyebrow = (cls = "") =>
+    cn(
+      "text-2xs font-medium",
+      ar ? "tracking-normal" : "font-mono uppercase tracking-[0.18em]",
+      cls,
+    )
 
   return (
     <section
       id="cover"
-      className="relative overflow-hidden"
-      style={{ background: HERO_BG, color: HERO_INK }}
+      className="relative bg-background pt-10 lg:pt-14 pb-16 lg:pb-24"
+      data-testid="hero-bento"
     >
-      {/* Faint architectural grid — distinctive, not decorative noise */}
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 pointer-events-none opacity-[0.035]"
-        style={{
-          backgroundImage: `linear-gradient(${HERO_INK} 1px, transparent 1px), linear-gradient(90deg, ${HERO_INK} 1px, transparent 1px)`,
-          backgroundSize: "64px 64px",
-          maskImage: "radial-gradient(ellipse 80% 70% at 50% 30%, black 40%, transparent 90%)",
-          WebkitMaskImage: "radial-gradient(ellipse 80% 70% at 50% 30%, black 40%, transparent 90%)",
-        }}
-      />
-      {/* Single warm vignette anchored to product side */}
-      <div
-        aria-hidden
-        className={cn(
-          "absolute -z-10 top-0 h-[90%] w-[60%] pointer-events-none",
-          t.ar ? "left-0" : "right-0",
-        )}
-        style={{
-          background: `radial-gradient(50% 60% at 50% 30%, ${HERO_GLOW_10}, transparent 72%)`,
-        }}
-      />
-      {/* Hairline rule, top */}
-      <div aria-hidden className="absolute inset-x-0 top-0 h-px" style={{ background: HERO_LINE }} />
-      {/* Designed seam — short tonal step at the bottom edge so the dark→light handoff
-          to TrustStrip below reads as authored, not as an abrupt section switch */}
-      <div
-        aria-hidden
-        className="absolute inset-x-0 bottom-0 h-20 pointer-events-none"
-        style={{
-          background: `linear-gradient(to bottom, transparent 0%, ${HERO_BG} 100%)`,
-        }}
-      />
-      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px" style={{ background: HERO_LINE }} />
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Bento grid — 12 columns, two rows */}
+        <div className="grid grid-cols-12 gap-4 lg:gap-5">
+          {/* ──────────────────────── Row 1 ──────────────────────── */}
 
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-14 lg:pt-20 pb-20 lg:pb-28">
-        <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-center">
-
-          {/* ── Editorial column ──────────────────────────────────────── */}
-          <div className={cn("lg:col-span-7", t.ar ? "lg:order-last" : "")}>
-            {/* Edition slug — set as printed mark, not a SaaS pill */}
-            <div className="flex items-baseline gap-3 pb-3 border-b" style={{ borderColor: HERO_LINE }}>
-              <span aria-hidden className="size-1 translate-y-[-2px] rounded-full" style={{ background: HERO_GLOW }} />
-              <span
-                className={cn("text-2xs", t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]")}
-                style={{ color: HERO_MUTE }}
-              >
+          {/* A · Hero claim card (cols 1-7) */}
+          <div className={cn(card, "col-span-12 lg:col-span-7 p-7 lg:p-10 flex flex-col")}>
+            <div className="flex items-center gap-2.5">
+              <span className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1 text-2xs font-semibold text-primary-foreground">
+                <span aria-hidden className="size-1.5 rounded-full bg-foreground/70" />
                 {t.hero.tag}
               </span>
             </div>
 
-            {/* Editorial display headline — dramatic three-beat */}
             <h1
               className={cn(
-                "mt-9 text-[clamp(2.75rem,7.4vw,5.75rem)]",
-                t.ar
-                  ? "font-semibold tracking-normal leading-[1.18]"
-                  : "font-display tracking-[-0.02em] leading-[0.98]",
+                "mt-7 lg:mt-9 text-foreground",
+                "text-[clamp(2.25rem,5.6vw,4.25rem)] leading-[1.18] tracking-tight font-semibold",
               )}
               data-testid="heading-hero"
-              style={{ color: HERO_INK }}
             >
               {t.hero.h1a}<br />
               {t.hero.h1b}<br />
-              <span
-                className={cn(t.ar ? "" : "display-italic")}
-                style={{ color: HERO_GLOW }}
-              >
+              <span className="[box-decoration-break:clone] [-webkit-box-decoration-break:clone] bg-primary text-primary-foreground px-3 py-0 rounded-xl">
                 {t.hero.h1c}
               </span>
             </h1>
 
-            <p
-              className="mt-8 max-w-xl text-base lg:text-lg leading-[1.65]"
-              style={{ color: HERO_MUTE }}
-            >
+            <p className="mt-7 max-w-xl text-base lg:text-lg leading-[1.6] text-muted-foreground">
               {t.hero.sub}
-              <span style={{ color: HERO_INK }}>{t.hero.subEm}</span>
+              <span className="text-foreground font-medium"> {t.hero.subEm}</span>
             </p>
 
-            {/* CTAs — primary emerald, secondary ghost-on-dark */}
-            <div className="mt-10 flex flex-wrap items-center gap-3">
+            <div className="mt-8 flex flex-wrap items-center gap-3">
               <a
                 href="/signin"
                 data-testid="button-hero-cta-primary"
-                className="inline-flex items-center gap-2 px-6 h-12 rounded-md text-sm font-semibold tracking-tight transition-all hover:brightness-110"
-                style={{ background: HERO_GLOW, color: HERO_BG }}
+                className="inline-flex items-center gap-2 px-6 h-12 rounded-full bg-foreground text-background text-sm font-semibold tracking-tight transition-opacity hover:opacity-90"
               >
                 {t.hero.ctaPrimary}
-                <CtaArrow ar={t.ar} />
+                <CtaArrow ar={ar} />
               </a>
               <a
                 href="/demo"
                 data-testid="button-hero-cta-secondary"
-                className="inline-flex items-center gap-2 px-5 h-12 rounded-md text-sm font-medium transition-colors group"
-                style={{ color: HERO_INK, border: `1px solid ${HERO_LINE}` }}
+                className="inline-flex items-center gap-2 px-5 h-12 rounded-full border border-card-border bg-background text-foreground text-sm font-medium hover:bg-muted/40 transition-colors"
               >
-                <span className="inline-block size-1.5 rounded-full" style={{ background: HERO_GLOW }} />
                 {t.hero.ctaSecondary}
-                <ArrowRight className={cn("size-4 transition-transform group-hover:translate-x-0.5", t.ar && "rotate-180")} />
+                <ArrowRight className={cn("size-4", ar && "rotate-180")} />
               </a>
             </div>
 
-            {/* The role-replacement ticker — the audacious claim */}
-            <div className="mt-12 pt-6" style={{ borderTop: `1px solid ${HERO_LINE}` }}>
-              <div
-                className={cn(
-                  "text-2xs mb-3",
-                  t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.18em]",
-                )}
-                style={{ color: HERO_MUTE }}
-              >
-                {t.hero.replacing}
-              </div>
-              <ul
-                className="flex flex-wrap items-baseline gap-x-5 gap-y-2.5 list-none p-0 m-0"
-                style={{ color: HERO_INK }}
-              >
+            <div className="mt-auto pt-9">
+              <div className={eyebrow("text-muted-foreground mb-3")}>{t.hero.replacing}</div>
+              <ul className="flex flex-wrap items-baseline gap-x-3 gap-y-2 list-none p-0 m-0">
                 {t.hero.replacingRoles.map((role) => (
-                  <li key={role} className="inline-flex items-baseline gap-2">
-                    {t.ar ? (
-                      <>
-                        <span
-                          aria-hidden
-                          className="font-mono text-sm leading-none"
-                          style={{ color: HERO_GLOW }}
-                        >
-                          ×
-                        </span>
-                        <span className="text-base lg:text-lg font-semibold leading-none">
-                          {role}
-                        </span>
-                      </>
-                    ) : (
-                      <span
-                        className="text-base lg:text-lg font-display italic leading-none"
-                        style={{
-                          textDecoration: "line-through",
-                          textDecorationColor: HERO_GLOW,
-                          textDecorationThickness: "1.5px",
-                        }}
-                      >
-                        {role}
-                      </span>
-                    )}
+                  <li
+                    key={role}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-card-border bg-background px-3 py-1.5 text-sm font-medium text-foreground"
+                  >
+                    <span aria-hidden className="text-muted-foreground">×</span>
+                    {role}
                   </li>
                 ))}
               </ul>
             </div>
           </div>
 
-          {/* ── Editorial broadsheet — pure type, no UI chrome ─────────── */}
-          <div className={cn("lg:col-span-5", t.ar ? "lg:order-first" : "")}>
-            <HeroEditorialPlate t={t} />
+          {/* B · KPI hero panel on peach (cols 8-12) */}
+          <div className={cn(cardPeach, "col-span-12 lg:col-span-5 p-7 lg:p-9 flex flex-col")}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className={eyebrow("text-foreground/70")}>
+                {t.hero.kpis.netCash}
+              </span>
+              <span className={eyebrow("text-foreground/55")}>
+                {ar ? "آخر ٣٠ يوماً" : "last 30d"}
+              </span>
+            </div>
+
+            <div className="mt-4 flex items-baseline gap-3">
+              <span
+                className="tabular-nums font-semibold tracking-tight leading-[0.95] text-foreground"
+                style={{ fontSize: "clamp(3.25rem, 7vw, 5.25rem)" }}
+              >
+                {ar ? "١٠٣,٥٩٠" : "103,590"}
+              </span>
+              <span className="text-sm font-medium text-foreground/70 pb-2">{cur}</span>
+            </div>
+
+            <div className="mt-3">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground text-background px-3 py-1 text-2xs font-semibold tabular-nums">
+                +14.6% · {ar ? "مقارنةً بالشهر الماضي" : "vs prior month"}
+              </span>
+            </div>
+
+            <div className="mt-7 grid grid-cols-2 gap-4">
+              <div className="rounded-2xl bg-background/65 p-4">
+                <div className={eyebrow("text-foreground/65 mb-1.5")}>{t.hero.kpis.revenue}</div>
+                <div className="font-semibold tabular-nums text-foreground text-2xl leading-none">
+                  {ar ? "٢٤٢,٣٠٠" : "242,300"}
+                </div>
+                <div className="mt-1.5 text-2xs font-semibold tabular-nums text-[hsl(var(--success))]">+8.4%</div>
+              </div>
+              <div className="rounded-2xl bg-background/65 p-4">
+                <div className={eyebrow("text-foreground/65 mb-1.5")}>{t.hero.kpis.expenses}</div>
+                <div className="font-semibold tabular-nums text-foreground text-2xl leading-none">
+                  {ar ? "١٣٨,٧١٠" : "138,710"}
+                </div>
+                <div className="mt-1.5 text-2xs font-semibold tabular-nums text-foreground/55">−2.1%</div>
+              </div>
+            </div>
+
+            <div className="mt-auto pt-7 flex items-baseline gap-2 text-2xs text-foreground/65">
+              <span aria-hidden className="size-1.5 rounded-full bg-foreground/55" />
+              {ar
+                ? "مدوَّن منذ ٧ ثوانٍ · بدون لمسة بشريّة"
+                : "Posted 7s ago · no human touch"}
+            </div>
+          </div>
+
+          {/* ──────────────────────── Row 2 ──────────────────────── */}
+
+          {/* C · Status balanced (blue) cols 1-3 */}
+          <div className={cn(cardBlue, "col-span-6 lg:col-span-3 p-6")}>
+            <div className={eyebrow("text-background/80 mb-2")}>{t.hero.entry.title}</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              {t.hero.entry.balanced}
+            </div>
+            <div className="mt-4 flex items-center gap-2 text-sm text-background/80">
+              <span aria-hidden className="size-2 rounded-full bg-background" />
+              {ar ? "قَيد #٢٤٧٨" : "Entry #2478"}
+            </div>
+          </div>
+
+          {/* D · Latest journal entry preview (white) cols 4-8 */}
+          <div className={cn(card, "col-span-12 lg:col-span-5 p-6")}>
+            <div className={eyebrow("text-muted-foreground mb-3")}>
+              {ar ? "آخر قَيد محاسبيّ" : "Latest journal entry"}
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="grid grid-cols-12 items-baseline gap-x-3">
+                <span className="col-span-2 font-mono text-muted-foreground">5110</span>
+                <span className="col-span-6 text-foreground">{t.hero.entry.marketing}</span>
+                <span className="col-span-3 text-end tabular-nums font-semibold text-foreground">{t.hero.entry.amount}</span>
+                <span className="col-span-1 text-end text-muted-foreground">—</span>
+              </div>
+              <div className="grid grid-cols-12 items-baseline gap-x-3">
+                <span className="col-span-2 font-mono text-muted-foreground">1010</span>
+                <span className="col-span-6 text-foreground">{t.hero.entry.cash}</span>
+                <span className="col-span-3 text-end text-muted-foreground">—</span>
+                <span className="col-span-1 text-end tabular-nums font-semibold text-foreground">{t.hero.entry.amount}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* E · Live edition meta (white) cols 9-12 */}
+          <div className={cn(card, "col-span-6 lg:col-span-4 p-6 flex flex-col")}>
+            <div className={eyebrow("text-muted-foreground mb-2")}>
+              {ar ? "محدَّث الآن" : "live now"}
+            </div>
+            <div className="text-xl font-semibold tracking-tight text-foreground">
+              {ar ? "الإصدار 5.2" : "Edition 5.2"}
+            </div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              {ar ? "٢٤,٠٠٠ قَيد مُسجَّل اليوم" : "24,000 entries posted today"}
+            </div>
+            <div className="mt-auto pt-4 flex items-center gap-2">
+              <span aria-hidden className="size-2 rounded-full bg-[hsl(var(--success))]" />
+              <span className="text-2xs font-medium text-muted-foreground">
+                {ar ? "كشف يوميّ" : "daily statement"}
+              </span>
+            </div>
           </div>
         </div>
       </div>
     </section>
-  )
-}
-
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Hero editorial plate — printed-broadsheet typography on the dark canvas.  */
-/*  No card, no border, no shadow, no fake browser chrome. Just type and      */
-/*  hairlines, like the front page of the FT or a Bloomberg Businessweek      */
-/*  cover. The data points are the same; the form is the message.            */
-/* ────────────────────────────────────────────────────────────────────────── */
-
-function HeroEditorialPlate({ t }: { t: Dict }) {
-  const ar  = t.ar
-  const INK   = "hsl(40 18% 95%)"
-  const MUTE  = "hsl(40 6% 62%)"
-  const LINE  = "hsl(220 10% 18%)"
-  const GLOW  = "hsl(158 70% 52%)"
-  const cur   = ar ? "ر.س" : "SAR"
-  const txn   = ar ? "#٢٤٧٨" : "#2478"
-
-  const colMono = (txt: string) => cn("text-2xs", ar ? "tracking-normal" : "font-mono uppercase tracking-[0.2em]")
-
-  return (
-    <div className="relative" data-testid="hero-editorial-plate">
-      {/* Top printer's slug — date + provenance */}
-      <div className="flex items-baseline gap-3 pb-3 border-b" style={{ borderColor: LINE }}>
-        <span aria-hidden className="size-1 translate-y-[-2px] rounded-full" style={{ background: GLOW }} />
-        <span className={colMono("")} style={{ color: MUTE }}>
-          {ar ? "محدَّث الآن · إصدار 5.2" : "live · edition 5.2"}
-        </span>
-        <span className="flex-1" />
-        <span className={colMono("")} style={{ color: MUTE }}>
-          {ar ? "كشف يوميّ" : "daily statement"}
-        </span>
-      </div>
-
-      {/* Eyebrow caption above the monumental number */}
-      <div className={cn("mt-7 mb-3 text-2xs", ar ? "" : "font-mono uppercase tracking-[0.18em]")} style={{ color: MUTE }}>
-        {t.hero.kpis.netCash} · {ar ? "آخر ٣٠ يوماً" : "last 30 days"}
-      </div>
-
-      {/* The single masthead number — set as page-defining type. */}
-      <div className="flex items-baseline gap-3">
-        <span
-          className={cn(
-            "tabular-nums leading-[0.92]",
-            ar ? "font-semibold tracking-tight" : "font-display tracking-[-0.035em]",
-          )}
-          style={{ color: INK, fontSize: "clamp(3.75rem, 8vw, 6.5rem)" }}
-        >
-          {ar ? "١٠٣,٥٩٠" : "103,590"}
-        </span>
-        <span className="font-mono text-sm pb-2" style={{ color: MUTE }}>{cur}</span>
-      </div>
-
-      {/* Delta line in emerald — the only colored mark on the plate */}
-      <div className={cn("mt-2 mb-7 text-xs", ar ? "" : "font-mono")} style={{ color: GLOW }}>
-        +14.6% &nbsp;·&nbsp; {ar ? "مقارنةً بالشهر الماضي" : "vs prior month"}
-      </div>
-
-      <div className="h-px" style={{ background: LINE }} />
-
-      {/* Two-up tabular row — revenues / expenses set as broadsheet columns */}
-      <div className="grid grid-cols-2 gap-x-8 py-6">
-        <div>
-          <div className={cn("text-2xs mb-2", ar ? "" : "font-mono uppercase tracking-[0.16em]")} style={{ color: MUTE }}>
-            {t.hero.kpis.revenue}
-          </div>
-          <div className={cn("font-mono tabular-nums", "text-[1.65rem] leading-none")} style={{ color: INK }}>
-            {ar ? "٢٤٢,٣٠٠" : "242,300"}
-          </div>
-          <div className="text-2xs font-mono mt-1.5" style={{ color: GLOW }}>+8.4%</div>
-        </div>
-        <div>
-          <div className={cn("text-2xs mb-2", ar ? "" : "font-mono uppercase tracking-[0.16em]")} style={{ color: MUTE }}>
-            {t.hero.kpis.expenses}
-          </div>
-          <div className={cn("font-mono tabular-nums", "text-[1.65rem] leading-none")} style={{ color: INK }}>
-            {ar ? "١٣٨,٧١٠" : "138,710"}
-          </div>
-          <div className="text-2xs font-mono mt-1.5" style={{ color: MUTE }}>−2.1%</div>
-        </div>
-      </div>
-
-      <div className="h-px" style={{ background: LINE }} />
-
-      {/* Latest entry — set as printed ledger excerpt, no table chrome */}
-      <div className="flex items-baseline flex-wrap gap-x-3 gap-y-1 pt-6 mb-3">
-        <span className={cn("text-2xs", ar ? "" : "font-mono uppercase tracking-[0.16em]")} style={{ color: MUTE }}>
-          {t.hero.entry.title}
-        </span>
-        <span aria-hidden style={{ color: MUTE }}>·</span>
-        <span className={cn("text-2xs", ar ? "" : "font-mono uppercase tracking-[0.16em]")} style={{ color: GLOW }}>
-          {t.hero.entry.balanced}
-        </span>
-      </div>
-
-      <div className="font-mono text-xs space-y-2">
-        <div className="grid grid-cols-12 items-baseline gap-x-3">
-          <span className="col-span-2" style={{ color: MUTE }}>5110</span>
-          <span className="col-span-5 font-sans text-sm" style={{ color: INK }}>{t.hero.entry.marketing}</span>
-          <span className="col-span-3 text-end tabular-nums" style={{ color: INK }}>{t.hero.entry.amount}</span>
-          <span className="col-span-2 text-end" style={{ color: MUTE }}>—</span>
-        </div>
-        <div className="grid grid-cols-12 items-baseline gap-x-3">
-          <span className="col-span-2" style={{ color: MUTE }}>1010</span>
-          <span className="col-span-5 font-sans text-sm" style={{ color: INK }}>{t.hero.entry.cash}</span>
-          <span className="col-span-3 text-end" style={{ color: MUTE }}>—</span>
-          <span className="col-span-2 text-end tabular-nums" style={{ color: INK }}>{t.hero.entry.amount}</span>
-        </div>
-      </div>
-
-      {/* Editorial footnote — the human meaning behind the numbers */}
-      <div className="mt-7 pt-5 border-t" style={{ borderColor: LINE }}>
-        <p className={cn("text-2xs leading-relaxed", ar ? "" : "italic")} style={{ color: MUTE }}>
-          {ar
-            ? "مدوَّن منذ ٧ ثوانٍ · من فاتورة كهرباء واردة عبر البريد · بدون لمس بشريّ."
-            : "Posted 7s ago · from an electricity invoice received by email · no human touch."}
-        </p>
-      </div>
-    </div>
   )
 }
 
