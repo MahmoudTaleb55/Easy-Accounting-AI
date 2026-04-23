@@ -1417,7 +1417,7 @@ function Hero({ t }: { t: Dict }) {
           <div className={cn(card, "col-span-12 lg:col-span-7 p-7 lg:p-10 flex flex-col")}>
             <div className="flex items-center gap-2.5">
               <span className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1 text-2xs font-semibold text-primary-foreground">
-                <span aria-hidden className="size-1.5 rounded-full bg-foreground/70" />
+                <span aria-hidden className="size-1.5 rounded-full" style={{ background: "hsl(var(--luxe))" }} />
                 {t.hero.tag}
               </span>
             </div>

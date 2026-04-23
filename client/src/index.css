@@ -17,9 +17,9 @@
     /* — Typography stack — */
     --font-arabic:     'IBM Plex Sans Arabic', 'Tajawal', 'Cairo', system-ui, -apple-system, 'Segoe UI', sans-serif;
     --font-sans:       'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --font-display-en: 'Instrument Serif', 'Times New Roman', Georgia, serif;
+    --font-display-en: 'Jost', 'Inter', system-ui, sans-serif;
     --font-display-ar: 'Tajawal', 'IBM Plex Sans Arabic', 'Cairo', system-ui, sans-serif;
-    --font-display:    'Instrument Serif', 'Inter', system-ui, sans-serif;
+    --font-display:    'Jost', 'Inter', system-ui, sans-serif;
     --font-mono:       'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
     /* — Bento palette: cream surface + peach primary + dusty blue secondary — */
@@ -41,6 +41,13 @@
     --secondary:            208 35% 63%;
     --secondary-foreground: 0 0% 100%;
     --secondary-border:     208 35% 50%;
+
+    /* — Luxe: deep magenta accent for grandeur moments (Contemporary #C800DF).
+       Used sparingly: hero dot, feature card glow, signature underline.
+       NEVER as primary action color. */
+    --luxe:                 290 100% 44%;
+    --luxe-foreground:      0 0% 100%;
+    --luxe-soft:            290 100% 96%;
 
     /* — Muted (subdued text & subtle fills) — */
     --muted:                220 14% 96%;

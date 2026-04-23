@@ -53,7 +53,7 @@ export function Brand({
       <div className="inline-flex flex-col items-start gap-0.5">
         <div className={cn("flex items-baseline gap-1.5 font-semibold tracking-tight text-foreground", s.mark)}>
           <span>محاسب</span>
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary border border-primary-border translate-y-[-0.18em]" aria-hidden />
+          <span className="inline-block w-1.5 h-1.5 rounded-full translate-y-[-0.18em]" style={{ background: "hsl(var(--luxe))" }} aria-hidden />
           <span className="text-foreground/85">ذكي</span>
         </div>
         {withTagline && (
