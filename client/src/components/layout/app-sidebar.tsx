@@ -76,15 +76,15 @@ export function AppSidebar() {
     <Sidebar
       side={side}
       collapsible="icon"
-      className={`${dir === "rtl" ? "border-l" : "border-r"} border-border bg-sidebar`}
+      className={`${dir === "rtl" ? "border-l" : "border-r"} border-border bg-sidebar shadow-xs`}
     >
       <SidebarHeader className="px-3 py-3 border-b border-sidebar-border">
         <div className="flex items-center gap-2.5 text-foreground">
           <BrandMark size="sm" />
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold tracking-tight truncate">{t("brand")}</div>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              <div className="text-h4 font-semibold tracking-tight truncate">{t("brand")}</div>
+              <div className="eyebrow text-muted-foreground/80">
                 {dir === "rtl" ? "نظام محاسبي ذكي" : "Intelligent ledger"}
               </div>
             </div>
@@ -96,7 +96,7 @@ export function AppSidebar() {
         {GROUPS.map((g) => (
           <SidebarGroup key={g.label} className="px-2 py-1">
             {!collapsed && (
-              <SidebarGroupLabel className="px-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80 h-6">
+              <SidebarGroupLabel className="px-2 h-6 eyebrow text-muted-foreground/80">
                 {t(g.label)}
               </SidebarGroupLabel>
             )}
@@ -111,7 +111,7 @@ export function AppSidebar() {
                         asChild
                         isActive={isActive}
                         tooltip={label}
-                        className={`h-9 px-2.5 rounded-md text-sm transition-colors relative ${
+                        className={`h-9 px-2.5 rounded-md text-small relative hover-elevate ${
                           isActive
                             ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                             : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
@@ -124,7 +124,7 @@ export function AppSidebar() {
                               aria-hidden
                             />
                           )}
-                          <item.icon className={`w-4 h-4 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                          <item.icon className={`size-4 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
                           <span>{label}</span>
                         </Link>
                       </SidebarMenuButton>
@@ -141,14 +141,14 @@ export function AppSidebar() {
         <UserBadge collapsed={collapsed} />
         <button
           onClick={toggleSidebar}
-          className="w-full inline-flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/40 transition-colors"
+          className="w-full inline-flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-caption text-muted-foreground hover:text-foreground hover-elevate"
           data-testid="button-toggle-sidebar"
         >
           {!collapsed && <span>{dir === "rtl" ? "طيّ القائمة" : "Collapse"}</span>}
           {collapsed ? (
-            <ChevronExpand className="w-4 h-4 mx-auto" />
+            <ChevronExpand className="size-4 mx-auto" />
           ) : (
-            <ChevronCollapse className="w-4 h-4" />
+            <ChevronCollapse className="size-4" />
           )}
         </button>
       </SidebarFooter>
@@ -165,39 +165,39 @@ function UserBadge({ collapsed }: { collapsed: boolean }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="w-full flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-sidebar-accent/40 transition-colors"
+          className="w-full flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover-elevate"
           data-testid="button-user-menu"
         >
           <Avatar className="h-7 w-7 shrink-0">
             {user.profileImageUrl && <AvatarImage src={user.profileImageUrl} alt={fullName} />}
-            <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
+            <AvatarFallback className="text-caption">{initials}</AvatarFallback>
           </Avatar>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-medium" data-testid="text-user-name">{fullName}</div>
-              {role && <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground" data-testid="text-user-role">{role}</div>}
+              <div className="truncate text-small font-medium" data-testid="text-user-name">{fullName}</div>
+              {role && <div className="truncate eyebrow text-muted-foreground" data-testid="text-user-role">{role}</div>}
             </div>
           )}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="truncate">{user.email}</DropdownMenuLabel>
+      <DropdownMenuContent align="end" className="w-56 shadow-md">
+        <DropdownMenuLabel className="truncate text-small">{user.email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild data-testid="menu-profile">
           <Link href="/app/settings/profile">
-            <a className="flex items-center gap-2"><UserIcon className="h-4 w-4" /> Profile</a>
+            <a className="flex items-center gap-2"><UserIcon className="size-3.5" /> Profile</a>
           </Link>
         </DropdownMenuItem>
         {role === "admin" && (
           <DropdownMenuItem asChild data-testid="menu-members">
             <Link href="/app/settings/members">
-              <a className="flex items-center gap-2"><Users className="h-4 w-4" /> Members</a>
+              <a className="flex items-center gap-2"><Users className="size-3.5" /> Members</a>
             </Link>
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => signOut()} data-testid="menu-signout">
-          <LogOut className="h-4 w-4 mr-2" /> Sign out
+          <LogOut className="size-3.5 mr-2" /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -208,13 +208,13 @@ export function MobileHeader() {
   const { toggleSidebar } = useSidebar();
   const t = useT();
   return (
-    <div className="md:hidden flex items-center justify-between px-4 h-12 bg-card border-b border-border sticky top-0 z-50">
+    <div className="md:hidden flex items-center justify-between px-4 h-12 bg-card border-b border-border sticky top-0 z-50 shadow-xs">
       <div className="flex items-center gap-2 text-foreground">
         <BrandMark size="sm" />
-        <h2 className="font-semibold text-sm text-foreground">{t("brand")}</h2>
+        <h2 className="text-h4 font-semibold text-foreground">{t("brand")}</h2>
       </div>
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar}>
-        <Menu className="w-5 h-5" />
+        <Menu className="size-4" />
       </Button>
     </div>
   );

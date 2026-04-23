@@ -121,7 +121,7 @@ export function AppFooter({ columns, tagline, className }: AppFooterProps) {
           {/* Brand column */}
           <div className="col-span-2 md:col-span-4">
             <Brand size="lg" withTagline />
-            <p className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground">
+            <p className="mt-5 max-w-sm text-small leading-relaxed text-muted-foreground">
               {resolvedTagline}
             </p>
           </div>
@@ -136,7 +136,7 @@ export function AppFooter({ columns, tagline, className }: AppFooterProps) {
                     <a
                       href={l.href}
                       data-testid={`link-footer-${l.label}`}
-                      className="text-sm text-foreground/75 hover:text-foreground transition-colors"
+                      className="text-small text-foreground/75 hover:text-foreground transition-colors duration-150"
                     >
                       {l.label}
                     </a>
@@ -149,17 +149,17 @@ export function AppFooter({ columns, tagline, className }: AppFooterProps) {
 
         {/* Hairline + meta bar */}
         <div className="mt-14 pt-6 border-t border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-3 text-caption text-muted-foreground">
             <span>© {year} {brandName}</span>
             <span className="opacity-40">·</span>
-            <span className="font-mono text-2xs tracking-wider uppercase">IFRS-Compliant</span>
+            <span className="font-mono tracking-wider uppercase">IFRS-Compliant</span>
             <span className="opacity-40">·</span>
-            <span className="font-mono text-2xs tracking-wider uppercase">SOC 2 · Type II</span>
+            <span className="font-mono tracking-wider uppercase">SOC 2 · Type II</span>
           </div>
-          <div className="flex items-center gap-5 text-xs text-muted-foreground">
-            <a href="#privacy"  className="hover:text-foreground transition-colors" data-testid="link-footer-privacy">{privacy}</a>
-            <a href="#terms"    className="hover:text-foreground transition-colors" data-testid="link-footer-terms">{terms}</a>
-            <a href="#security" className="hover:text-foreground transition-colors" data-testid="link-footer-security">{security}</a>
+          <div className="flex items-center gap-5 text-small text-muted-foreground">
+            <a href="#privacy"  className="hover:text-foreground transition-colors duration-150" data-testid="link-footer-privacy">{privacy}</a>
+            <a href="#terms"    className="hover:text-foreground transition-colors duration-150" data-testid="link-footer-terms">{terms}</a>
+            <a href="#security" className="hover:text-foreground transition-colors duration-150" data-testid="link-footer-security">{security}</a>
           </div>
         </div>
       </div>

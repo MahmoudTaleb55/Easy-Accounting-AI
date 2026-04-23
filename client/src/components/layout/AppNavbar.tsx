@@ -93,7 +93,7 @@ export function AppNavbar({
 
           {/* Center nav — inner muted pill rail */}
           <nav
-            className="hidden lg:flex items-center gap-0.5 rounded-full bg-muted/55 p-1 text-sm"
+            className="hidden lg:flex items-center gap-0.5 rounded-full bg-muted/55 p-1 text-small"
             aria-label="Primary"
           >
             {links.map((l) => (
@@ -120,7 +120,7 @@ export function AppNavbar({
               aria-label={ar ? "Switch to English" : "التحويل إلى العربية"}
               data-testid="button-locale-toggle"
               title={ar ? "EN" : "AR"}
-              className="size-9 grid place-items-center rounded-full text-foreground/65 hover:text-foreground hover:bg-muted/60 transition-colors"
+              className="size-9 grid place-items-center rounded-full text-foreground/65 hover:text-foreground hover-elevate transition-colors duration-150"
             >
               <Languages className="size-4" />
             </button>
@@ -129,7 +129,7 @@ export function AppNavbar({
               onClick={toggleTheme}
               aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
               data-testid="button-theme-toggle"
-              className="size-9 grid place-items-center rounded-full text-foreground/65 hover:text-foreground hover:bg-muted/60 transition-colors"
+              className="size-9 grid place-items-center rounded-full text-foreground/65 hover:text-foreground hover-elevate transition-colors duration-150"
             >
               {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
             </button>
@@ -137,7 +137,7 @@ export function AppNavbar({
             <a
               href={tertiaryHref}
               data-testid="link-sign-in"
-              className="hidden md:inline-flex h-9 items-center px-3 rounded-full text-sm font-medium text-foreground/75 hover:text-foreground hover:bg-muted/60 transition-colors"
+              className="hidden md:inline-flex h-9 items-center px-3 rounded-full text-small font-medium text-foreground/75 hover:text-foreground hover-elevate transition-colors duration-150"
             >
               {resolvedTertiary}
             </a>
@@ -148,9 +148,9 @@ export function AppNavbar({
               className={cn(
                 "inline-flex items-center gap-1.5 h-9 lg:h-10 px-4 lg:px-5",
                 "rounded-full bg-primary text-primary-foreground",
-                "text-sm font-semibold tracking-tight",
-                "border border-primary-border",
-                "hover:opacity-90 transition-opacity"
+                "text-small font-semibold tracking-tight",
+                "border border-primary-border shadow-xs",
+                "hover:opacity-90 transition-opacity duration-150"
               )}
             >
               {resolvedCta}

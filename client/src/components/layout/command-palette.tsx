@@ -62,7 +62,7 @@ export function CommandPalette({ open, onOpenChange }: Props) {
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <div dir={dir} data-testid="command-palette">
+      <div dir={dir} data-testid="command-palette" className="motion-enter">
         <CommandInput
           placeholder={t("search_placeholder")}
           value={query}
@@ -70,14 +70,14 @@ export function CommandPalette({ open, onOpenChange }: Props) {
           data-testid="input-command-search"
         />
         <CommandList>
-          <CommandEmpty>{t("cp_no_results")}</CommandEmpty>
+          <CommandEmpty className="text-small">{t("cp_no_results")}</CommandEmpty>
 
           <CommandGroup heading={t("cp_navigate")}>
             {NAV.map((n) => (
               <CommandItem key={n.key} value={`${n.label} ${n.path}`} onSelect={() => go(n.path)} data-testid={`cmd-${n.key}`}>
-                <n.icon className="w-4 h-4 opacity-70" />
-                <span>{n.label}</span>
-                <span className="ms-auto text-[10px] uppercase tracking-wider text-muted-foreground">{n.path}</span>
+                <n.icon className="size-3.5 opacity-70" />
+                <span className="text-small">{n.label}</span>
+                <span className="ms-auto eyebrow text-muted-foreground/80">{n.path}</span>
               </CommandItem>
             ))}
           </CommandGroup>
@@ -86,13 +86,13 @@ export function CommandPalette({ open, onOpenChange }: Props) {
 
           <CommandGroup heading={t("cp_create")}>
             <CommandItem value="create transaction" onSelect={() => go("/app/transactions?new=1")} data-testid="cmd-create-tx">
-              <Plus className="w-4 h-4 opacity-70" /> {t("quick_create_tx")}
+              <Plus className="size-3.5 opacity-70" /> <span className="text-small">{t("quick_create_tx")}</span>
             </CommandItem>
             <CommandItem value="create journal entry" onSelect={() => go("/app/journal?new=1")} data-testid="cmd-create-je">
-              <Plus className="w-4 h-4 opacity-70" /> {t("quick_create_je")}
+              <Plus className="size-3.5 opacity-70" /> <span className="text-small">{t("quick_create_je")}</span>
             </CommandItem>
             <CommandItem value="create account" onSelect={() => go("/app/accounts?new=1")} data-testid="cmd-create-acc">
-              <Plus className="w-4 h-4 opacity-70" /> {t("quick_create_account")}
+              <Plus className="size-3.5 opacity-70" /> <span className="text-small">{t("quick_create_account")}</span>
             </CommandItem>
           </CommandGroup>
 
@@ -107,9 +107,9 @@ export function CommandPalette({ open, onOpenChange }: Props) {
                     onSelect={() => go("/app/transactions")}
                     data-testid={`cmd-tx-${tx.id}`}
                   >
-                    <ListOrdered className="w-4 h-4 opacity-70" />
-                    <span className="truncate">{tx.description}</span>
-                    <span className="ms-auto tabular-nums text-xs text-muted-foreground">
+                    <ListOrdered className="size-3.5 opacity-70" />
+                    <span className="truncate text-small">{tx.description}</span>
+                    <span className="ms-auto tabular-nums text-caption text-muted-foreground">
                       {Number(tx.amount).toLocaleString()} · {tx.category}
                     </span>
                   </CommandItem>
@@ -121,9 +121,9 @@ export function CommandPalette({ open, onOpenChange }: Props) {
                     onSelect={() => go("/app/accounts")}
                     data-testid={`cmd-acc-${a.id}`}
                   >
-                    <BookOpen className="w-4 h-4 opacity-70" />
-                    <span className="font-mono text-xs me-2">{a.code}</span>
-                    <span className="truncate">{a.nameAr || a.nameEn}</span>
+                    <BookOpen className="size-3.5 opacity-70" />
+                    <span className="font-mono text-caption me-2">{a.code}</span>
+                    <span className="truncate text-small">{a.nameAr || a.nameEn}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -141,9 +141,9 @@ export function CommandPalette({ open, onOpenChange }: Props) {
                     onSelect={() => { setActiveCompanyId(c.id); onOpenChange(false); }}
                     data-testid={`cmd-co-${c.id}`}
                   >
-                    <Building2 className="w-4 h-4 opacity-70" />
-                    <span>{c.name}</span>
-                    <span className="ms-auto text-xs text-muted-foreground">{c.functionalCurrency}</span>
+                    <Building2 className="size-3.5 opacity-70" />
+                    <span className="text-small">{c.name}</span>
+                    <span className="ms-auto text-caption text-muted-foreground">{c.functionalCurrency}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -173,13 +173,13 @@ export function CommandPaletteTrigger({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="group flex h-9 items-center gap-2 rounded-md border border-border bg-card/80 px-3 text-sm text-muted-foreground hover:text-foreground hover:bg-card transition-colors w-full max-w-md"
+      className="group flex h-9 items-center gap-2 rounded-md border border-border bg-card/80 px-3 text-small text-muted-foreground hover:text-foreground hover-elevate w-full max-w-md shadow-xs"
       data-testid="button-open-command-palette"
       title={`${t("open_palette")} (⌘K)`}
     >
-      <Search className="w-4 h-4 opacity-60" />
+      <Search className="size-4 opacity-60" />
       <span className="truncate">{t("search_placeholder")}</span>
-      <kbd className="ms-auto hidden md:inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted/60 px-1.5 font-mono text-[10px] text-muted-foreground">
+      <kbd className="ms-auto hidden md:inline-flex h-5 items-center gap-0.5 rounded border border-border bg-muted/60 px-1.5 font-mono text-caption text-muted-foreground">
         ⌘K
       </kbd>
     </button>

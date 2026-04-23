@@ -463,7 +463,7 @@
 
   /* — Refined hover/active interactions (replaces translate-Y "lift" with subtle bg shift + shadow) — */
   .hover-elevate {
-    transition: background-color 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    transition: background-color 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
   }
   .hover-elevate:hover {
     background-color: hsl(var(--accent) / 0.6);

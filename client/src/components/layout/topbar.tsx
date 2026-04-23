@@ -60,7 +60,7 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
 
   return (
     <header
-      className="sticky top-0 z-40 hidden md:flex h-14 items-center gap-2 border-b border-border bg-background px-4 lg:px-6"
+      className="sticky top-0 z-40 hidden md:flex h-14 items-center gap-2 border-b border-border bg-background px-4 lg:px-6 shadow-xs"
       data-testid="app-topbar"
     >
       {companies.length > 0 && (
@@ -69,23 +69,23 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
           onValueChange={(v) => setActiveCompanyId(Number(v))}
         >
           <SelectTrigger
-            className="h-9 w-auto min-w-[10rem] max-w-[14rem] gap-2 border-transparent bg-transparent hover:bg-muted/60 hover:border-border data-[state=open]:bg-muted/60 data-[state=open]:border-border transition-colors"
+            className="h-9 w-auto min-w-[10rem] max-w-[14rem] gap-2 border-transparent bg-transparent hover-elevate hover:border-border data-[state=open]:bg-accent/60 data-[state=open]:border-border"
             data-testid="select-active-company"
           >
-            <Building2 className="w-4 h-4 opacity-60" />
+            <Building2 className="size-4 opacity-60" />
             <SelectValue>
               {activeCompany ? (
-                <span className="truncate text-sm font-medium">{activeCompany.name}</span>
+                <span className="truncate text-small font-medium">{activeCompany.name}</span>
               ) : (
-                <span className="text-muted-foreground text-sm">…</span>
+                <span className="text-muted-foreground text-small">…</span>
               )}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent align="start">
+          <SelectContent align="start" className="shadow-md">
             {companies.map((c) => (
               <SelectItem key={c.id} value={String(c.id)}>
-                <span className="font-medium">{c.name}</span>
-                <span className="ms-2 text-xs text-muted-foreground">{c.functionalCurrency}</span>
+                <span className="font-medium text-small">{c.name}</span>
+                <span className="ms-2 text-caption text-muted-foreground">{c.functionalCurrency}</span>
               </SelectItem>
             ))}
           </SelectContent>
@@ -96,13 +96,13 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
       <Popover>
         <PopoverTrigger asChild>
           <Button variant="outline" size="sm" className="h-9 gap-2" data-testid="button-period-selector">
-            <Calendar className="w-4 h-4 opacity-70" />
-            <span className="font-medium">{periodLabel}</span>
-            <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+            <Calendar className="size-4 opacity-70" />
+            <span className="text-small font-medium">{periodLabel}</span>
+            <ChevronDown className="size-3.5 opacity-60" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-64 p-2" align="end">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 py-1">
+        <PopoverContent className="w-64 p-2 shadow-md motion-enter" align="end">
+          <div className="eyebrow text-muted-foreground/80 px-2 py-1">
             {t("period_month")} / {t("period_quarter")}
           </div>
           <div className="grid grid-cols-2 gap-1 mb-2">
@@ -111,10 +111,10 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
                 key={p.key}
                 onClick={() => setPeriodKey(p.key)}
                 data-testid={`period-${p.key}`}
-                className={`text-xs rounded-md px-2 py-1.5 text-start transition-colors ${
+                className={`text-small rounded-md px-2 py-1.5 text-start transition-colors duration-150 ${
                   period.key === p.key
                     ? "bg-primary text-primary-foreground font-medium"
-                    : "hover:bg-accent text-foreground/80"
+                    : "hover-elevate text-foreground/80"
                 }`}
               >
                 {p.label}
@@ -122,7 +122,7 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
             ))}
           </div>
           <div className="border-t border-border pt-2 px-2">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <label className="flex items-center gap-2 text-small cursor-pointer">
               <input
                 type="checkbox"
                 checked={compareToPrevious}
@@ -147,22 +147,22 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
       {/* Quick create */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" className="h-9 gap-1.5 font-medium" data-testid="button-quick-create">
-            <Plus className="w-4 h-4" />
+          <Button size="sm" className="h-9 gap-1.5 font-medium text-small" data-testid="button-quick-create">
+            <Plus className="size-4" />
             <span className="hidden lg:inline">{t("quick_create")}</span>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="text-xs">{t("quick_create")}</DropdownMenuLabel>
+        <DropdownMenuContent align="end" className="w-56 shadow-md motion-enter">
+          <DropdownMenuLabel className="eyebrow text-muted-foreground/80">{t("quick_create")}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setLocation("/app/transactions?new=1")} data-testid="quick-new-tx">
-            <Plus className="w-4 h-4 me-2" /> {t("quick_create_tx")}
+            <Plus className="size-3.5 me-2" /> <span className="text-small">{t("quick_create_tx")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setLocation("/app/journal?new=1")} data-testid="quick-new-je">
-            <Plus className="w-4 h-4 me-2" /> {t("quick_create_je")}
+            <Plus className="size-3.5 me-2" /> <span className="text-small">{t("quick_create_je")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setLocation("/app/accounts?new=1")} data-testid="quick-new-acc">
-            <Plus className="w-4 h-4 me-2" /> {t("quick_create_account")}
+            <Plus className="size-3.5 me-2" /> <span className="text-small">{t("quick_create_account")}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -170,18 +170,18 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
       {/* Notifications */}
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-9 w-9 relative" data-testid="button-notifications">
-            <Bell className="w-4 h-4" />
+          <Button variant="ghost" size="icon" className="h-9 w-9 relative hover-elevate" data-testid="button-notifications">
+            <Bell className="size-4" />
             {alertCount > 0 && (
               <span className="absolute top-1.5 end-1.5 h-2 w-2 rounded-full bg-warning ring-2 ring-background" />
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-80" align="end">
-          <div className="px-1 pb-2 text-sm font-medium">{t("notifications")}</div>
+        <PopoverContent className="w-80 shadow-md motion-enter" align="end">
+          <div className="px-1 pb-2 text-h4 font-semibold">{t("notifications")}</div>
           <div className="divide-y divide-border max-h-80 overflow-auto -mx-1">
             {(alertsData?.alerts || []).slice(0, 8).map((a: any) => (
-              <div key={a.id} className="px-3 py-2 text-xs">
+              <div key={a.id} className="px-3 py-2 text-small hover-elevate rounded-md">
                 <div className="flex items-start gap-2">
                   <span className={`mt-1 h-1.5 w-1.5 rounded-full shrink-0 ${
                     a.severity === "critical" ? "bg-loss" :
@@ -190,13 +190,13 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
                   }`} />
                   <div className="flex-1">
                     <div className="font-medium text-foreground">{a.title}</div>
-                    <div className="text-muted-foreground mt-0.5">{a.description}</div>
+                    <div className="text-muted-foreground mt-0.5 text-caption">{a.description}</div>
                   </div>
                 </div>
               </div>
             ))}
             {(!alertsData?.alerts || alertsData.alerts.length === 0) && (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">—</div>
+              <div className="px-3 py-6 text-center text-small text-muted-foreground">—</div>
             )}
           </div>
         </PopoverContent>
@@ -206,44 +206,44 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="h-9 inline-flex items-center gap-1.5 rounded-md px-1.5 hover:bg-muted/60 transition-colors"
+            className="h-9 inline-flex items-center gap-1.5 rounded-md px-1.5 hover-elevate"
             data-testid="button-profile"
           >
             <Avatar className="h-7 w-7">
-              <AvatarFallback className="text-xs bg-primary/10 text-primary font-medium">
+              <AvatarFallback className="text-caption bg-primary/10 text-primary font-medium">
                 {(activeCompany?.name || "U").slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <ChevronDown className="w-3 h-3 opacity-60" />
+            <ChevronDown className="size-3.5 opacity-60" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="text-xs">{t("profile")}</DropdownMenuLabel>
+        <DropdownMenuContent align="end" className="w-56 shadow-md motion-enter">
+          <DropdownMenuLabel className="eyebrow text-muted-foreground/80">{t("profile")}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setLocation("/app/ai-assistant")} data-testid="menu-ai">
-            <Bot className="w-4 h-4 me-2 opacity-70" /> {t("nav_ai")}
+            <Bot className="size-3.5 me-2 opacity-70" /> <span className="text-small">{t("nav_ai")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setLocation("/app/settings")} data-testid="menu-settings">
-            {t("nav_settings")}
+            <span className="text-small">{t("nav_settings")}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
 
           {/* Language sub-menu */}
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="text-sm">
-              <Globe className="w-4 h-4 me-2 opacity-70" />
+            <DropdownMenuSubTrigger className="text-small">
+              <Globe className="size-3.5 me-2 opacity-70" />
               <span className="flex-1">{t("language_label")}</span>
-              <span className="text-xs text-muted-foreground">{locale === "ar" ? "العربية" : "English"}</span>
+              <span className="text-caption text-muted-foreground">{locale === "ar" ? "العربية" : "English"}</span>
             </DropdownMenuSubTrigger>
             <DropdownMenuPortal>
-              <DropdownMenuSubContent>
+              <DropdownMenuSubContent className="shadow-md motion-enter">
                 <DropdownMenuItem onClick={() => setLocale("ar")} data-testid="menu-lang-ar">
-                  <Check className={`w-3.5 h-3.5 me-2 ${locale === "ar" ? "opacity-100" : "opacity-0"}`} />
-                  العربية
+                  <Check className={`size-3.5 me-2 ${locale === "ar" ? "opacity-100" : "opacity-0"}`} />
+                  <span className="text-small">العربية</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setLocale("en")} data-testid="menu-lang-en">
-                  <Check className={`w-3.5 h-3.5 me-2 ${locale === "en" ? "opacity-100" : "opacity-0"}`} />
-                  English
+                  <Check className={`size-3.5 me-2 ${locale === "en" ? "opacity-100" : "opacity-0"}`} />
+                  <span className="text-small">English</span>
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuPortal>
@@ -251,22 +251,22 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
 
           {/* Theme sub-menu */}
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="text-sm">
-              {theme === "dark" ? <Moon className="w-4 h-4 me-2 opacity-70" /> : <Sun className="w-4 h-4 me-2 opacity-70" />}
+            <DropdownMenuSubTrigger className="text-small">
+              {theme === "dark" ? <Moon className="size-3.5 me-2 opacity-70" /> : <Sun className="size-3.5 me-2 opacity-70" />}
               <span className="flex-1">{t("appearance_label")}</span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-caption text-muted-foreground">
                 {theme === "dark" ? t("dark_mode") : t("light_mode")}
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuPortal>
-              <DropdownMenuSubContent>
+              <DropdownMenuSubContent className="shadow-md motion-enter">
                 <DropdownMenuItem onClick={() => setTheme("light")} data-testid="menu-theme-light">
-                  <Check className={`w-3.5 h-3.5 me-2 ${theme === "light" ? "opacity-100" : "opacity-0"}`} />
-                  <Sun className="w-4 h-4 me-2 opacity-70" /> {t("light_mode")}
+                  <Check className={`size-3.5 me-2 ${theme === "light" ? "opacity-100" : "opacity-0"}`} />
+                  <Sun className="size-3.5 me-2 opacity-70" /> <span className="text-small">{t("light_mode")}</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setTheme("dark")} data-testid="menu-theme-dark">
-                  <Check className={`w-3.5 h-3.5 me-2 ${theme === "dark" ? "opacity-100" : "opacity-0"}`} />
-                  <Moon className="w-4 h-4 me-2 opacity-70" /> {t("dark_mode")}
+                  <Check className={`size-3.5 me-2 ${theme === "dark" ? "opacity-100" : "opacity-0"}`} />
+                  <Moon className="size-3.5 me-2 opacity-70" /> <span className="text-small">{t("dark_mode")}</span>
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuPortal>
@@ -274,10 +274,10 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
 
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onToggleAiRail} data-testid="menu-toggle-ai-rail">
-            <span className="text-xs text-muted-foreground">
+            <span className="text-small text-muted-foreground">
               {aiRailOpen ? t("close_ai_rail") : t("open_ai_rail")}
             </span>
-            <span className="ms-auto text-[10px] text-muted-foreground border border-border rounded px-1 py-0.5 font-mono">
+            <span className="ms-auto text-caption text-muted-foreground border border-border rounded px-1 py-0.5 font-mono">
               ⌘.
             </span>
           </DropdownMenuItem>
