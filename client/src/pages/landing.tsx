@@ -1124,7 +1124,7 @@ function Chapter({
       <h2
         className={cn(
           "text-[clamp(2.25rem,5.4vw,4.25rem)]",
-          ar ? "font-semibold tracking-normal leading-[1.18]" : "font-display tracking-[-0.02em] leading-[1.02]",
+          ar ? "font-semibold tracking-normal leading-[1.18]" : "font-display tracking-[-0.025em] leading-[0.98]",
           ink,
         )}
       >
@@ -1752,15 +1752,15 @@ function AIAssistant({ t }: { t: Dict }) {
   return (
     <section id="ai" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <Chapter
+          num="04"
+          eyebrow={a.tag}
+          title={<>{a.h1}<br />{a.h2}</>}
+          ar={t.ar}
+          align="stack"
+        />
         <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-center">
           <div className="lg:col-span-5 lg:col-start-8">
-            <Badge variant="brand" size="md" className="mb-4">
-              <Bot className="size-3.5" />
-              {a.tag}
-            </Badge>
-            <h2 className="text-display text-foreground mb-5">
-              {a.h1}<br />{a.h2}
-            </h2>
             <p className="text-lg leading-relaxed text-muted-foreground mb-6">{a.lead}</p>
             <ul className="space-y-3.5">
               {a.bullets.map(([title, body]) => (
@@ -1828,11 +1828,7 @@ function DashboardShowcase({ t }: { t: Dict }) {
   return (
     <section id="showcase" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-3xl mx-auto mb-14">
-          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">03</span>{s.eyebrow}</div>
-          <h2 className="text-display text-foreground">{s.title}</h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">{s.lead}</p>
-        </div>
+        <Chapter num="05" eyebrow={s.eyebrow} title={s.title} lead={s.lead} ar={t.ar} />
 
         <BrowserFrame title={s.mockTitle} large>
           <div className="grid grid-cols-12 gap-4 p-5">
@@ -1985,23 +1981,9 @@ function Testimonials({ t }: { t: Dict }) {
   const f = ts.featured
   const fInit = f.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")
   return (
-    <section id="customers" className="relative py-24 lg:py-32 border-b border-border overflow-hidden">
-      {/* Ambient brand-mesh wash */}
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 brand-mesh opacity-40 dark:opacity-25 [mask-image:radial-gradient(85%_60%_at_50%_30%,black,transparent)]"
-      />
+    <section id="customers" className="relative py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="grid lg:grid-cols-12 gap-10 mb-14 items-end">
-          <div className="lg:col-span-7">
-            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">11</span>{ts.eyebrow}</div>
-            <h2 className="text-display text-foreground">{ts.title}</h2>
-          </div>
-          <div className="lg:col-span-5">
-            <p className="text-base leading-relaxed text-muted-foreground">{ts.lead}</p>
-          </div>
-        </div>
+        <Chapter num="14" eyebrow={ts.eyebrow} title={ts.title} lead={ts.lead} ar={t.ar} />
 
         {/* Proof-stats strip */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden mb-12">
@@ -2210,15 +2192,7 @@ function ProductTour({ t }: { t: Dict }) {
   return (
     <section id="modules" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-12 gap-8 mb-16">
-          <div className="lg:col-span-7">
-            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">04</span>{p.eyebrow}</div>
-            <h2 className="text-display text-foreground">{p.title}</h2>
-          </div>
-          <div className="lg:col-span-5 self-end">
-            <p className="text-base leading-relaxed text-muted-foreground">{p.lead}</p>
-          </div>
-        </div>
+        <Chapter num="06" eyebrow={p.eyebrow} title={p.title} lead={p.lead} ar={t.ar} />
 
         <div className="space-y-20 lg:space-y-28">
           {p.modules.map((m) => {
@@ -2637,11 +2611,6 @@ function CommandMock({ t }: { t: Dict }) {
   ]
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg relative">
-      {/* Subtle backdrop tint to feel like a command palette over an app */}
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-0 opacity-30 brand-mesh [mask-image:radial-gradient(60%_50%_at_50%_30%,black,transparent)] pointer-events-none"
-      />
       <div className="relative">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
           <div className="flex gap-1.5">
@@ -2724,25 +2693,15 @@ function PredictiveCapital({ t }: { t: Dict }) {
     compass: <LineChart className="size-4" />,
   }
   return (
-    <section id="intelligence" className="relative py-24 lg:py-32 border-b border-border overflow-hidden">
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 brand-mesh opacity-60 [mask-image:radial-gradient(60%_50%_at_50%_40%,black,transparent)]"
-      />
+    <section id="intelligence" className="relative py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-12 gap-8 mb-14">
-          <div className="lg:col-span-7">
-            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">05</span>{p.eyebrow}</div>
-            <h2 className="text-display text-foreground">
-              {p.title}
-              <br />
-              <span className="text-primary">{p.title2}</span>
-            </h2>
-          </div>
-          <div className="lg:col-span-5 self-end">
-            <p className="text-base leading-relaxed text-muted-foreground">{p.lead}</p>
-          </div>
-        </div>
+        <Chapter
+          num="07"
+          eyebrow={p.eyebrow}
+          title={<>{p.title}<br /><span className="text-primary">{p.title2}</span></>}
+          lead={p.lead}
+          ar={t.ar}
+        />
 
         <div className="grid lg:grid-cols-12 gap-6">
           {/* Forecast viz */}
@@ -2864,15 +2823,7 @@ function Automation({ t }: { t: Dict }) {
   return (
     <section id="automation" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-12 gap-8 mb-14">
-          <div className="lg:col-span-6">
-            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">06</span>{aut.eyebrow}</div>
-            <h2 className="text-display text-foreground">{aut.title}</h2>
-          </div>
-          <div className="lg:col-span-5 lg:col-start-8 self-end">
-            <p className="text-base leading-relaxed text-muted-foreground">{aut.lead}</p>
-          </div>
-        </div>
+        <Chapter num="08" eyebrow={aut.eyebrow} title={aut.title} lead={aut.lead} ar={t.ar} />
 
         {/* Before / After lanes */}
         <div className="grid md:grid-cols-2 gap-px bg-border border border-border rounded-xl overflow-hidden">
@@ -2914,11 +2865,6 @@ function Automation({ t }: { t: Dict }) {
 
           {/* After lane — autonomous */}
           <div className="bg-card p-6 lg:p-8 relative">
-            {/* Subtle brand glow */}
-            <div
-              aria-hidden
-              className="absolute inset-0 -z-0 opacity-30 dark:opacity-20 brand-mesh [mask-image:radial-gradient(70%_60%_at_50%_30%,black,transparent)] pointer-events-none"
-            />
             <div className="relative">
               <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-primary/15">
                 <div className="min-w-0">
@@ -2979,18 +2925,7 @@ function LiveAuditor({ t }: { t: Dict }) {
   return (
     <section id="auditor" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-12 gap-8 mb-14">
-          <div className="lg:col-span-7">
-            <div className="eyebrow mb-3 flex items-center gap-2">
-              <Radar className="size-3.5 text-primary" />
-              <span>{a.eyebrow}</span>
-            </div>
-            <h2 className="text-display text-foreground">{a.title}</h2>
-          </div>
-          <div className="lg:col-span-5 self-end">
-            <p className="text-base leading-relaxed text-muted-foreground">{a.lead}</p>
-          </div>
-        </div>
+        <Chapter num="09" eyebrow={a.eyebrow} title={a.title} lead={a.lead} ar={t.ar} />
 
         <div className="grid lg:grid-cols-12 gap-6">
           {/* Live audit feed */}
@@ -3109,16 +3044,7 @@ function LocalIntegrations({ t }: { t: Dict }) {
   return (
     <section id="integrations" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Heading */}
-        <div className="grid lg:grid-cols-12 gap-8 mb-12 lg:mb-16">
-          <div className="lg:col-span-7">
-            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">07</span>{i.eyebrow}</div>
-            <h2 className="text-display text-foreground">{i.title}</h2>
-          </div>
-          <div className="lg:col-span-5 self-end">
-            <p className="text-base leading-relaxed text-muted-foreground">{i.lead}</p>
-          </div>
-        </div>
+        <Chapter num="10" eyebrow={i.eyebrow} title={i.title} lead={i.lead} ar={t.ar} />
 
         {/* Compliance topology — regulators above, spine in the middle, operational rails below */}
         <div className="relative">
@@ -3242,18 +3168,7 @@ function ComplianceCalendar({ t }: { t: Dict }) {
       />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="grid lg:grid-cols-12 gap-10 mb-12 items-end">
-          <div className="lg:col-span-7">
-            <div className="eyebrow eyebrow-lead mb-3">
-              <span className="chapter-index">08</span>{c.eyebrow}
-            </div>
-            <h2 className="text-display text-foreground">{c.title}</h2>
-          </div>
-          <div className="lg:col-span-5">
-            <p className="text-base leading-relaxed text-muted-foreground">{c.lead}</p>
-          </div>
-        </div>
+        <Chapter num="11" eyebrow={c.eyebrow} title={c.title} lead={c.lead} ar={t.ar} />
 
         {/* Stats strip */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border mb-10">
@@ -3410,15 +3325,7 @@ function Security({ t }: { t: Dict }) {
   return (
     <section id="security" className="py-24 lg:py-32 bg-card/30 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-12 gap-12 mb-14 items-end">
-          <div className="lg:col-span-7">
-            <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">09</span>{sec.eyebrow}</div>
-            <h2 className="text-display text-foreground">{sec.title}</h2>
-          </div>
-          <div className="lg:col-span-4 lg:col-start-9">
-            <p className="text-base leading-relaxed text-muted-foreground">{sec.lead}</p>
-          </div>
-        </div>
+        <Chapter num="12" eyebrow={sec.eyebrow} title={sec.title} lead={sec.lead} ar={t.ar} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border">
           {sec.items.map((it, i) => (
@@ -3450,10 +3357,7 @@ function UseCases({ t }: { t: Dict }) {
   return (
     <section id="use-cases" className="py-24 lg:py-32 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl mb-12">
-          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">10</span>{u.eyebrow}</div>
-          <h2 className="text-display text-foreground">{u.title}</h2>
-        </div>
+        <Chapter num="13" eyebrow={u.eyebrow} title={u.title} ar={t.ar} align="stack" />
 
         <div role="tablist" aria-label={u.tabsAria} className="flex flex-wrap gap-1 border-b border-border mb-10">
           {personas.map((p, i) => {
@@ -3621,7 +3525,7 @@ function Pricing({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section heading */}
         <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">12</span>{p.eyebrow}</div>
+          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">15</span>{p.eyebrow}</div>
           <h2 className="text-display text-foreground">{p.title}</h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">{p.lead}</p>
         </div>
@@ -3808,10 +3712,14 @@ function formatYearly(monthly: string, mult: number, ar: boolean): string {
 
 function FAQ({ t }: { t: Dict }) {
   return (
-    <section id="faq" className="py-24 lg:py-32 bg-card/30 border-b border-border">
+    <section
+      id="faq"
+      className="relative py-24 lg:py-32 bg-card/30"
+      style={{ borderBottom: "1px solid hsl(220 18% 6%)" }}
+    >
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">13</span>{t.faq.eyebrow}</div>
+          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">16</span>{t.faq.eyebrow}</div>
           <h2 className="text-display text-foreground">{t.faq.title}</h2>
         </div>
         <Accordion type="single" collapsible className="border-t border-border">
@@ -3837,43 +3745,92 @@ function FAQ({ t }: { t: Dict }) {
 
 function FinalCTA({ t }: { t: Dict }) {
   const f = t.finalCta
+  // Final CTA — full-bleed dark editorial close, mirrors hero so the page lands on the same chord.
+  const D_BG   = "hsl(220 18% 6%)"
+  const D_INK  = "hsl(40 18% 95%)"
+  const D_MUTE = "hsl(40 6% 62%)"
+  const D_LINE = "hsl(220 10% 16%)"
+  const D_GLOW = "hsl(158 70% 52%)"
   return (
-    <section id="cta" className="py-24 lg:py-32 scroll-mt-24">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className={cn(
-          "relative overflow-hidden rounded-2xl border border-border bg-card p-10 lg:p-16",
-        )}>
-          <div
-            aria-hidden
-            className="absolute inset-0 opacity-[0.04] pointer-events-none"
-            style={{
-              backgroundImage: `linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)`,
-              backgroundSize: "32px 32px",
-            }}
-          />
-          <div className="relative grid lg:grid-cols-12 gap-10 items-center">
-            <div className="lg:col-span-7">
-              <h2 className="text-display-lg text-foreground">
-                {f.h1}<br /><span className="text-primary">{f.h2}</span>
-              </h2>
-              <p className="mt-5 text-lg leading-relaxed text-muted-foreground max-w-xl">{f.sub}</p>
-            </div>
-            <div className="lg:col-span-5 lg:text-end">
-              <div className="flex flex-wrap lg:justify-end gap-3">
-                <Button size="xl" data-testid="button-final-cta" asChild>
-                  <a href="/signin" className="gap-2">
-                    {f.cta}
-                    <CtaArrow ar={t.ar} />
-                  </a>
-                </Button>
-                <Button size="xl" variant="outline" asChild>
-                  <a href="/demo" data-testid="button-final-cta-demo">{f.ctaDemo}</a>
-                </Button>
-              </div>
-              <div className="mt-5 text-xs text-muted-foreground lg:text-end">
-                {f.orWatch} <a href="#showcase" className="text-primary underline-offset-4 hover:underline">{f.orLink}</a>{f.orWatchSuffix}
-              </div>
-            </div>
+    <section
+      id="cta"
+      className="relative overflow-hidden py-28 lg:py-44 scroll-mt-24"
+      style={{ background: D_BG, color: D_INK }}
+      data-testid="section-final-cta"
+    >
+      <div aria-hidden className="absolute inset-x-0 top-0 h-px" style={{ background: D_LINE }} />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-0"
+        style={{
+          background: `radial-gradient(60% 55% at 50% 110%, ${D_GLOW}25, transparent 70%)`,
+        }}
+      />
+      <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="flex items-baseline gap-3 mb-10 lg:mb-14" style={{ color: D_MUTE }}>
+          <span className="font-mono text-2xs tracking-[0.28em] uppercase">ch · 17</span>
+          <span aria-hidden className="h-px flex-1" style={{ background: D_LINE }} />
+          <span className={cn("text-2xs", t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.18em]")}>
+            {t.ar ? "آخر فصل" : "Final chapter"}
+          </span>
+        </div>
+        <h2
+          className={cn(
+            "text-[clamp(2.75rem,7vw,5.75rem)]",
+            t.ar
+              ? "font-semibold leading-[1.12] tracking-normal"
+              : "font-display leading-[0.98] tracking-[-0.025em]",
+          )}
+          style={{ color: D_INK }}
+        >
+          {f.h1}
+          <br />
+          <span className={t.ar ? "font-semibold" : "display-italic"} style={{ color: D_GLOW }}>
+            {f.h2}
+          </span>
+          <span style={{ color: D_GLOW }}>.</span>
+        </h2>
+        <p
+          className={cn(
+            "mt-10 max-w-2xl text-lg lg:text-xl",
+            t.ar ? "leading-[1.7]" : "leading-[1.55]",
+          )}
+          style={{ color: "hsla(40, 12%, 88%, 0.78)" }}
+        >
+          {f.sub}
+        </p>
+        <div className="mt-12 lg:mt-16 flex flex-wrap items-center gap-4">
+          <Button
+            size="xl"
+            data-testid="button-final-cta"
+            asChild
+            style={{ background: D_INK, color: D_BG }}
+            className="hover:opacity-90"
+          >
+            <a href="/signin" className="gap-2">
+              {f.cta}
+              <CtaArrow ar={t.ar} />
+            </a>
+          </Button>
+          <Button
+            size="xl"
+            variant="outline"
+            asChild
+            className="hover:bg-transparent"
+            style={{ borderColor: D_LINE, color: D_INK, background: "transparent" }}
+          >
+            <a href="/demo" data-testid="button-final-cta-demo">{f.ctaDemo}</a>
+          </Button>
+          <div className="basis-full text-xs mt-2" style={{ color: D_MUTE }}>
+            {f.orWatch}{" "}
+            <a
+              href="#showcase"
+              className="underline-offset-4 hover:underline"
+              style={{ color: D_GLOW }}
+            >
+              {f.orLink}
+            </a>
+            {f.orWatchSuffix}
           </div>
         </div>
       </div>
