@@ -1,22 +1,8 @@
 import { useEffect, useState } from "react"
-import { Moon, Sun, ChevronDown, Languages } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Moon, Sun, Languages, ArrowUpRight } from "lucide-react"
 import { Brand } from "./Brand"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/contexts/locale-context"
-
-/**
- * AppNavbar — premium top bar.
- *
- * - Sticky, translucent on scroll (glass surface + hairline bottom)
- * - Typographic brand mark (no icon-in-circle)
- * - Restrained nav: text links with subtle hover, no chips/pills
- * - Right side: theme toggle + a single primary CTA
- *
- * This component is part of the Phase 1 design system. It is exported
- * standalone so the landing redesign (Phase 2) and the in-app shell
- * (Phase 3) can both consume it.
- */
 
 interface NavLink { label: string; href: string }
 
@@ -39,11 +25,17 @@ const DEFAULT_LINKS: NavLink[] = [
   { label: "الموارد",   href: "#resources" },
 ]
 
+/**
+ * AppNavbar — Bento × Clean fusion.
+ *
+ * A floating pill-shaped nav card on the cream page surface.
+ * White card chrome (bg-card), rounded-full silhouette, generous
+ * breathing room, peach CTA accent.
+ */
 export function AppNavbar({
   links = DEFAULT_LINKS,
   ctaLabel,
   ctaHref = "/app",
-  secondaryLabel,
   secondaryHref = "/demo",
   tertiaryLabel,
   tertiaryHref = "/app",
@@ -52,9 +44,9 @@ export function AppNavbar({
   const [scrolled, setScrolled] = useState(false)
   const [isDark, setIsDark] = useState(false)
   const { locale, toggleLocale } = useLocale()
-  const resolvedCta = ctaLabel ?? (locale === "ar" ? "افتح التطبيق" : "Open app")
-  const resolvedSecondary = secondaryLabel ?? (locale === "ar" ? "طلب عرض" : "Request demo")
-  const resolvedTertiary = tertiaryLabel ?? (locale === "ar" ? "تسجيل الدخول" : "Sign in")
+  const ar = locale === "ar"
+  const resolvedCta = ctaLabel ?? (ar ? "افتح التطبيق" : "Open app")
+  const resolvedTertiary = tertiaryLabel ?? (ar ? "تسجيل الدخول" : "Sign in")
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -80,22 +72,28 @@ export function AppNavbar({
     <header
       data-testid="app-navbar"
       className={cn(
-        "sticky top-0 z-40 w-full",
-        "transition-[background-color,border-color,box-shadow] duration-200",
-        scrolled
-          ? "glass-surface border-b border-border/80 shadow-xs"
-          : "bg-background border-b border-transparent",
+        "sticky top-0 z-40 w-full pt-3 lg:pt-4 pb-2",
+        "transition-[padding] duration-200",
         className
       )}
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between gap-8">
-          {/* Brand */}
-          <Brand size="md" />
+      <div className="mx-auto max-w-7xl px-3 sm:px-4 lg:px-6">
+        <div
+          className={cn(
+            "flex h-14 lg:h-16 items-center justify-between gap-3 px-3 lg:px-4",
+            "rounded-full border border-card-border bg-card",
+            "transition-shadow duration-200",
+            scrolled ? "shadow-md" : "shadow-sm"
+          )}
+        >
+          {/* Brand — peach dot kept; "ذكي" uses ink, not peach (peach has no contrast on white) */}
+          <div className="ps-2">
+            <Brand size="md" />
+          </div>
 
-          {/* Center: nav links — restrained, text-only with subtle hover */}
+          {/* Center nav — inner muted pill rail */}
           <nav
-            className="hidden md:flex items-center gap-1 text-sm"
+            className="hidden lg:flex items-center gap-0.5 rounded-full bg-muted/55 p-1 text-sm"
             aria-label="Primary"
           >
             {links.map((l) => (
@@ -104,8 +102,8 @@ export function AppNavbar({
                 href={l.href}
                 data-testid={`link-nav-${l.label}`}
                 className={cn(
-                  "px-3 py-2 rounded-md text-foreground/75",
-                  "hover:text-foreground hover:bg-accent/60",
+                  "px-3.5 py-1.5 rounded-full text-foreground/75 font-medium",
+                  "hover:text-foreground hover:bg-card",
                   "transition-colors duration-150"
                 )}
               >
@@ -114,46 +112,50 @@ export function AppNavbar({
             ))}
           </nav>
 
-          {/* Right: actions */}
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="ghost"
-              size="icon-sm"
+          {/* Right cluster */}
+          <div className="flex items-center gap-1.5 pe-1">
+            <button
+              type="button"
               onClick={toggleLocale}
-              aria-label={locale === "ar" ? "Switch to English" : "التحويل إلى العربية"}
+              aria-label={ar ? "Switch to English" : "التحويل إلى العربية"}
               data-testid="button-locale-toggle"
-              title={locale === "ar" ? "EN" : "AR"}
+              title={ar ? "EN" : "AR"}
+              className="size-9 grid place-items-center rounded-full text-foreground/65 hover:text-foreground hover:bg-muted/60 transition-colors"
             >
-              <Languages />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
+              <Languages className="size-4" />
+            </button>
+            <button
+              type="button"
               onClick={toggleTheme}
               aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
               data-testid="button-theme-toggle"
+              className="size-9 grid place-items-center rounded-full text-foreground/65 hover:text-foreground hover:bg-muted/60 transition-colors"
             >
-              {isDark ? <Sun /> : <Moon />}
-            </Button>
+              {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            </button>
 
             <a
               href={tertiaryHref}
               data-testid="link-sign-in"
-              className="hidden md:inline-flex h-9 items-center px-3 text-sm text-foreground/75 hover:text-foreground transition-colors"
+              className="hidden md:inline-flex h-9 items-center px-3 rounded-full text-sm font-medium text-foreground/75 hover:text-foreground hover:bg-muted/60 transition-colors"
             >
               {resolvedTertiary}
             </a>
-            <a
-              href={secondaryHref}
-              data-testid="link-secondary-cta"
-              className="hidden sm:inline-flex h-9 items-center px-3 text-sm text-foreground/75 hover:text-foreground transition-colors"
-            >
-              {resolvedSecondary}
-            </a>
 
-            <Button asChild size="default" data-testid="button-cta-primary">
-              <a href={ctaHref}>{resolvedCta}</a>
-            </Button>
+            <a
+              href={ctaHref}
+              data-testid="button-cta-primary"
+              className={cn(
+                "inline-flex items-center gap-1.5 h-9 lg:h-10 px-4 lg:px-5",
+                "rounded-full bg-primary text-primary-foreground",
+                "text-sm font-semibold tracking-tight",
+                "border border-primary-border",
+                "hover:opacity-90 transition-opacity"
+              )}
+            >
+              {resolvedCta}
+              <ArrowUpRight className={cn("size-4", ar && "-scale-x-100")} />
+            </a>
           </div>
         </div>
       </div>
@@ -161,5 +163,4 @@ export function AppNavbar({
   )
 }
 
-/* Re-export for convenience */
-export { ChevronDown }
+export { ChevronDown } from "lucide-react"
