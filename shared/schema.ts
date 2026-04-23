@@ -30,7 +30,7 @@ export const accounts = pgTable("accounts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertAccountSchema = createInsertSchema(accounts).omit({ id: true, createdAt: true });
+export const insertAccountSchema = createInsertSchema(accounts).omit({ id: true, createdAt: true, companyId: true });
 export type Account = typeof accounts.$inferSelect;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 
@@ -127,7 +127,7 @@ export const transactions = pgTable("transactions", {
   date: timestamp("date").defaultNow(),
 });
 
-export const insertTransactionSchema = createInsertSchema(transactions).omit({ id: true, date: true }).extend({
+export const insertTransactionSchema = createInsertSchema(transactions).omit({ id: true, date: true, companyId: true }).extend({
   amount: z.union([z.string(), z.number()]),
 });
 
@@ -149,7 +149,7 @@ export const budgets = pgTable("budgets", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertBudgetSchema = createInsertSchema(budgets).omit({ id: true, createdAt: true }).extend({
+export const insertBudgetSchema = createInsertSchema(budgets).omit({ id: true, createdAt: true, companyId: true }).extend({
   amount: z.coerce.number().nonnegative(),
 });
 export type Budget = typeof budgets.$inferSelect;
@@ -204,7 +204,7 @@ export const employees = pgTable("employees", {
 });
 
 export const insertEmployeeSchema = createInsertSchema(employees)
-  .omit({ id: true, createdAt: true })
+  .omit({ id: true, createdAt: true, companyId: true })
   .extend({
     baseSalary: z.coerce.number().nonnegative(),
     allowances: z.coerce.number().nonnegative().default(0),
@@ -228,7 +228,7 @@ export const attendance = pgTable(
 );
 
 export const insertAttendanceSchema = createInsertSchema(attendance)
-  .omit({ id: true })
+  .omit({ id: true, companyId: true })
   .extend({ overtimeHours: z.coerce.number().nonnegative().default(0) });
 export type Attendance = typeof attendance.$inferSelect;
 export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
@@ -247,7 +247,7 @@ export const leaves = pgTable("leaves", {
 });
 
 export const insertLeaveSchema = createInsertSchema(leaves)
-  .omit({ id: true, createdAt: true })
+  .omit({ id: true, createdAt: true, companyId: true })
   .extend({ days: z.coerce.number().int().positive() });
 export type Leave = typeof leaves.$inferSelect;
 export type InsertLeave = z.infer<typeof insertLeaveSchema>;
@@ -312,7 +312,7 @@ export const fxRates = pgTable("fx_rates", {
   rate: numeric("rate", { precision: 18, scale: 8 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
-export const insertFxRateSchema = createInsertSchema(fxRates).omit({ id: true, createdAt: true }).extend({
+export const insertFxRateSchema = createInsertSchema(fxRates).omit({ id: true, createdAt: true, companyId: true }).extend({
   rate: z.coerce.number().positive(),
 });
 export type FxRate = typeof fxRates.$inferSelect;
@@ -353,7 +353,7 @@ export const assetCategories = pgTable("asset_categories", {
   gainLossDisposalAccountId: integer("gain_loss_disposal_account_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
-export const insertAssetCategorySchema = createInsertSchema(assetCategories).omit({ id: true, createdAt: true });
+export const insertAssetCategorySchema = createInsertSchema(assetCategories).omit({ id: true, createdAt: true, companyId: true });
 export type AssetCategory = typeof assetCategories.$inferSelect;
 export type InsertAssetCategory = z.infer<typeof insertAssetCategorySchema>;
 
@@ -398,7 +398,7 @@ export const fixedAssets = pgTable("fixed_assets", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertFixedAssetSchema = createInsertSchema(fixedAssets)
-  .omit({ id: true, createdAt: true, accumDepreciation: true, accumImpairment: true, revalSurplus: true, accumDepNoImpairment: true, accumRevalLoss: true, lastDepreciatedPeriod: true, cost: true, customSchedule: true })
+  .omit({ id: true, createdAt: true, accumDepreciation: true, accumImpairment: true, revalSurplus: true, accumDepNoImpairment: true, accumRevalLoss: true, lastDepreciatedPeriod: true, cost: true, customSchedule: true, companyId: true })
   .extend({
     txCost: z.coerce.number().positive(),
     fxRate: z.coerce.number().positive().default(1),

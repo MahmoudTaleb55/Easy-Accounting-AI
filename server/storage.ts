@@ -702,7 +702,7 @@ export class DatabaseStorage implements IStorage {
     }
     return await db.select().from(fxRates).orderBy(desc(fxRates.rateDate));
   }
-  async createFxRate(input: InsertFxRate): Promise<FxRate> {
+  async createFxRate(input: InsertFxRate & { companyId: number }): Promise<FxRate> {
     const [c] = await db.insert(fxRates).values({ ...input, rate: String(input.rate) }).returning();
     return c;
   }
@@ -717,7 +717,7 @@ export class DatabaseStorage implements IStorage {
     }
     return await db.select().from(assetCategories).orderBy(assetCategories.name);
   }
-  async createAssetCategory(input: InsertAssetCategory): Promise<AssetCategory> {
+  async createAssetCategory(input: InsertAssetCategory & { companyId: number }): Promise<AssetCategory> {
     const [c] = await db.insert(assetCategories).values(input).returning();
     return c;
   }
@@ -737,7 +737,7 @@ export class DatabaseStorage implements IStorage {
     const [a] = await db.select().from(fixedAssets).where(eq(fixedAssets.id, id));
     return a;
   }
-  async createFixedAsset(input: Omit<InsertFixedAsset, "customSchedule"> & { cost: number; customSchedule?: string | null }, ctx?: AuditContext): Promise<FixedAsset> {
+  async createFixedAsset(input: Omit<InsertFixedAsset, "customSchedule"> & { cost: number; companyId: number; customSchedule?: string | null }, ctx?: AuditContext): Promise<FixedAsset> {
     const [c] = await db
       .insert(fixedAssets)
       .values({

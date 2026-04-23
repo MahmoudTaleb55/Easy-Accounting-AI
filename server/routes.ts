@@ -1246,8 +1246,7 @@ async function registerFixedAssetRoutes(app: Express) {
       const id = Number(req.params.id);
       const cats = await storage.getAssetCategories(cid(req));
       if (!cats.find((c) => c.id === id)) return res.status(404).json({ message: "غير موجود" });
-      // Strip any companyId in the body so callers can't move the category between workspaces.
-      const input = insertAssetCategorySchema.omit({ companyId: true }).partial().parse(req.body);
+      const input = insertAssetCategorySchema.partial().parse(req.body);
       res.json(await storage.updateAssetCategory(id, input));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -1319,17 +1318,15 @@ async function registerFixedAssetRoutes(app: Express) {
     try {
       const companyId = cid(req);
       const componentsSchema = z.array(insertAssetComponentSchema.omit({ assetId: true })).optional().default([]);
-      // Force the asset onto the active workspace; never trust client-supplied companyId.
+      // The insert schema already strips companyId so the workspace is always derived server-side.
       const body = insertFixedAssetSchema.extend({
-        companyId: z.coerce.number().int().positive().optional(),
         components: componentsSchema,
       }).parse(req.body);
       // Validate references against THIS workspace's catalog.
       const cat = (await storage.getAssetCategories(companyId)).find((c) => c.id === body.categoryId);
       if (!cat) return res.status(400).json({ message: "تصنيف الأصل غير صالح" });
       const cost = Number(body.txCost) * Number(body.fxRate ?? 1);
-      const { components, customSchedule, companyId: _ignored, ...rest } = body;
-      void _ignored;
+      const { components, customSchedule, ...rest } = body;
       const created = await storage.createFixedAsset({
         ...rest,
         companyId,
