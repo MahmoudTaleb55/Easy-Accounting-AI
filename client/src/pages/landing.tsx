@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   ArrowLeft, ArrowRight, Check, FileText, Receipt, Bot,
   ShieldCheck, Globe2, Workflow, BarChart3, Briefcase,
@@ -1055,6 +1055,7 @@ export default function Landing() {
         tertiaryLabel={t.nav.signIn}
         tertiaryHref={signInHref}
       />
+      <ChapterIndex ar={t.ar} />
       <main className="overflow-x-clip">
         <Hero t={t} />
         <Manifesto t={t} />
@@ -1167,6 +1168,120 @@ function Chapter({
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
+/*  Chapter index — quiet floating right rail (LTR) / left rail (RTL).        */
+/*  Editorial magazine convention: a printed table-of-contents that "lives"   */
+/*  alongside the body. Active chapter highlights as the reader scrolls.       */
+/*  Hidden below lg to preserve mobile reading rhythm.                         */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+const CHAPTER_TOC: ReadonlyArray<{ n: string; id: string; ar: string; en: string }> = [
+  { n: "00", id: "belief",       ar: "إيمان",        en: "Belief"        },
+  { n: "01", id: "trust",        ar: "ثقة",          en: "Trust"         },
+  { n: "02", id: "platform",     ar: "مبادئ",        en: "Principles"    },
+  { n: "03", id: "capabilities", ar: "قدرات",        en: "Capabilities"  },
+  { n: "04", id: "ai",           ar: "ذكاء",         en: "Intelligence"  },
+  { n: "05", id: "showcase",     ar: "كوكبت",        en: "Cockpit"       },
+  { n: "06", id: "modules",      ar: "موديولز",      en: "Modules"       },
+  { n: "07", id: "intelligence", ar: "تنبّؤ",         en: "Foresight"     },
+  { n: "08", id: "automation",   ar: "تشغيل آليّ",   en: "Automation"    },
+  { n: "09", id: "auditor",      ar: "تدقيق",        en: "Audit"         },
+  { n: "10", id: "integrations", ar: "تكاملات",      en: "Integrations"  },
+  { n: "11", id: "compliance",   ar: "امتثال",       en: "Compliance"    },
+  { n: "12", id: "security",     ar: "أمان",         en: "Security"      },
+  { n: "13", id: "use-cases",    ar: "حالات",        en: "Use cases"     },
+  { n: "14", id: "customers",    ar: "شهادات",       en: "Voices"        },
+  { n: "15", id: "pricing",      ar: "خطط",          en: "Plans"         },
+  { n: "16", id: "faq",          ar: "أسئلة",        en: "Questions"     },
+  { n: "17", id: "cta",          ar: "خاتمة",        en: "Close"         },
+] as const
+
+function ChapterIndex({ ar }: { ar: boolean }) {
+  const [active, setActive] = useState<string>("belief")
+
+  useEffect(() => {
+    const targets = CHAPTER_TOC
+      .map((c) => document.getElementById(c.id))
+      .filter((el): el is HTMLElement => el !== null)
+
+    if (targets.length === 0) return
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        // Pick the entry closest to the top of the viewport that is intersecting.
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        if (visible.length > 0 && visible[0].target.id) {
+          setActive(visible[0].target.id)
+        }
+      },
+      { rootMargin: "-30% 0px -60% 0px", threshold: 0 }
+    )
+    targets.forEach((el) => obs.observe(el))
+    return () => obs.disconnect()
+  }, [])
+
+  return (
+    <nav
+      aria-label={ar ? "فهرس الفصول" : "Chapter index"}
+      className={cn(
+        "hidden lg:flex fixed top-1/2 -translate-y-1/2 z-30 flex-col gap-1.5 select-none",
+        ar ? "left-6" : "right-6",
+      )}
+      data-testid="chapter-index"
+    >
+      {CHAPTER_TOC.map((c) => {
+        const isActive = active === c.id
+        const label = ar ? c.ar : c.en
+        return (
+          <a
+            key={c.id}
+            href={`#${c.id}`}
+            data-testid={`chapter-link-${c.id}`}
+            className={cn(
+              "group flex items-center gap-2.5 py-0.5 transition-colors",
+              ar ? "flex-row-reverse" : "flex-row",
+              isActive
+                ? "text-foreground"
+                : "text-muted-foreground/55 hover:text-foreground/80",
+            )}
+          >
+            <span
+              className={cn(
+                "font-mono text-[10px] tabular-nums tracking-[0.18em]",
+                isActive ? "opacity-100" : "opacity-65",
+              )}
+            >
+              {c.n}
+            </span>
+            <span
+              aria-hidden
+              className={cn(
+                "h-px transition-all duration-300",
+                isActive
+                  ? "w-7 bg-foreground"
+                  : "w-3 bg-foreground/25 group-hover:w-5 group-hover:bg-foreground/55",
+              )}
+            />
+            <span
+              className={cn(
+                "text-[10.5px] tracking-wide transition-opacity",
+                ar ? "tracking-normal" : "uppercase font-mono",
+                isActive
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-80",
+              )}
+            >
+              {label}
+            </span>
+          </a>
+        )
+      })}
+    </nav>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
 /*  1 · Hero                                                                  */
 /* ────────────────────────────────────────────────────────────────────────── */
 
@@ -1185,6 +1300,7 @@ function Hero({ t }: { t: Dict }) {
 
   return (
     <section
+      id="cover"
       className="relative overflow-hidden"
       style={{ background: HERO_BG, color: HERO_INK }}
     >
@@ -1486,7 +1602,7 @@ function TrustStrip({ t }: { t: Dict }) {
     globe:  <Globe2      className="size-3.5" />,
   }
   return (
-    <section className="border-y border-border bg-card/40">
+    <section id="trust" className="border-y border-border bg-card/40">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Eyebrow + headline row */}
         <div className="py-8 lg:py-10 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 border-b border-border/60">
@@ -1901,6 +2017,7 @@ function Manifesto({ t }: { t: Dict }) {
   const m = t.manifesto
   return (
     <section
+      id="belief"
       className="relative isolate overflow-hidden bg-foreground text-background py-24 lg:py-36"
       data-testid="section-manifesto"
     >
@@ -3523,12 +3640,7 @@ function Pricing({ t }: { t: Dict }) {
   return (
     <section id="pricing" className="relative py-24 lg:py-32 border-b border-border bg-card/30">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Section heading */}
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">15</span>{p.eyebrow}</div>
-          <h2 className="text-display text-foreground">{p.title}</h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">{p.lead}</p>
-        </div>
+        <Chapter num="15" eyebrow={p.eyebrow} title={p.title} lead={p.lead} ar={t.ar} />
 
         {/* Cost of waiting strip — anchors pricing in the cost of NOT acting */}
         <div className="mx-auto max-w-4xl mb-10 lg:mb-12 rounded-xl border border-loss/25 bg-loss/[0.04] px-5 py-4 lg:px-7 lg:py-5">
