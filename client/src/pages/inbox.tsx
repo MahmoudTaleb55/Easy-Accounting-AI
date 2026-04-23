@@ -7,12 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -23,6 +29,8 @@ import {
   Search,
   ArrowUpRight,
   CornerDownLeft,
+  ChevronsUpDown,
+  ShieldCheck,
 } from "lucide-react";
 import type {
   DocumentRow,
@@ -106,6 +114,84 @@ function StatusLabel({ status, ar }: { status: Status; ar: boolean }) {
     >
       {map[status]}
     </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Searchable account picker — typeahead, no scrolling 200 rows
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AccountPicker({
+  accounts,
+  value,
+  onChange,
+  ar,
+  testid,
+}: {
+  accounts: Account[];
+  value: number;
+  onChange: (id: number) => void;
+  ar: boolean;
+  testid: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = accounts.find((a) => a.id === value);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          className="h-8 w-full flex items-center justify-between gap-2 px-2.5 rounded-sm border border-input bg-transparent text-sm hover:bg-muted/40 transition-colors text-start"
+          data-testid={testid}
+        >
+          {selected ? (
+            <span className="truncate flex items-center gap-2 min-w-0">
+              <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+                {selected.code}
+              </span>
+              <span className="truncate">{ar ? selected.nameAr : selected.nameEn}</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">
+              {ar ? "اختر حساباً" : "Select account"}
+            </span>
+          )}
+          <ChevronsUpDown className="h-3 w-3 text-muted-foreground shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[320px]" align="start">
+        <Command>
+          <CommandInput
+            placeholder={ar ? "ابحث برمز أو اسم…" : "Search code or name…"}
+            className="h-9"
+          />
+          <CommandList>
+            <CommandEmpty>{ar ? "لا نتائج" : "No accounts"}</CommandEmpty>
+            <CommandGroup>
+              {accounts.map((a) => (
+                <CommandItem
+                  key={a.id}
+                  value={`${a.code} ${a.nameEn} ${a.nameAr}`}
+                  onSelect={() => {
+                    onChange(a.id);
+                    setOpen(false);
+                  }}
+                  data-testid={`option-account-${a.id}`}
+                >
+                  <span className="font-mono text-xs text-muted-foreground me-2 w-12 shrink-0">
+                    {a.code}
+                  </span>
+                  <span className="truncate">{ar ? a.nameAr : a.nameEn}</span>
+                  {value === a.id && <Check className="ms-auto h-3.5 w-3.5" />}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -423,6 +509,8 @@ export default function InboxPage() {
             </div>
           ) : filtered.length === 0 && docs.length === 0 ? (
             <EmptyState ar={ar} onPick={() => fileInput.current?.click()} />
+          ) : filter === "review" && filtered.length === 0 ? (
+            <ZeroInboxState ar={ar} docs={docs} />
           ) : filtered.length === 0 ? (
             <div className="p-10 text-center text-xs text-muted-foreground">
               {ar ? "لا نتائج للفلتر الحالي" : "No documents match this filter"}
@@ -490,7 +578,19 @@ export default function InboxPage() {
               doc={selected}
               accounts={accounts}
               ar={ar}
+              pileIndex={
+                docs.filter((d) => d.status === "ready").findIndex((d) => d.id === selected.id) + 1
+              }
+              pileTotal={docs.filter((d) => d.status === "ready").length}
               onDelete={() => deleteMut.mutate(selected.id)}
+              onPosted={() => {
+                // Auto-advance to the next "ready" doc to keep the operator in flow.
+                const ready = docs
+                  .filter((d) => d.status === "ready" && d.id !== selected.id);
+                if (ready.length > 0) {
+                  setSelectedId(ready[0].id);
+                }
+              }}
             />
           ) : (
             <div className="h-full flex items-center justify-center p-10 text-sm text-muted-foreground">
@@ -541,6 +641,60 @@ function Kpi({
 // Empty state — typography-only, instructive, no clip art
 // ─────────────────────────────────────────────────────────────────────────────
 
+function ZeroInboxState({ ar, docs }: { ar: boolean; docs: DocumentRow[] }) {
+  const recent = docs
+    .filter((d) => d.status === "posted")
+    .sort((a, b) => new Date(b.postedAt!).getTime() - new Date(a.postedAt!).getTime())
+    .slice(0, 5);
+  return (
+    <div className="flex-1 flex flex-col">
+      <div className="px-6 py-10 text-center">
+        <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-2">
+          {ar ? "صندوق المراجعة فارغ" : "Inbox zero"}
+        </div>
+        <div className={`text-base font-medium mb-1 ${ar ? "" : "font-display text-lg"}`}>
+          {ar ? "لا شيء بانتظارك." : "Nothing waiting on you."}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {ar
+            ? "اشحن دفعة جديدة من الإيصالات."
+            : "Drop the next batch of receipts when they arrive."}
+        </p>
+      </div>
+      {recent.length > 0 && (
+        <div className="border-t border-border px-4 py-3">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground mb-2 px-1">
+            {ar ? "آخر ما رحّلته" : "Recently posted"}
+          </div>
+          <ul className="divide-y divide-border" data-testid="list-recent-posted">
+            {recent.map((d) => {
+              const ext = (d.extractedJson as ExtractedDocument | null) ?? null;
+              return (
+                <li
+                  key={d.id}
+                  className="px-1 py-2 flex items-center justify-between gap-3 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-foreground/80">
+                      {ext?.vendor || d.fileName}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-mono">
+                      JE #{d.journalEntryId} · {timeAgo(d.postedAt!, ar)}
+                    </div>
+                  </div>
+                  <span className="font-mono tabular-nums text-foreground/70 shrink-0">
+                    {fmtMoney(ext?.total)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmptyState({ ar, onPick }: { ar: boolean; onPick: () => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center px-8 py-14">
@@ -574,11 +728,17 @@ function DocumentDetail({
   accounts,
   ar,
   onDelete,
+  onPosted,
+  pileIndex,
+  pileTotal,
 }: {
   doc: DocumentRow;
   accounts: Account[];
   ar: boolean;
   onDelete: () => void;
+  onPosted: () => void;
+  pileIndex: number;
+  pileTotal: number;
 }) {
   const { toast } = useToast();
   const ext = (doc.extractedJson as ExtractedDocument | null) ?? null;
@@ -647,6 +807,7 @@ function DocumentDetail({
           ? "تم إنشاء قيد اليومية وربطه بالمستند."
           : "Journal entry created and linked.",
       });
+      onPosted();
     },
     onError: (e: Error) => {
       toast({
@@ -684,6 +845,23 @@ function DocumentDetail({
             <span className="text-[10px] text-muted-foreground font-mono">
               · {timeAgo(doc.uploadedAt!, ar)}
             </span>
+            {pileTotal > 1 && pileIndex > 0 && (
+              <span
+                className="ms-2 text-[10px] uppercase tracking-[0.14em] text-muted-foreground font-mono inline-flex items-center gap-1.5"
+                data-testid="text-pile-progress"
+              >
+                <span>
+                  {ar ? "مراجعة " : "reviewing "}
+                  {pileIndex}/{pileTotal}
+                </span>
+                <span className="inline-block h-px w-12 bg-border relative overflow-hidden">
+                  <span
+                    className="absolute inset-y-0 start-0 bg-foreground"
+                    style={{ width: `${(pileIndex / pileTotal) * 100}%` }}
+                  />
+                </span>
+              </span>
+            )}
           </div>
           <h2
             className={`${ar ? "text-xl font-semibold" : "text-2xl font-display"} leading-tight tracking-tight truncate`}
@@ -801,6 +979,28 @@ function DocumentDetail({
                     )}
                   </div>
                 )}
+                {(() => {
+                  // Quiet trust signal: only show when the math actually
+                  // reconciles (subtotal + vat ≈ total, within 1 cent).
+                  const sub = Number(ext.subtotal ?? NaN);
+                  const vat = Number(ext.vatAmount ?? NaN);
+                  const tot = Number(ext.total ?? NaN);
+                  const reconciled =
+                    !isNaN(sub) && !isNaN(vat) && !isNaN(tot) &&
+                    Math.abs(sub + vat - tot) < 0.01;
+                  if (!reconciled) return null;
+                  return (
+                    <div
+                      className="mt-2.5 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400"
+                      data-testid="text-vat-reconciled"
+                    >
+                      <ShieldCheck className="h-3 w-3" />
+                      {ar
+                        ? `ضريبة القيمة المضافة متطابقة${ext.vatRate ? ` · ${(ext.vatRate * 100).toFixed(0)}٪` : ""}`
+                        : `VAT reconciled${ext.vatRate ? ` · ${(ext.vatRate * 100).toFixed(0)}%` : ""}`}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Facts grid */}
@@ -908,33 +1108,17 @@ function DocumentDetail({
                           className="grid grid-cols-[1fr_120px_120px_28px] gap-2 px-3 py-2 items-center"
                           data-testid={`row-je-line-${i}`}
                         >
-                          <Select
-                            value={ln.accountId ? String(ln.accountId) : ""}
-                            onValueChange={(v) => {
+                          <AccountPicker
+                            accounts={postable}
+                            value={ln.accountId}
+                            onChange={(id) => {
                               const next = [...lines];
-                              next[i] = { ...next[i], accountId: parseInt(v, 10) };
+                              next[i] = { ...next[i], accountId: id };
                               setLines(next);
                             }}
-                          >
-                            <SelectTrigger
-                              className="h-8 text-sm"
-                              data-testid={`select-account-${i}`}
-                            >
-                              <SelectValue
-                                placeholder={ar ? "اختر حساباً" : "Select account"}
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {postable.map((a) => (
-                                <SelectItem key={a.id} value={String(a.id)}>
-                                  <span className="font-mono text-xs text-muted-foreground me-2">
-                                    {a.code}
-                                  </span>
-                                  {ar ? a.nameAr : a.nameEn}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            ar={ar}
+                            testid={`select-account-${i}`}
+                          />
                           <Input
                             type="number"
                             step="0.01"
