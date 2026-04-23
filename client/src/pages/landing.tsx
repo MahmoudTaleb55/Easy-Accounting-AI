@@ -1117,14 +1117,23 @@ function eyebrowCls(ar: boolean, extra = "") {
 function BentoSection({
   id,
   className,
+  tone = "cream",
   children,
 }: {
   id?: string
   className?: string
+  /** Apple-style alternating section backgrounds. */
+  tone?: "cream" | "soft" | "ink"
   children: React.ReactNode
 }) {
+  const toneCls =
+    tone === "ink"
+      ? "bg-foreground text-background"
+      : tone === "soft"
+      ? "bg-[hsl(34_28%_93%)]"
+      : "bg-background"
   return (
-    <section id={id} className={cn("relative bg-background py-16 lg:py-24", className)}>
+    <section id={id} className={cn("relative py-24 lg:py-36", toneCls, className)}>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">{children}</div>
     </section>
   )
@@ -1146,13 +1155,31 @@ function SectionHead({
   title: React.ReactNode
   italic?: React.ReactNode
   lead?: React.ReactNode
-  align?: "split" | "stack"
+  align?: "split" | "stack" | "center"
 }) {
+  const isCenter = align === "center"
   const isStack = align === "stack"
   return (
-    <header className={cn("mb-10 lg:mb-14", isStack ? "max-w-3xl" : "grid gap-8 lg:gap-12 lg:grid-cols-12 items-end")}>
-      <div className={cn(isStack ? "" : "lg:col-span-7")}>
-        <div className={eyebrowCls(ar, "mb-3 text-muted-foreground inline-flex items-center gap-2")}>
+    <header
+      className={cn(
+        "mb-14 lg:mb-20",
+        isCenter
+          ? "max-w-4xl mx-auto text-center"
+          : isStack
+          ? "max-w-3xl"
+          : "grid gap-8 lg:gap-12 lg:grid-cols-12 items-end",
+      )}
+    >
+      <div className={cn(isCenter || isStack ? "" : "lg:col-span-7")}>
+        <div
+          className={eyebrowCls(
+            ar,
+            cn(
+              "mb-5 text-muted-foreground inline-flex items-center gap-2",
+              isCenter && "justify-center",
+            ),
+          )}
+        >
           <span className="inline-flex h-5 items-center rounded-full bg-foreground/5 px-2 font-mono tracking-[0.16em] text-foreground/55">
             {num}
           </span>
@@ -1160,17 +1187,25 @@ function SectionHead({
         </div>
         <h2
           className={cn(
-            "text-foreground tracking-tight",
+            "text-foreground",
             ar
-              ? "font-semibold leading-[1.15] text-[clamp(1.875rem,3.6vw,2.75rem)]"
-              : "font-display tracking-[-0.02em] leading-[1.05] text-[clamp(2rem,4vw,3.25rem)]",
+              ? "font-semibold leading-[1.08] tracking-tight text-[clamp(2.25rem,5.4vw,4.25rem)]"
+              : "font-display font-semibold tracking-[-0.035em] leading-[1.02] text-[clamp(2.5rem,6vw,4.75rem)]",
           )}
         >
           {title}
           {italic && (
             <>
               {" "}
-              <span className={cn(ar ? "text-foreground/65" : "italic font-light text-foreground/65")}>{italic}</span>
+              <span
+                className={cn(
+                  ar
+                    ? "text-foreground/55 font-normal"
+                    : "italic font-light text-foreground/55",
+                )}
+              >
+                {italic}
+              </span>
             </>
           )}
         </h2>
@@ -1178,8 +1213,12 @@ function SectionHead({
       {lead && (
         <p
           className={cn(
-            "text-base lg:text-lg leading-[1.7] text-muted-foreground max-w-xl",
-            isStack ? "mt-5" : "lg:col-span-5 lg:pl-6",
+            "leading-[1.55] text-muted-foreground",
+            isCenter
+              ? "mt-7 text-lg lg:text-xl max-w-2xl mx-auto"
+              : isStack
+              ? "mt-6 text-base lg:text-lg max-w-xl"
+              : "lg:col-span-5 lg:pl-6 text-base lg:text-lg max-w-xl",
           )}
         >
           {lead}
@@ -1829,7 +1868,7 @@ function Hero({ t }: { t: Dict }) {
   return (
     <section
       id="cover"
-      className="relative bg-background pt-10 lg:pt-14 pb-16 lg:pb-24"
+      className="relative bg-background pt-14 lg:pt-20 pb-24 lg:pb-36"
       data-testid="hero-bento"
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -2040,7 +2079,7 @@ function TrustStrip({ t }: { t: Dict }) {
 function WhyDifferent({ t }: { t: Dict }) {
   const ar = t.ar
   return (
-    <BentoSection id="platform" className="py-20 lg:py-28">
+    <BentoSection id="platform">
       <SectionHead
         ar={ar}
         num="02"
@@ -2126,7 +2165,7 @@ function CoreCapabilities({ t }: { t: Dict }) {
   ]
 
   return (
-    <BentoSection id="capabilities" className="py-20 lg:py-28">
+    <BentoSection id="capabilities" tone="soft">
       <SectionHead ar={ar} num="03" eyebrow={c.eyebrow} title={c.title} lead={c.lead} />
 
       {/* Cockpit hero card — ink slab on the right, peach KPI rail on the left */}
@@ -2216,7 +2255,7 @@ function AIAssistant({ t }: { t: Dict }) {
   const a = t.aiSection
   const ar = t.ar
   return (
-    <BentoSection id="ai" className="py-20 lg:py-28">
+    <BentoSection id="ai">
       <SectionHead
         ar={ar}
         num="04"
@@ -2359,7 +2398,7 @@ function DashboardShowcase({ t }: { t: Dict }) {
     { type: "success", l: s.alerts.budget.l, d: s.alerts.budget.d },
   ]
   return (
-    <BentoSection id="showcase" className="py-20 lg:py-28">
+    <BentoSection id="showcase" tone="soft">
       <SectionHead ar={ar} num="05" eyebrow={s.eyebrow} title={s.title} lead={s.lead} />
 
       {/* Bento broadsheet — masthead + KPI quad + cash trend + alerts */}
@@ -2506,7 +2545,7 @@ function Manifesto({ t }: { t: Dict }) {
   const articleLabel = ar ? "المادّة" : "Article"
 
   return (
-    <BentoSection id="belief" className="py-20 lg:py-28">
+    <BentoSection id="belief">
       {/* The Manifesto is a single monumental ink slab — the page's emotional
           anchor — set on the cream Bento page as a deliberate luxe counterpoint. */}
       <div className={cn(bentoCardInk, "relative overflow-hidden p-8 lg:p-16")} data-testid="section-manifesto">
@@ -2586,7 +2625,7 @@ function Testimonials({ t }: { t: Dict }) {
   const f = ts.featured
   const fInit = f.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")
   return (
-    <BentoSection id="customers" className="py-20 lg:py-28">
+    <BentoSection id="customers" tone="soft">
       <SectionHead ar={t.ar} num="14" eyebrow={ts.eyebrow} title={ts.title} lead={ts.lead} />
 
       {/* Proof-stats — bento quad */}
@@ -2801,7 +2840,7 @@ function ProductTour({ t }: { t: Dict }) {
     command: <CommandMock t={t} />,
   }
   return (
-    <BentoSection id="modules" className="py-20 lg:py-28">
+    <BentoSection id="modules">
       <SectionHead ar={t.ar} num="06" eyebrow={p.eyebrow} title={p.title} lead={p.lead} />
 
       <div className="space-y-12 lg:space-y-16">
@@ -3314,7 +3353,7 @@ function PredictiveCapital({ t }: { t: Dict }) {
     compass: <LineChart className="size-4" />,
   }
   return (
-    <BentoSection id="intelligence" className="py-20 lg:py-28">
+    <BentoSection id="intelligence" tone="soft">
       <SectionHead
         ar={t.ar}
         num="07"
@@ -3443,7 +3482,7 @@ function Automation({ t }: { t: Dict }) {
   const aut = t.automation
 
   return (
-    <BentoSection id="automation" className="py-20 lg:py-28">
+    <BentoSection id="automation">
       <SectionHead ar={t.ar} num="08" eyebrow={aut.eyebrow} title={aut.title} lead={aut.lead} />
 
       {/* Before / After lanes — bento split */}
@@ -3545,7 +3584,7 @@ function Automation({ t }: { t: Dict }) {
 function LiveAuditor({ t }: { t: Dict }) {
   const a = t.auditor
   return (
-    <BentoSection id="auditor" className="py-20 lg:py-28">
+    <BentoSection id="auditor" tone="soft">
       <SectionHead ar={t.ar} num="09" eyebrow={a.eyebrow} title={a.title} lead={a.lead} />
 
       <div className="grid grid-cols-12 gap-4 lg:gap-5">
@@ -3662,7 +3701,7 @@ function LocalIntegrations({ t }: { t: Dict }) {
   )
 
   return (
-    <BentoSection id="integrations" className="py-20 lg:py-28">
+    <BentoSection id="integrations">
       <SectionHead ar={t.ar} num="10" eyebrow={i.eyebrow} title={i.title} lead={i.lead} />
 
         {/* Compliance topology — regulators above, spine in the middle, operational rails below */}
@@ -3769,7 +3808,7 @@ function ComplianceCalendar({ t }: { t: Dict }) {
   const todayPercent = ((todayMonth - 0.5) / 12) * 100
 
   return (
-    <BentoSection id="compliance" className="py-20 lg:py-28" data-testid="section-compliance">
+    <BentoSection id="compliance" tone="soft" data-testid="section-compliance">
         <SectionHead ar={t.ar} num="11" eyebrow={c.eyebrow} title={c.title} lead={c.lead} />
 
         {/* Stats strip — bento cards */}
@@ -3931,7 +3970,7 @@ function Security({ t }: { t: Dict }) {
     <MapPin className="size-5" />,
   ]
   return (
-    <BentoSection id="security" className="py-20 lg:py-28">
+    <BentoSection id="security">
       <SectionHead ar={t.ar} num="12" eyebrow={sec.eyebrow} title={sec.title} lead={sec.lead} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
@@ -3964,7 +4003,7 @@ function UseCases({ t }: { t: Dict }) {
   const current = personas.find((p) => p.key === active) ?? personas[0]
 
   return (
-    <BentoSection id="use-cases" className="py-20 lg:py-28">
+    <BentoSection id="use-cases" tone="soft">
       <SectionHead ar={t.ar} num="13" eyebrow={u.eyebrow} title={u.title} align="stack" />
 
       <div role="tablist" aria-label={u.tabsAria} className="flex flex-wrap gap-2 mb-8">
@@ -4140,7 +4179,7 @@ function Pricing({ t }: { t: Dict }) {
     k === "growth" ? "lg:col-span-5" : k === "starter" ? "lg:col-span-3" : "lg:col-span-4"
 
   return (
-    <BentoSection id="pricing" className="py-20 lg:py-28">
+    <BentoSection id="pricing">
       <SectionHead ar={t.ar} num="15" eyebrow={p.eyebrow} title={p.title} lead={p.lead} />
 
       {/* Cost of waiting strip — peach card */}
@@ -4337,7 +4376,7 @@ function formatYearly(monthly: string, mult: number, ar: boolean): string {
 
 function FAQ({ t }: { t: Dict }) {
   return (
-    <BentoSection id="faq" className="py-20 lg:py-28">
+    <BentoSection id="faq" tone="soft">
       <SectionHead ar={t.ar} num="16" eyebrow={t.faq.eyebrow} title={t.faq.title} align="stack" />
       <div className={cn(bentoCard, "max-w-4xl mx-auto p-2 lg:p-4")}>
         <Accordion type="single" collapsible className="">
@@ -4364,7 +4403,7 @@ function FAQ({ t }: { t: Dict }) {
 function FinalCTA({ t }: { t: Dict }) {
   const f = t.finalCta
   return (
-    <BentoSection id="cta" className="py-20 lg:py-28" data-testid="section-final-cta">
+    <BentoSection id="cta" data-testid="section-final-cta">
       <div className={cn(bentoCardInk, "relative overflow-hidden p-10 lg:p-20")}>
         <div className="flex items-baseline gap-3 mb-10 lg:mb-14 text-background/65">
           <LuxeDot />
