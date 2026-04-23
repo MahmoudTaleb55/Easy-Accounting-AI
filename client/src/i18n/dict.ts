@@ -117,6 +117,10 @@ export const STRINGS = {
     en: "You're signed in with Read-only access — you can browse data but not make changes.",
   },
   readonly_banner_dismiss: { ar: "إخفاء", en: "Dismiss" },
+
+  // Role chip on profile menu
+  role_chip_reviewer: { ar: "مراجِع", en: "Reviewer" },
+  role_chip_readonly: { ar: "قراءة فقط", en: "Read-only" },
 } as const satisfies Dict;
 
 export type StringKey = keyof typeof STRINGS;

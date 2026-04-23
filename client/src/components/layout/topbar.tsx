@@ -24,6 +24,7 @@ import { usePeriod, type PeriodKey } from "@/contexts/period-context";
 import { CommandPaletteTrigger } from "./command-palette";
 import { TrustCluster } from "@/components/trust/trust-cluster";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 
 interface Props {
   onOpenPalette: () => void;
@@ -37,7 +38,14 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
   const { theme, setTheme } = useTheme();
   const { companies, activeCompanyId, activeCompany, setActiveCompanyId } = useCompany();
   const { period, setPeriodKey, compareToPrevious, setCompareToPrevious } = usePeriod();
+  const { role } = useAuth();
   const [, setLocation] = useLocation();
+
+  const roleChipKey =
+    role === "reviewer" ? "role_chip_reviewer" :
+    role === "readonly" ? "role_chip_readonly" :
+    null;
+  const roleChipLabel = roleChipKey ? t(roleChipKey) : null;
 
   const PERIODS: { key: PeriodKey; label: string }[] = [
     { key: "today", label: t("period_today") },
@@ -214,11 +222,29 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
                 {(activeCompany?.name || "U").slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
+            {roleChipLabel && (
+              <span
+                data-testid={`badge-role-${role}`}
+                className="hidden lg:inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-caption font-medium text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-100"
+              >
+                {roleChipLabel}
+              </span>
+            )}
             <ChevronDown className="size-3.5 opacity-60" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56 shadow-md motion-enter">
-          <DropdownMenuLabel className="eyebrow text-muted-foreground/80">{t("profile")}</DropdownMenuLabel>
+          <DropdownMenuLabel className="flex items-center justify-between gap-2 eyebrow text-muted-foreground/80">
+            <span>{t("profile")}</span>
+            {roleChipLabel && (
+              <span
+                data-testid={`badge-role-menu-${role}`}
+                className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-caption font-medium normal-case tracking-normal text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-100"
+              >
+                {roleChipLabel}
+              </span>
+            )}
+          </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setLocation("/app/ai-assistant")} data-testid="menu-ai">
             <Bot className="size-3.5 me-2 opacity-70" /> <span className="text-small">{t("nav_ai")}</span>
