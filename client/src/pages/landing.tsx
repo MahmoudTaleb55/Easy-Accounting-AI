@@ -1559,75 +1559,9 @@ function Hero({ t }: { t: Dict }) {
             </div>
           </div>
 
-          {/* ── Product peek — luminous screen on dark canvas ─────────── */}
-          <div className={cn("lg:col-span-5 relative", t.ar ? "lg:order-first" : "")}>
-            {/* Outer luminous halo */}
-            <div
-              aria-hidden
-              className="absolute -inset-6 -z-10 pointer-events-none"
-              style={{ background: `radial-gradient(60% 50% at 50% 55%, ${HERO_GLOW_10}, transparent 75%)` }}
-            />
-
-            {/* Top floating annotation — dark dial */}
-            <div
-              className={cn(
-                "absolute -top-4 z-10 hidden md:flex items-center gap-2.5 rounded-md px-3 py-2",
-                t.ar ? "-left-4" : "-right-4",
-              )}
-              style={{ background: HERO_CARD, border: `1px solid ${HERO_LINE}`, boxShadow: `0 0 0 1px ${HERO_GLOW_12}, 0 8px 32px rgba(0,0,0,0.5)` }}
-              data-testid="hero-annotation-posted"
-            >
-              <span className="inline-block size-1.5 rounded-full" style={{ background: HERO_GLOW }} />
-              <div className="leading-tight">
-                <div
-                  className={cn("text-2xs", t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.14em]")}
-                  style={{ color: HERO_MUTE }}
-                >
-                  {t.hero.chipAuto.t}
-                </div>
-                <div className="text-xs font-medium" style={{ color: HERO_INK }}>
-                  {t.hero.chipAuto.s}
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom floating annotation — dark dial */}
-            <div
-              className={cn(
-                "absolute -bottom-5 z-10 hidden md:flex items-center gap-2.5 rounded-md px-3 py-2",
-                t.ar ? "-right-2" : "-left-2",
-              )}
-              style={{ background: HERO_CARD, border: `1px solid ${HERO_LINE}`, boxShadow: `0 8px 32px rgba(0,0,0,0.5)` }}
-              data-testid="hero-annotation-trend"
-            >
-              <TrendingUp className="size-3.5" style={{ color: HERO_GLOW }} />
-              <div className="leading-tight">
-                <div
-                  className={cn("text-xs font-medium", t.ar ? "" : "font-mono")}
-                  style={{ color: HERO_INK }}
-                >
-                  {t.hero.chipProfit.t}
-                </div>
-                <div className="text-2xs" style={{ color: HERO_MUTE }}>
-                  {t.hero.chipProfit.s}
-                </div>
-              </div>
-            </div>
-
-            {/* Luminous frame around mockup — looks like a real screen */}
-            <div
-              className="rounded-xl overflow-hidden"
-              style={{
-                boxShadow: `
-                  0 0 0 1px ${HERO_GLOW_18},
-                  0 0 0 6px rgba(255,255,255,0.02),
-                  0 32px 80px -20px rgba(0,0,0,0.7),
-                  0 12px 32px -8px rgba(0,0,0,0.5)
-                `,
-              }}
-            >
-              <HeroProductMockup t={t} />
-            </div>
+          {/* ── Editorial broadsheet — pure type, no UI chrome ─────────── */}
+          <div className={cn("lg:col-span-5", t.ar ? "lg:order-first" : "")}>
+            <HeroEditorialPlate t={t} />
           </div>
         </div>
       </div>
@@ -1635,60 +1569,122 @@ function Hero({ t }: { t: Dict }) {
   )
 }
 
-function HeroProductMockup({ t }: { t: Dict }) {
-  const startSide = t.ar ? "-left-4" : "-right-4"
-  const endSide   = t.ar ? "-right-4" : "-left-4"
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Hero editorial plate — printed-broadsheet typography on the dark canvas.  */
+/*  No card, no border, no shadow, no fake browser chrome. Just type and      */
+/*  hairlines, like the front page of the FT or a Bloomberg Businessweek      */
+/*  cover. The data points are the same; the form is the message.            */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function HeroEditorialPlate({ t }: { t: Dict }) {
+  const ar  = t.ar
+  const INK   = "hsl(40 18% 95%)"
+  const MUTE  = "hsl(40 6% 62%)"
+  const LINE  = "hsl(220 10% 18%)"
+  const GLOW  = "hsl(158 70% 52%)"
+  const cur   = ar ? "ر.س" : "SAR"
+  const txn   = ar ? "#٢٤٧٨" : "#2478"
+
+  const colMono = (txt: string) => cn("text-2xs", ar ? "tracking-normal" : "font-mono uppercase tracking-[0.2em]")
+
   return (
-    <div className="relative">
-      <BrowserFrame title={t.hero.mockTitle}>
-        <div className="grid grid-cols-3 gap-3 p-4">
-          <MiniKPI label={t.hero.kpis.revenue} value={t.ar ? "٢٤٢,٣٠٠" : "242,300"} delta="+8.4%" positive />
-          <MiniKPI label={t.hero.kpis.expenses} value={t.ar ? "١٣٨,٧١٠" : "138,710"} delta="-2.1%" />
-          <MiniKPI label={t.hero.kpis.netCash} value={t.ar ? "١٠٣,٥٩٠" : "103,590"} delta="+14.6%" positive highlight />
-        </div>
-        <div className="px-4 pb-3">
-          <div className="rounded-md border border-border bg-card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <div className="eyebrow mb-1">{t.hero.band.eyebrow}</div>
-                <div className="text-sm font-medium text-foreground">{t.hero.band.title}</div>
-              </div>
-              <div className="flex gap-1.5">
-                {t.hero.band.ticks.map((tk, i) => (
-                  <span key={tk} className={cn("text-2xs", i === 2 ? "text-foreground font-medium border-b border-primary pb-0.5" : "text-muted-foreground")}>
-                    {tk}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <SparkChart />
+    <div className="relative" data-testid="hero-editorial-plate">
+      {/* Top printer's slug — date + provenance */}
+      <div className="flex items-baseline gap-3 pb-3 border-b" style={{ borderColor: LINE }}>
+        <span aria-hidden className="size-1 translate-y-[-2px] rounded-full" style={{ background: GLOW }} />
+        <span className={colMono("")} style={{ color: MUTE }}>
+          {ar ? "محدَّث الآن · إصدار 5.2" : "live · edition 5.2"}
+        </span>
+        <span className="flex-1" />
+        <span className={colMono("")} style={{ color: MUTE }}>
+          {ar ? "كشف يوميّ" : "daily statement"}
+        </span>
+      </div>
+
+      {/* Eyebrow caption above the monumental number */}
+      <div className={cn("mt-7 mb-3 text-2xs", ar ? "" : "font-mono uppercase tracking-[0.18em]")} style={{ color: MUTE }}>
+        {t.hero.kpis.netCash} · {ar ? "آخر ٣٠ يوماً" : "last 30 days"}
+      </div>
+
+      {/* The single masthead number — set as page-defining type. */}
+      <div className="flex items-baseline gap-3">
+        <span
+          className={cn(
+            "tabular-nums leading-[0.92]",
+            ar ? "font-semibold tracking-tight" : "font-display tracking-[-0.035em]",
+          )}
+          style={{ color: INK, fontSize: "clamp(3.75rem, 8vw, 6.5rem)" }}
+        >
+          {ar ? "١٠٣,٥٩٠" : "103,590"}
+        </span>
+        <span className="font-mono text-sm pb-2" style={{ color: MUTE }}>{cur}</span>
+      </div>
+
+      {/* Delta line in emerald — the only colored mark on the plate */}
+      <div className={cn("mt-2 mb-7 text-xs", ar ? "" : "font-mono")} style={{ color: GLOW }}>
+        +14.6% &nbsp;·&nbsp; {ar ? "مقارنةً بالشهر الماضي" : "vs prior month"}
+      </div>
+
+      <div className="h-px" style={{ background: LINE }} />
+
+      {/* Two-up tabular row — revenues / expenses set as broadsheet columns */}
+      <div className="grid grid-cols-2 gap-x-8 py-6">
+        <div>
+          <div className={cn("text-2xs mb-2", ar ? "" : "font-mono uppercase tracking-[0.16em]")} style={{ color: MUTE }}>
+            {t.hero.kpis.revenue}
           </div>
-        </div>
-        <div className="px-4 pb-4">
-          <div className="rounded-md border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/40">
-              <div className="text-xs font-medium text-foreground">{t.hero.entry.title}</div>
-              <Badge variant="success" size="sm">{t.hero.entry.balanced}</Badge>
-            </div>
-            <table className="w-full text-2xs">
-              <tbody>
-                <tr className="border-b border-border/60">
-                  <td className="px-3 py-2 text-muted-foreground font-mono">5110</td>
-                  <td className="px-3 py-2 text-foreground">{t.hero.entry.marketing}</td>
-                  <td className="px-3 py-2 text-foreground font-mono text-end tabular-nums">{t.hero.entry.amount}</td>
-                  <td className="px-3 py-2 text-muted-foreground font-mono text-end">—</td>
-                </tr>
-                <tr>
-                  <td className="px-3 py-2 text-muted-foreground font-mono">1010</td>
-                  <td className="px-3 py-2 text-foreground">{t.hero.entry.cash}</td>
-                  <td className="px-3 py-2 text-muted-foreground font-mono text-end">—</td>
-                  <td className="px-3 py-2 text-foreground font-mono text-end tabular-nums">{t.hero.entry.amount}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div className={cn("font-mono tabular-nums", "text-[1.65rem] leading-none")} style={{ color: INK }}>
+            {ar ? "٢٤٢,٣٠٠" : "242,300"}
           </div>
+          <div className="text-2xs font-mono mt-1.5" style={{ color: GLOW }}>+8.4%</div>
         </div>
-      </BrowserFrame>
+        <div>
+          <div className={cn("text-2xs mb-2", ar ? "" : "font-mono uppercase tracking-[0.16em]")} style={{ color: MUTE }}>
+            {t.hero.kpis.expenses}
+          </div>
+          <div className={cn("font-mono tabular-nums", "text-[1.65rem] leading-none")} style={{ color: INK }}>
+            {ar ? "١٣٨,٧١٠" : "138,710"}
+          </div>
+          <div className="text-2xs font-mono mt-1.5" style={{ color: MUTE }}>−2.1%</div>
+        </div>
+      </div>
+
+      <div className="h-px" style={{ background: LINE }} />
+
+      {/* Latest entry — set as printed ledger excerpt, no table chrome */}
+      <div className="flex items-baseline flex-wrap gap-x-3 gap-y-1 pt-6 mb-3">
+        <span className={cn("text-2xs", ar ? "" : "font-mono uppercase tracking-[0.16em]")} style={{ color: MUTE }}>
+          {t.hero.entry.title}
+        </span>
+        <span aria-hidden style={{ color: MUTE }}>·</span>
+        <span className={cn("text-2xs", ar ? "" : "font-mono uppercase tracking-[0.16em]")} style={{ color: GLOW }}>
+          {t.hero.entry.balanced}
+        </span>
+      </div>
+
+      <div className="font-mono text-xs space-y-2">
+        <div className="grid grid-cols-12 items-baseline gap-x-3">
+          <span className="col-span-2" style={{ color: MUTE }}>5110</span>
+          <span className="col-span-5 font-sans text-sm" style={{ color: INK }}>{t.hero.entry.marketing}</span>
+          <span className="col-span-3 text-end tabular-nums" style={{ color: INK }}>{t.hero.entry.amount}</span>
+          <span className="col-span-2 text-end" style={{ color: MUTE }}>—</span>
+        </div>
+        <div className="grid grid-cols-12 items-baseline gap-x-3">
+          <span className="col-span-2" style={{ color: MUTE }}>1010</span>
+          <span className="col-span-5 font-sans text-sm" style={{ color: INK }}>{t.hero.entry.cash}</span>
+          <span className="col-span-3 text-end" style={{ color: MUTE }}>—</span>
+          <span className="col-span-2 text-end tabular-nums" style={{ color: INK }}>{t.hero.entry.amount}</span>
+        </div>
+      </div>
+
+      {/* Editorial footnote — the human meaning behind the numbers */}
+      <div className="mt-7 pt-5 border-t" style={{ borderColor: LINE }}>
+        <p className={cn("text-2xs leading-relaxed", ar ? "" : "italic")} style={{ color: MUTE }}>
+          {ar
+            ? "مدوَّن منذ ٧ ثوانٍ · من فاتورة كهرباء واردة عبر البريد · بدون لمس بشريّ."
+            : "Posted 7s ago · from an electricity invoice received by email · no human touch."}
+        </p>
+      </div>
     </div>
   )
 }
@@ -1999,38 +1995,84 @@ function AIAssistant({ t }: { t: Dict }) {
             </div>
           </div>
 
-          <div className="lg:col-span-7 lg:col-start-1 lg:row-start-1">
-            <BrowserFrame title={a.mockTitle} subtle>
-              <div className="p-5 space-y-4">
-                <ChatBubble role="user">{a.chat.u1}</ChatBubble>
-                <ChatBubble role="ai">
-                  {a.chat.a1Pre}<span className="font-mono text-primary">{a.chat.a1Num}</span>:
-                  <div className="mt-3 rounded border border-border overflow-hidden">
-                    <table className="w-full text-2xs">
-                      <tbody>
-                        <tr className="border-b border-border/60 bg-muted/30">
-                          <td className="px-3 py-1.5 font-mono text-muted-foreground">5210</td>
-                          <td className="px-3 py-1.5">{a.chat.utilities}</td>
-                          <td className="px-3 py-1.5 font-mono text-end">{a.chat.amount}</td>
-                          <td className="px-3 py-1.5 font-mono text-end text-muted-foreground">—</td>
-                        </tr>
-                        <tr>
-                          <td className="px-3 py-1.5 font-mono text-muted-foreground">2110</td>
-                          <td className="px-3 py-1.5">{a.chat.payable}</td>
-                          <td className="px-3 py-1.5 font-mono text-end text-muted-foreground">—</td>
-                          <td className="px-3 py-1.5 font-mono text-end">{a.chat.amount}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-3 text-xs text-foreground/80">
-                    {a.chat.budget[0]} <span className="font-mono">{a.chat.budget[1]}</span> {a.chat.budget[2]}
-                  </div>
-                </ChatBubble>
-                <ChatBubble role="user">{a.chat.u2}</ChatBubble>
-                <ChatBubble role="ai" typing />
+          {/* Editorial transcript — no chat bubbles, set as printed dialogue */}
+          <div className="lg:col-span-7 lg:col-start-1 lg:row-start-1" data-testid="ai-transcript">
+            <div className="flex items-baseline gap-3 pb-3 border-b border-border">
+              <span aria-hidden className="size-1 translate-y-[-2px] rounded-full bg-success" />
+              <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.2em]", "text-muted-foreground")}>
+                {t.ar ? "محادثة · ٢٠٢٦.٠٤.٢٣ · ٠٩:٤١" : "transcript · 2026.04.23 · 09:41"}
+              </span>
+              <span className="flex-1" />
+              <span className={cn("text-2xs text-muted-foreground", t.ar ? "" : "font-mono uppercase tracking-[0.2em]")}>
+                {a.mockTitle}
+              </span>
+            </div>
+
+            <div className="space-y-8 lg:space-y-9 mt-7">
+              {/* You · question 1 */}
+              <div className="grid grid-cols-12 gap-x-5 lg:gap-x-7">
+                <div className={cn("col-span-3 lg:col-span-2 text-2xs pt-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
+                  {t.ar ? "أنت" : "you"}
+                </div>
+                <p className={cn("col-span-9 lg:col-span-10", t.ar ? "text-lg leading-[1.7]" : "font-display italic text-xl leading-[1.4]")}>
+                  {a.chat.u1}
+                </p>
               </div>
-            </BrowserFrame>
+
+              {/* System · answer with set-type ledger */}
+              <div className="grid grid-cols-12 gap-x-5 lg:gap-x-7">
+                <div className={cn("col-span-3 lg:col-span-2 text-2xs pt-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-primary")}>
+                  {t.ar ? "النظام" : "system"}
+                </div>
+                <div className="col-span-9 lg:col-span-10 space-y-4">
+                  <p className={cn(t.ar ? "text-lg leading-[1.7]" : "font-display italic text-xl leading-[1.4]")}>
+                    {a.chat.a1Pre}
+                    <span className="font-mono not-italic text-base text-primary tabular-nums">{a.chat.a1Num}</span>:
+                  </p>
+                  <div className="font-mono text-xs space-y-2 py-2 border-y border-border/60">
+                    <div className="grid grid-cols-12 items-baseline gap-x-3 pt-2">
+                      <span className="col-span-2 text-muted-foreground">5210</span>
+                      <span className="col-span-6 font-sans text-sm text-foreground">{a.chat.utilities}</span>
+                      <span className="col-span-2 text-end tabular-nums text-foreground">{a.chat.amount}</span>
+                      <span className="col-span-2 text-end text-muted-foreground">—</span>
+                    </div>
+                    <div className="grid grid-cols-12 items-baseline gap-x-3 pb-2">
+                      <span className="col-span-2 text-muted-foreground">2110</span>
+                      <span className="col-span-6 font-sans text-sm text-foreground">{a.chat.payable}</span>
+                      <span className="col-span-2 text-end text-muted-foreground">—</span>
+                      <span className="col-span-2 text-end tabular-nums text-foreground">{a.chat.amount}</span>
+                    </div>
+                  </div>
+                  <p className="text-sm text-foreground/75 leading-relaxed">
+                    {a.chat.budget[0]} <span className="font-mono tabular-nums">{a.chat.budget[1]}</span> {a.chat.budget[2]}
+                  </p>
+                </div>
+              </div>
+
+              {/* You · question 2 */}
+              <div className="grid grid-cols-12 gap-x-5 lg:gap-x-7">
+                <div className={cn("col-span-3 lg:col-span-2 text-2xs pt-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
+                  {t.ar ? "أنت" : "you"}
+                </div>
+                <p className={cn("col-span-9 lg:col-span-10", t.ar ? "text-lg leading-[1.7]" : "font-display italic text-xl leading-[1.4]")}>
+                  {a.chat.u2}
+                </p>
+              </div>
+
+              {/* System · drafting */}
+              <div className="grid grid-cols-12 gap-x-5 lg:gap-x-7">
+                <div className={cn("col-span-3 lg:col-span-2 text-2xs pt-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-primary")}>
+                  {t.ar ? "النظام" : "system"}
+                </div>
+                <div className={cn(
+                  "col-span-9 lg:col-span-10 text-2xs text-muted-foreground flex items-center gap-2",
+                  t.ar ? "" : "font-mono uppercase tracking-[0.16em]",
+                )}>
+                  <span aria-hidden className="inline-block w-2 h-px bg-muted-foreground" />
+                  {t.ar ? "يكتب الإجابة…" : "drafting reply"}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2049,58 +2091,166 @@ function DashboardShowcase({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Chapter num="05" eyebrow={s.eyebrow} title={s.title} lead={s.lead} ar={t.ar} />
 
-        <BrowserFrame title={s.mockTitle} large>
-          <div className="grid grid-cols-12 gap-4 p-5">
-            <div className="col-span-2 space-y-1">
-              {s.sidebar.map((l, i) => (
+        {/* Editorial broadsheet — set type, hairlines, no card chrome */}
+        <div className="mt-12 lg:mt-16" data-testid="showcase-broadsheet">
+          {/* Masthead */}
+          <div className="flex items-baseline gap-3 pb-3 border-b-2 border-foreground">
+            <span aria-hidden className="size-1.5 translate-y-[-2px] rounded-full bg-success" />
+            <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.2em]")}>
+              {t.ar ? "نشرة يوميّة · إصدار 5.2" : "daily briefing · edition 5.2"}
+            </span>
+            <span className="flex-1" />
+            <span className={cn("text-2xs text-muted-foreground", t.ar ? "" : "font-mono uppercase tracking-[0.2em]")}>
+              {s.mockTitle}
+            </span>
+          </div>
+
+          {/* Four-up KPI broadsheet — divided columns, monumental numerals */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-border">
+            {[
+              { l: s.kpis.revenue,  v: t.ar ? "٢٤٢,٣٠٠" : "242,300", d: "+8.4%",  pos: true,  hl: false },
+              { l: s.kpis.expenses, v: t.ar ? "١٣٨,٧١٠" : "138,710", d: "−2.1%",  pos: false, hl: false },
+              { l: s.kpis.netCash,  v: t.ar ? "١٠٣,٥٩٠" : "103,590", d: "+14.6%", pos: true,  hl: true  },
+              { l: s.kpis.health,   v: s.kpis.healthVal,              d: s.kpis.healthDelta, pos: true, hl: false },
+            ].map((k, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "py-8 lg:py-10 px-5 lg:px-7 border-border",
+                  i > 0 && "border-s",
+                  i === 2 && "lg:border-s-0 border-t lg:border-t-0",
+                  i === 3 && "border-t lg:border-t-0",
+                  k.hl && "bg-foreground text-background",
+                )}
+              >
+                <div className={cn(
+                  "text-2xs mb-3",
+                  t.ar ? "" : "font-mono uppercase tracking-[0.16em]",
+                  k.hl ? "text-background/65" : "text-muted-foreground",
+                )}>
+                  {k.l}
+                </div>
                 <div
-                  key={l}
                   className={cn(
-                    "px-2.5 py-1.5 rounded text-2xs",
-                    i === 4 ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground"
+                    "tabular-nums leading-[0.95] mb-2",
+                    t.ar ? "font-semibold tracking-tight" : "font-display tracking-[-0.025em]",
                   )}
+                  style={{ fontSize: "clamp(2.25rem, 4.5vw, 3.5rem)" }}
                 >
-                  {l}
+                  {k.v}
                 </div>
-              ))}
+                <div className={cn(
+                  "text-2xs font-mono",
+                  k.hl ? "text-background/70" : k.pos ? "text-success" : "text-muted-foreground",
+                )}>
+                  {k.d}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Body row: cash trend feature + alerts column */}
+          <div className="grid lg:grid-cols-12 py-10 lg:py-14 border-b border-border">
+            <div className="lg:col-span-7 lg:pe-12 lg:border-e lg:border-border">
+              <div className={cn("text-2xs mb-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
+                {s.cash.eyebrow}
+              </div>
+              <h4 className={cn(
+                "mb-7",
+                t.ar ? "text-2xl lg:text-3xl font-semibold leading-tight" : "font-display text-3xl lg:text-4xl tracking-[-0.018em] leading-[1.05]",
+              )}>
+                {s.cash.title}
+              </h4>
+
+              {/* Weekly cash narrative — set as printed series, no canvas chart */}
+              <div className="font-mono text-sm">
+                {[
+                  { wk: t.ar ? "الأسبوع ١٤" : "WK 14", v: t.ar ? "٨٩,٢٠٠"  : "89,200",  d: "+6.2%",  cur: false },
+                  { wk: t.ar ? "الأسبوع ١٥" : "WK 15", v: t.ar ? "٩٤,٥٠٠"  : "94,500",  d: "+5.9%",  cur: false },
+                  { wk: t.ar ? "الأسبوع ١٦" : "WK 16", v: t.ar ? "٩٨,٧٧٠"  : "98,770",  d: "+4.5%",  cur: false },
+                  { wk: t.ar ? "الأسبوع ١٧" : "WK 17", v: t.ar ? "١٠٣,٥٩٠" : "103,590", d: "+14.6%", cur: true  },
+                ].map((row, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "grid grid-cols-12 items-baseline gap-x-3 py-2 border-b border-border/50 last:border-0",
+                      row.cur && "bg-foreground/[0.025]",
+                    )}
+                  >
+                    <span className={cn("col-span-3 text-2xs", t.ar ? "" : "uppercase tracking-[0.16em]", "text-muted-foreground")}>
+                      {row.wk}
+                    </span>
+                    <span className={cn("col-span-5 tabular-nums", row.cur ? "text-foreground font-semibold" : "text-foreground/85")}>
+                      {row.v}
+                    </span>
+                    <span className={cn("col-span-3 text-end text-xs tabular-nums", "text-success")}>
+                      {row.d}
+                    </span>
+                    <span className="col-span-1 text-end text-muted-foreground text-xs">
+                      {row.cur ? (t.ar ? "←" : "→") : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className={cn("mt-4 text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.16em]", "text-success")}>
+                {s.cash.delta} · {t.ar ? "اتّجاه صاعد متّصل" : "uninterrupted upward trend"}
+              </div>
             </div>
-            <div className="col-span-10 space-y-4">
-              <div className="grid grid-cols-4 gap-3">
-                <MiniKPI label={s.kpis.revenue}  value={t.ar ? "٢٤٢,٣٠٠" : "242,300"} delta="+8.4%" positive />
-                <MiniKPI label={s.kpis.expenses} value={t.ar ? "١٣٨,٧١٠" : "138,710"} delta="-2.1%" />
-                <MiniKPI label={s.kpis.netCash}  value={t.ar ? "١٠٣,٥٩٠" : "103,590"} delta="+14.6%" positive highlight />
-                <MiniKPI label={s.kpis.health}   value={s.kpis.healthVal} delta={s.kpis.healthDelta} positive />
+
+            <div className="lg:col-span-5 mt-10 lg:mt-0 lg:ps-12">
+              <div className={cn("text-2xs mb-5", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
+                {s.alerts.title}
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2 rounded-md border border-border bg-card p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <div className="eyebrow mb-1">{s.cash.eyebrow}</div>
-                      <div className="text-sm font-medium text-foreground">{s.cash.title}</div>
+              <div className="space-y-5">
+                {[
+                  { type: "warning", l: s.alerts.late.l,   d: s.alerts.late.d   },
+                  { type: "info",    l: s.alerts.gosi.l,   d: s.alerts.gosi.d   },
+                  { type: "success", l: s.alerts.budget.l, d: s.alerts.budget.d },
+                ].map((al, i) => (
+                  <div key={i} className="grid grid-cols-12 gap-x-3 items-baseline pb-4 border-b border-border/50 last:border-0">
+                    <span aria-hidden className={cn(
+                      "col-span-1 mt-1.5 inline-block w-1.5 h-1.5 rounded-full",
+                      al.type === "warning" ? "bg-warning" : al.type === "success" ? "bg-success" : "bg-primary",
+                    )} />
+                    <div className="col-span-11">
+                      <div className={cn("text-base leading-snug", t.ar ? "font-medium" : "font-medium")}>{al.l}</div>
+                      <div className="text-xs text-muted-foreground leading-snug mt-1">{al.d}</div>
                     </div>
-                    <Badge variant="success" size="sm">{s.cash.delta}</Badge>
                   </div>
-                  <SparkChart />
-                </div>
-                <div className="rounded-md border border-border bg-card p-4">
-                  <div className="eyebrow mb-2">{s.alerts.title}</div>
-                  <div className="space-y-2.5">
-                    <AlertRow type="warning" label={s.alerts.late.l}   detail={s.alerts.late.d} />
-                    <AlertRow type="info"    label={s.alerts.gosi.l}   detail={s.alerts.gosi.d} />
-                    <AlertRow type="success" label={s.alerts.budget.l} detail={s.alerts.budget.d} />
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-md border border-border bg-muted/40 p-3 flex items-start gap-3">
-                <Brain className="size-4 text-foreground/70 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
-                <div className="text-2xs leading-relaxed text-foreground/85">
-                  <span className="font-medium text-foreground">{s.coachLabel}</span>
-                  {s.coachBody}
-                </div>
+                ))}
               </div>
             </div>
           </div>
-        </BrowserFrame>
+
+          {/* Editorial footnote — coach commentary set as letterpress callout */}
+          <div className="grid lg:grid-cols-12 gap-x-10 py-7">
+            <div className={cn("lg:col-span-3 text-2xs mb-2 lg:mb-0", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
+              {s.coachLabel}
+            </div>
+            <p className={cn("lg:col-span-9 text-base leading-relaxed text-foreground/85", t.ar ? "" : "font-display italic text-lg")}>
+              {s.coachBody}
+            </p>
+          </div>
+
+          {/* Quiet sidebar nav as printed contents row */}
+          <div className="border-t border-border pt-5 flex flex-wrap items-center gap-x-6 gap-y-2">
+            <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
+              {t.ar ? "في هذا العدد" : "in this issue"}
+            </span>
+            {s.sidebar.map((l, i) => (
+              <span
+                key={l}
+                className={cn(
+                  "text-xs",
+                  i === 4 ? "text-foreground font-medium border-b border-foreground pb-0.5" : "text-muted-foreground",
+                )}
+              >
+                {l}
+              </span>
+            ))}
+          </div>
+        </div>
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
           {s.legend.map((l) => (
