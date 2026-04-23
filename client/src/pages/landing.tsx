@@ -1087,6 +1087,86 @@ function CtaArrow({ ar }: { ar: boolean }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
+/*  Editorial chapter opener — used by every section to establish narrative   */
+/*  spine. Massive serif title (Latin) / weighted Arabic, chapter mark,       */
+/*  optional italic resolve line, optional lead. Adapts to dark/light bands.  */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function Chapter({
+  num, eyebrow, title, italic, lead, ar, dark = false, align = "split",
+}: {
+  num: string
+  eyebrow?: string
+  title: React.ReactNode
+  italic?: React.ReactNode
+  lead?: React.ReactNode
+  ar: boolean
+  dark?: boolean
+  align?: "split" | "stack"
+}) {
+  const ink  = dark ? "text-background" : "text-foreground"
+  const mute = dark ? "text-background/65" : "text-muted-foreground"
+  const line = dark ? "bg-background/15" : "bg-border"
+
+  const head = (
+    <>
+      <div className={cn("flex items-baseline gap-3 mb-7 lg:mb-9", mute)}>
+        <span className="font-mono text-2xs tracking-[0.28em] uppercase">
+          ch · {num}
+        </span>
+        <span aria-hidden className={cn("h-px flex-1", line)} />
+        {eyebrow && (
+          <span className={cn("text-2xs", ar ? "tracking-normal" : "font-mono uppercase tracking-[0.18em]")}>
+            {eyebrow}
+          </span>
+        )}
+      </div>
+      <h2
+        className={cn(
+          "text-[clamp(2.25rem,5.4vw,4.25rem)]",
+          ar ? "font-semibold tracking-normal leading-[1.18]" : "font-display tracking-[-0.02em] leading-[1.02]",
+          ink,
+        )}
+      >
+        {title}
+        {italic && (
+          <>
+            <br />
+            <span className={cn(ar ? "font-semibold opacity-60" : "display-italic opacity-65")}>
+              {italic}
+            </span>
+          </>
+        )}
+      </h2>
+    </>
+  )
+
+  if (align === "stack" || !lead) {
+    return (
+      <div className="max-w-4xl mb-14 lg:mb-20">
+        {head}
+        {lead && (
+          <p className={cn("mt-7 max-w-2xl text-lg lg:text-xl leading-[1.6]", dark ? "text-background/80" : "text-foreground/80")}>
+            {lead}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid lg:grid-cols-12 gap-8 lg:gap-12 mb-16 lg:mb-24">
+      <div className="lg:col-span-6">{head}</div>
+      <div className="lg:col-span-5 lg:col-start-8 lg:pt-10">
+        <p className={cn("text-lg lg:text-xl leading-[1.6]", dark ? "text-background/82" : "text-foreground/82")}>
+          {lead}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
 /*  1 · Hero                                                                  */
 /* ────────────────────────────────────────────────────────────────────────── */
 
@@ -1458,32 +1538,51 @@ function TrustStrip({ t }: { t: Dict }) {
 
 function WhyDifferent({ t }: { t: Dict }) {
   return (
-    <section id="platform" className="py-24 lg:py-32 border-b border-border">
+    <section id="platform" className="py-28 lg:py-40 border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-12 gap-12 mb-16">
-          <div className="lg:col-span-5">
-            <div className="eyebrow eyebrow-lead mb-4"><span className="chapter-index">02</span>{t.why.eyebrow}</div>
-            <h2 className="text-display text-foreground">
-              {t.why.title1}
-              <br />
-              <span className="text-muted-foreground/70">{t.why.title2}</span>
-            </h2>
-          </div>
-          <div className="lg:col-span-6 lg:col-start-7">
-            <p className="text-lg leading-relaxed text-foreground/80">{t.why.lead}</p>
-            <p className="mt-4 text-base leading-relaxed text-muted-foreground">{t.why.sub}</p>
-          </div>
-        </div>
+        <Chapter
+          ar={t.ar}
+          num="02"
+          eyebrow={t.why.eyebrow}
+          title={t.why.title1}
+          italic={t.why.title2}
+          lead={
+            <>
+              {t.why.lead}{" "}
+              <span className="text-muted-foreground">{t.why.sub}</span>
+            </>
+          }
+        />
 
-        <div className="grid md:grid-cols-2 gap-px bg-border rounded-xl overflow-hidden border border-border">
-          {t.why.principles.map((p) => (
-            <div key={p.n} className="bg-card p-8 lg:p-10">
-              <div className="flex items-start gap-6">
-                <div className="font-mono text-xs text-primary tracking-widest pt-1">{p.n}</div>
-                <div>
-                  <h3 className="text-xl font-semibold text-foreground mb-3 leading-snug">{p.t}</h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">{p.b}</p>
-                </div>
+        {/* Principles — typographic only, hairline-divided rows. No cards, no grid noise. */}
+        <div className="border-t border-border">
+          {t.why.principles.map((p, i) => (
+            <div
+              key={p.n}
+              className="grid lg:grid-cols-12 gap-6 lg:gap-12 py-10 lg:py-14 border-b border-border group"
+              data-testid={`principle-${i}`}
+            >
+              <div className="lg:col-span-3 flex lg:flex-col gap-3 lg:gap-2">
+                <span className="font-mono text-2xs uppercase tracking-[0.22em] text-muted-foreground">
+                  {t.ar ? `المبدأ ${String(i + 1).padStart(2, "0")}` : `Principle ${String(i + 1).padStart(2, "0")}`}
+                </span>
+                <span className="font-mono text-xs text-primary tracking-[0.18em]">{p.n}</span>
+              </div>
+              <div className="lg:col-span-9">
+                <h3
+                  className={cn(
+                    "text-[clamp(1.5rem,2.8vw,2.4rem)] mb-4 max-w-3xl",
+                    t.ar
+                      ? "font-semibold leading-[1.25]"
+                      : "font-display tracking-[-0.012em] leading-[1.08]",
+                    "text-foreground",
+                  )}
+                >
+                  {p.t}
+                </h3>
+                <p className="text-base lg:text-lg leading-[1.65] text-muted-foreground max-w-3xl">
+                  {p.b}
+                </p>
               </div>
             </div>
           ))}
@@ -1499,94 +1598,145 @@ function WhyDifferent({ t }: { t: Dict }) {
 
 function CoreCapabilities({ t }: { t: Dict }) {
   const c = t.capabilities
-  return (
-    <section id="capabilities" className="py-24 lg:py-32 bg-card/30 border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl mb-14">
-          <div className="eyebrow mb-3">{c.eyebrow}</div>
-          <h2 className="text-display text-foreground">{c.title}</h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">{c.lead}</p>
-        </div>
+  // Echo the hero's vocabulary — second dark band, deliberately composed
+  const D_BG    = "hsl(220 18% 6%)"
+  const D_INK   = "hsl(40 18% 95%)"
+  const D_MUTE  = "hsl(40 6% 62%)"
+  const D_LINE  = "hsl(220 10% 16%)"
+  const D_GLOW  = "hsl(158 70% 52%)"
+  const D_CARD  = "hsl(220 14% 9%)"
+  const D_GLOW_18 = "hsla(158, 70%, 52%, 0.18)"
 
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 lg:gap-5">
-          <BentoCard className="md:col-span-4 md:row-span-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <Badge variant="brand" size="sm" className="mb-3">{c.cockpit.tag}</Badge>
-                <h3 className="text-2xl font-semibold text-foreground mb-2">{c.cockpit.title}</h3>
-                <p className="text-sm text-muted-foreground max-w-md leading-relaxed">{c.cockpit.body}</p>
-              </div>
-              <BarChart3 className="size-5 text-primary/60" />
+  // Other capabilities, listed editorially (not in a grid)
+  const otherCaps = [
+    { icon: <Bot className="size-4" />,        title: c.ai.title,      body: c.ai.body },
+    { icon: <Globe2 className="size-4" />,     title: c.local.title,   body: c.local.body },
+    { icon: <Briefcase className="size-4" />,  title: c.assets.title,  body: c.assets.body },
+    { icon: <Users className="size-4" />,      title: c.payroll.title, body: c.payroll.body },
+    { icon: <ScrollText className="size-4" />, title: c.reports.title, body: c.reports.body },
+    { icon: <Wallet className="size-4" />,     title: c.multi.title,   body: c.multi.body },
+  ]
+
+  return (
+    <section
+      id="capabilities"
+      className="relative isolate overflow-hidden py-28 lg:py-40"
+      style={{ background: D_BG, color: D_INK }}
+    >
+      {/* Tonal seams — bridge from light section above and to the next below */}
+      <div aria-hidden className="absolute inset-x-0 top-0 h-px" style={{ background: D_LINE }} />
+      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px" style={{ background: D_LINE }} />
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-20 pointer-events-none"
+        style={{ background: `linear-gradient(to bottom, ${D_BG} 0%, transparent 100%)` }}
+      />
+      <div
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-20 pointer-events-none"
+        style={{ background: `linear-gradient(to top, ${D_BG} 0%, transparent 100%)` }}
+      />
+
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <Chapter
+          ar={t.ar} dark
+          num="03"
+          eyebrow={c.eyebrow}
+          title={c.title}
+          lead={c.lead}
+        />
+
+        {/* Hero capability — Cockpit shown large, asymmetric */}
+        <div className="grid lg:grid-cols-12 gap-10 lg:gap-16 items-center mb-20 lg:mb-28">
+          <div className="lg:col-span-5">
+            <div
+              className={cn("text-2xs mb-5", t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.2em]")}
+              style={{ color: D_GLOW }}
+            >
+              {c.cockpit.tag}
             </div>
-            <div className="mt-6 grid grid-cols-3 gap-3">
+            <h3
+              className={cn(
+                "text-[clamp(2rem,4vw,3rem)] mb-5",
+                t.ar ? "font-semibold leading-[1.2]" : "font-display tracking-[-0.018em] leading-[1.05]",
+              )}
+              style={{ color: D_INK }}
+            >
+              {c.cockpit.title}
+            </h3>
+            <p className="text-lg leading-[1.6]" style={{ color: D_MUTE }}>
+              {c.cockpit.body}
+            </p>
+            <div className="mt-8 grid grid-cols-3 gap-3">
               {c.cockpit.kpis.map((k) => (
-                <MiniKPI key={k.label} {...k} />
+                <div
+                  key={k.label}
+                  className="rounded-md p-3"
+                  style={{ background: D_CARD, border: `1px solid ${D_LINE}` }}
+                >
+                  <div className="text-2xs mb-1.5" style={{ color: D_MUTE }}>{k.label}</div>
+                  <div className="text-base font-mono leading-none" style={{ color: D_INK }}>{k.value}</div>
+                  {k.delta && (
+                    <div className="text-2xs font-mono mt-1.5" style={{ color: D_GLOW }}>{k.delta}</div>
+                  )}
+                </div>
               ))}
             </div>
-            <div className="mt-4 rounded-md border border-border bg-card p-3">
-              <SparkChart compact />
-            </div>
-          </BentoCard>
+          </div>
 
-          <BentoCard className="md:col-span-2 md:row-span-2">
-            <Badge variant="brand" size="sm" className="mb-3">{c.ai.tag}</Badge>
-            <h3 className="text-xl font-semibold text-foreground mb-2">{c.ai.title}</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">{c.ai.body}</p>
-            <div className="mt-5 space-y-3">
-              <ChatBubble role="user">{c.ai.chat1}</ChatBubble>
-              <ChatBubble role="ai">{c.ai.chat2}</ChatBubble>
-            </div>
-          </BentoCard>
-
-          <BentoCard className="md:col-span-3">
-            <div className="flex items-start gap-4">
-              <Globe2 className="size-5 text-primary/60 flex-shrink-0 mt-1" />
-              <div>
-                <h3 className="text-lg font-semibold text-foreground mb-1.5">{c.local.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{c.local.body}</p>
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {c.local.chips.map((x) => (
-                    <span key={x} className="text-2xs px-2 py-1 rounded border border-border text-muted-foreground bg-background">
-                      {x}
-                    </span>
-                  ))}
+          <div className="lg:col-span-7">
+            <div
+              className="rounded-xl overflow-hidden"
+              style={{
+                boxShadow: `0 0 0 1px ${D_GLOW_18}, 0 32px 80px -20px rgba(0,0,0,0.7), 0 12px 32px -8px rgba(0,0,0,0.5)`,
+              }}
+            >
+              <div className="bg-card p-5 lg:p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-mono text-2xs uppercase tracking-[0.16em] text-muted-foreground">
+                    {c.cockpit.tag}
+                  </span>
+                  <BarChart3 className="size-4 text-muted-foreground" />
                 </div>
+                <SparkChart compact />
               </div>
             </div>
-          </BentoCard>
+          </div>
+        </div>
 
-          <BentoCard className="md:col-span-3">
-            <div className="flex items-start gap-4">
-              <Briefcase className="size-5 text-primary/60 flex-shrink-0 mt-1" />
-              <div>
-                <h3 className="text-lg font-semibold text-foreground mb-1.5">{c.assets.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{c.assets.body}</p>
-                <div className="mt-4 grid grid-cols-3 gap-3 text-2xs">
-                  <div><div className="text-muted-foreground">{c.assets.m1}</div><div className="font-mono text-foreground">{c.assets.m1v}</div></div>
-                  <div><div className="text-muted-foreground">{c.assets.m2}</div><div className="font-mono text-foreground">{c.assets.m2v}</div></div>
-                  <div><div className="text-muted-foreground">{c.assets.m3}</div><div className="font-mono text-foreground">{c.assets.m3v}</div></div>
-                </div>
+        {/* Editorial list — divided rows, no boxes */}
+        <div className="border-t" style={{ borderColor: D_LINE }}>
+          {otherCaps.map((cap, i) => (
+            <div
+              key={cap.title}
+              className="grid lg:grid-cols-12 gap-4 lg:gap-8 py-8 lg:py-10 items-baseline border-b"
+              style={{ borderColor: D_LINE }}
+              data-testid={`capability-${i}`}
+            >
+              <div className="lg:col-span-1 font-mono text-xs" style={{ color: D_MUTE }}>
+                {String(i + 4).padStart(2, "0")}
+              </div>
+              <div className="lg:col-span-1" style={{ color: D_GLOW }}>
+                {cap.icon}
+              </div>
+              <div className="lg:col-span-3">
+                <h4
+                  className={cn(
+                    "text-lg lg:text-xl leading-snug",
+                    t.ar ? "font-semibold" : "font-display tracking-[-0.005em]",
+                  )}
+                  style={{ color: D_INK }}
+                >
+                  {cap.title}
+                </h4>
+              </div>
+              <div className="lg:col-span-7">
+                <p className="text-base leading-[1.6]" style={{ color: D_MUTE }}>
+                  {cap.body}
+                </p>
               </div>
             </div>
-          </BentoCard>
-
-          <BentoCard className="md:col-span-2">
-            <Users className="size-5 text-primary/60 mb-3" />
-            <h3 className="text-base font-semibold text-foreground mb-1">{c.payroll.title}</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">{c.payroll.body}</p>
-          </BentoCard>
-
-          <BentoCard className="md:col-span-2">
-            <ScrollText className="size-5 text-primary/60 mb-3" />
-            <h3 className="text-base font-semibold text-foreground mb-1">{c.reports.title}</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">{c.reports.body}</p>
-          </BentoCard>
-
-          <BentoCard className="md:col-span-2">
-            <Wallet className="size-5 text-primary/60 mb-3" />
-            <h3 className="text-base font-semibold text-foreground mb-1">{c.multi.title}</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">{c.multi.body}</p>
-          </BentoCard>
+          ))}
         </div>
       </div>
     </section>
@@ -1765,15 +1915,6 @@ function Manifesto({ t }: { t: Dict }) {
         style={{
           background:
             "radial-gradient(60% 50% at 20% 30%, hsl(158 64% 28% / 0.32), transparent 60%), radial-gradient(50% 45% at 85% 75%, hsl(158 64% 28% / 0.22), transparent 65%)",
-        }}
-      />
-      {/* Fine grain */}
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 opacity-[0.04] pointer-events-none mix-blend-overlay"
-        style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
         }}
       />
       {/* Top hairline */}
