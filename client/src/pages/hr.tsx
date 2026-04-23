@@ -17,11 +17,12 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Users, Plus, Trash2, Calendar, FileText, PlayCircle, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Users, Plus, Trash2, Calendar, FileText, PlayCircle, AlertCircle, CheckCircle2, History } from "lucide-react";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { ErrorState } from "@/components/feedback/error-state";
-import type { Employee, Leave } from "@shared/schema";
+import { HistoryDrawer } from "@/components/audit/history-drawer";
+import type { Employee, Leave, Attendance } from "@shared/schema";
 
 // ====================================================================
 // Page wrapper
@@ -79,6 +80,7 @@ function EmployeesTab() {
   const { toast } = useToast();
   const fmt = useFormatMoney();
   const [open, setOpen] = useState(false);
+  const [historyEmp, setHistoryEmp] = useState<Employee | null>(null);
   const { data: employees = [], isLoading } = useQuery<Employee[]>({ queryKey: ["/api/hr/employees"] });
 
   const form = useForm<z.infer<typeof employeeFormSchema>>({
@@ -186,11 +188,16 @@ function EmployeesTab() {
                     {e.isActive ? <Badge variant="default">نشط</Badge> : <Badge variant="secondary">معطل</Badge>}
                   </TableCell>
                   <TableCell>
-                    <WriteGuard>
-                      <Button variant="ghost" size="icon" onClick={() => remove.mutate(e.id)} data-testid={`button-delete-employee-${e.id}`}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => setHistoryEmp(e)} aria-label="السجل" data-testid={`button-history-employee-${e.id}`}>
+                        <History className="w-4 h-4" />
                       </Button>
-                    </WriteGuard>
+                      <WriteGuard>
+                        <Button variant="ghost" size="icon" onClick={() => remove.mutate(e.id)} data-testid={`button-delete-employee-${e.id}`}>
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </WriteGuard>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -198,6 +205,14 @@ function EmployeesTab() {
           </Table>
         )}
       </CardContent>
+      <HistoryDrawer
+        open={!!historyEmp}
+        onOpenChange={(o) => { if (!o) setHistoryEmp(null); }}
+        title={historyEmp?.fullName || ""}
+        reference={historyEmp ? `EMP-${historyEmp.id}` : undefined}
+        entityType="employee"
+        entityId={historyEmp?.id}
+      />
     </Card>
   );
 }
@@ -212,10 +227,11 @@ function AttendanceTab() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState("present");
   const [overtime, setOvertime] = useState("0");
+  const [historyAtt, setHistoryAtt] = useState<Attendance | null>(null);
   const yearMonth = date.slice(0, 7);
 
   const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/hr/employees"] });
-  const { data: records = [] } = useQuery<any[]>({
+  const { data: records = [] } = useQuery<Attendance[]>({
     queryKey: ["/api/hr/attendance", { yearMonth, employeeId }],
     queryFn: async () => {
       const params = new URLSearchParams({ yearMonth });
@@ -298,7 +314,7 @@ function AttendanceTab() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow><TableHead>التاريخ</TableHead><TableHead>الموظف</TableHead><TableHead>الحالة</TableHead><TableHead>ساعات إضافية</TableHead></TableRow>
+                <TableRow><TableHead>التاريخ</TableHead><TableHead>الموظف</TableHead><TableHead>الحالة</TableHead><TableHead>ساعات إضافية</TableHead><TableHead></TableHead></TableRow>
               </TableHeader>
               <TableBody>
                 {records.map((r) => (
@@ -309,6 +325,11 @@ function AttendanceTab() {
                       <Badge variant={r.status === "absent" ? "destructive" : "default"}>{statusLabel[r.status] || r.status}</Badge>
                     </TableCell>
                     <TableCell>{Number(r.overtimeHours)}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => setHistoryAtt(r)} aria-label="السجل" data-testid={`button-history-att-${r.id}`}>
+                        <History className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -316,6 +337,14 @@ function AttendanceTab() {
           )}
         </CardContent>
       </Card>
+      <HistoryDrawer
+        open={!!historyAtt}
+        onOpenChange={(o) => { if (!o) setHistoryAtt(null); }}
+        title={historyAtt ? `${empName(historyAtt.employeeId)} — ${historyAtt.date}` : ""}
+        reference={historyAtt ? `ATT-${historyAtt.id}` : undefined}
+        entityType="attendance"
+        entityId={historyAtt?.id}
+      />
     </div>
   );
 }
@@ -330,6 +359,7 @@ function LeavesTab() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [type, setType] = useState("annual");
+  const [historyLeave, setHistoryLeave] = useState<Leave | null>(null);
 
   const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/hr/employees"] });
   const { data: leaves = [] } = useQuery<Leave[]>({ queryKey: ["/api/hr/leaves"] });
@@ -430,11 +460,16 @@ function LeavesTab() {
                     <TableCell>{l.days}</TableCell>
                     <TableCell><Badge variant="outline">{typeLabel[l.type] || l.type}</Badge></TableCell>
                     <TableCell>
-                      <WriteGuard>
-                        <Button variant="ghost" size="icon" onClick={() => remove.mutate(l.id)} data-testid={`button-delete-leave-${l.id}`}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => setHistoryLeave(l)} aria-label="السجل" data-testid={`button-history-leave-${l.id}`}>
+                          <History className="w-4 h-4" />
                         </Button>
-                      </WriteGuard>
+                        <WriteGuard>
+                          <Button variant="ghost" size="icon" onClick={() => remove.mutate(l.id)} data-testid={`button-delete-leave-${l.id}`}>
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </WriteGuard>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -443,6 +478,14 @@ function LeavesTab() {
           )}
         </CardContent>
       </Card>
+      <HistoryDrawer
+        open={!!historyLeave}
+        onOpenChange={(o) => { if (!o) setHistoryLeave(null); }}
+        title={historyLeave ? `${empName(historyLeave.employeeId)} — ${typeLabel[historyLeave.type] || historyLeave.type}` : ""}
+        reference={historyLeave ? `LV-${historyLeave.id}` : undefined}
+        entityType="leave"
+        entityId={historyLeave?.id}
+      />
     </div>
   );
 }
