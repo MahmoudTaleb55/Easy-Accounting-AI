@@ -2,7 +2,8 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Clock, User, Bot, Cog, History } from "lucide-react";
+import { Clock, User, Bot, Cog, History, Filter } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useLocale } from "@/contexts/locale-context";
 import { format } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
@@ -10,6 +11,8 @@ import { ar, enUS } from "date-fns/locale";
 export type HistorySource = "user" | "ai" | "integration" | "system";
 type SheetSide = "top" | "bottom" | "left" | "right";
 type HistoryAction = "create" | "update" | "delete" | "post";
+const SOURCE_KEYS: HistorySource[] = ["user", "ai", "system", "integration"];
+const ACTION_KEYS: HistoryAction[] = ["create", "update", "delete", "post"];
 
 export type HistoryEntityType =
   | "transaction"
@@ -26,6 +29,7 @@ export interface HistoryEvent {
   source: HistorySource;
   actor?: string;
   action: string;
+  actionKey?: HistoryAction;
   changes?: Array<{ field: string; from?: unknown; to?: unknown }>;
   note?: string;
 }
@@ -94,6 +98,19 @@ export function HistoryDrawer({
     delete: locale === "ar" ? "تم الحذف" : "Deleted",
     post: locale === "ar" ? "تم الترحيل" : "Posted",
     actorUnavailable: locale === "ar" ? "المنفّذ غير متوفر" : "Actor unavailable",
+    filterSource: locale === "ar" ? "المصدر" : "Source",
+    filterAction: locale === "ar" ? "الإجراء" : "Action",
+    filterReset: locale === "ar" ? "مسح" : "Reset",
+    noMatch:
+      locale === "ar"
+        ? "لا توجد أحداث مطابقة للفلاتر."
+        : "No events match your filters.",
+  };
+  const actionLabels: Record<HistoryAction, string> = {
+    create: labels.create,
+    update: labels.update,
+    delete: labels.delete,
+    post: labels.post,
   };
   const side: SheetSide = dir === "rtl" ? "left" : "right";
 
@@ -119,12 +136,16 @@ export function HistoryDrawer({
       const src = (["user", "ai", "integration", "system"].includes(row.source)
         ? row.source
         : "system") as HistorySource;
+      const actKey = (ACTION_KEYS as string[]).includes(row.action)
+        ? (row.action as HistoryAction)
+        : undefined;
       return {
         id: row.id,
         at: row.occurredAt,
         source: src,
         actor: row.actor || undefined,
         action: actionLabel(row.action),
+        actionKey: actKey,
         changes: (row.changes || []).map((c) => ({
           field: c.field,
           from: c.from === undefined ? undefined : formatPrimitive(c.from),
@@ -133,6 +154,52 @@ export function HistoryDrawer({
       } satisfies HistoryEvent;
     });
   }, [data, labels.create, labels.update, labels.delete, labels.post]);
+
+  const [sourceFilter, setSourceFilter] = React.useState<Set<HistorySource>>(
+    () => new Set(SOURCE_KEYS),
+  );
+  const [actionFilter, setActionFilter] = React.useState<Set<HistoryAction>>(
+    () => new Set(ACTION_KEYS),
+  );
+
+  const sourceCounts = React.useMemo(() => {
+    const m: Record<HistorySource, number> = { user: 0, ai: 0, system: 0, integration: 0 };
+    for (const ev of events) m[ev.source] = (m[ev.source] ?? 0) + 1;
+    return m;
+  }, [events]);
+
+  const actionCounts = React.useMemo(() => {
+    const m: Record<HistoryAction, number> = { create: 0, update: 0, delete: 0, post: 0 };
+    for (const ev of events) if (ev.actionKey) m[ev.actionKey] = (m[ev.actionKey] ?? 0) + 1;
+    return m;
+  }, [events]);
+
+  const filteredEvents = React.useMemo(() => {
+    return events.filter((ev) => {
+      if (!sourceFilter.has(ev.source)) return false;
+      if (ev.actionKey && !actionFilter.has(ev.actionKey)) return false;
+      return true;
+    });
+  }, [events, sourceFilter, actionFilter]);
+
+  const toggle = <T,>(set: Set<T>, key: T, setter: (s: Set<T>) => void) => {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setter(next);
+  };
+
+  const filtersDirty =
+    sourceFilter.size !== SOURCE_KEYS.length || actionFilter.size !== ACTION_KEYS.length;
+
+  const resetFilters = React.useCallback(() => {
+    setSourceFilter(new Set(SOURCE_KEYS));
+    setActionFilter(new Set(ACTION_KEYS));
+  }, []);
+
+  React.useEffect(() => {
+    resetFilters();
+  }, [entityType, entityId, resetFilters]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -157,6 +224,84 @@ export function HistoryDrawer({
           </SheetDescription>
         </SheetHeader>
 
+        {!isLoading && !isError && events.length > 0 && (
+          <div
+            className="px-5 py-3 border-b border-border space-y-2 bg-muted/20"
+            data-testid="history-filters"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                <Filter className="w-3 h-3" />
+                {labels.filterSource}
+              </div>
+              {filtersDirty && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px] text-muted-foreground"
+                  onClick={resetFilters}
+                  data-testid="button-history-filter-reset"
+                >
+                  {labels.filterReset}
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {SOURCE_KEYS.map((key) => {
+                const meta = SOURCE_META[key];
+                const Icon = meta.icon;
+                const active = sourceFilter.has(key);
+                const count = sourceCounts[key] ?? 0;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggle(sourceFilter, key, setSourceFilter)}
+                    aria-pressed={active}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 h-6 text-[11px] transition-colors ${
+                      active
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-background text-muted-foreground border-border hover:bg-muted"
+                    }`}
+                    data-testid={`button-history-filter-source-${key}`}
+                  >
+                    <Icon className="w-3 h-3" />
+                    <span>{locale === "ar" ? meta.ar : meta.en}</span>
+                    <span className="font-numeric tabular-nums opacity-80">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide pt-1">
+              {labels.filterAction}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {ACTION_KEYS.map((key) => {
+                const active = actionFilter.has(key);
+                const count = actionCounts[key] ?? 0;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggle(actionFilter, key, setActionFilter)}
+                    aria-pressed={active}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 h-6 text-[11px] transition-colors ${
+                      active
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-background text-muted-foreground border-border hover:bg-muted"
+                    }`}
+                    data-testid={`button-history-filter-action-${key}`}
+                  >
+                    <span>{actionLabels[key]}</span>
+                    <span className="font-numeric tabular-nums opacity-80">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="px-5 py-12 text-center text-sm text-muted-foreground" data-testid="history-loading">
@@ -175,12 +320,31 @@ export function HistoryDrawer({
                 {labels.none}
               </p>
             </div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="px-6 py-16 text-center" data-testid="history-empty-filtered">
+              <div className="mx-auto mb-3 inline-flex items-center justify-center w-10 h-10 rounded-md bg-muted/60 border border-border text-muted-foreground">
+                <Filter className="w-4 h-4" />
+              </div>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                {labels.noMatch}
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-3 h-7 text-xs"
+                onClick={resetFilters}
+                data-testid="button-history-filter-reset-empty"
+              >
+                {labels.filterReset}
+              </Button>
+            </div>
           ) : (
             <ol className="relative px-5 py-5 space-y-5">
-              {events.map((ev, i) => {
+              {filteredEvents.map((ev, i) => {
                 const meta = SOURCE_META[ev.source];
                 const Icon = meta.icon;
-                const isLast = i === events.length - 1;
+                const isLast = i === filteredEvents.length - 1;
                 return (
                   <li
                     key={ev.id}
