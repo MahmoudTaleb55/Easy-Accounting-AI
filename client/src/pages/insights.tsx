@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState as SharedErrorState } from "@/components/feedback/error-state";
+import { PeriodChip } from "@/components/dashboard/period-chip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -80,17 +81,20 @@ const severityStyle: Record<Alert["severity"], { bg: string; border: string; ico
 export default function InsightsPage() {
   return (
     <div className="space-y-8" data-testid="page-insights">
-      <header className="space-y-2">
-        <div className="eyebrow text-muted-foreground/80">الذكاء</div>
-        <h1
-          className="font-display text-3xl md:text-4xl tracking-tight text-foreground"
-          data-testid="text-page-title"
-        >
-          مركز القرارات
-        </h1>
-        <p className="text-sm text-muted-foreground max-w-xl">
-          رؤى مالية لحظية تحوّل أرقامك إلى قرارات أفضل — صحة، إنذارات، توقعات، ومحاكاة.
-        </p>
+      <header className="flex items-end justify-between gap-6 flex-wrap">
+        <div className="space-y-2 max-w-2xl">
+          <div className="eyebrow text-muted-foreground/80">الذكاء</div>
+          <h1
+            className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
+            data-testid="text-page-title"
+          >
+            مركز القرارات
+          </h1>
+          <p className="text-sm text-muted-foreground max-w-xl">
+            رؤى مالية لحظية تحوّل أرقامك إلى قرارات أفضل — صحة، إنذارات، توقعات، ومحاكاة.
+          </p>
+        </div>
+        <PeriodChip />
       </header>
 
       <Tabs defaultValue="cockpit" className="w-full">
@@ -224,14 +228,14 @@ function CockpitTab() {
             <div className="border rounded-xl p-4">
               <div className="flex justify-between items-baseline mb-1">
                 <span className="text-muted-foreground text-sm">ضريبة القيمة المضافة (15%)</span>
-                <span className="text-2xl font-bold" data-testid="text-vat">{fmtCurrency(taxes.vat.payable)}</span>
+                <span className="text-2xl font-semibold tabular-nums" data-testid="text-vat">{fmtCurrency(taxes.vat.payable)}</span>
               </div>
               <p className="text-xs text-muted-foreground mt-2">{taxes.vat.note}</p>
             </div>
             <div className="border rounded-xl p-4">
               <div className="flex justify-between items-baseline mb-1">
                 <span className="text-muted-foreground text-sm">الزكاة التقديرية (2.5%)</span>
-                <span className="text-2xl font-bold" data-testid="text-zakat">{fmtCurrency(taxes.zakat.payable)}</span>
+                <span className="text-2xl font-semibold tabular-nums" data-testid="text-zakat">{fmtCurrency(taxes.zakat.payable)}</span>
               </div>
               <p className="text-xs text-muted-foreground mt-2">{taxes.zakat.note}</p>
             </div>

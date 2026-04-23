@@ -36,6 +36,8 @@ import {
   History,
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
+import { usePeriod } from "@/contexts/period-context"
+import { PeriodChip } from "@/components/dashboard/period-chip"
 import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { HistoryDrawer } from "@/components/audit/history-drawer"
@@ -49,6 +51,7 @@ type Filter = "all" | "income" | "expense"
 export default function Transactions() {
   const { locale } = useLocale()
   const fmt = useFormatMoney()
+  const { period } = usePeriod()
   const dfLocale = locale === "ar" ? ar : enUS
   const { data: transactions, isLoading, isError, refetch } = useTransactions()
   const deleteMutation = useDeleteTransaction()
@@ -104,7 +107,14 @@ export default function Transactions() {
   const filtered = useMemo(() => {
     if (!transactions) return []
     const q = search.trim().toLowerCase()
+    const startMs = period.start.getTime()
+    const endMs = period.end.getTime()
     return [...transactions]
+      .filter((tx) => {
+        if (!tx.date) return false
+        const ms = new Date(tx.date).getTime()
+        return ms >= startMs && ms <= endMs
+      })
       .filter((tx) => filter === "all" || tx.type === filter)
       .filter(
         (tx) =>
@@ -114,7 +124,7 @@ export default function Transactions() {
           String(tx.amount).includes(q)
       )
       .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
-  }, [transactions, search, filter])
+  }, [transactions, search, filter, period])
 
   const filterTabs: { key: Filter; label: string }[] = [
     { key: "all", label: t.filterAll },
@@ -136,6 +146,8 @@ export default function Transactions() {
           <p className="text-sm text-muted-foreground">{t.subtitle}</p>
         </div>
 
+        <div className="flex items-center gap-2 flex-wrap">
+          <PeriodChip />
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <WriteGuard>
             <Button
@@ -154,6 +166,7 @@ export default function Transactions() {
             <TransactionForm onSuccess={() => setIsDialogOpen(false)} />
           </DialogContent>
         </Dialog>
+        </div>
       </header>
 
       {/* Toolbar */}

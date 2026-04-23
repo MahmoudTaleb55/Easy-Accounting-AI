@@ -33,6 +33,8 @@ import { ErrorState } from "@/components/feedback/error-state"
 import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
 import type { Account } from "@shared/schema"
 import { useLocale } from "@/contexts/locale-context"
+import { usePeriod } from "@/contexts/period-context"
+import { PeriodChip } from "@/components/dashboard/period-chip"
 import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -55,6 +57,7 @@ interface JE {
 export default function JournalEntriesPage() {
   const { locale } = useLocale()
   const fmt = useFormatMoney()
+  const { period } = usePeriod()
   const dfLocale = locale === "ar" ? ar : enUS
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
@@ -104,9 +107,18 @@ export default function JournalEntriesPage() {
     [locale]
   )
 
-  const { data: entries, isLoading, isError, refetch } = useQuery<JE[]>({
+  const { data: allEntries, isLoading, isError, refetch } = useQuery<JE[]>({
     queryKey: ["/api/journal-entries"],
   })
+  const entries = useMemo(() => {
+    if (!allEntries) return undefined
+    const startMs = period.start.getTime()
+    const endMs = period.end.getTime()
+    return allEntries.filter((je) => {
+      const ms = new Date(je.entryDate).getTime()
+      return ms >= startMs && ms <= endMs
+    })
+  }, [allEntries, period])
   const { data: accounts } = useQuery<Account[]>({ queryKey: ["/api/accounts"] })
   const postable = useMemo(() => (accounts || []).filter((a) => !a.isHeader), [accounts])
 
@@ -171,6 +183,8 @@ export default function JournalEntriesPage() {
           <p className="text-sm text-muted-foreground">{t.subtitle}</p>
         </div>
 
+        <div className="flex items-center gap-2 flex-wrap">
+          <PeriodChip />
         <Dialog open={open} onOpenChange={setOpen}>
           <WriteGuard>
             <Button data-testid="button-new-entry" onClick={() => setOpen(true)}>
@@ -360,6 +374,7 @@ export default function JournalEntriesPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </header>
 
       {/* Entries list */}

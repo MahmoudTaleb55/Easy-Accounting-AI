@@ -98,7 +98,7 @@ export default function FixedAssetsPage() {
       <header className="space-y-2">
         <div className="eyebrow text-muted-foreground/80">الموارد والأصول</div>
         <h1
-          className="font-display text-3xl md:text-4xl tracking-tight text-foreground"
+          className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
           data-testid="text-page-title"
         >
           الأصول الثابتة، تُدار بثقة محاسبية.

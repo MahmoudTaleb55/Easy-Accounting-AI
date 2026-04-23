@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { useTransactions } from "@/hooks/use-transactions"
-import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths, startOfYear } from "date-fns"
+import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from "date-fns"
 import { ar, enUS } from "date-fns/locale"
 import {
   Printer,
@@ -37,6 +37,8 @@ import {
   AreaChart,
 } from "recharts"
 import { useLocale } from "@/contexts/locale-context"
+import { usePeriod } from "@/contexts/period-context"
+import { PeriodChip } from "@/components/dashboard/period-chip"
 import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -48,7 +50,6 @@ const CHART_TOKENS = [
   "hsl(var(--chart-5))",
 ]
 
-type Period = "month" | "3months" | "year" | "all"
 type ViewMode = "analytics" | "ifrs" | "trial-balance" | "balance-sheet" | "analysis"
 
 export default function Reports() {
@@ -56,7 +57,7 @@ export default function Reports() {
   const fmt = useFormatMoney()
   const dfLocale = locale === "ar" ? ar : enUS
   const { data: transactions, isLoading } = useTransactions()
-  const [period, setPeriod] = useState<Period>("3months")
+  const { period } = usePeriod()
   const [viewMode, setViewMode] = useState<ViewMode>("analytics")
 
   const t = useMemo(
@@ -77,11 +78,6 @@ export default function Reports() {
       trial: locale === "ar" ? "ميزان المراجعة" : "Trial balance",
       balance: locale === "ar" ? "المركز المالي" : "Balance sheet",
       analysis: locale === "ar" ? "تحليل ذكي" : "AI analysis",
-      period: locale === "ar" ? "الفترة" : "Period",
-      pMonth: locale === "ar" ? "هذا الشهر" : "This month",
-      p3: locale === "ar" ? "آخر 3 أشهر" : "Last 3 months",
-      pYear: locale === "ar" ? "هذه السنة" : "This year",
-      pAll: locale === "ar" ? "الكل" : "All time",
       kpiIncome: locale === "ar" ? "الإيرادات" : "Revenue",
       kpiExpense: locale === "ar" ? "المصروفات" : "Expenses",
       kpiNet: locale === "ar" ? "صافي الربح" : "Net profit",
@@ -128,13 +124,6 @@ export default function Reports() {
     [locale, fmt],
   )
 
-  const PERIOD_OPTIONS: { key: Period; label: string }[] = [
-    { key: "month", label: t.pMonth },
-    { key: "3months", label: t.p3 },
-    { key: "year", label: t.pYear },
-    { key: "all", label: t.pAll },
-  ]
-
   const VIEW_MODES: { key: ViewMode; label: string; icon: typeof LayoutDashboard }[] = [
     { key: "analytics", label: t.analytics, icon: LayoutDashboard },
     { key: "ifrs", label: t.ifrs, icon: FileText },
@@ -143,22 +132,15 @@ export default function Reports() {
     { key: "analysis", label: t.analysis, icon: Activity },
   ]
 
-  const range = useMemo(() => {
-    const now = new Date()
-    if (period === "month") return { start: startOfMonth(now), end: endOfMonth(now) }
-    if (period === "3months") return { start: startOfMonth(subMonths(now, 2)), end: endOfMonth(now) }
-    if (period === "year") return { start: startOfYear(now), end: endOfMonth(now) }
-    return null
-  }, [period])
+  const range = { start: period.start, end: period.end }
 
   const filteredTx = useMemo(() => {
     if (!transactions) return []
-    if (!range) return transactions
     return transactions.filter((tx) => {
       const d = new Date(tx.date || new Date())
       return isWithinInterval(d, range)
     })
-  }, [transactions, range])
+  }, [transactions, range.start, range.end])
 
   const totals = useMemo(() => {
     let income = 0
@@ -274,18 +256,19 @@ export default function Reports() {
       data-testid="page-reports"
     >
       {/* Header */}
-      <header className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between print:hidden">
-        <div className="space-y-2">
+      <header className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between flex-wrap print:hidden">
+        <div className="space-y-2 max-w-2xl">
           <div className="eyebrow text-muted-foreground/80">{t.eyebrow}</div>
           <h1
-            className="font-display text-3xl md:text-4xl tracking-tight text-foreground"
+            className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
             {t.title}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">{t.subtitle}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodChip />
           <Button
             variant="outline"
             onClick={handleExportCSV}
@@ -302,7 +285,7 @@ export default function Reports() {
         </div>
       </header>
 
-      {/* View mode + period — quiet segmented controls */}
+      {/* View mode — quiet segmented control */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between print:hidden">
         <div className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0">
           <SegmentedControl
@@ -312,27 +295,13 @@ export default function Reports() {
             testIdPrefix="button-view"
           />
         </div>
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="text-xs uppercase tracking-wider text-muted-foreground/80 shrink-0">
-            {t.period}
-          </span>
-          <div className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0 min-w-0">
-            <SegmentedControl
-              options={PERIOD_OPTIONS.map((p) => ({ key: p.key, label: p.label }))}
-              value={period}
-              onChange={setPeriod}
-              testIdPrefix="button-period"
-              compact
-            />
-          </div>
-        </div>
       </div>
 
       {viewMode === "ifrs" && (
         <IfrsIncomeStatement
           transactions={filteredTx}
-          periodStart={range?.start ?? null}
-          periodEnd={range?.end ?? null}
+          periodStart={range.start}
+          periodEnd={range.end}
         />
       )}
 
@@ -343,7 +312,7 @@ export default function Reports() {
       {viewMode === "analysis" && (
         <FinancialAnalysis
           transactions={filteredTx}
-          periodLabel={PERIOD_OPTIONS.find((p) => p.key === period)?.label || ""}
+          periodLabel={`${range.start.toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric" })} – ${range.end.toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", { month: "short", day: "numeric", year: "numeric" })}`}
         />
       )}
 
