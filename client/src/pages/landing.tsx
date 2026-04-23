@@ -1499,6 +1499,318 @@ function Interstitial({ ar }: { ar: boolean }) {
 /*  1 · Hero                                                                  */
 /* ────────────────────────────────────────────────────────────────────────── */
 
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  LIVE JOURNAL THEATRE — signature hero centerpiece                         */
+/*  A real IFRS journal entry, written live, in front of the visitor.         */
+/*  No SaaS landing page in the world has this.                               */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+type TheatreTxn = {
+  sourceAr: string; sourceEn: string
+  narrAr: string;   narrEn: string
+  amount: number
+  debitCode: string;  debitAr: string;  debitEn: string
+  creditCode: string; creditAr: string; creditEn: string
+  standard: string
+  standardNoteAr: string; standardNoteEn: string
+}
+
+const THEATRE_TXNS: TheatreTxn[] = [
+  {
+    sourceAr: "فاتورة سلّة #INV-7821", sourceEn: "Salla invoice #INV-7821",
+    narrAr: "اشتراك منصّة شهري",        narrEn: "Monthly platform subscription",
+    amount: 1840,
+    debitCode: "5210",  debitAr: "اشتراكات تقنيّة",      debitEn: "IT subscriptions",
+    creditCode: "2110", creditAr: "ذمم دائنة — موردين",  creditEn: "Accounts payable",
+    standard: "IFRS 15",
+    standardNoteAr: "إثبات الالتزام عند استلام الخدمة",
+    standardNoteEn: "Recognized on receipt of service",
+  },
+  {
+    sourceAr: "إشعار بنك الراجحي",      sourceEn: "Al-Rajhi bank notice",
+    narrAr: "رسوم تحويل دوليّ",          narrEn: "International wire fee",
+    amount: 32.5,
+    debitCode: "5440",  debitAr: "رسوم بنكيّة",          debitEn: "Bank charges",
+    creditCode: "1010", creditAr: "النقد لدى البنك",      creditEn: "Cash at bank",
+    standard: "IAS 1",
+    standardNoteAr: "مصروف تشغيليّ مباشر",
+    standardNoteEn: "Direct operating expense",
+  },
+  {
+    sourceAr: "تحصيل · أكوا للتجارة",    sourceEn: "Receipt · Acwa Trading",
+    narrAr: "سداد فاتورة #2103",         narrEn: "Settlement of inv #2103",
+    amount: 12750,
+    debitCode: "1010",  debitAr: "النقد لدى البنك",      debitEn: "Cash at bank",
+    creditCode: "1210", creditAr: "ذمم مدينة — عملاء",   creditEn: "Accounts receivable",
+    standard: "IFRS 9",
+    standardNoteAr: "تسوية أداة ماليّة",
+    standardNoteEn: "Financial instrument settlement",
+  },
+  {
+    sourceAr: "كشف الرواتب · أبريل ٢٠٢٦", sourceEn: "Payroll register · Apr 2026",
+    narrAr: "استحقاق رواتب الفريق",        narrEn: "Team salary accrual",
+    amount: 28400,
+    debitCode: "5810",  debitAr: "رواتب وأجور",          debitEn: "Salaries & wages",
+    creditCode: "2310", creditAr: "رواتب مستحقّة الدفع",  creditEn: "Accrued payroll",
+    standard: "IAS 19",
+    standardNoteAr: "منافع موظفين قصيرة الأجل",
+    standardNoteEn: "Short-term employee benefits",
+  },
+]
+
+function fmtArDigits(s: string) {
+  return s.replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[parseInt(d, 10)])
+}
+function fmtAmount(n: number, ar: boolean) {
+  const s = n.toLocaleString("en-US", {
+    minimumFractionDigits: n % 1 ? 2 : 0,
+    maximumFractionDigits: 2,
+  })
+  return ar ? fmtArDigits(s) : s
+}
+
+function LiveJournalTheatre({ t }: { t: Dict }) {
+  const ar = t.ar
+  const cur = ar ? "ر.س" : "SAR"
+
+  const [idx, setIdx] = useState(0)
+  const [phase, setPhase] = useState(0) // 0..4
+  const [tick, setTick] = useState(0)   // counter for "closed today" pulse
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPhase(p => {
+        if (p >= 4) {
+          setIdx(i => (i + 1) % THEATRE_TXNS.length)
+          setTick(c => c + 1)
+          return 0
+        }
+        return p + 1
+      })
+    }, 1100)
+    return () => clearInterval(id)
+  }, [])
+
+  const txn = THEATRE_TXNS[idx]
+  const closedToday = 24187 + tick
+  const closedStr = ar ? fmtArDigits(closedToday.toLocaleString("en-US")) : closedToday.toLocaleString("en-US")
+
+  const eyebrow = (cls = "") =>
+    cn("text-2xs font-medium", ar ? "tracking-normal" : "font-mono uppercase tracking-[0.18em]", cls)
+
+  return (
+    <div
+      className={cn(
+        "col-span-12 rounded-3xl border border-card-border bg-card",
+        "p-6 lg:p-9 relative overflow-hidden",
+      )}
+      data-testid="live-journal-theatre"
+    >
+      {/* HEADER */}
+      <div className="flex flex-wrap items-end justify-between gap-4 pb-6 border-b border-card-border">
+        <div className="min-w-0 flex-1">
+          <div className={cn(eyebrow("text-muted-foreground inline-flex items-center gap-2 mb-3"))}>
+            <span aria-hidden className="size-1.5 rounded-full" style={{ background: "hsl(var(--luxe))" }} />
+            {ar ? "مسرح القَيد الحيّ" : "Live journal theatre"}
+          </div>
+          <h2
+            className="font-display font-semibold tracking-tight text-foreground leading-[1.15]"
+            style={{ fontSize: "clamp(1.6rem, 2.6vw, 2.4rem)" }}
+          >
+            {ar
+              ? <>قَيد محاسبيّ يُكتَب أمامك <span style={{ color: "hsl(var(--luxe))" }}>الآن</span>.</>
+              : <>A real IFRS entry, written <span style={{ color: "hsl(var(--luxe))" }}>live</span>.</>
+            }
+          </h2>
+          <p className="mt-2 text-sm lg:text-base text-muted-foreground max-w-2xl">
+            {ar
+              ? "كل ٤ ثوانٍ، يستلم الذكاء مُحفِّزاً، يُفكِّر، ويُغلق قَيداً متوازناً مختوماً بمعيار IFRS — بدون يدٍ بشريّة."
+              : "Every 4 seconds, the AI receives a trigger, reasons, and posts a balanced entry sealed with an IFRS standard — no human in the loop."}
+          </p>
+        </div>
+        <div className={cn(eyebrow("text-muted-foreground inline-flex items-center gap-2 self-end"))}>
+          <span aria-hidden className="size-2 rounded-full bg-success animate-pulse" />
+          {ar ? "بثٌّ مباشر" : "live broadcast"}
+        </div>
+      </div>
+
+      {/* THE PERFORMANCE */}
+      <div className="grid grid-cols-12 gap-4 lg:gap-5 mt-6">
+        {/* TRIGGER + REASONING (left) */}
+        <div className={cn("col-span-12 lg:col-span-4 rounded-2xl border border-card-border bg-muted/40 p-5 lg:p-6")}>
+          <div className={eyebrow("text-muted-foreground mb-2")}>
+            {ar ? "المُحفِّز" : "trigger"}
+          </div>
+          <div className="text-base font-semibold text-foreground leading-snug">
+            {ar ? txn.sourceAr : txn.sourceEn}
+          </div>
+          <div className="mt-1 text-sm text-muted-foreground leading-snug">
+            {ar ? txn.narrAr : txn.narrEn}
+          </div>
+
+          <div className="mt-5 pt-5 border-t border-border/60">
+            <div className={eyebrow("text-muted-foreground mb-2 inline-flex items-center gap-1.5")}>
+              <span aria-hidden className="size-1 rounded-full" style={{ background: "hsl(var(--luxe))" }} />
+              {ar ? "تفسير الذكاء" : "AI reasoning"}
+            </div>
+            <div
+              className={cn(
+                "text-sm leading-relaxed transition-all duration-500 text-foreground",
+                phase >= 1 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1",
+              )}
+            >
+              <span style={{ color: "hsl(var(--luxe))" }} className="font-semibold me-1.5">
+                {ar ? "←" : "→"}
+              </span>
+              {ar ? txn.standardNoteAr : txn.standardNoteEn}
+            </div>
+            <div
+              className={cn(
+                "mt-3 inline-flex items-center gap-1.5 text-2xs text-muted-foreground transition-opacity duration-500",
+                phase >= 1 ? "opacity-100" : "opacity-0",
+              )}
+            >
+              <span aria-hidden className="size-1.5 rounded-full bg-foreground/40" />
+              {ar ? `معالجة في ${fmtArDigits("0.42")} ث` : "processed in 0.42s"}
+            </div>
+          </div>
+        </div>
+
+        {/* THE ENTRY ITSELF (middle, peach) */}
+        <div className={cn(
+          "col-span-12 lg:col-span-5 rounded-2xl border border-primary-border bg-primary text-primary-foreground p-5 lg:p-6",
+        )}>
+          <div className="flex items-baseline justify-between mb-4">
+            <div className={eyebrow("text-foreground/65")}>
+              {ar ? "القَيد المُسجَّل" : "Posted entry"}
+            </div>
+            <div className={eyebrow("text-foreground/55 tabular-nums")}>
+              #{ar ? fmtArDigits((2478 + tick).toString()) : (2478 + tick).toString()}
+            </div>
+          </div>
+
+          {/* Header strip */}
+          <div className="grid grid-cols-12 gap-x-2 pb-2 border-b border-foreground/15">
+            <div className={cn("col-span-2", eyebrow("text-foreground/55"))}>{ar ? "حساب" : "acct"}</div>
+            <div className={cn("col-span-5", eyebrow("text-foreground/55"))}>{ar ? "البيان" : "name"}</div>
+            <div className={cn("col-span-2 text-end", eyebrow("text-foreground/55"))}>{ar ? "مدين" : "debit"}</div>
+            <div className={cn("col-span-3 text-end", eyebrow("text-foreground/55"))}>{ar ? "دائن" : "credit"}</div>
+          </div>
+
+          {/* Debit row */}
+          <div className={cn(
+            "grid grid-cols-12 gap-x-2 items-baseline mt-3 transition-all duration-500",
+            phase >= 2 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+          )}>
+            <span className="col-span-2 font-mono text-sm text-foreground/70 tabular-nums">{txn.debitCode}</span>
+            <span className="col-span-5 text-foreground text-sm leading-snug">
+              {ar ? txn.debitAr : txn.debitEn}
+            </span>
+            <span className="col-span-2 text-end tabular-nums font-semibold text-foreground text-sm">
+              {fmtAmount(txn.amount, ar)}
+            </span>
+            <span className="col-span-3 text-end text-foreground/35">—</span>
+          </div>
+
+          {/* Credit row */}
+          <div className={cn(
+            "grid grid-cols-12 gap-x-2 items-baseline mt-2 transition-all duration-500",
+            phase >= 3 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
+          )}>
+            <span className="col-span-2 font-mono text-sm text-foreground/70 tabular-nums">{txn.creditCode}</span>
+            <span className="col-span-5 text-foreground text-sm leading-snug">
+              {ar ? txn.creditAr : txn.creditEn}
+            </span>
+            <span className="col-span-2 text-end text-foreground/35">—</span>
+            <span className="col-span-3 text-end tabular-nums font-semibold text-foreground text-sm">
+              {fmtAmount(txn.amount, ar)}
+            </span>
+          </div>
+
+          {/* Balance bar */}
+          <div className="mt-5 pt-4 border-t border-foreground/15 flex items-center justify-between gap-3">
+            <div className={cn(
+              "inline-flex items-center gap-2 text-sm font-semibold transition-all duration-500",
+              phase >= 4 ? "opacity-100 scale-100" : "opacity-0 scale-95",
+            )}>
+              <span className="grid place-items-center size-5 rounded-full bg-foreground text-background">
+                <Check className="size-3" strokeWidth={3} />
+              </span>
+              {ar ? "متوازن" : "Balanced"}
+            </div>
+            <div className="text-xs text-foreground/65 tabular-nums">
+              {fmtAmount(txn.amount, ar)} {cur}
+            </div>
+          </div>
+        </div>
+
+        {/* IFRS SEAL (right, ink) */}
+        <div className={cn(
+          "col-span-12 lg:col-span-3 rounded-2xl border border-foreground bg-foreground text-background p-5 lg:p-6 flex flex-col",
+        )}>
+          <div className={eyebrow("text-background/70 mb-3")}>
+            {ar ? "ختم المعيار" : "Standard seal"}
+          </div>
+          <div className={cn(
+            "transition-all duration-700",
+            phase >= 4 ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-1",
+          )}>
+            <div className="font-display font-semibold tracking-tight text-background leading-none"
+                 style={{ fontSize: "clamp(2rem, 3.4vw, 3rem)" }}>
+              {txn.standard}
+            </div>
+            <div className="mt-3 text-sm text-background/80 leading-snug">
+              {ar ? txn.standardNoteAr : txn.standardNoteEn}
+            </div>
+          </div>
+          <div className="mt-auto pt-5">
+            <div className="flex items-center gap-2 text-2xs text-background/65">
+              <span aria-hidden className="size-1.5 rounded-full" style={{ background: "hsl(var(--luxe))" }} />
+              {ar ? "موثَّق على السلسلة الزمنيّة" : "stamped on the timeline"}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BOTTOM COUNTER STRIP */}
+      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 pt-5 border-t border-border/60">
+        <div className="rounded-xl bg-muted/40 border border-card-border p-4">
+          <div className={eyebrow("text-muted-foreground mb-1.5")}>
+            {ar ? "قيود مُغلقة اليوم" : "entries closed today"}
+          </div>
+          <div className="font-display text-2xl font-semibold tabular-nums text-foreground leading-none">
+            {closedStr}
+          </div>
+        </div>
+        <div className="rounded-xl bg-muted/40 border border-card-border p-4">
+          <div className={eyebrow("text-muted-foreground mb-1.5")}>
+            {ar ? "متوسط زمن القَيد" : "avg post time"}
+          </div>
+          <div className="font-display text-2xl font-semibold tabular-nums text-foreground leading-none">
+            {ar ? `${fmtArDigits("4.2")} ث` : "4.2s"}
+          </div>
+        </div>
+        <div className="rounded-xl bg-muted/40 border border-card-border p-4">
+          <div className={eyebrow("text-muted-foreground mb-1.5")}>
+            {ar ? "دقّة التصنيف" : "classification accuracy"}
+          </div>
+          <div className="font-display text-2xl font-semibold tabular-nums text-foreground leading-none">
+            {ar ? `${fmtArDigits("99.7")}٪` : "99.7%"}
+          </div>
+        </div>
+        <div className="rounded-xl bg-muted/40 border border-card-border p-4">
+          <div className={eyebrow("text-muted-foreground mb-1.5")}>
+            {ar ? "معايير IFRS مُطبَّقة" : "IFRS standards applied"}
+          </div>
+          <div className="font-display text-2xl font-semibold tabular-nums text-foreground leading-none">
+            {ar ? fmtArDigits("47") : "47"}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Hero({ t }: { t: Dict }) {
   const ar = t.ar
   const cur = ar ? "ر.س" : "SAR"
@@ -1640,59 +1952,8 @@ function Hero({ t }: { t: Dict }) {
             </div>
           </div>
 
-          {/* ──────────────────────── Row 2 ──────────────────────── */}
-
-          {/* C · Status balanced (blue) cols 1-3 */}
-          <div className={cn(cardBlue, "col-span-6 lg:col-span-3 p-6")}>
-            <div className={eyebrow("text-background/80 mb-2")}>{t.hero.entry.title}</div>
-            <div className="text-2xl font-semibold tracking-tight">
-              {t.hero.entry.balanced}
-            </div>
-            <div className="mt-4 flex items-center gap-2 text-sm text-background/80">
-              <span aria-hidden className="size-2 rounded-full bg-background" />
-              {ar ? "قَيد #٢٤٧٨" : "Entry #2478"}
-            </div>
-          </div>
-
-          {/* D · Latest journal entry preview (white) cols 4-8 */}
-          <div className={cn(card, "col-span-12 lg:col-span-5 p-6")}>
-            <div className={eyebrow("text-muted-foreground mb-3")}>
-              {ar ? "آخر قَيد محاسبيّ" : "Latest journal entry"}
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="grid grid-cols-12 items-baseline gap-x-3">
-                <span className="col-span-2 font-mono text-muted-foreground">5110</span>
-                <span className="col-span-6 text-foreground">{t.hero.entry.marketing}</span>
-                <span className="col-span-3 text-end tabular-nums font-semibold text-foreground">{t.hero.entry.amount}</span>
-                <span className="col-span-1 text-end text-muted-foreground">—</span>
-              </div>
-              <div className="grid grid-cols-12 items-baseline gap-x-3">
-                <span className="col-span-2 font-mono text-muted-foreground">1010</span>
-                <span className="col-span-6 text-foreground">{t.hero.entry.cash}</span>
-                <span className="col-span-3 text-end text-muted-foreground">—</span>
-                <span className="col-span-1 text-end tabular-nums font-semibold text-foreground">{t.hero.entry.amount}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* E · Live edition meta (white) cols 9-12 */}
-          <div className={cn(card, "col-span-6 lg:col-span-4 p-6 flex flex-col")}>
-            <div className={eyebrow("text-muted-foreground mb-2")}>
-              {ar ? "محدَّث الآن" : "live now"}
-            </div>
-            <div className="text-xl font-semibold tracking-tight text-foreground">
-              {ar ? "الإصدار 5.2" : "Edition 5.2"}
-            </div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              {ar ? "٢٤,٠٠٠ قَيد مُسجَّل اليوم" : "24,000 entries posted today"}
-            </div>
-            <div className="mt-auto pt-4 flex items-center gap-2">
-              <span aria-hidden className="size-2 rounded-full bg-[hsl(var(--success))]" />
-              <span className="text-2xs font-medium text-muted-foreground">
-                {ar ? "كشف يوميّ" : "daily statement"}
-              </span>
-            </div>
-          </div>
+          {/* ──────────────────────── Row 2 — LIVE JOURNAL THEATRE ──────────────────────── */}
+          <LiveJournalTheatre t={t} />
         </div>
       </div>
     </section>
