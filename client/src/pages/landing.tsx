@@ -1117,27 +1117,58 @@ function eyebrowCls(ar: boolean, extra = "") {
 }
 
 /** Section wrapper — cream surface, generous Clean breathing room. */
+type BentoSectionProps = Omit<
+  React.ComponentPropsWithoutRef<"section">,
+  "children"
+> & {
+  /** Apple-style alternating section backgrounds. */
+  tone?: "cream" | "soft" | "ink"
+  /** Anchor with the signature brand-mesh treatment (marketing only). */
+  brandMesh?: boolean
+  /** Override the radial mask radii — tune per-section to feather softly. */
+  meshMask?: string
+  children: React.ReactNode
+}
+
 function BentoSection({
   id,
   className,
   tone = "cream",
+  brandMesh = false,
+  meshMask,
   children,
-}: {
-  id?: string
-  className?: string
-  /** Apple-style alternating section backgrounds. */
-  tone?: "cream" | "soft" | "ink"
-  children: React.ReactNode
-}) {
+  ...rest
+}: BentoSectionProps) {
   const toneCls =
     tone === "ink"
       ? "bg-foreground text-background"
       : tone === "soft"
       ? "bg-[hsl(34_28%_93%)]"
       : "bg-background"
+  const defaultMask = "radial-gradient(80% 70% at 50% 30%, black, transparent)"
+  const mask = meshMask ?? defaultMask
   return (
-    <section id={id} className={cn("relative py-24 lg:py-36", toneCls, className)}>
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">{children}</div>
+    <section
+      id={id}
+      className={cn(
+        "relative py-24 lg:py-36 overflow-hidden",
+        toneCls,
+        brandMesh && "brand-grain",
+        className,
+      )}
+      {...rest}
+    >
+      {brandMesh && (
+        <div
+          aria-hidden
+          className={cn("absolute inset-0 -z-0 brand-mesh pointer-events-none")}
+          style={{
+            WebkitMaskImage: mask,
+            maskImage: mask,
+          }}
+        />
+      )}
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">{children}</div>
     </section>
   )
 }
@@ -2228,10 +2259,20 @@ function Hero({ t }: { t: Dict }) {
   return (
     <section
       id="cover"
-      className="relative bg-background pt-14 lg:pt-20 pb-24 lg:pb-36"
+      className="relative overflow-hidden bg-background pt-14 lg:pt-20 pb-24 lg:pb-36 brand-grain"
       data-testid="hero-bento"
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-0 brand-mesh pointer-events-none"
+        style={{
+          WebkitMaskImage:
+            "radial-gradient(85% 75% at 30% 25%, black, transparent)",
+          maskImage:
+            "radial-gradient(85% 75% at 30% 25%, black, transparent)",
+        }}
+      />
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Bento grid — 12 columns, two rows */}
         <div className="grid grid-cols-12 gap-4 lg:gap-5">
           {/* ──────────────────────── Row 1 ──────────────────────── */}
@@ -4539,7 +4580,11 @@ function Pricing({ t }: { t: Dict }) {
     k === "growth" ? "lg:col-span-5" : k === "starter" ? "lg:col-span-3" : "lg:col-span-4"
 
   return (
-    <BentoSection id="pricing">
+    <BentoSection
+      id="pricing"
+      brandMesh
+      meshMask="radial-gradient(70% 55% at 50% 18%, black, transparent)"
+    >
       <SectionHead ar={t.ar} num="15" eyebrow={p.eyebrow} title={p.title} lead={p.lead} />
 
       {/* Cost of waiting strip — peach card */}
@@ -4736,7 +4781,12 @@ function formatYearly(monthly: string, mult: number, ar: boolean): string {
 
 function FAQ({ t }: { t: Dict }) {
   return (
-    <BentoSection id="faq" tone="soft">
+    <BentoSection
+      id="faq"
+      tone="soft"
+      brandMesh
+      meshMask="radial-gradient(60% 50% at 30% 20%, black, transparent)"
+    >
       <SectionHead ar={t.ar} num="16" eyebrow={t.faq.eyebrow} title={t.faq.title} align="stack" />
       <div className={cn(bentoCard, "max-w-4xl mx-auto p-2 lg:p-4")}>
         <Accordion type="single" collapsible className="">
@@ -4763,7 +4813,12 @@ function FAQ({ t }: { t: Dict }) {
 function FinalCTA({ t }: { t: Dict }) {
   const f = t.finalCta
   return (
-    <BentoSection id="cta" data-testid="section-final-cta">
+    <BentoSection
+      id="cta"
+      brandMesh
+      meshMask="radial-gradient(75% 60% at 50% 40%, black, transparent)"
+      data-testid="section-final-cta"
+    >
       <div className={cn(bentoCardInk, "relative overflow-hidden p-10 lg:p-20")}>
         <div className="flex items-baseline gap-3 mb-10 lg:mb-14 text-background/65">
           <LuxeDot />

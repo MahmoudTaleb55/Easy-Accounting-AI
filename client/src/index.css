@@ -424,8 +424,19 @@
 
   /* — Brand-mesh: signature surface treatment for hero / brand moments.
      Two soft, off-axis radials in the brand palette over the page background.
-     Use sparingly — never on dense product chrome. Pair with an inset radial
-     mask to keep edges feathered. — */
+     Pair with an inset radial mask to keep edges feathered.
+
+     ALLOWED: marketing routes only — landing hero, demo hero, landing
+     pricing/FAQ/final-CTA section openers, auth shell aside, styleguide
+     header. Future public routes may opt-in similarly.
+
+     FORBIDDEN: dense product-app canvases — dashboard, transactions,
+     reports, insights, journal-entries, fixed-assets, hr, settings,
+     inbox, and the tables / forms / sidebars rendered inside them.
+     Marketing forms (e.g. the demo request form sitting inside a hero
+     section) are fine — the prohibition is about working canvases the
+     user scans for hours, not brand moments that happen to contain a
+     form card. — */
   .brand-mesh {
     background-image:
       radial-gradient(60% 50% at 22% 28%, hsl(var(--primary) / 0.16), transparent 60%),

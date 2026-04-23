@@ -73,7 +73,18 @@ export default function DemoPage() {
     <div className="bg-background text-foreground min-h-screen flex flex-col" dir={dir}>
       <AppNavbar />
       <main className="flex-1">
-        <section className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
+        <section className="relative overflow-hidden brand-grain">
+          <div
+            aria-hidden
+            className="absolute inset-0 -z-0 brand-mesh pointer-events-none"
+            style={{
+              WebkitMaskImage:
+                "radial-gradient(75% 65% at 25% 20%, black, transparent)",
+              maskImage:
+                "radial-gradient(75% 65% at 25% 20%, black, transparent)",
+            }}
+          />
+          <div className="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
           <div className="grid lg:grid-cols-12 gap-12 lg:gap-16">
             <div className="lg:col-span-5">
               <div className="eyebrow mb-3">{t.eyebrow}</div>
@@ -185,6 +196,7 @@ export default function DemoPage() {
                 </form>
               )}
             </div>
+          </div>
           </div>
         </section>
       </main>
