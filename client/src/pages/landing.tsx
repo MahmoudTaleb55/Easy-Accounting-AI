@@ -1089,6 +1089,118 @@ function CtaArrow({ ar }: { ar: boolean }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
+/*  Bento × Clean × Contemporary — shared design primitives                   */
+/*  Use these everywhere instead of one-off ad-hoc card classes.              */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/** White bento card on cream — the default surface for any block of content. */
+const bentoCard       = "rounded-3xl border border-card-border bg-card"
+/** Peach bento card — for primary attention moments (KPI hero, CTA cluster). */
+const bentoCardPeach  = "rounded-3xl border border-primary-border bg-primary text-primary-foreground"
+/** Dusty blue bento card — for secondary status / trust moments. */
+const bentoCardBlue   = "rounded-3xl border border-[hsl(208_35%_72%)] bg-[hsl(208_45%_84%)] text-foreground"
+/** Ink card — monumental dark moments (hero CTAs, signature kpi rails). */
+const bentoCardInk    = "rounded-3xl border border-foreground bg-foreground text-background"
+/** Muted soft card — for subdued nested cards inside a larger card. */
+const bentoCardSoft   = "rounded-2xl border border-card-border bg-muted/40"
+
+/** Eyebrow text helper — never apply Latin mono+uppercase to Arabic glyphs. */
+function eyebrowCls(ar: boolean, extra = "") {
+  return cn(
+    "text-2xs font-medium",
+    ar ? "tracking-normal" : "font-mono uppercase tracking-[0.18em]",
+    extra,
+  )
+}
+
+/** Section wrapper — cream surface, generous Clean breathing room. */
+function BentoSection({
+  id,
+  className,
+  children,
+}: {
+  id?: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <section id={id} className={cn("relative bg-background py-16 lg:py-24", className)}>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">{children}</div>
+    </section>
+  )
+}
+
+/** Section header — chapter index + eyebrow + title + lead, cream-mode only. */
+function SectionHead({
+  ar,
+  num,
+  eyebrow,
+  title,
+  italic,
+  lead,
+  align = "split",
+}: {
+  ar: boolean
+  num: string
+  eyebrow?: string
+  title: React.ReactNode
+  italic?: React.ReactNode
+  lead?: React.ReactNode
+  align?: "split" | "stack"
+}) {
+  const isStack = align === "stack"
+  return (
+    <header className={cn("mb-10 lg:mb-14", isStack ? "max-w-3xl" : "grid gap-8 lg:gap-12 lg:grid-cols-12 items-end")}>
+      <div className={cn(isStack ? "" : "lg:col-span-7")}>
+        <div className={eyebrowCls(ar, "mb-3 text-muted-foreground inline-flex items-center gap-2")}>
+          <span className="inline-flex h-5 items-center rounded-full bg-foreground/5 px-2 font-mono tracking-[0.16em] text-foreground/55">
+            {num}
+          </span>
+          {eyebrow}
+        </div>
+        <h2
+          className={cn(
+            "text-foreground tracking-tight",
+            ar
+              ? "font-semibold leading-[1.15] text-[clamp(1.875rem,3.6vw,2.75rem)]"
+              : "font-display tracking-[-0.02em] leading-[1.05] text-[clamp(2rem,4vw,3.25rem)]",
+          )}
+        >
+          {title}
+          {italic && (
+            <>
+              {" "}
+              <span className={cn(ar ? "text-foreground/65" : "italic font-light text-foreground/65")}>{italic}</span>
+            </>
+          )}
+        </h2>
+      </div>
+      {lead && (
+        <p
+          className={cn(
+            "text-base lg:text-lg leading-[1.7] text-muted-foreground max-w-xl",
+            isStack ? "mt-5" : "lg:col-span-5 lg:pl-6",
+          )}
+        >
+          {lead}
+        </p>
+      )}
+    </header>
+  )
+}
+
+/** Tiny luxe magenta dot — signature accent. Use sparingly. */
+function LuxeDot({ className = "" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("inline-block w-1.5 h-1.5 rounded-full", className)}
+      style={{ background: "hsl(var(--luxe))" }}
+    />
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
 /*  Editorial chapter opener — used by every section to establish narrative   */
 /*  spine. Massive serif title (Latin) / weighted Arabic, chapter mark,       */
 /*  optional italic resolve line, optional lead. Adapts to dark/light bands.  */
@@ -1592,56 +1704,71 @@ function Hero({ t }: { t: Dict }) {
 /* ────────────────────────────────────────────────────────────────────────── */
 
 function TrustStrip({ t }: { t: Dict }) {
+  const ar = t.ar
   const pillarIcon: Record<string, React.ReactNode> = {
-    shield: <ShieldCheck className="size-3.5" />,
-    scale:  <Scale       className="size-3.5" />,
-    lock:   <Lock        className="size-3.5" />,
-    globe:  <Globe2      className="size-3.5" />,
+    shield: <ShieldCheck className="size-4" />,
+    scale:  <Scale       className="size-4" />,
+    lock:   <Lock        className="size-4" />,
+    globe:  <Globe2      className="size-4" />,
   }
   return (
-    <section id="trust" className="border-y border-border ">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Eyebrow + headline row */}
-        <div className="py-8 lg:py-10 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 border-b border-border/60">
+    <BentoSection id="trust" className="py-10 lg:py-14">
+      <div className={cn(bentoCard, "p-6 lg:p-8")} data-testid="trust-card">
+        {/* Top row — eyebrow + verified pip */}
+        <div className="flex flex-wrap items-end justify-between gap-4 pb-5 lg:pb-6 border-b border-border/60">
           <div>
-            <div className="eyebrow eyebrow-lead mb-2"><span className="chapter-index">01</span>{t.trust.eyebrow}</div>
+            <div className={eyebrowCls(ar, "mb-2 text-muted-foreground inline-flex items-center gap-2")}>
+              <LuxeDot />
+              {t.trust.eyebrow}
+            </div>
             <div className="text-base lg:text-lg leading-relaxed text-foreground max-w-2xl">
               <span className="font-semibold">{t.trust.headline}</span>{" "}
               <span className="text-muted-foreground">{t.trust.sub1}</span>
             </div>
           </div>
-          <div className="font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground inline-flex items-center gap-2">
+          <div className={eyebrowCls(ar, "text-muted-foreground inline-flex items-center gap-2")}>
             <span className="size-1.5 rounded-full bg-success" aria-hidden />
-            <span>verified · {new Date().getFullYear()}</span>
+            <span>{ar ? "موثَّق · ٢٠٢٦" : `verified · ${new Date().getFullYear()}`}</span>
           </div>
         </div>
 
-        {/* Bloomberg-style ticker — regulators + metrics on one rule, hairline dividers, mono numerics */}
-        <div className="py-6 lg:py-7 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 divide-x divide-border [&>*]:px-4 lg:[&>*]:px-5 first:[&>*]:ps-0 last:[&>*]:pe-0 rtl:divide-x-reverse">
+        {/* Pillars — 4 soft-tone tiles, then metrics row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 pt-5 lg:pt-6">
           {t.trust.pillars.map((p) => (
-            <div key={p.l} className="flex flex-col gap-1.5 min-w-0" data-testid={`pillar-${p.k}`}>
-              <div className="font-mono text-2xs uppercase tracking-[0.16em] text-muted-foreground inline-flex items-center gap-1.5">
-                <span className="text-foreground/60">{pillarIcon[p.k]}</span>
-                <span className="truncate">{p.l}</span>
-                {p.k === "shield" && (
-                  <span className="inline-flex size-1 rounded-full bg-success ms-0.5" aria-hidden />
-                )}
+            <div
+              key={p.l}
+              className={cn(bentoCardSoft, "p-4 lg:p-5 flex items-start gap-3")}
+              data-testid={`pillar-${p.k}`}
+            >
+              <span className="grid place-items-center size-9 rounded-xl bg-card border border-card-border text-foreground/75 flex-shrink-0">
+                {pillarIcon[p.k]}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className={eyebrowCls(ar, "mb-1 text-muted-foreground")}>{p.l}</div>
+                <div className="text-sm text-foreground leading-snug">{p.c}</div>
               </div>
-              <div className="text-xs text-foreground leading-snug truncate" title={p.c}>{p.c}</div>
             </div>
           ))}
+        </div>
+
+        {/* Metrics rail */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mt-3 lg:mt-4">
           {t.trust.metrics.map((m) => (
-            <div key={m.l} className="flex flex-col gap-1.5 min-w-0">
-              <div className="font-mono text-2xs uppercase tracking-[0.16em] text-muted-foreground truncate">{m.l}</div>
+            <div key={m.l} className={cn(bentoCardSoft, "p-4 lg:p-5")}>
+              <div className={eyebrowCls(ar, "mb-2 text-muted-foreground")}>{m.l}</div>
               <div className={cn(
                 "text-foreground leading-none",
-                m.mono ? "font-mono text-base" : "font-display text-xl font-semibold tracking-tight",
-              )}>{m.v}</div>
+                m.mono
+                  ? "font-mono text-lg lg:text-xl tabular-nums"
+                  : "font-display text-2xl font-semibold tracking-tight",
+              )}>
+                {m.v}
+              </div>
             </div>
           ))}
         </div>
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -1650,58 +1777,73 @@ function TrustStrip({ t }: { t: Dict }) {
 /* ────────────────────────────────────────────────────────────────────────── */
 
 function WhyDifferent({ t }: { t: Dict }) {
+  const ar = t.ar
   return (
-    <section id="platform" className="py-28 lg:py-40 border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter
-          ar={t.ar}
-          num="02"
-          eyebrow={t.why.eyebrow}
-          title={t.why.title1}
-          italic={t.why.title2}
-          lead={
-            <>
-              {t.why.lead}{" "}
-              <span className="text-muted-foreground">{t.why.sub}</span>
-            </>
-          }
-        />
+    <BentoSection id="platform" className="py-20 lg:py-28">
+      <SectionHead
+        ar={ar}
+        num="02"
+        eyebrow={t.why.eyebrow}
+        title={t.why.title1}
+        italic={t.why.title2}
+        lead={<>{t.why.lead} <span className="text-foreground/55">{t.why.sub}</span></>}
+      />
 
-        {/* Principles — typographic only, hairline-divided rows. No cards, no grid noise. */}
-        <div className="border-t border-border">
-          {t.why.principles.map((p, i) => (
-            <div
+      {/* Principles — bento grid: each principle a white card with a peach number block */}
+      <div className="grid gap-4 lg:gap-5 lg:grid-cols-2">
+        {t.why.principles.map((p, i) => {
+          // Make the first principle span both columns as a featured monumental card
+          const featured = i === 0
+          return (
+            <article
               key={p.n}
-              className="grid lg:grid-cols-12 gap-6 lg:gap-12 py-10 lg:py-14 border-b border-border group"
+              className={cn(
+                bentoCard,
+                "p-7 lg:p-9 flex flex-col gap-5",
+                featured && "lg:col-span-2 lg:p-12",
+              )}
               data-testid={`principle-${i}`}
             >
-              <div className="lg:col-span-3 flex lg:flex-col gap-3 lg:gap-2">
-                <span className="font-mono text-2xs uppercase tracking-[0.22em] text-muted-foreground">
-                  {t.ar ? `المبدأ ${String(i + 1).padStart(2, "0")}` : `Principle ${String(i + 1).padStart(2, "0")}`}
-                </span>
-                <span className="font-mono text-xs text-primary tracking-[0.18em]">{p.n}</span>
-              </div>
-              <div className="lg:col-span-9">
-                <h3
+              <div className="flex items-center gap-4">
+                <div
                   className={cn(
-                    "text-[clamp(1.5rem,2.8vw,2.4rem)] mb-4 max-w-3xl",
-                    t.ar
-                      ? "font-semibold leading-[1.25]"
-                      : "font-display tracking-[-0.012em] leading-[1.08]",
-                    "text-foreground",
+                    "grid place-items-center rounded-2xl border border-primary-border bg-primary text-primary-foreground",
+                    featured ? "size-16 text-2xl" : "size-12 text-lg",
+                    "font-display font-semibold tracking-tight",
                   )}
+                  aria-hidden
                 >
-                  {p.t}
-                </h3>
-                <p className="text-base lg:text-lg leading-[1.65] text-muted-foreground max-w-3xl">
-                  {p.b}
-                </p>
+                  {p.n}
+                </div>
+                <div className={eyebrowCls(ar, "text-muted-foreground")}>
+                  {ar ? `المبدأ ${String(i + 1).padStart(2, "0")}` : `Principle ${String(i + 1).padStart(2, "0")}`}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+              <h3
+                className={cn(
+                  "text-foreground max-w-3xl",
+                  featured
+                    ? ar
+                      ? "font-semibold leading-[1.18] text-[clamp(1.75rem,3.4vw,2.5rem)]"
+                      : "font-display tracking-[-0.018em] leading-[1.08] text-[clamp(2rem,3.8vw,2.75rem)]"
+                    : ar
+                      ? "font-semibold leading-[1.22] text-2xl lg:text-[1.75rem]"
+                      : "font-display tracking-[-0.012em] leading-[1.12] text-[1.625rem] lg:text-3xl",
+                )}
+              >
+                {p.t}
+              </h3>
+              <p className={cn(
+                "leading-[1.7] text-muted-foreground max-w-2xl",
+                featured ? "text-base lg:text-lg" : "text-base",
+              )}>
+                {p.b}
+              </p>
+            </article>
+          )
+        })}
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -1711,148 +1853,97 @@ function WhyDifferent({ t }: { t: Dict }) {
 
 function CoreCapabilities({ t }: { t: Dict }) {
   const c = t.capabilities
-  // Echo the hero's vocabulary — second dark band, deliberately composed
-  const D_BG    = "hsl(220 18% 6%)"
-  const D_INK   = "hsl(40 18% 95%)"
-  const D_MUTE  = "hsl(40 6% 62%)"
-  const D_LINE  = "hsl(220 10% 16%)"
-  const D_GLOW  = "hsl(158 70% 52%)"
-  const D_CARD  = "hsl(220 14% 9%)"
-  const D_GLOW_18 = "hsla(158, 70%, 52%, 0.18)"
+  const ar = t.ar
 
-  // Other capabilities, listed editorially (not in a grid)
   const otherCaps = [
-    { icon: <Bot className="size-4" />,        title: c.ai.title,      body: c.ai.body },
-    { icon: <Globe2 className="size-4" />,     title: c.local.title,   body: c.local.body },
-    { icon: <Briefcase className="size-4" />,  title: c.assets.title,  body: c.assets.body },
-    { icon: <Users className="size-4" />,      title: c.payroll.title, body: c.payroll.body },
-    { icon: <ScrollText className="size-4" />, title: c.reports.title, body: c.reports.body },
-    { icon: <Wallet className="size-4" />,     title: c.multi.title,   body: c.multi.body },
+    { icon: <Bot className="size-5" />,        title: c.ai.title,      body: c.ai.body },
+    { icon: <Globe2 className="size-5" />,     title: c.local.title,   body: c.local.body },
+    { icon: <Briefcase className="size-5" />,  title: c.assets.title,  body: c.assets.body },
+    { icon: <Users className="size-5" />,      title: c.payroll.title, body: c.payroll.body },
+    { icon: <ScrollText className="size-5" />, title: c.reports.title, body: c.reports.body },
+    { icon: <Wallet className="size-5" />,     title: c.multi.title,   body: c.multi.body },
   ]
 
   return (
-    <section
-      id="capabilities"
-      className="relative isolate overflow-hidden py-28 lg:py-40"
-      style={{ background: D_BG, color: D_INK }}
-    >
-      {/* Tonal seams — bridge from light section above and to the next below */}
-      <div aria-hidden className="absolute inset-x-0 top-0 h-px" style={{ background: D_LINE }} />
-      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px" style={{ background: D_LINE }} />
-      <div
-        aria-hidden
-        className="absolute inset-x-0 top-0 h-20 pointer-events-none"
-        style={{ background: `linear-gradient(to bottom, ${D_BG} 0%, transparent 100%)` }}
-      />
-      <div
-        aria-hidden
-        className="absolute inset-x-0 bottom-0 h-20 pointer-events-none"
-        style={{ background: `linear-gradient(to top, ${D_BG} 0%, transparent 100%)` }}
-      />
+    <BentoSection id="capabilities" className="py-20 lg:py-28">
+      <SectionHead ar={ar} num="03" eyebrow={c.eyebrow} title={c.title} lead={c.lead} />
 
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter
-          ar={t.ar} dark
-          num="03"
-          eyebrow={c.eyebrow}
-          title={c.title}
-          lead={c.lead}
-        />
-
-        {/* Hero capability — Cockpit shown large, asymmetric */}
-        <div className="grid lg:grid-cols-12 gap-10 lg:gap-16 items-center mb-20 lg:mb-28">
-          <div className="lg:col-span-5">
-            <div
-              className={cn("text-2xs mb-5", t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.2em]")}
-              style={{ color: D_GLOW }}
-            >
-              {c.cockpit.tag}
-            </div>
+      {/* Cockpit hero card — ink slab on the right, peach KPI rail on the left */}
+      <div className="grid grid-cols-12 gap-4 lg:gap-5">
+        <div className={cn(bentoCardInk, "col-span-12 lg:col-span-7 p-7 lg:p-10 flex flex-col justify-between min-h-[24rem]")}>
+          <div className="flex items-center gap-2.5">
+            <LuxeDot />
+            <span className={eyebrowCls(ar, "text-background/65")}>{c.cockpit.tag}</span>
+          </div>
+          <div className="mt-6">
             <h3
               className={cn(
-                "text-[clamp(2rem,4vw,3rem)] mb-5",
-                t.ar ? "font-semibold leading-[1.2]" : "font-display tracking-[-0.018em] leading-[1.05]",
+                "text-background mb-5",
+                ar
+                  ? "font-semibold leading-[1.15] text-[clamp(1.875rem,3.6vw,2.75rem)]"
+                  : "font-display tracking-[-0.02em] leading-[1.05] text-[clamp(2rem,4vw,3rem)]",
               )}
-              style={{ color: D_INK }}
             >
               {c.cockpit.title}
             </h3>
-            <p className="text-lg leading-[1.6]" style={{ color: D_MUTE }}>
+            <p className="text-base lg:text-lg leading-[1.65] text-background/70 max-w-2xl">
               {c.cockpit.body}
             </p>
-            <div className="mt-8 grid grid-cols-3 gap-3">
-              {c.cockpit.kpis.map((k) => (
-                <div
-                  key={k.label}
-                  className="rounded-md p-3"
-                  style={{ background: D_CARD, border: `1px solid ${D_LINE}` }}
-                >
-                  <div className="text-2xs mb-1.5" style={{ color: D_MUTE }}>{k.label}</div>
-                  <div className="text-base font-mono leading-none" style={{ color: D_INK }}>{k.value}</div>
-                  {k.delta && (
-                    <div className="text-2xs font-mono mt-1.5" style={{ color: D_GLOW }}>{k.delta}</div>
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
-
-          <div className="lg:col-span-7">
-            <div
-              className="rounded-xl overflow-hidden"
-              style={{
-                boxShadow: `0 0 0 1px ${D_GLOW_18}, 0 32px 80px -20px rgba(0,0,0,0.7), 0 12px 32px -8px rgba(0,0,0,0.5)`,
-              }}
-            >
-              <div className="bg-card p-5 lg:p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="font-mono text-2xs uppercase tracking-[0.16em] text-muted-foreground">
-                    {c.cockpit.tag}
-                  </span>
-                  <BarChart3 className="size-4 text-muted-foreground" />
-                </div>
-                <SparkChart compact />
-              </div>
-            </div>
+          <div className="mt-8 lg:mt-10 -mx-1">
+            <SparkChart compact />
           </div>
         </div>
 
-        {/* Editorial list — divided rows, no boxes */}
-        <div className="border-t" style={{ borderColor: D_LINE }}>
-          {otherCaps.map((cap, i) => (
-            <div
-              key={cap.title}
-              className="grid lg:grid-cols-12 gap-4 lg:gap-8 py-8 lg:py-10 items-baseline border-b"
-              style={{ borderColor: D_LINE }}
-              data-testid={`capability-${i}`}
-            >
-              <div className="lg:col-span-1 font-mono text-xs" style={{ color: D_MUTE }}>
-                {String(i + 4).padStart(2, "0")}
+        <div className={cn(bentoCardPeach, "col-span-12 lg:col-span-5 p-6 lg:p-7 flex flex-col gap-3")}>
+          <div className={eyebrowCls(ar, "text-foreground/65 mb-1")}>
+            {ar ? "مؤشّرات حيّة" : "live KPIs"}
+          </div>
+          {c.cockpit.kpis.map((k) => (
+            <div key={k.label} className={cn(bentoCard, "p-4 lg:p-5 flex items-baseline justify-between gap-4")}>
+              <div className="min-w-0">
+                <div className={eyebrowCls(ar, "text-muted-foreground mb-1.5")}>{k.label}</div>
+                <div className="font-mono text-xl lg:text-2xl tabular-nums text-foreground leading-none">
+                  {k.value}
+                </div>
               </div>
-              <div className="lg:col-span-1" style={{ color: D_GLOW }}>
-                {cap.icon}
-              </div>
-              <div className="lg:col-span-3">
-                <h4
-                  className={cn(
-                    "text-lg lg:text-xl leading-snug",
-                    t.ar ? "font-semibold" : "font-display tracking-[-0.005em]",
-                  )}
-                  style={{ color: D_INK }}
-                >
-                  {cap.title}
-                </h4>
-              </div>
-              <div className="lg:col-span-7">
-                <p className="text-base leading-[1.6]" style={{ color: D_MUTE }}>
-                  {cap.body}
-                </p>
-              </div>
+              {k.delta && (
+                <span className="font-mono text-xs tabular-nums text-success whitespace-nowrap">{k.delta}</span>
+              )}
             </div>
           ))}
         </div>
       </div>
-    </section>
+
+      {/* Other capabilities — bento grid of 6 white cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5 mt-4 lg:mt-5">
+        {otherCaps.map((cap, i) => (
+          <article
+            key={cap.title}
+            className={cn(bentoCard, "p-6 lg:p-7 flex flex-col gap-4")}
+            data-testid={`capability-${i}`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="grid place-items-center size-11 rounded-2xl bg-primary text-primary-foreground border border-primary-border">
+                {cap.icon}
+              </span>
+              <span className={eyebrowCls(ar, "text-muted-foreground font-mono")}>
+                {String(i + 4).padStart(2, "0")}
+              </span>
+            </div>
+            <h4 className={cn(
+              "text-foreground",
+              ar ? "font-semibold leading-snug text-xl" : "font-display tracking-tight leading-snug text-xl lg:text-2xl",
+            )}>
+              {cap.title}
+            </h4>
+            <p className="text-sm lg:text-base leading-[1.65] text-muted-foreground">
+              {cap.body}
+            </p>
+          </article>
+        ))}
+      </div>
+    </BentoSection>
   )
 }
 
@@ -1862,51 +1953,56 @@ function CoreCapabilities({ t }: { t: Dict }) {
 
 function AIAssistant({ t }: { t: Dict }) {
   const a = t.aiSection
+  const ar = t.ar
   return (
-    <section id="ai" className="py-24 lg:py-32 border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter
-          num="04"
-          eyebrow={a.tag}
-          title={<>{a.h1}<br />{a.h2}</>}
-          ar={t.ar}
-          align="stack"
-        />
-        <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-          <div className="lg:col-span-5 lg:col-start-8">
-            <p className="text-lg leading-relaxed text-muted-foreground mb-6">{a.lead}</p>
-            <ul className="space-y-3.5">
-              {a.bullets.map(([title, body]) => (
-                <li key={title} className="flex gap-3">
-                  <Check className="size-5 text-primary flex-shrink-0 mt-0.5" />
-                  <div>
-                    <div className="text-sm font-medium text-foreground">{title}</div>
-                    <div className="text-sm text-muted-foreground">{body}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-8">
-              <Button variant="outline" asChild>
-                <a href="/signin">{a.cta}<CtaArrow ar={t.ar} /></a>
-              </Button>
-            </div>
-          </div>
+    <BentoSection id="ai" className="py-20 lg:py-28">
+      <SectionHead
+        ar={ar}
+        num="04"
+        eyebrow={a.tag}
+        title={<>{a.h1} <span className={ar ? "text-foreground/60" : "italic font-light text-foreground/60"}>{a.h2}</span></>}
+        align="stack"
+      />
 
-          {/* Editorial transcript — no chat bubbles, set as printed dialogue */}
-          <div className="lg:col-span-7 lg:col-start-1 lg:row-start-1" data-testid="ai-transcript">
-            <div className="flex items-baseline gap-3 pb-3 border-b border-border">
-              <span aria-hidden className="size-1 translate-y-[-2px] rounded-full bg-success" />
-              <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.2em]", "text-muted-foreground")}>
-                {t.ar ? "محادثة · ٢٠٢٦.٠٤.٢٣ · ٠٩:٤١" : "transcript · 2026.04.23 · 09:41"}
+      <div className="grid grid-cols-12 gap-4 lg:gap-5">
+        {/* Bullets card — peach */}
+        <div className={cn(bentoCardPeach, "col-span-12 lg:col-span-5 lg:order-2 p-7 lg:p-9 flex flex-col")}>
+          <p className="text-base lg:text-lg leading-relaxed text-foreground/80 mb-6">{a.lead}</p>
+          <ul className="space-y-4 flex-1">
+            {a.bullets.map(([title, body]) => (
+              <li key={title} className="flex gap-3">
+                <span className="grid place-items-center size-6 rounded-full bg-foreground text-background flex-shrink-0 mt-0.5">
+                  <Check className="size-3.5" />
+                </span>
+                <div>
+                  <div className="text-sm lg:text-base font-semibold text-foreground">{title}</div>
+                  <div className="text-sm text-foreground/70 leading-relaxed">{body}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-8">
+            <Button variant="outline" className="rounded-full bg-card border-card-border text-foreground hover:bg-card" asChild>
+              <a href="/signin">{a.cta}<CtaArrow ar={ar} /></a>
+            </Button>
+          </div>
+        </div>
+
+        {/* Transcript card — white */}
+        <div
+          className={cn(bentoCard, "col-span-12 lg:col-span-7 lg:order-1 p-7 lg:p-9")}
+          data-testid="ai-transcript"
+        >
+            <div className="flex items-baseline gap-3 pb-4 border-b border-border">
+              <LuxeDot />
+              <span className={eyebrowCls(ar, "text-muted-foreground")}>
+                {ar ? "محادثة · ٢٠٢٦.٠٤.٢٣ · ٠٩:٤١" : "transcript · 2026.04.23 · 09:41"}
               </span>
               <span className="flex-1" />
-              <span className={cn("text-2xs text-muted-foreground", t.ar ? "" : "font-mono uppercase tracking-[0.2em]")}>
-                {a.mockTitle}
-              </span>
+              <span className={eyebrowCls(ar, "text-muted-foreground")}>{a.mockTitle}</span>
             </div>
 
-            <div className="space-y-8 lg:space-y-9 mt-7">
+            <div className="space-y-7 lg:space-y-8 mt-6">
               {/* You · question 1 */}
               <div className="grid grid-cols-12 gap-x-5 lg:gap-x-7">
                 <div className={cn("col-span-3 lg:col-span-2 text-2xs pt-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
@@ -1959,22 +2055,21 @@ function AIAssistant({ t }: { t: Dict }) {
 
               {/* System · drafting */}
               <div className="grid grid-cols-12 gap-x-5 lg:gap-x-7">
-                <div className={cn("col-span-3 lg:col-span-2 text-2xs pt-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-primary")}>
-                  {t.ar ? "النظام" : "system"}
+                <div className={cn("col-span-3 lg:col-span-2 text-2xs pt-2 text-foreground/70", eyebrowCls(ar))}>
+                  {ar ? "النظام" : "system"}
                 </div>
                 <div className={cn(
                   "col-span-9 lg:col-span-10 text-2xs text-muted-foreground flex items-center gap-2",
-                  t.ar ? "" : "font-mono uppercase tracking-[0.16em]",
+                  eyebrowCls(ar, ""),
                 )}>
                   <span aria-hidden className="inline-block w-2 h-px bg-muted-foreground" />
-                  {t.ar ? "يكتب الإجابة…" : "drafting reply"}
+                  {ar ? "يكتب الإجابة…" : "drafting reply"}
                 </div>
               </div>
             </div>
           </div>
-        </div>
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -1984,179 +2079,148 @@ function AIAssistant({ t }: { t: Dict }) {
 
 function DashboardShowcase({ t }: { t: Dict }) {
   const s = t.showcase
+  const ar = t.ar
+  const kpis = [
+    { l: s.kpis.revenue,  v: ar ? "٢٤٢,٣٠٠" : "242,300", d: "+8.4%",  tone: "default" as const },
+    { l: s.kpis.expenses, v: ar ? "١٣٨,٧١٠" : "138,710", d: "−2.1%",  tone: "muted"   as const },
+    { l: s.kpis.netCash,  v: ar ? "١٠٣,٥٩٠" : "103,590", d: "+14.6%", tone: "ink"     as const },
+    { l: s.kpis.health,   v: s.kpis.healthVal,           d: s.kpis.healthDelta, tone: "default" as const },
+  ]
+  const rows = [
+    { wk: ar ? "الأسبوع ١٤" : "WK 14", v: ar ? "٨٩,٢٠٠"  : "89,200",  d: "+6.2%",  cur: false },
+    { wk: ar ? "الأسبوع ١٥" : "WK 15", v: ar ? "٩٤,٥٠٠"  : "94,500",  d: "+5.9%",  cur: false },
+    { wk: ar ? "الأسبوع ١٦" : "WK 16", v: ar ? "٩٨,٧٧٠"  : "98,770",  d: "+4.5%",  cur: false },
+    { wk: ar ? "الأسبوع ١٧" : "WK 17", v: ar ? "١٠٣,٥٩٠" : "103,590", d: "+14.6%", cur: true  },
+  ]
+  const alerts = [
+    { type: "warning", l: s.alerts.late.l,   d: s.alerts.late.d   },
+    { type: "info",    l: s.alerts.gosi.l,   d: s.alerts.gosi.d   },
+    { type: "success", l: s.alerts.budget.l, d: s.alerts.budget.d },
+  ]
   return (
-    <section id="showcase" className="py-24 lg:py-32  border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="05" eyebrow={s.eyebrow} title={s.title} lead={s.lead} ar={t.ar} />
+    <BentoSection id="showcase" className="py-20 lg:py-28">
+      <SectionHead ar={ar} num="05" eyebrow={s.eyebrow} title={s.title} lead={s.lead} />
 
-        {/* Editorial broadsheet — set type, hairlines, no card chrome */}
-        <div className="mt-12 lg:mt-16" data-testid="showcase-broadsheet">
-          {/* Masthead */}
-          <div className="flex items-baseline gap-3 pb-3 border-b-2 border-foreground">
-            <span aria-hidden className="size-1.5 translate-y-[-2px] rounded-full bg-success" />
-            <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.2em]")}>
-              {t.ar ? "نشرة يوميّة · إصدار 5.2" : "daily briefing · edition 5.2"}
-            </span>
-            <span className="flex-1" />
-            <span className={cn("text-2xs text-muted-foreground", t.ar ? "" : "font-mono uppercase tracking-[0.2em]")}>
-              {s.mockTitle}
-            </span>
-          </div>
+      {/* Bento broadsheet — masthead + KPI quad + cash trend + alerts */}
+      <div className="grid grid-cols-12 gap-4 lg:gap-5" data-testid="showcase-broadsheet">
+        {/* Masthead — full-width thin card */}
+        <div className={cn(bentoCard, "col-span-12 px-6 lg:px-8 py-4 flex items-baseline gap-3 flex-wrap")}>
+          <LuxeDot />
+          <span className={eyebrowCls(ar, "text-foreground")}>
+            {ar ? "نشرة يوميّة · إصدار 5.2" : "daily briefing · edition 5.2"}
+          </span>
+          <span className="flex-1" />
+          <span className={eyebrowCls(ar, "text-muted-foreground")}>{s.mockTitle}</span>
+        </div>
 
-          {/* Four-up KPI broadsheet — divided columns, monumental numerals */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 border-b border-border">
-            {[
-              { l: s.kpis.revenue,  v: t.ar ? "٢٤٢,٣٠٠" : "242,300", d: "+8.4%",  pos: true,  hl: false },
-              { l: s.kpis.expenses, v: t.ar ? "١٣٨,٧١٠" : "138,710", d: "−2.1%",  pos: false, hl: false },
-              { l: s.kpis.netCash,  v: t.ar ? "١٠٣,٥٩٠" : "103,590", d: "+14.6%", pos: true,  hl: true  },
-              { l: s.kpis.health,   v: s.kpis.healthVal,              d: s.kpis.healthDelta, pos: true, hl: false },
-            ].map((k, i) => (
+        {/* Four-up KPI quad — each its own bento card */}
+        {kpis.map((k, i) => {
+          const ink = k.tone === "ink"
+          return (
+            <div
+              key={i}
+              className={cn(
+                ink ? bentoCardInk : bentoCard,
+                "col-span-6 lg:col-span-3 p-6 lg:p-7 flex flex-col justify-between min-h-[10rem]",
+              )}
+            >
+              <div className={eyebrowCls(ar, ink ? "text-background/65" : "text-muted-foreground")}>{k.l}</div>
+              <div
+                className={cn(
+                  "tabular-nums leading-[0.95] mt-3",
+                  ar ? "font-semibold tracking-tight" : "font-display tracking-[-0.025em]",
+                  ink ? "text-background" : "text-foreground",
+                )}
+                style={{ fontSize: "clamp(2rem, 4vw, 3rem)" }}
+              >
+                {k.v}
+              </div>
+              <div className={cn(
+                "text-2xs font-mono mt-2",
+                ink ? "text-background/70" : k.tone === "muted" ? "text-muted-foreground" : "text-success",
+              )}>
+                {k.d}
+              </div>
+            </div>
+          )
+        })}
+
+        {/* Cash trend — 7 cols white card */}
+        <div className={cn(bentoCard, "col-span-12 lg:col-span-7 p-7 lg:p-9")}>
+          <div className={eyebrowCls(ar, "text-muted-foreground mb-2")}>{s.cash.eyebrow}</div>
+          <h4 className={cn(
+            "mb-6 text-foreground",
+            ar ? "text-2xl lg:text-3xl font-semibold leading-tight" : "font-display text-3xl lg:text-4xl tracking-[-0.018em] leading-[1.05]",
+          )}>
+            {s.cash.title}
+          </h4>
+
+          <div className="space-y-1">
+            {rows.map((row, i) => (
               <div
                 key={i}
                 className={cn(
-                  "py-8 lg:py-10 px-5 lg:px-7 border-border",
-                  i > 0 && "border-s",
-                  i === 2 && "lg:border-s-0 border-t lg:border-t-0",
-                  i === 3 && "border-t lg:border-t-0",
-                  k.hl && "bg-foreground text-background",
+                  "grid grid-cols-12 items-baseline gap-x-3 py-3 px-3 rounded-xl",
+                  row.cur ? "bg-primary/40 border border-primary-border" : "border border-transparent",
                 )}
               >
-                <div className={cn(
-                  "text-2xs mb-3",
-                  t.ar ? "" : "font-mono uppercase tracking-[0.16em]",
-                  k.hl ? "text-background/65" : "text-muted-foreground",
-                )}>
-                  {k.l}
-                </div>
-                <div
-                  className={cn(
-                    "tabular-nums leading-[0.95] mb-2",
-                    t.ar ? "font-semibold tracking-tight" : "font-display tracking-[-0.025em]",
-                  )}
-                  style={{ fontSize: "clamp(2.25rem, 4.5vw, 3.5rem)" }}
-                >
-                  {k.v}
-                </div>
-                <div className={cn(
-                  "text-2xs font-mono",
-                  k.hl ? "text-background/70" : k.pos ? "text-success" : "text-muted-foreground",
-                )}>
-                  {k.d}
-                </div>
+                <span className={eyebrowCls(ar, "col-span-3 text-muted-foreground")}>{row.wk}</span>
+                <span className={cn("col-span-5 tabular-nums font-mono", row.cur ? "text-foreground font-semibold text-base" : "text-foreground/85")}>
+                  {row.v}
+                </span>
+                <span className="col-span-3 text-end text-xs tabular-nums font-mono text-success">{row.d}</span>
+                <span className="col-span-1 text-end text-muted-foreground text-xs">
+                  {row.cur ? (ar ? "←" : "→") : ""}
+                </span>
               </div>
             ))}
           </div>
 
-          {/* Body row: cash trend feature + alerts column */}
-          <div className="grid lg:grid-cols-12 py-10 lg:py-14 border-b border-border">
-            <div className="lg:col-span-7 lg:pe-12 lg:border-e lg:border-border">
-              <div className={cn("text-2xs mb-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
-                {s.cash.eyebrow}
-              </div>
-              <h4 className={cn(
-                "mb-7",
-                t.ar ? "text-2xl lg:text-3xl font-semibold leading-tight" : "font-display text-3xl lg:text-4xl tracking-[-0.018em] leading-[1.05]",
-              )}>
-                {s.cash.title}
-              </h4>
-
-              {/* Weekly cash narrative — set as printed series, no canvas chart */}
-              <div className="font-mono text-sm">
-                {[
-                  { wk: t.ar ? "الأسبوع ١٤" : "WK 14", v: t.ar ? "٨٩,٢٠٠"  : "89,200",  d: "+6.2%",  cur: false },
-                  { wk: t.ar ? "الأسبوع ١٥" : "WK 15", v: t.ar ? "٩٤,٥٠٠"  : "94,500",  d: "+5.9%",  cur: false },
-                  { wk: t.ar ? "الأسبوع ١٦" : "WK 16", v: t.ar ? "٩٨,٧٧٠"  : "98,770",  d: "+4.5%",  cur: false },
-                  { wk: t.ar ? "الأسبوع ١٧" : "WK 17", v: t.ar ? "١٠٣,٥٩٠" : "103,590", d: "+14.6%", cur: true  },
-                ].map((row, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      "grid grid-cols-12 items-baseline gap-x-3 py-2 border-b border-border/50 last:border-0",
-                      row.cur && "bg-foreground/[0.025]",
-                    )}
-                  >
-                    <span className={cn("col-span-3 text-2xs", t.ar ? "" : "uppercase tracking-[0.16em]", "text-muted-foreground")}>
-                      {row.wk}
-                    </span>
-                    <span className={cn("col-span-5 tabular-nums", row.cur ? "text-foreground font-semibold" : "text-foreground/85")}>
-                      {row.v}
-                    </span>
-                    <span className={cn("col-span-3 text-end text-xs tabular-nums", "text-success")}>
-                      {row.d}
-                    </span>
-                    <span className="col-span-1 text-end text-muted-foreground text-xs">
-                      {row.cur ? (t.ar ? "←" : "→") : ""}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className={cn("mt-4 text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.16em]", "text-success")}>
-                {s.cash.delta} · {t.ar ? "اتّجاه صاعد متّصل" : "uninterrupted upward trend"}
-              </div>
-            </div>
-
-            <div className="lg:col-span-5 mt-10 lg:mt-0 lg:ps-12">
-              <div className={cn("text-2xs mb-5", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
-                {s.alerts.title}
-              </div>
-              <div className="space-y-5">
-                {[
-                  { type: "warning", l: s.alerts.late.l,   d: s.alerts.late.d   },
-                  { type: "info",    l: s.alerts.gosi.l,   d: s.alerts.gosi.d   },
-                  { type: "success", l: s.alerts.budget.l, d: s.alerts.budget.d },
-                ].map((al, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-x-3 items-baseline pb-4 border-b border-border/50 last:border-0">
-                    <span aria-hidden className={cn(
-                      "col-span-1 mt-1.5 inline-block w-1.5 h-1.5 rounded-full",
-                      al.type === "warning" ? "bg-warning" : al.type === "success" ? "bg-success" : "bg-primary",
-                    )} />
-                    <div className="col-span-11">
-                      <div className={cn("text-base leading-snug", t.ar ? "font-medium" : "font-medium")}>{al.l}</div>
-                      <div className="text-xs text-muted-foreground leading-snug mt-1">{al.d}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className={eyebrowCls(ar, "mt-5 text-success inline-flex items-center gap-2")}>
+            <LuxeDot />
+            {s.cash.delta} · {ar ? "اتّجاه صاعد متّصل" : "uninterrupted upward trend"}
           </div>
+        </div>
 
-          {/* Editorial footnote — coach commentary set as letterpress callout */}
-          <div className="grid lg:grid-cols-12 gap-x-10 py-7">
-            <div className={cn("lg:col-span-3 text-2xs mb-2 lg:mb-0", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
-              {s.coachLabel}
-            </div>
-            <p className={cn("lg:col-span-9 text-base leading-relaxed text-foreground/85", t.ar ? "" : "font-display italic text-lg")}>
-              {s.coachBody}
-            </p>
-          </div>
-
-          {/* Quiet sidebar nav as printed contents row */}
-          <div className="border-t border-border pt-5 flex flex-wrap items-center gap-x-6 gap-y-2">
-            <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
-              {t.ar ? "في هذا العدد" : "in this issue"}
-            </span>
-            {s.sidebar.map((l, i) => (
-              <span
-                key={l}
-                className={cn(
-                  "text-xs",
-                  i === 4 ? "text-foreground font-medium border-b border-foreground pb-0.5" : "text-muted-foreground",
-                )}
-              >
-                {l}
-              </span>
+        {/* Alerts column — 5 cols blue card */}
+        <div className={cn(bentoCardBlue, "col-span-12 lg:col-span-5 p-7 lg:p-9 flex flex-col gap-4")}>
+          <div className={eyebrowCls(ar, "text-background/75")}>{s.alerts.title}</div>
+          <div className="space-y-3 flex-1">
+            {alerts.map((al, i) => (
+              <div key={i} className={cn(bentoCard, "p-4 lg:p-5 flex items-start gap-3")}>
+                <span aria-hidden className={cn(
+                  "mt-1.5 inline-block size-2 rounded-full flex-shrink-0",
+                  al.type === "warning" ? "bg-warning" : al.type === "success" ? "bg-success" : "bg-secondary",
+                )} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm lg:text-base font-semibold text-foreground leading-snug">{al.l}</div>
+                  <div className="text-xs lg:text-sm text-muted-foreground leading-snug mt-1">{al.d}</div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
 
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-          {s.legend.map((l) => (
-            <span key={l} className="flex items-center gap-1.5"><span className="status-dot bg-primary" />{l}</span>
-          ))}
+        {/* Coach commentary — peach card */}
+        <div className={cn(bentoCardPeach, "col-span-12 p-6 lg:p-8 grid lg:grid-cols-12 gap-4 lg:gap-8 items-center")}>
+          <div className={cn("lg:col-span-3", eyebrowCls(ar, "text-foreground/65"))}>
+            {s.coachLabel}
+          </div>
+          <p className={cn(
+            "lg:col-span-9 text-base lg:text-lg leading-relaxed text-foreground",
+            ar ? "font-medium" : "italic font-medium",
+          )}>
+            {s.coachBody}
+          </p>
         </div>
       </div>
-    </section>
+
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
+        {s.legend.map((l) => (
+          <span key={l} className="flex items-center gap-1.5"><LuxeDot />{l}</span>
+        ))}
+      </div>
+    </BentoSection>
   )
 }
 
@@ -2181,94 +2245,74 @@ function Manifesto({ t }: { t: Dict }) {
   const articleLabel = ar ? "المادّة" : "Article"
 
   return (
-    <section
-      id="belief"
-      className="relative bg-foreground text-background py-28 lg:py-44"
-      data-testid="section-manifesto"
-    >
-      {/* No gradient. No glow. Just the page edge as a printed rule. */}
-      <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-background/20" />
-      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-background/20" />
-
-      <div className="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-
-        {/* Top printer's slug — date, document title, reading direction */}
-        <div className="flex items-baseline gap-3 pb-3 mb-16 lg:mb-24 border-b border-background/15">
-          <span aria-hidden className="size-1 translate-y-[-2px] rounded-full bg-primary" />
-          <span className={cn("text-2xs", ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]", "text-background/70")}>
+    <BentoSection id="belief" className="py-20 lg:py-28">
+      {/* The Manifesto is a single monumental ink slab — the page's emotional
+          anchor — set on the cream Bento page as a deliberate luxe counterpoint. */}
+      <div className={cn(bentoCardInk, "relative overflow-hidden p-8 lg:p-16")} data-testid="section-manifesto">
+        {/* Top printer's slug */}
+        <div className="flex items-baseline gap-3 pb-3 mb-12 lg:mb-16 border-b border-background/15">
+          <LuxeDot />
+          <span className={eyebrowCls(ar, "text-background/70")}>
             {ar ? "بيان · وثيقة التأسيس · ٢٠٢٦" : "belief · articles of founding · mmxxvi"}
           </span>
           <span className="flex-1" />
-          <span className={cn("text-2xs", ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]", "text-background/55")}>
+          <span className={eyebrowCls(ar, "text-background/55")}>
             {ar ? "اقرأ ببطء" : "read slowly"}
           </span>
         </div>
 
-        {/* Lead-in — the declarative sentence that opens the document */}
+        {/* Kicker */}
         <p className={cn(
-          "mb-20 lg:mb-28 max-w-4xl",
+          "mb-14 lg:mb-20 max-w-4xl text-background",
           ar
-            ? "text-3xl sm:text-4xl lg:text-5xl font-semibold leading-[1.4] text-background"
-            : "font-display text-4xl sm:text-5xl lg:text-6xl tracking-[-0.025em] leading-[1.04] text-background",
+            ? "text-3xl sm:text-4xl lg:text-5xl font-semibold leading-[1.35]"
+            : "font-display text-4xl sm:text-5xl lg:text-6xl tracking-[-0.025em] leading-[1.04]",
         )}>
-          {m.kicker}<span className="text-primary">.</span>
+          {m.kicker}<span style={{ color: "hsl(var(--luxe))" }}>.</span>
         </p>
 
-        {/* The three Articles. Each Article gets its own page-feel: a rule    */}
-        {/* across the top, a tiny printer's mark naming it, and the body of   */}
-        {/* the Article set in monumental display type with breath.            */}
-        <div className="space-y-20 lg:space-y-32">
+        {/* The three Articles — set monumental */}
+        <div className="space-y-14 lg:space-y-20">
           {m.lines.map((l, i) => (
             <article
               key={i}
-              className="relative pt-8 border-t border-background/15"
+              className="relative pt-7 border-t border-background/15"
               data-testid={`manifesto-line-${i}`}
             >
-              <div className="mb-7 lg:mb-10">
-                <span className={cn(
-                  "text-2xs",
-                  ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]",
-                  "text-primary",
-                )}>
-                  {articleLabel} &nbsp;·&nbsp; {articleNum(i)}
+              <div className="mb-5 lg:mb-7">
+                <span
+                  className={cn("inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-3 py-1", eyebrowCls(ar))}
+                >
+                  {articleLabel} · {articleNum(i)}
                 </span>
               </div>
-
               <h2 className={cn(
                 "text-background",
                 ar
-                  ? "text-[clamp(2.5rem,7vw,5.75rem)] font-semibold leading-[1.18] tracking-tight"
-                  : "font-display text-[clamp(2.75rem,7.4vw,6rem)] tracking-[-0.028em] leading-[1.02]",
+                  ? "text-[clamp(2rem,5.4vw,4.25rem)] font-semibold leading-[1.18] tracking-tight"
+                  : "font-display text-[clamp(2.25rem,6vw,5rem)] tracking-[-0.028em] leading-[1.04]",
               )}>
                 <span>{l.t}</span>{" "}
-                <span className="text-background/65">{l.em}.</span>
+                <span className="text-background/60">{l.em}.</span>
               </h2>
             </article>
           ))}
         </div>
 
-        {/* Closing rule + footnote + signature — set as colophon */}
-        <div className="mt-24 lg:mt-32 pt-8 border-t border-background/20 grid lg:grid-cols-12 gap-8 lg:gap-10">
+        {/* Colophon */}
+        <div className="mt-16 lg:mt-20 pt-7 border-t border-background/20 grid lg:grid-cols-12 gap-6 lg:gap-10">
           <p className={cn(
             "lg:col-span-8 text-background/85",
-            ar
-              ? "text-lg lg:text-xl leading-[1.7]"
-              : "font-display italic text-xl lg:text-2xl leading-snug",
+            ar ? "text-base lg:text-lg leading-[1.7]" : "italic text-lg lg:text-xl leading-snug",
           )}>
             {m.footnote}
           </p>
           <div className="lg:col-span-4 lg:text-end self-end">
-            <span className={cn(
-              "text-2xs",
-              ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]",
-              "text-background/65",
-            )}>
-              — {m.sig}
-            </span>
+            <span className={eyebrowCls(ar, "text-background/65")}>— {m.sig}</span>
           </div>
         </div>
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -2281,125 +2325,118 @@ function Testimonials({ t }: { t: Dict }) {
   const f = ts.featured
   const fInit = f.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")
   return (
-    <section id="customers" className="relative py-24 lg:py-32 border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="14" eyebrow={ts.eyebrow} title={ts.title} lead={ts.lead} ar={t.ar} />
+    <BentoSection id="customers" className="py-20 lg:py-28">
+      <SectionHead ar={t.ar} num="14" eyebrow={ts.eyebrow} title={ts.title} lead={ts.lead} />
 
-        {/* Proof-stats — broadsheet four-up, no card chrome */}
-        <div className="border-y-2 border-foreground mb-16 lg:mb-24">
-          <div className="grid grid-cols-2 lg:grid-cols-4">
-            {ts.stats.map((s, i) => (
+      {/* Proof-stats — bento quad */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 mb-10 lg:mb-12">
+        {ts.stats.map((s, i) => {
+          const cls = i === 0 ? bentoCardPeach : i === 1 ? bentoCard : i === 2 ? bentoCardBlue : bentoCardInk
+          const ink = i === 3
+          return (
+            <div key={i} className={cn(cls, "p-6 lg:p-7")} data-testid={`testimonial-stat-${i}`}>
+              <div
+                className={cn(
+                  "tabular-nums leading-none tracking-tight mb-3",
+                  t.ar ? "font-semibold" : "font-display",
+                  ink ? "text-background" : "text-foreground",
+                )}
+                style={{ fontSize: "clamp(2rem, 4vw, 3rem)" }}
+              >
+                {s.n}
+              </div>
+              <div className={cn("text-sm leading-snug", ink ? "text-background" : "text-foreground")}>{s.l}</div>
+              <div className={cn("mt-1.5", eyebrowCls(t.ar, ink ? "text-background/65" : "text-foreground/55"))}>
+                {s.s}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Featured testimonial — peach broadsheet card */}
+      <figure className={cn(bentoCardPeach, "mb-10 lg:mb-12 p-8 lg:p-12")} data-testid="testimonial-featured">
+        <div className="flex items-baseline gap-3 pb-4 border-b border-foreground/10 mb-8 lg:mb-10">
+          <LuxeDot />
+          <span className={eyebrowCls(t.ar, "text-foreground/70")}>
+            {t.ar ? "تقرير ميدانيّ · عميلةٌ موثّقة" : "field report · verified customer"}
+          </span>
+          <span className="flex-1" />
+          <span className={eyebrowCls(t.ar, "text-foreground/55")}>{f.since}</span>
+        </div>
+
+        <blockquote
+          className={cn(
+            "max-w-4xl mb-10 lg:mb-12 text-foreground",
+            t.ar
+              ? "text-2xl sm:text-3xl lg:text-4xl font-semibold leading-[1.5] tracking-tight"
+              : "font-display text-3xl sm:text-4xl lg:text-5xl tracking-[-0.022em] leading-[1.08]",
+          )}
+        >
+          {f.q}
+          <span style={{ color: "hsl(var(--luxe))" }}>.</span>
+        </blockquote>
+
+        <div className="grid lg:grid-cols-12 gap-y-8 lg:gap-x-10 pt-6 border-t border-foreground/10">
+          <figcaption className="lg:col-span-5 flex items-start gap-4">
+            <div
+              aria-hidden
+              className="size-12 rounded-full bg-foreground text-background flex items-center justify-center font-semibold text-sm flex-shrink-0"
+            >
+              {fInit}
+            </div>
+            <div className="min-w-0">
+              <div className={cn("mb-2", eyebrowCls(t.ar, "text-foreground/55"))}>
+                — {t.ar ? "بقلم" : "by"}
+              </div>
+              <div className="text-base font-semibold text-foreground">{f.n}</div>
+              <div className="text-sm text-foreground/65 mt-0.5">{f.r}</div>
+              <div className="text-sm text-foreground/80 mt-0.5">{f.c}</div>
+              <div className={cn("mt-3", eyebrowCls(t.ar, "text-foreground/55"))}>
+                {ts.switchedLabel}{" "}
+                <span className="text-foreground/85"><span aria-hidden>×</span>{" "}{f.switched}</span>
+              </div>
+            </div>
+          </figcaption>
+
+          <div className="lg:col-span-7 grid grid-cols-3 gap-x-5 lg:gap-x-8">
+            {f.kpis.map((k, i) => (
               <div
                 key={i}
-                className={cn(
-                  "py-7 lg:py-9 px-5 lg:px-7 border-border",
-                  i > 0 && "border-s",
-                  (i === 2) && "lg:border-s border-t lg:border-t-0",
-                  (i === 3) && "border-t lg:border-t-0",
-                )}
-                data-testid={`testimonial-stat-${i}`}
+                className={cn("ps-5 lg:ps-6 border-s border-foreground/15", i === 0 && "ps-0 lg:ps-0 border-s-0")}
+                data-testid={`featured-kpi-${i}`}
               >
                 <div
                   className={cn(
-                    "tabular-nums leading-none tracking-tight mb-2",
+                    "tabular-nums leading-none tracking-tight mb-2 text-foreground",
                     t.ar ? "font-semibold" : "font-display",
                   )}
-                  style={{ fontSize: "clamp(2rem, 4vw, 3rem)" }}
+                  style={{ fontSize: "clamp(1.75rem, 3.6vw, 2.5rem)" }}
                 >
-                  {s.n}
+                  {k.v}
                 </div>
-                <div className="mt-2.5 text-sm leading-snug text-foreground">{s.l}</div>
-                <div className={cn("mt-1.5 text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.16em]", "text-muted-foreground")}>
-                  {s.s}
-                </div>
+                <div className="text-2xs lg:text-xs leading-snug text-foreground/65">{k.l}</div>
               </div>
             ))}
           </div>
         </div>
+      </figure>
 
-        {/* Featured testimonial — set as a printed pull-quote, no card */}
-        <figure className="mb-20 lg:mb-28" data-testid="testimonial-featured">
-          {/* Top printer's mark */}
-          <div className="flex items-baseline gap-3 pb-3 border-b border-border mb-10 lg:mb-14">
-            <span aria-hidden className="size-1 translate-y-[-2px] rounded-full bg-primary" />
-            <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.22em]", "text-muted-foreground")}>
-              {t.ar ? "تقرير ميدانيّ · عميلةٌ موثّقة" : "field report · verified customer"}
-            </span>
-            <span className="flex-1" />
-            <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.22em]", "text-muted-foreground")}>
-              {f.since}
-            </span>
-          </div>
-
-          {/* The quote — set monumental, no curly-quote glyph crutch */}
-          <blockquote
-            className={cn(
-              "max-w-4xl mb-10 lg:mb-14 text-foreground",
-              t.ar
-                ? "text-2xl sm:text-3xl lg:text-4xl font-semibold leading-[1.5] tracking-tight"
-                : "font-display text-3xl sm:text-4xl lg:text-5xl tracking-[-0.022em] leading-[1.12]",
-            )}
-          >
-            {f.q}
-          </blockquote>
-
-          {/* Attribution + KPIs as a single broadsheet row */}
-          <div className="grid lg:grid-cols-12 gap-y-8 lg:gap-x-10 pt-7 border-t border-border">
-            <figcaption className="lg:col-span-5">
-              <div className={cn("text-2xs mb-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
-                — {t.ar ? "بقلم" : "by"}
-              </div>
-              <div className="text-base font-semibold text-foreground">{f.n}</div>
-              <div className="text-sm text-muted-foreground mt-0.5">{f.r}</div>
-              <div className="text-sm text-foreground/80 mt-0.5">{f.c}</div>
-              <div className={cn("mt-4 text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.16em]", "text-muted-foreground")}>
-                {ts.switchedLabel}{" "}
-                <span className="text-foreground/85">
-                  <span aria-hidden>×</span>{" "}{f.switched}
-                </span>
-              </div>
-            </figcaption>
-
-            {/* Three KPIs as set type, no boxes */}
-            <div className="lg:col-span-7 grid grid-cols-3 gap-x-5 lg:gap-x-8">
-              {f.kpis.map((k, i) => (
-                <div
-                  key={i}
-                  className={cn("ps-5 lg:ps-6 border-s border-border", i === 0 && "ps-0 lg:ps-0 border-s-0")}
-                  data-testid={`featured-kpi-${i}`}
-                >
-                  <div
-                    className={cn(
-                      "tabular-nums leading-none tracking-tight mb-2 text-foreground",
-                      t.ar ? "font-semibold" : "font-display",
-                    )}
-                    style={{ fontSize: "clamp(1.75rem, 3.6vw, 2.5rem)" }}
-                  >
-                    {k.v}
-                  </div>
-                  <div className="text-2xs lg:text-xs leading-snug text-muted-foreground">
-                    {k.l}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </figure>
-
-        {/* Grid of remaining testimonials */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-12">
-          {ts.items.map((it, i) => {
-            const initials = it.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")
-            const tints = [
-              "bg-foreground text-background",
-              "bg-foreground text-background",
-              "bg-foreground text-background",
-            ]
-            const tint = tints[i % tints.length]
+      {/* Grid of remaining testimonials */}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5 mb-10">
+        {ts.items.map((it, i) => {
+          const initials = it.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("")
+          const cardCls = i === 0 ? bentoCardBlue : i === 1 ? bentoCard : bentoCardPeach
+          const tints = [
+            "bg-[hsl(217_30%_75%)] text-foreground",
+            "bg-foreground text-background",
+            "bg-[hsl(20_60%_80%)] text-foreground",
+          ]
+          const tint = tints[i % tints.length]
             return (
               <figure
                 key={it.n}
-                className="group rounded-xl border border-border bg-card p-6 lg:p-7 flex flex-col gap-5"
+                className={cn(cardCls, "group p-6 lg:p-7 flex flex-col gap-5")}
                 data-testid={`testimonial-${i}`}
               >
                 {/* Top: 5 stars + verified */}
@@ -2420,22 +2457,23 @@ function Testimonials({ t }: { t: Dict }) {
                 <blockquote className="text-base leading-relaxed text-foreground/90 relative flex-1">
                   <span
                     aria-hidden
-                    className="absolute -top-2 -start-1 text-3xl text-primary/30 font-serif leading-none select-none"
+                    className="absolute -top-2 -start-1 text-3xl font-serif leading-none select-none"
+                    style={{ color: "hsl(var(--luxe) / 0.35)" }}
                   >
                     “
                   </span>
                   <span className="relative">{it.q}</span>
                 </blockquote>
 
-                {/* KPI ribbon */}
-                <div className="rounded-lg border border-primary/25 bg-primary/5 px-3.5 py-2.5 flex items-baseline gap-3">
-                  <span className="font-mono text-lg font-semibold text-primary tabular-nums tracking-tight whitespace-nowrap">
+                {/* KPI ribbon — inverse ink chip */}
+                <div className="rounded-xl bg-foreground text-background px-4 py-3 flex items-baseline gap-3">
+                  <span className="text-lg font-semibold tabular-nums tracking-tight whitespace-nowrap">
                     {it.kpi.v}
                   </span>
-                  <span className="text-2xs leading-snug text-foreground/80">{it.kpi.l}</span>
+                  <span className="text-2xs leading-snug text-background/80">{it.kpi.l}</span>
                 </div>
 
-                <figcaption className="mt-auto pt-4 border-t border-border flex items-center gap-3">
+                <figcaption className="mt-auto pt-4 border-t border-foreground/10 flex items-center gap-3">
                   <div
                     aria-hidden
                     className={cn(
@@ -2453,14 +2491,14 @@ function Testimonials({ t }: { t: Dict }) {
                 </figcaption>
 
                 <div className="flex items-center justify-between gap-2 -mt-1">
-                  <span className="font-mono text-2xs text-primary border border-primary/30 bg-primary/5 rounded px-1.5 py-0.5">
-                    {it.ind}
+                  <span className="inline-flex items-center gap-1.5 text-2xs text-foreground/70 rounded-full bg-foreground/5 border border-foreground/10 px-2 py-0.5">
+                    <LuxeDot />{it.ind}
                   </span>
-                  <span className="font-mono text-2xs text-muted-foreground">{it.since}</span>
+                  <span className={eyebrowCls(t.ar, "text-foreground/55")}>{it.since}</span>
                 </div>
 
-                <div className="-mt-2 flex items-center gap-1.5 text-2xs text-muted-foreground">
-                  <span className="font-mono uppercase tracking-wider">{ts.switchedLabel}</span>
+                <div className="-mt-2 flex items-center gap-1.5 text-2xs text-foreground/60">
+                  <span className={eyebrowCls(t.ar)}>{ts.switchedLabel}</span>
                   <span className="text-foreground/70 line-through decoration-loss/50 decoration-[1.5px]">
                     {it.switched}
                   </span>
@@ -2470,12 +2508,10 @@ function Testimonials({ t }: { t: Dict }) {
           })}
         </div>
 
-        {/* Switched-from wordmark strip */}
-        <div className="rounded-xl border border-border  p-5 lg:p-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
-          <span className="text-2xs font-mono uppercase tracking-wider text-muted-foreground">
-            {t.ar
-              ? "محاسب ذكي حلّ محلّ"
-              : "Smart Accountant has replaced"}
+        {/* Switched-from wordmark strip — soft cream card */}
+        <div className={cn(bentoCardSoft, "p-5 lg:p-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3")}>
+          <span className={eyebrowCls(t.ar, "text-foreground/65")}>
+            {t.ar ? "محاسب ذكي حلّ محلّ" : "Smart Accountant has replaced"}
           </span>
           {ts.switchedFrom.map((s) => (
             <span
@@ -2487,8 +2523,7 @@ function Testimonials({ t }: { t: Dict }) {
             </span>
           ))}
         </div>
-      </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -2505,52 +2540,62 @@ function ProductTour({ t }: { t: Dict }) {
     command: <CommandMock t={t} />,
   }
   return (
-    <section id="modules" className="py-24 lg:py-32 border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="06" eyebrow={p.eyebrow} title={p.title} lead={p.lead} ar={t.ar} />
+    <BentoSection id="modules" className="py-20 lg:py-28">
+      <SectionHead ar={t.ar} num="06" eyebrow={p.eyebrow} title={p.title} lead={p.lead} />
 
-        <div className="space-y-20 lg:space-y-28">
-          {p.modules.map((m) => {
-            const flipped = m.align === "left"
-            return (
-              <div
-                key={m.k}
-                className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-center"
-                data-testid={`module-${m.k}`}
-              >
-                <div className={cn(
-                  "lg:col-span-5",
-                  flipped ? "lg:order-2" : "lg:order-1"
-                )}>
-                  <div className="font-mono text-2xs text-primary tracking-widest mb-3">{m.n}</div>
-                  <h3 className="text-2xl lg:text-3xl font-semibold text-foreground tracking-tight leading-snug mb-4">
-                    {m.title}
-                  </h3>
-                  <p className="text-base leading-relaxed text-muted-foreground mb-6">
-                    {m.body}
-                  </p>
-                  <ul className="space-y-2.5">
-                    {m.bullets.map((b) => (
-                      <li key={b} className="flex items-start gap-2.5 text-sm text-foreground/85 leading-relaxed">
-                        <Check className="size-4 text-primary flex-shrink-0 mt-0.5" />
-                        {b}
-                      </li>
-                    ))}
-                  </ul>
+      <div className="space-y-12 lg:space-y-16">
+        {p.modules.map((m, mi) => {
+          const flipped = m.align === "left"
+          const wash = mi % 2 === 0 ? bentoCardPeach : bentoCardBlue
+          return (
+            <div
+              key={m.k}
+              className="grid grid-cols-12 gap-4 lg:gap-5 items-stretch"
+              data-testid={`module-${m.k}`}
+            >
+              <div className={cn(
+                wash,
+                "col-span-12 lg:col-span-5 p-7 lg:p-9 flex flex-col",
+                flipped ? "lg:order-2" : "lg:order-1",
+              )}>
+                <div className={eyebrowCls(t.ar, "text-foreground/65 mb-3 inline-flex items-center gap-2")}>
+                  <LuxeDot />{m.n}
                 </div>
-
-                <div className={cn(
-                  "lg:col-span-7",
-                  flipped ? "lg:order-1" : "lg:order-2"
+                <h3 className={cn(
+                  "mb-4 text-foreground",
+                  t.ar
+                    ? "text-2xl lg:text-3xl font-semibold leading-snug tracking-tight"
+                    : "font-display text-3xl lg:text-4xl tracking-[-0.02em] leading-[1.06]",
                 )}>
-                  {mocks[m.k]}
-                </div>
+                  {m.title}
+                </h3>
+                <p className="text-base leading-relaxed text-foreground/80 mb-6">
+                  {m.body}
+                </p>
+                <ul className="space-y-2.5 mt-auto">
+                  {m.bullets.map((b) => (
+                    <li key={b} className="flex items-start gap-2.5 text-sm text-foreground/85 leading-relaxed">
+                      <span className="grid place-items-center size-5 rounded-full bg-foreground text-background flex-shrink-0 mt-0.5">
+                        <Check className="size-3" />
+                      </span>
+                      {b}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            )
-          })}
-        </div>
+
+              <div className={cn(
+                bentoCard,
+                "col-span-12 lg:col-span-7 p-3 lg:p-4",
+                flipped ? "lg:order-1" : "lg:order-2",
+              )}>
+                {mocks[m.k]}
+              </div>
+            </div>
+          )
+        })}
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -3008,20 +3053,19 @@ function PredictiveCapital({ t }: { t: Dict }) {
     compass: <LineChart className="size-4" />,
   }
   return (
-    <section id="intelligence" className="relative py-24 lg:py-32 border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter
-          num="07"
-          eyebrow={p.eyebrow}
-          title={<>{p.title}<br /><span className="text-primary">{p.title2}</span></>}
-          lead={p.lead}
-          ar={t.ar}
-        />
+    <BentoSection id="intelligence" className="py-20 lg:py-28">
+      <SectionHead
+        ar={t.ar}
+        num="07"
+        eyebrow={p.eyebrow}
+        title={<>{p.title} <span className={t.ar ? "text-foreground/60" : "italic font-light text-foreground/60"}>{p.title2}</span></>}
+        lead={p.lead}
+      />
 
-        <div className="grid lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-12 gap-4 lg:gap-5">
           {/* Forecast viz */}
-          <div className="lg:col-span-7">
-            <BentoCard className="h-full">
+          <div className="col-span-12 lg:col-span-7">
+            <BentoCard className={cn(bentoCard, "h-full p-7 lg:p-9")}>
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <div className="eyebrow mb-1">{p.forecastTitle}</div>
@@ -3066,24 +3110,26 @@ function PredictiveCapital({ t }: { t: Dict }) {
           </div>
 
           {/* Three pillars */}
-          <div className="lg:col-span-5 grid gap-4">
-            {p.pillars.map((pl) => (
-              <BentoCard key={pl.t}>
-                <div className="flex items-start gap-3">
-                  <div className="size-9 rounded-md bg-accent text-accent-foreground border border-accent-border flex items-center justify-center flex-shrink-0">
-                    {pillarIcons[pl.i]}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground mb-1">{pl.t}</div>
-                    <p className="text-2xs text-muted-foreground leading-relaxed">{pl.b}</p>
+          <div className="col-span-12 lg:col-span-5 grid gap-4 lg:gap-5">
+            {p.pillars.map((pl, idx) => {
+              const cls = idx === 0 ? bentoCardPeach : idx === 1 ? bentoCardBlue : bentoCard
+              return (
+                <div key={pl.t} className={cn(cls, "p-6 lg:p-7")}>
+                  <div className="flex items-start gap-3">
+                    <div className="size-10 rounded-xl bg-foreground text-background flex items-center justify-center flex-shrink-0">
+                      {pillarIcons[pl.i]}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-base font-semibold text-foreground mb-1">{pl.t}</div>
+                      <p className="text-sm text-foreground/70 leading-relaxed">{pl.b}</p>
+                    </div>
                   </div>
                 </div>
-              </BentoCard>
-            ))}
+              )
+            })}
           </div>
         </div>
-      </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -3136,14 +3182,13 @@ function Automation({ t }: { t: Dict }) {
   const aut = t.automation
 
   return (
-    <section id="automation" className="py-24 lg:py-32 border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="08" eyebrow={aut.eyebrow} title={aut.title} lead={aut.lead} ar={t.ar} />
+    <BentoSection id="automation" className="py-20 lg:py-28">
+      <SectionHead ar={t.ar} num="08" eyebrow={aut.eyebrow} title={aut.title} lead={aut.lead} />
 
-        {/* Before / After lanes */}
-        <div className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden">
-          {/* Before lane — manual */}
-          <div className="bg-muted/30 p-6 lg:p-8">
+      {/* Before / After lanes — bento split */}
+      <div className="grid md:grid-cols-2 gap-4 lg:gap-5">
+        {/* Before lane — manual */}
+        <div className={cn(bentoCardSoft, "p-7 lg:p-9")}>
             <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-border/70">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
@@ -3179,7 +3224,7 @@ function Automation({ t }: { t: Dict }) {
           </div>
 
           {/* After lane — autonomous */}
-          <div className="bg-card p-6 lg:p-8 relative">
+          <div className={cn(bentoCardPeach, "p-7 lg:p-9 relative")}>
             <div className="relative">
               <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-primary/15">
                 <div className="min-w-0">
@@ -3217,17 +3262,18 @@ function Automation({ t }: { t: Dict }) {
           </div>
         </div>
 
-        <div className="mt-10 grid md:grid-cols-3 gap-0 border border-border rounded-xl overflow-hidden">
-          {aut.cases.map((c) => (
-            <div key={c.t} className="bg-card p-7">
-              <h3 className="text-base font-semibold text-foreground mb-2">{c.t}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-4">{c.d}</p>
-              <div className="font-mono text-2xs text-primary border-t border-border/60 pt-3">{c.m}</div>
+      <div className="mt-5 grid md:grid-cols-3 gap-4 lg:gap-5">
+        {aut.cases.map((c) => (
+          <div key={c.t} className={cn(bentoCard, "p-6 lg:p-7")}>
+            <h3 className="text-base font-semibold text-foreground mb-2">{c.t}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed mb-4">{c.d}</p>
+            <div className={cn("border-t border-border pt-3 inline-flex items-center gap-2", eyebrowCls(t.ar, "text-foreground"))}>
+              <LuxeDot />{c.m}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -3238,14 +3284,13 @@ function Automation({ t }: { t: Dict }) {
 function LiveAuditor({ t }: { t: Dict }) {
   const a = t.auditor
   return (
-    <section id="auditor" className="py-24 lg:py-32  border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="09" eyebrow={a.eyebrow} title={a.title} lead={a.lead} ar={t.ar} />
+    <BentoSection id="auditor" className="py-20 lg:py-28">
+      <SectionHead ar={t.ar} num="09" eyebrow={a.eyebrow} title={a.title} lead={a.lead} />
 
-        <div className="grid lg:grid-cols-12 gap-6">
-          {/* Live audit feed */}
-          <div className="lg:col-span-7">
-            <BentoCard className="h-full">
+      <div className="grid grid-cols-12 gap-4 lg:gap-5">
+        {/* Live audit feed */}
+        <div className="col-span-12 lg:col-span-7">
+          <BentoCard className={cn(bentoCard, "h-full p-7 lg:p-9")}>
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex size-2 rounded-full bg-success" aria-hidden />
@@ -3268,28 +3313,27 @@ function LiveAuditor({ t }: { t: Dict }) {
           </div>
 
           {/* Multi-jurisdiction compliance */}
-          <div className="lg:col-span-5">
-            <BentoCard className="h-full">
-              <div className="eyebrow mb-4 flex items-center gap-2">
-                <Globe2 className="size-3.5 text-primary" />
+          <div className="col-span-12 lg:col-span-5">
+            <BentoCard className={cn(bentoCardBlue, "h-full p-7 lg:p-9")}>
+              <div className={cn("mb-4 flex items-center gap-2", eyebrowCls(t.ar, "text-foreground/75"))}>
+                <Globe2 className="size-3.5 text-foreground" />
                 <span>{a.jurEyebrow}</span>
               </div>
-              <ul className="divide-y divide-border -my-3">
+              <ul className="divide-y divide-foreground/15 -my-3">
                 {a.jurisdictions.map((j) => (
                   <li key={j.c} className="py-3 flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-foreground">{j.c}</div>
-                      <div className="text-2xs text-muted-foreground mt-0.5 truncate">{j.r}</div>
+                      <div className="text-2xs text-foreground/65 mt-0.5 truncate">{j.r}</div>
                     </div>
-                    <Check className="size-4 text-success flex-shrink-0 mt-0.5" />
+                    <Check className="size-4 text-foreground flex-shrink-0 mt-0.5" />
                   </li>
                 ))}
               </ul>
             </BentoCard>
           </div>
-        </div>
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -3357,9 +3401,8 @@ function LocalIntegrations({ t }: { t: Dict }) {
   )
 
   return (
-    <section id="integrations" className="py-24 lg:py-32 border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="10" eyebrow={i.eyebrow} title={i.title} lead={i.lead} ar={t.ar} />
+    <BentoSection id="integrations" className="py-20 lg:py-28">
+      <SectionHead ar={t.ar} num="10" eyebrow={i.eyebrow} title={i.title} lead={i.lead} />
 
         {/* Compliance topology — regulators above, spine in the middle, operational rails below */}
         <div className="relative">
@@ -3440,11 +3483,10 @@ function LocalIntegrations({ t }: { t: Dict }) {
           </div>
         </div>
 
-        <div className="mt-12 text-center">
-          <span className="text-2xs text-muted-foreground">{i.footnote}</span>
-        </div>
+      <div className="mt-12 text-center">
+        <span className="text-2xs text-muted-foreground">{i.footnote}</span>
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -3466,39 +3508,30 @@ function ComplianceCalendar({ t }: { t: Dict }) {
   const todayPercent = ((todayMonth - 0.5) / 12) * 100
 
   return (
-    <section
-      id="compliance"
-      className="relative py-24 lg:py-32 border-b border-border overflow-hidden"
-      data-testid="section-compliance"
-    >
-      {/* Quiet ambient backdrop — emerald wash from the side the eye reads from */}
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 pointer-events-none"
-        style={{
-          background: t.ar
-            ? "radial-gradient(45% 55% at 90% 10%, hsl(158 64% 28% / 0.08), transparent 70%)"
-            : "radial-gradient(45% 55% at 10% 10%, hsl(158 64% 28% / 0.08), transparent 70%)",
-        }}
-      />
+    <BentoSection id="compliance" className="py-20 lg:py-28" data-testid="section-compliance">
+        <SectionHead ar={t.ar} num="11" eyebrow={c.eyebrow} title={c.title} lead={c.lead} />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="11" eyebrow={c.eyebrow} title={c.title} lead={c.lead} ar={t.ar} />
-
-        {/* Stats strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-0 rounded-xl overflow-hidden border border-border mb-10">
-          {c.stats.map((s) => (
-            <div key={s.l} className="bg-card p-5 lg:p-6">
-              <div className="text-3xl lg:text-4xl font-semibold text-foreground tracking-tight tabular-nums">
-                {s.v}
+        {/* Stats strip — bento cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6 lg:mb-8">
+          {c.stats.map((s, si) => {
+            const cls = si === 0 ? bentoCardPeach : si === 1 ? bentoCardBlue : si === 2 ? bentoCardInk : bentoCard
+            const ink = si === 2
+            return (
+              <div key={s.l} className={cn(cls, "p-5 lg:p-6")}>
+                <div className={cn(
+                  "text-3xl lg:text-4xl font-semibold tracking-tight tabular-nums",
+                  ink ? "text-background" : "text-foreground",
+                )}>
+                  {s.v}
+                </div>
+                <div className={cn("mt-1 text-2xs leading-snug", ink ? "text-background/70" : "text-muted-foreground")}>{s.l}</div>
               </div>
-              <div className="mt-1 text-2xs text-muted-foreground leading-snug">{s.l}</div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Calendar surface */}
-        <div className="card-premium relative rounded-none border border-card-border bg-card overflow-hidden">
+        <div className={cn(bentoCard, "relative overflow-hidden")}>
           {/* Months header */}
           <div className="grid grid-cols-[8.5rem_repeat(12,minmax(0,1fr))] border-b border-border bg-muted/30">
             <div className="px-4 py-3 font-mono text-2xs uppercase tracking-widest text-muted-foreground">
@@ -3616,12 +3649,11 @@ function ComplianceCalendar({ t }: { t: Dict }) {
           </div>
         </div>
 
-        {/* Caption */}
-        <p className="mt-5 text-2xs text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">
-          {c.caption}
-        </p>
-      </div>
-    </section>
+      {/* Caption */}
+      <p className="mt-5 text-2xs text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">
+        {c.caption}
+      </p>
+    </BentoSection>
   )
 }
 
@@ -3638,24 +3670,25 @@ function Security({ t }: { t: Dict }) {
     <MapPin className="size-5" />,
   ]
   return (
-    <section id="security" className="py-24 lg:py-32  border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="12" eyebrow={sec.eyebrow} title={sec.title} lead={sec.lead} ar={t.ar} />
+    <BentoSection id="security" className="py-20 lg:py-28">
+      <SectionHead ar={t.ar} num="12" eyebrow={sec.eyebrow} title={sec.title} lead={sec.lead} />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-0 rounded-xl overflow-hidden border border-border">
-          {sec.items.map((it, i) => (
-            <div key={it.t} className="bg-card p-7 lg:p-8">
-              <div className="text-primary/70 mb-5">{icons[i]}</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
+        {sec.items.map((it, i) => {
+          const cls = i === 1 ? bentoCardPeach : i === 2 ? bentoCardBlue : bentoCard
+          return (
+            <div key={it.t} className={cn(cls, "p-7 lg:p-8 flex flex-col")}>
+              <div className="size-10 rounded-xl bg-foreground text-background flex items-center justify-center mb-5">{icons[i]}</div>
               <h3 className="text-base font-semibold text-foreground mb-2">{it.t}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-5">{it.d}</p>
-              <div className="font-mono text-2xs uppercase tracking-widest text-muted-foreground pt-4 border-t border-border/60">
-                {it.m}
+              <p className="text-sm text-foreground/75 leading-relaxed mb-5 flex-1">{it.d}</p>
+              <div className={cn("pt-4 border-t border-foreground/10 inline-flex items-center gap-2", eyebrowCls(t.ar, "text-foreground/65"))}>
+                <LuxeDot />{it.m}
               </div>
             </div>
-          ))}
-        </div>
+          )
+        })}
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -3670,11 +3703,10 @@ function UseCases({ t }: { t: Dict }) {
   const current = personas.find((p) => p.key === active) ?? personas[0]
 
   return (
-    <section id="use-cases" className="py-24 lg:py-32 border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="13" eyebrow={u.eyebrow} title={u.title} ar={t.ar} align="stack" />
+    <BentoSection id="use-cases" className="py-20 lg:py-28">
+      <SectionHead ar={t.ar} num="13" eyebrow={u.eyebrow} title={u.title} align="stack" />
 
-        <div role="tablist" aria-label={u.tabsAria} className="flex flex-wrap gap-1 border-b border-border mb-10">
+      <div role="tablist" aria-label={u.tabsAria} className="flex flex-wrap gap-2 mb-8">
           {personas.map((p, i) => {
             const selected = active === p.key
             return (
@@ -3699,10 +3731,10 @@ function UseCases({ t }: { t: Dict }) {
                 }}
                 data-testid={`tab-persona-${p.key}`}
                 className={cn(
-                  "px-5 py-3 text-sm font-medium -mb-px border-b-2 transition-colors outline-none",
+                  "px-4 py-2 rounded-full text-sm font-medium transition-colors outline-none",
                   selected
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
+                    ? "bg-foreground text-background"
+                    : "bg-card border border-card-border text-muted-foreground hover:text-foreground"
                 )}
               >
                 {p.tab}
@@ -3711,36 +3743,47 @@ function UseCases({ t }: { t: Dict }) {
           })}
         </div>
 
-        <div
-          id={`persona-panel-${current.key}`}
-          role="tabpanel"
-          aria-labelledby={`persona-tab-${current.key}`}
-          className="grid lg:grid-cols-12 gap-12 animate-fade-in"
-          key={current.key}
-        >
-          <div className="lg:col-span-7">
-            <h3 className="text-2xl lg:text-3xl font-semibold text-foreground tracking-tight leading-snug mb-6">
-              {current.headline}
-            </h3>
-            <blockquote className={cn("border-primary mb-6", t.ar ? "border-r-2 pr-5" : "border-l-2 pl-5")}>
-              <p className="text-lg leading-relaxed text-foreground/80 italic">{current.quote}</p>
-              <footer className="mt-3 text-sm text-muted-foreground">{current.author}</footer>
-            </blockquote>
+      <div
+        id={`persona-panel-${current.key}`}
+        role="tabpanel"
+        aria-labelledby={`persona-tab-${current.key}`}
+        className="grid grid-cols-12 gap-4 lg:gap-5 animate-fade-in"
+        key={current.key}
+      >
+        <div className={cn(bentoCard, "col-span-12 lg:col-span-7 p-7 lg:p-9")}>
+          <h3 className={cn(
+            "mb-6 text-foreground",
+            t.ar
+              ? "text-2xl lg:text-3xl font-semibold tracking-tight leading-snug"
+              : "font-display text-3xl lg:text-4xl tracking-[-0.02em] leading-[1.06]",
+          )}>
+            {current.headline}
+          </h3>
+          <blockquote className={cn("border-foreground mb-4", t.ar ? "border-r-2 pr-5" : "border-l-2 pl-5")}>
+            <p className={cn(
+              "text-base lg:text-lg leading-relaxed text-foreground/85",
+              t.ar ? "" : "italic",
+            )}>{current.quote}</p>
+            <footer className="mt-3 text-sm text-muted-foreground">{current.author}</footer>
+          </blockquote>
+        </div>
+        <div className={cn(bentoCardPeach, "col-span-12 lg:col-span-5 p-7 lg:p-9")}>
+          <div className={eyebrowCls(t.ar, "mb-4 text-foreground/70 inline-flex items-center gap-2")}>
+            <LuxeDot />{u.outcomes}
           </div>
-          <div className="lg:col-span-5">
-            <div className="eyebrow mb-4">{u.outcomes}</div>
-            <ul className="space-y-3.5">
-              {current.outcomes.map((o) => (
-                <li key={o} className="flex gap-3 text-sm text-foreground/85 leading-relaxed">
-                  <Check className="size-4 text-primary flex-shrink-0 mt-1" />
-                  {o}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <ul className="space-y-3.5">
+            {current.outcomes.map((o) => (
+              <li key={o} className="flex gap-3 text-sm text-foreground/85 leading-relaxed">
+                <span className="grid place-items-center size-5 rounded-full bg-foreground text-background flex-shrink-0 mt-0.5">
+                  <Check className="size-3" />
+                </span>
+                {o}
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -3836,28 +3879,30 @@ function Pricing({ t }: { t: Dict }) {
     k === "growth" ? "lg:col-span-5" : k === "starter" ? "lg:col-span-3" : "lg:col-span-4"
 
   return (
-    <section id="pricing" className="relative py-24 lg:py-32 border-b border-border ">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <Chapter num="15" eyebrow={p.eyebrow} title={p.title} lead={p.lead} ar={t.ar} />
+    <BentoSection id="pricing" className="py-20 lg:py-28">
+      <SectionHead ar={t.ar} num="15" eyebrow={p.eyebrow} title={p.title} lead={p.lead} />
 
-        {/* Cost of waiting strip — anchors pricing in the cost of NOT acting */}
-        <div className="mx-auto max-w-4xl mb-10 lg:mb-12 rounded-xl border border-loss/25 bg-loss/[0.04] px-5 py-4 lg:px-7 lg:py-5">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="size-1.5 rounded-full bg-loss/80" />
-            <span className="eyebrow text-loss/90">{p.inactionLabel}</span>
-          </div>
-          <div className="grid sm:grid-cols-3 gap-4 sm:gap-6">
-            {p.inaction.map((it) => (
-              <div key={it.t} className="min-w-0">
-                <div className="text-xl lg:text-2xl font-semibold text-loss tracking-tight tabular-nums">{it.v}</div>
-                <div className="text-2xs text-muted-foreground mt-1 leading-snug">{it.t}</div>
-              </div>
-            ))}
-          </div>
+      {/* Cost of waiting strip — peach card */}
+      <div className={cn(bentoCardPeach, "mx-auto max-w-4xl mb-10 lg:mb-12 px-6 py-5 lg:px-8 lg:py-6")}>
+        <div className="flex items-center gap-3 mb-4">
+          <LuxeDot />
+          <span className={eyebrowCls(t.ar, "text-foreground")}>{p.inactionLabel}</span>
         </div>
+        <div className="grid sm:grid-cols-3 gap-5 sm:gap-7">
+          {p.inaction.map((it) => (
+            <div key={it.t} className="min-w-0">
+              <div className={cn(
+                "tracking-tight tabular-nums text-foreground",
+                t.ar ? "text-2xl lg:text-3xl font-semibold" : "font-display text-3xl lg:text-4xl",
+              )}>{it.v}</div>
+              <div className="text-2xs text-foreground/65 mt-1.5 leading-snug">{it.t}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
-        {/* Billing radiogroup */}
-        <div className="flex justify-center mb-10">
+      {/* Billing radiogroup */}
+      <div className="flex justify-center mb-10">
           <div
             role="radiogroup"
             aria-label={billingLabel}
@@ -3907,50 +3952,57 @@ function Pricing({ t }: { t: Dict }) {
                 key={tier.k}
                 data-testid={`pricing-tier-${tier.k}`}
                 className={cn(
-                  "relative rounded-none border bg-card flex flex-col",
+                  "relative rounded-3xl flex flex-col",
                   tierSpan(tier.k),
                   popular
-                    ? "border-foreground/30 lg:-my-4 p-7 lg:p-9"
-                    : "border-card-border p-7 lg:p-7",
+                    ? "bg-foreground text-background border border-foreground lg:-my-4 p-7 lg:p-9 shadow-xl"
+                    : cn(bentoCard, "p-7 lg:p-7"),
                 )}
               >
                 {popular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-primary text-primary-foreground text-2xs font-medium tracking-wide">
+                  <span
+                    className="absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full text-2xs font-medium tracking-wide"
+                    style={{ background: "hsl(var(--luxe))", color: "hsl(var(--background))" }}
+                  >
                     {p.mostPopular}
                   </span>
                 )}
 
-                {/* Posture eyebrow — the signature framing */}
+                {/* Posture eyebrow */}
                 <div className={cn(
-                  "text-2xs tracking-wider uppercase mb-2",
-                  popular ? "text-primary" : "text-muted-foreground",
+                  eyebrowCls(t.ar),
+                  "mb-2",
+                  popular ? "text-background/75" : "text-muted-foreground",
                 )}>
                   · {tier.posture} ·
                 </div>
 
                 <div className="mb-4">
                   <div className={cn(
-                    "font-semibold text-foreground",
-                    popular ? "text-lg" : "text-base",
+                    "font-semibold",
+                    popular ? "text-lg text-background" : "text-base text-foreground",
                   )}>{tier.n}</div>
-                  <div className="text-2xs text-muted-foreground mt-1 leading-snug">{tier.desc}</div>
+                  <div className={cn("text-2xs mt-1 leading-snug", popular ? "text-background/70" : "text-muted-foreground")}>{tier.desc}</div>
                 </div>
 
                 <div
-                  className={cn("pb-5 mb-5 border-b border-border", popular && "pb-6 mb-6")}
+                  className={cn(
+                    "pb-5 mb-5 border-b",
+                    popular ? "border-background/15 pb-6 mb-6" : "border-border",
+                  )}
                   aria-live="polite"
                   aria-atomic="true"
                 >
                   {isCustom ? (
-                    <div className="text-2xl lg:text-3xl font-semibold text-foreground tracking-tight">{displayPrice}</div>
+                    <div className={cn("text-2xl lg:text-3xl font-semibold tracking-tight", popular ? "text-background" : "text-foreground")}>{displayPrice}</div>
                   ) : (
                     <div className="flex items-baseline gap-1.5 tabular-nums">
-                      <span className="text-2xs text-muted-foreground self-start mt-2">{p.currency}</span>
+                      <span className={cn("text-2xs self-start mt-2", popular ? "text-background/70" : "text-muted-foreground")}>{p.currency}</span>
                       <span className={cn(
-                        "font-semibold text-foreground tracking-tight",
-                        popular ? "text-5xl" : "text-4xl",
+                        "font-semibold tracking-tight",
+                        popular ? "text-5xl text-background" : "text-4xl text-foreground",
                       )}>{displayPrice}</span>
-                      <span className="text-xs text-muted-foreground">{p.perMonth}</span>
+                      <span className={cn("text-xs", popular ? "text-background/70" : "text-muted-foreground")}>{p.perMonth}</span>
                     </div>
                   )}
                 </div>
@@ -3958,17 +4010,17 @@ function Pricing({ t }: { t: Dict }) {
                 {/* Mini predictive forecast — only the popular tier */}
                 {popular && (
                   <>
-                    <div className="text-2xs text-muted-foreground -mt-2">{p.forecastCaption}</div>
+                    <div className="text-2xs text-background/70 -mt-2">{p.forecastCaption}</div>
                     <MiniForecast ar={t.ar} />
                   </>
                 )}
 
                 <ul className="space-y-2.5 mb-7 flex-1">
                   {tier.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-sm text-foreground/85">
+                    <li key={f} className={cn("flex items-start gap-2 text-sm", popular ? "text-background/90" : "text-foreground/85")}>
                       <Check className={cn(
                         "size-4 flex-shrink-0 mt-0.5",
-                        popular ? "text-primary" : "text-foreground/60",
+                        popular ? "text-background" : "text-foreground/60",
                       )} />
                       <span className="leading-snug">{f}</span>
                     </li>
@@ -3977,7 +4029,10 @@ function Pricing({ t }: { t: Dict }) {
                 <Button
                   variant={popular ? "default" : "outline"}
                   size={popular ? "lg" : "default"}
-                  className="w-full"
+                  className={cn(
+                    "w-full rounded-full",
+                    popular && "bg-background text-foreground hover:bg-background/90",
+                  )}
                   asChild
                   data-testid={`button-pricing-${tier.k}`}
                 >
@@ -3988,16 +4043,15 @@ function Pricing({ t }: { t: Dict }) {
           })}
         </div>
 
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-2xs text-muted-foreground">
-          {p.assurances.map((a) => (
-            <span key={a} className="inline-flex items-center gap-1.5">
-              <Check className="size-3 text-success" />
-              <span>{a}</span>
-            </span>
-          ))}
-        </div>
+      <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-2xs text-muted-foreground">
+        {p.assurances.map((a) => (
+          <span key={a} className="inline-flex items-center gap-1.5">
+            <Check className="size-3 text-success" />
+            <span>{a}</span>
+          </span>
+        ))}
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -4022,30 +4076,23 @@ function formatYearly(monthly: string, mult: number, ar: boolean): string {
 
 function FAQ({ t }: { t: Dict }) {
   return (
-    <section
-      id="faq"
-      className="relative py-24 lg:py-32 "
-      style={{ borderBottom: "1px solid hsl(220 18% 6%)" }}
-    >
-      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <div className="eyebrow eyebrow-lead mb-3"><span className="chapter-index">16</span>{t.faq.eyebrow}</div>
-          <h2 className="text-display text-foreground">{t.faq.title}</h2>
-        </div>
-        <Accordion type="single" collapsible className="border-t border-border">
+    <BentoSection id="faq" className="py-20 lg:py-28">
+      <SectionHead ar={t.ar} num="16" eyebrow={t.faq.eyebrow} title={t.faq.title} align="stack" />
+      <div className={cn(bentoCard, "max-w-4xl mx-auto p-2 lg:p-4")}>
+        <Accordion type="single" collapsible className="">
           {t.faq.qs.map((item, i) => (
-            <AccordionItem key={i} value={`q-${i}`} className="border-b border-border">
-              <AccordionTrigger className="text-start py-5 text-base font-medium text-foreground hover:no-underline">
+            <AccordionItem key={i} value={`q-${i}`} className="border-b border-border last:border-0">
+              <AccordionTrigger className="text-start px-4 lg:px-6 py-5 text-base font-medium text-foreground hover:no-underline">
                 {item.q}
               </AccordionTrigger>
-              <AccordionContent className="pb-6 text-sm text-muted-foreground leading-relaxed">
+              <AccordionContent className="px-4 lg:px-6 pb-6 text-sm text-muted-foreground leading-relaxed">
                 {item.a}
               </AccordionContent>
             </AccordionItem>
           ))}
         </Accordion>
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
@@ -4055,67 +4102,49 @@ function FAQ({ t }: { t: Dict }) {
 
 function FinalCTA({ t }: { t: Dict }) {
   const f = t.finalCta
-  // Final CTA — full-bleed dark editorial close, mirrors hero so the page lands on the same chord.
-  const D_BG   = "hsl(220 18% 6%)"
-  const D_INK  = "hsl(40 18% 95%)"
-  const D_MUTE = "hsl(40 6% 62%)"
-  const D_LINE = "hsl(220 10% 16%)"
-  const D_GLOW = "hsl(158 70% 52%)"
   return (
-    <section
-      id="cta"
-      className="relative overflow-hidden py-28 lg:py-44 scroll-mt-24"
-      style={{ background: D_BG, color: D_INK }}
-      data-testid="section-final-cta"
-    >
-      <div aria-hidden className="absolute inset-x-0 top-0 h-px" style={{ background: D_LINE }} />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-0"
-        style={{
-          background: `radial-gradient(60% 55% at 50% 110%, ${D_GLOW}25, transparent 70%)`,
-        }}
-      />
-      <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-        <div className="flex items-baseline gap-3 mb-10 lg:mb-14" style={{ color: D_MUTE }}>
-          <span className="font-mono text-2xs tracking-[0.28em] uppercase">ch · 17</span>
-          <span aria-hidden className="h-px flex-1" style={{ background: D_LINE }} />
-          <span className={cn("text-2xs", t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.18em]")}>
-            {t.ar ? "آخر فصل" : "Final chapter"}
+    <BentoSection id="cta" className="py-20 lg:py-28" data-testid="section-final-cta">
+      <div className={cn(bentoCardInk, "relative overflow-hidden p-10 lg:p-20")}>
+        <div className="flex items-baseline gap-3 mb-10 lg:mb-14 text-background/65">
+          <LuxeDot />
+          <span className={eyebrowCls(t.ar, "text-background/65")}>
+            {t.ar ? "آخر فصل · ١٧" : "ch · 17 · final chapter"}
+          </span>
+          <span aria-hidden className="h-px flex-1 bg-background/20" />
+          <span className={eyebrowCls(t.ar, "text-background/55")}>
+            {t.ar ? "اختر اليوم" : "decide today"}
           </span>
         </div>
+
         <h2
           className={cn(
-            "text-[clamp(2.75rem,7vw,5.75rem)]",
+            "text-[clamp(2.5rem,6.4vw,5.25rem)] text-background max-w-5xl",
             t.ar
-              ? "font-semibold leading-[1.12] tracking-normal"
-              : "font-display leading-[0.98] tracking-[-0.025em]",
+              ? "font-semibold leading-[1.15] tracking-tight"
+              : "font-display leading-[1.02] tracking-[-0.025em]",
           )}
-          style={{ color: D_INK }}
         >
           {f.h1}
           <br />
-          <span className={t.ar ? "font-semibold" : "display-italic"} style={{ color: D_GLOW }}>
+          <span className={t.ar ? "font-semibold text-background/70" : "italic font-light text-background/70"}>
             {f.h2}
           </span>
-          <span style={{ color: D_GLOW }}>.</span>
+          <span style={{ color: "hsl(var(--luxe))" }}>.</span>
         </h2>
-        <p
-          className={cn(
-            "mt-10 max-w-2xl text-lg lg:text-xl",
-            t.ar ? "leading-[1.7]" : "leading-[1.55]",
-          )}
-          style={{ color: "hsla(40, 12%, 88%, 0.78)" }}
-        >
+
+        <p className={cn(
+          "mt-8 lg:mt-10 max-w-2xl text-base lg:text-xl text-background/75",
+          t.ar ? "leading-[1.7]" : "leading-[1.55]",
+        )}>
           {f.sub}
         </p>
-        <div className="mt-12 lg:mt-16 flex flex-wrap items-center gap-4">
+
+        <div className="mt-10 lg:mt-14 flex flex-wrap items-center gap-3">
           <Button
             size="xl"
             data-testid="button-final-cta"
             asChild
-            style={{ background: D_INK, color: D_BG }}
-            className="hover:opacity-90"
+            className="rounded-full bg-background text-foreground hover:bg-background/90"
           >
             <a href="/signin" className="gap-2">
               {f.cta}
@@ -4126,17 +4155,16 @@ function FinalCTA({ t }: { t: Dict }) {
             size="xl"
             variant="outline"
             asChild
-            className="hover:bg-transparent"
-            style={{ borderColor: D_LINE, color: D_INK, background: "transparent" }}
+            className="rounded-full bg-transparent border-background/30 text-background hover:bg-background/10 hover:text-background"
           >
             <a href="/demo" data-testid="button-final-cta-demo">{f.ctaDemo}</a>
           </Button>
-          <div className="basis-full text-xs mt-2" style={{ color: D_MUTE }}>
+          <div className="basis-full text-xs mt-2 text-background/60">
             {f.orWatch}{" "}
             <a
               href="#showcase"
               className="underline-offset-4 hover:underline"
-              style={{ color: D_GLOW }}
+              style={{ color: "hsl(var(--luxe))" }}
             >
               {f.orLink}
             </a>
@@ -4144,7 +4172,7 @@ function FinalCTA({ t }: { t: Dict }) {
           </div>
         </div>
       </div>
-    </section>
+    </BentoSection>
   )
 }
 
