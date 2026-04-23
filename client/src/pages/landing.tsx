@@ -43,16 +43,21 @@ function getCopy(locale: Locale) {
       signIn: ar ? "تسجيل الدخول" : "Sign in",
     },
     hero: {
-      tag: ar ? "إصدار جديد · بقوّة GPT-5.2" : "New release · Powered by GPT-5.2",
-      h1a: ar ? "ذكاءٌ ماليٌّ،" : "Financial intelligence,",
-      h1b: ar ? "يقودُ قراراتك التالية." : "engineered for your next decision.",
+      tag: ar ? "الإصدار ٥٫٢ · ٢٤٬٠٠٠ قيد مُسجَّل اليوم" : "v5.2 · 24,000 entries posted today",
+      h1a: ar ? "محاسبُك. مُدقِّقُك." : "Your bookkeeper.",
+      h1b: ar ? "مديرُك المالي." : "Your auditor. Your CFO.",
+      h1c: ar ? "في ذكاءٍ واحدٍ — لا ينام." : "Replaced by one AI that doesn't sleep.",
       sub: ar
-        ? "ليست محاسبة فحسب. منصّةٌ ماليّةٌ مبنيّةٌ على IFRS، يَدرسُ فيها ذكاءٌ اصطناعيّ كلَّ ريالٍ يدخلُ ويخرج، يتوقّعُ تدفّقَك النقديّ، ويرصُدُ ما يستحقُّ انتباهَك قبلَ أن يصبحَ مشكلة."
-        : "More than accounting. An IFRS-grade financial platform where AI reads every transaction, forecasts your cash, and surfaces what deserves your attention — before it becomes a problem.",
-      subEm: ar ? " عربيّة في الجوهر، عالميّة في التصميم." : " Arabic-first, global by design.",
+        ? "لا تستأجر محاسباً. لا تنتظر تدقيقاً ربعيّاً. ذكاءٌ مُدرَّبٌ على IFRS وZATCA يقرأ كلّ فاتورة، يُسجّل كلّ قيد، ويُدقّق كلّ تسوية — في اللحظة التي تحدث."
+        : "Don't hire a bookkeeper. Don't wait on a quarterly audit. An AI trained on IFRS and ZATCA reads every receipt, posts every entry, and audits every reconciliation — the moment it happens.",
+      subEm: ar ? " بالعربيّة. بمعيار التدقيق." : " In Arabic. At audit grade.",
       ctaPrimary: ar ? "افتح التطبيق" : "Open the app",
-      ctaSecondary: ar ? "اطلب عرضاً مباشراً" : "Book a live demo",
+      ctaSecondary: ar ? "شاهده يشتغل" : "Watch it work",
       ctaTertiary: ar ? "تسجيل الدخول" : "Sign in",
+      replacing: ar ? "بديلٌ عن:" : "Replacing:",
+      replacingRoles: ar
+        ? ["مُحاسب", "مُحاسب ضرائب", "مُدقِّق داخليّ", "مُحلِّل مالي", "مدير مالي"]
+        : ["Bookkeeper", "Tax accountant", "Internal auditor", "FP&A analyst", "CFO"],
       bullets: ar
         ? ["بدون بطاقة ائتمان", "١٤ يوماً مجاناً، بكلّ المزايا", "جاهز خلال ٥ دقائق"]
         : ["No credit card", "Full 14-day trial", "Set up in 5 minutes"],
@@ -1086,134 +1091,244 @@ function CtaArrow({ ar }: { ar: boolean }) {
 /* ────────────────────────────────────────────────────────────────────────── */
 
 function Hero({ t }: { t: Dict }) {
+  // Self-contained dark hero — explicit tokens override page theme.
+  // Charcoal with warm undertone (not pure black), warm bone text, brighter emerald.
+  const HERO_BG    = "hsl(220 18% 6%)"
+  const HERO_INK   = "hsl(40 18% 95%)"
+  const HERO_MUTE  = "hsl(40 6% 62%)"
+  const HERO_LINE  = "hsl(220 10% 16%)"
+  const HERO_GLOW  = "hsl(158 70% 52%)"
+  const HERO_GLOW_10 = "hsla(158, 70%, 52%, 0.10)"
+  const HERO_GLOW_18 = "hsla(158, 70%, 52%, 0.18)"
+  const HERO_GLOW_12 = "hsla(158, 70%, 52%, 0.12)"
+  const HERO_CARD  = "hsl(220 14% 9%)"
+
   return (
-    <section className="relative pt-16 lg:pt-24 pb-20 lg:pb-28 overflow-hidden">
-      {/* Single ambient wash, anchored under the product side — no glass, no mesh */}
+    <section
+      className="relative overflow-hidden"
+      style={{ background: HERO_BG, color: HERO_INK }}
+    >
+      {/* Faint architectural grid — distinctive, not decorative noise */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 pointer-events-none opacity-[0.035]"
+        style={{
+          backgroundImage: `linear-gradient(${HERO_INK} 1px, transparent 1px), linear-gradient(90deg, ${HERO_INK} 1px, transparent 1px)`,
+          backgroundSize: "64px 64px",
+          maskImage: "radial-gradient(ellipse 80% 70% at 50% 30%, black 40%, transparent 90%)",
+          WebkitMaskImage: "radial-gradient(ellipse 80% 70% at 50% 30%, black 40%, transparent 90%)",
+        }}
+      />
+      {/* Single warm vignette anchored to product side */}
       <div
         aria-hidden
         className={cn(
-          "absolute -z-10 top-0 h-[80%] w-[55%] pointer-events-none",
+          "absolute -z-10 top-0 h-[90%] w-[60%] pointer-events-none",
           t.ar ? "left-0" : "right-0",
         )}
         style={{
-          background:
-            "radial-gradient(50% 60% at 50% 30%, hsl(158 64% 28% / 0.10), transparent 72%)",
+          background: `radial-gradient(50% 60% at 50% 30%, ${HERO_GLOW_10}, transparent 72%)`,
         }}
       />
+      {/* Hairline rule, top */}
+      <div aria-hidden className="absolute inset-x-0 top-0 h-px" style={{ background: HERO_LINE }} />
+      {/* Designed seam — short tonal step at the bottom edge so the dark→light handoff
+          to TrustStrip below reads as authored, not as an abrupt section switch */}
       <div
         aria-hidden
-        className="absolute inset-x-0 -z-10 top-0 h-px bg-gradient-to-r from-transparent via-border/60 to-transparent"
+        className="absolute inset-x-0 bottom-0 h-20 pointer-events-none"
+        style={{
+          background: `linear-gradient(to bottom, transparent 0%, ${HERO_BG} 100%)`,
+        }}
       />
+      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px" style={{ background: HERO_LINE }} />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-14 lg:pt-20 pb-20 lg:pb-28">
         <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-center">
 
-          {/* ── Headline column — anchored start, asymmetric ──────────── */}
+          {/* ── Editorial column ──────────────────────────────────────── */}
           <div className={cn("lg:col-span-7", t.ar ? "lg:order-last" : "")}>
-            <div className="inline-flex items-center gap-2.5 rounded-full border border-border bg-card px-3 py-1.5">
-              <span className="status-dot bg-success" />
-              <span className="text-2xs text-foreground/70">{t.hero.tag}</span>
-              <span aria-hidden className="text-border">·</span>
-              <ShieldCheck className="size-3.5 text-primary" />
-              <span className="text-2xs text-primary font-medium">{t.hero.certBadge}</span>
+            {/* Live-counter pill — mono in EN, plain in AR (mono+uppercase mangle Arabic) */}
+            <div
+              className={cn(
+                "inline-flex items-center gap-2.5 rounded-full px-3 py-1.5 text-2xs",
+                t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.14em]",
+              )}
+              style={{ border: `1px solid ${HERO_LINE}`, color: HERO_MUTE, background: HERO_CARD }}
+            >
+              <span className="inline-block size-1.5 rounded-full" style={{ background: HERO_GLOW }} />
+              <span>{t.hero.tag}</span>
             </div>
 
+            {/* Editorial display headline — dramatic three-beat */}
             <h1
               className={cn(
-                "mt-8 text-foreground tracking-tight",
-                "text-[clamp(2.75rem,7vw,5.5rem)] leading-[1.02]",
-                t.ar ? "font-semibold" : "font-display",
+                "mt-9 text-[clamp(2.75rem,7.4vw,5.75rem)]",
+                t.ar
+                  ? "font-semibold tracking-normal leading-[1.18]"
+                  : "font-display tracking-[-0.02em] leading-[0.98]",
               )}
               data-testid="heading-hero"
+              style={{ color: HERO_INK }}
             >
-              {t.hero.h1a}
-              <br />
-              <span className={cn(t.ar ? "text-primary" : "display-italic text-primary")}>
-                {t.hero.h1b}
+              {t.hero.h1a}<br />
+              {t.hero.h1b}<br />
+              <span
+                className={cn(t.ar ? "" : "display-italic")}
+                style={{ color: HERO_GLOW }}
+              >
+                {t.hero.h1c}
               </span>
             </h1>
 
-            <p className="mt-7 max-w-xl text-base lg:text-lg leading-relaxed text-muted-foreground">
+            <p
+              className="mt-8 max-w-xl text-base lg:text-lg leading-[1.65]"
+              style={{ color: HERO_MUTE }}
+            >
               {t.hero.sub}
-              <span className="text-foreground/85">{t.hero.subEm}</span>
+              <span style={{ color: HERO_INK }}>{t.hero.subEm}</span>
             </p>
 
-            <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Button size="xl" data-testid="button-hero-cta-primary" asChild>
-                <a href="/signin" className="gap-2">
-                  {t.hero.ctaPrimary}
-                  <CtaArrow ar={t.ar} />
-                </a>
-              </Button>
-              <Button size="xl" variant="ghost" data-testid="button-hero-cta-secondary" asChild>
-                <a href="/demo" className="gap-1.5 text-foreground hover:text-primary group">
-                  {t.hero.ctaSecondary}
-                  <ArrowRight className={cn("size-4 transition-transform group-hover:translate-x-0.5", t.ar && "rotate-180")} />
-                </a>
-              </Button>
+            {/* CTAs — primary emerald, secondary ghost-on-dark */}
+            <div className="mt-10 flex flex-wrap items-center gap-3">
+              <a
+                href="/signin"
+                data-testid="button-hero-cta-primary"
+                className="inline-flex items-center gap-2 px-6 h-12 rounded-md text-sm font-semibold tracking-tight transition-all hover:brightness-110"
+                style={{ background: HERO_GLOW, color: HERO_BG }}
+              >
+                {t.hero.ctaPrimary}
+                <CtaArrow ar={t.ar} />
+              </a>
+              <a
+                href="/demo"
+                data-testid="button-hero-cta-secondary"
+                className="inline-flex items-center gap-2 px-5 h-12 rounded-md text-sm font-medium transition-colors group"
+                style={{ color: HERO_INK, border: `1px solid ${HERO_LINE}` }}
+              >
+                <span className="inline-block size-1.5 rounded-full" style={{ background: HERO_GLOW }} />
+                {t.hero.ctaSecondary}
+                <ArrowRight className={cn("size-4 transition-transform group-hover:translate-x-0.5", t.ar && "rotate-180")} />
+              </a>
             </div>
 
-            {/* Trust signature — proof, not promises */}
-            <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-              {t.hero.bullets.map((b, i) => (
-                <span key={b} className="flex items-center gap-1.5">
-                  {i > 0 && <span aria-hidden className="text-border me-3">·</span>}
-                  <Check className="size-3 text-success/80" />{b}
-                </span>
-              ))}
+            {/* The role-replacement ticker — the audacious claim */}
+            <div className="mt-12 pt-6" style={{ borderTop: `1px solid ${HERO_LINE}` }}>
+              <div
+                className={cn(
+                  "text-2xs mb-3",
+                  t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.18em]",
+                )}
+                style={{ color: HERO_MUTE }}
+              >
+                {t.hero.replacing}
+              </div>
+              <ul
+                className="flex flex-wrap items-baseline gap-x-5 gap-y-2.5 list-none p-0 m-0"
+                style={{ color: HERO_INK }}
+              >
+                {t.hero.replacingRoles.map((role) => (
+                  <li key={role} className="inline-flex items-baseline gap-2">
+                    {t.ar ? (
+                      <>
+                        <span
+                          aria-hidden
+                          className="font-mono text-sm leading-none"
+                          style={{ color: HERO_GLOW }}
+                        >
+                          ×
+                        </span>
+                        <span className="text-base lg:text-lg font-semibold leading-none">
+                          {role}
+                        </span>
+                      </>
+                    ) : (
+                      <span
+                        className="text-base lg:text-lg font-display italic leading-none"
+                        style={{
+                          textDecoration: "line-through",
+                          textDecorationColor: HERO_GLOW,
+                          textDecorationThickness: "1.5px",
+                        }}
+                      >
+                        {role}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
 
-          {/* ── Product peek — anchored end, with floating annotations ── */}
+          {/* ── Product peek — luminous screen on dark canvas ─────────── */}
           <div className={cn("lg:col-span-5 relative", t.ar ? "lg:order-first" : "")}>
+            {/* Outer luminous halo */}
             <div
               aria-hidden
-              className="absolute -inset-8 -z-10 blur-3xl pointer-events-none"
-              style={{
-                background:
-                  "radial-gradient(55% 55% at 50% 50%, hsl(158 64% 28% / 0.18), transparent 70%)",
-              }}
+              className="absolute -inset-6 -z-10 pointer-events-none"
+              style={{ background: `radial-gradient(60% 50% at 50% 55%, ${HERO_GLOW_10}, transparent 75%)` }}
             />
 
-            {/* Top-right floating annotation: live posting */}
+            {/* Top floating annotation — dark dial */}
             <div
               className={cn(
-                "absolute -top-4 z-10 rounded-md border border-border bg-background shadow-sm px-3 py-2 hidden md:flex items-center gap-2",
+                "absolute -top-4 z-10 hidden md:flex items-center gap-2.5 rounded-md px-3 py-2",
                 t.ar ? "-left-4" : "-right-4",
               )}
+              style={{ background: HERO_CARD, border: `1px solid ${HERO_LINE}`, boxShadow: `0 0 0 1px ${HERO_GLOW_12}, 0 8px 32px rgba(0,0,0,0.5)` }}
               data-testid="hero-annotation-posted"
             >
-              <span className="status-dot bg-success" />
+              <span className="inline-block size-1.5 rounded-full" style={{ background: HERO_GLOW }} />
               <div className="leading-tight">
-                <div className="text-2xs uppercase tracking-wider text-muted-foreground">
+                <div
+                  className={cn("text-2xs", t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.14em]")}
+                  style={{ color: HERO_MUTE }}
+                >
                   {t.hero.chipAuto.t}
                 </div>
-                <div className="text-xs font-medium text-foreground">
+                <div className="text-xs font-medium" style={{ color: HERO_INK }}>
                   {t.hero.chipAuto.s}
                 </div>
               </div>
             </div>
 
-            {/* Bottom-left floating annotation: trend */}
+            {/* Bottom floating annotation — dark dial */}
             <div
               className={cn(
-                "absolute -bottom-5 z-10 rounded-md border border-border bg-background shadow-sm px-3 py-2 hidden md:flex items-center gap-2",
+                "absolute -bottom-5 z-10 hidden md:flex items-center gap-2.5 rounded-md px-3 py-2",
                 t.ar ? "-right-2" : "-left-2",
               )}
+              style={{ background: HERO_CARD, border: `1px solid ${HERO_LINE}`, boxShadow: `0 8px 32px rgba(0,0,0,0.5)` }}
               data-testid="hero-annotation-trend"
             >
-              <TrendingUp className="size-3.5 text-success" />
+              <TrendingUp className="size-3.5" style={{ color: HERO_GLOW }} />
               <div className="leading-tight">
-                <div className="text-xs font-medium text-foreground font-mono">
+                <div
+                  className={cn("text-xs font-medium", t.ar ? "" : "font-mono")}
+                  style={{ color: HERO_INK }}
+                >
                   {t.hero.chipProfit.t}
                 </div>
-                <div className="text-2xs text-muted-foreground">
+                <div className="text-2xs" style={{ color: HERO_MUTE }}>
                   {t.hero.chipProfit.s}
                 </div>
               </div>
             </div>
 
-            <HeroProductMockup t={t} />
+            {/* Luminous frame around mockup — looks like a real screen */}
+            <div
+              className="rounded-xl overflow-hidden"
+              style={{
+                boxShadow: `
+                  0 0 0 1px ${HERO_GLOW_18},
+                  0 0 0 6px rgba(255,255,255,0.02),
+                  0 32px 80px -20px rgba(0,0,0,0.7),
+                  0 12px 32px -8px rgba(0,0,0,0.5)
+                `,
+              }}
+            >
+              <HeroProductMockup t={t} />
+            </div>
           </div>
         </div>
       </div>
