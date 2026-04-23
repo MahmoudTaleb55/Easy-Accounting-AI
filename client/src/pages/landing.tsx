@@ -1969,12 +1969,6 @@ const AI_ENGINES: Engine[] = [
 
 function AIEngineMatrix({ t }: { t: Dict }) {
   const ar = t.ar
-  const families: Record<Engine["family"], { ar: string; en: string }> = {
-    vision:     { ar: "إدراك",   en: "Perception" },
-    reasoning:  { ar: "تفكير",   en: "Reasoning" },
-    agent:      { ar: "وكلاء",   en: "Agents" },
-    compliance: { ar: "حماية",   en: "Guardian" },
-  }
 
   return (
     <BentoSection id="engines" tone="cream">
@@ -2007,37 +2001,10 @@ function AIEngineMatrix({ t }: { t: Dict }) {
         }
       />
 
-      {/* Family legend */}
-      <div className="flex flex-wrap items-center justify-center gap-2.5 mb-10 lg:mb-14">
-        {(Object.keys(families) as Engine["family"][]).map((fam) => {
-          const f = families[fam]
-          const dot =
-            fam === "vision" ? "bg-primary" :
-            fam === "reasoning" ? "bg-[hsl(208_45%_70%)]" :
-            fam === "agent" ? "bg-foreground" :
-            "bg-success"
-          return (
-            <span
-              key={fam}
-              className="inline-flex items-center gap-2 rounded-full border border-card-border bg-card px-3 py-1.5 text-xs font-medium text-foreground"
-              data-testid={`engine-family-${fam}`}
-            >
-              <span aria-hidden className={cn("size-1.5 rounded-full", dot)} />
-              {ar ? f.ar : f.en}
-            </span>
-          )
-        })}
-      </div>
-
       {/* The 12-cell grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-4">
         {AI_ENGINES.map((e, i) => {
           const Icon = e.icon
-          const familyDot =
-            e.family === "vision" ? "bg-primary" :
-            e.family === "reasoning" ? "bg-[hsl(208_45%_70%)]" :
-            e.family === "agent" ? "bg-foreground" :
-            "bg-success"
           return (
             <article
               key={i}
@@ -2048,15 +2015,6 @@ function AIEngineMatrix({ t }: { t: Dict }) {
                 "transition-all duration-300 hover:border-foreground/30 hover:-translate-y-0.5",
               )}
             >
-              {/* corner family pip */}
-              <span
-                aria-hidden
-                className={cn(
-                  "absolute top-4 end-4 size-1.5 rounded-full",
-                  familyDot,
-                )}
-              />
-
               {/* icon tile */}
               <span className="grid place-items-center size-11 rounded-2xl bg-muted/50 border border-card-border text-foreground mb-4">
                 <Icon className="size-5" strokeWidth={1.75} />
