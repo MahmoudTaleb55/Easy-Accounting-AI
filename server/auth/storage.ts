@@ -363,6 +363,204 @@ export const authBizStorage = {
     return row;
   },
 
+  /**
+   * Unified delivery feed for the workspace's transactional email transports.
+   *
+   * Each row is one *send attempt* — keyed by the provider's `message_id`
+   * when one was issued, or by the local event id (prefixed `attempt:`)
+   * when the send failed before a `message_id` could be assigned. This
+   * matches Resend's dashboard model where a resend creates a brand-new
+   * row instead of overwriting the previous attempt.
+   *
+   * Source of truth is the per-event tables (`invitation_email_events`,
+   * `password_reset_email_events`); the denormalized `last_*` columns
+   * on parent rows are only used for the badge in the Members list.
+   *
+   * New transports plug in by adding another `SELECT` branch with the
+   * same projected columns. Filters are applied in SQL so admins
+   * searching a long history don't pay the round-trip cost.
+   */
+  async listEmailDeliveriesForCompany(
+    companyId: number,
+    opts: { status?: string | null; email?: string | null; limit?: number } = {},
+  ): Promise<
+    Array<{
+      transport: "invitation" | "password_reset";
+      key: string;
+      messageId: string | null;
+      parentId: string;
+      recipient: string;
+      role: string | null;
+      latestStatus: string;
+      latestError: string | null;
+      latestAt: string | null;
+      firstAt: string | null;
+    }>
+  > {
+    const limit = Math.max(1, Math.min(opts.limit ?? 200, 500));
+    const status = opts.status?.trim() || null;
+    const emailLike = opts.email?.trim() ? `%${opts.email.trim().toLowerCase()}%` : null;
+
+    // Inner query: every event projected to a uniform shape, with a
+    // `dedup_key` so resends/retries become distinct rows. Outer query
+    // collapses to the most recent event per (transport, key) using
+    // DISTINCT ON, then applies user filters.
+    const rows = await db.execute(sql`
+      WITH all_events AS (
+        SELECT
+          'invitation'::text                                          AS transport,
+          COALESCE(e.message_id, 'attempt:' || e.id)                  AS dedup_key,
+          e.message_id                                                AS message_id,
+          e.invitation_id                                             AS parent_id,
+          i.email                                                     AS recipient,
+          i.role                                                      AS role,
+          e.type                                                      AS type,
+          e.error                                                     AS error,
+          e.created_at                                                AS created_at
+        FROM invitation_email_events e
+        INNER JOIN invitations i ON i.id = e.invitation_id
+        WHERE i.company_id = ${companyId}
+
+        UNION ALL
+
+        SELECT
+          'password_reset'::text                                      AS transport,
+          COALESCE(e.message_id, 'attempt:' || e.id)                  AS dedup_key,
+          e.message_id                                                AS message_id,
+          e.token_id                                                  AS parent_id,
+          COALESCE(u.email, '')                                       AS recipient,
+          NULL::text                                                  AS role,
+          e.type                                                      AS type,
+          e.error                                                     AS error,
+          e.created_at                                                AS created_at
+        FROM password_reset_email_events e
+        INNER JOIN memberships m ON m.user_id = e.user_id AND m.company_id = ${companyId}
+        LEFT JOIN users u ON u.id = e.user_id
+      ),
+      latest_per_message AS (
+        SELECT DISTINCT ON (transport, dedup_key)
+          transport,
+          dedup_key,
+          message_id,
+          parent_id,
+          recipient,
+          role,
+          type        AS latest_status,
+          error       AS latest_error,
+          created_at  AS latest_at
+        FROM all_events
+        ORDER BY transport, dedup_key, created_at DESC
+      ),
+      first_per_message AS (
+        SELECT transport, dedup_key, MIN(created_at) AS first_at
+        FROM all_events
+        GROUP BY transport, dedup_key
+      )
+      SELECT
+        l.transport,
+        l.dedup_key,
+        l.message_id,
+        l.parent_id,
+        l.recipient,
+        l.role,
+        l.latest_status,
+        l.latest_error,
+        l.latest_at,
+        f.first_at
+      FROM latest_per_message l
+      JOIN first_per_message f
+        ON f.transport = l.transport AND f.dedup_key = l.dedup_key
+      WHERE
+        (${status}::text IS NULL OR l.latest_status = ${status}::text)
+        AND (${emailLike}::text IS NULL OR LOWER(l.recipient) LIKE ${emailLike}::text)
+      ORDER BY l.latest_at DESC NULLS LAST
+      LIMIT ${limit}
+    `);
+    const list = (rows as any).rows ?? (rows as any);
+    return (list as any[]).map((r) => ({
+      transport: r.transport,
+      key: r.dedup_key,
+      messageId: r.message_id,
+      parentId: r.parent_id,
+      recipient: r.recipient ?? "",
+      role: r.role,
+      latestStatus: r.latest_status,
+      latestError: r.latest_error,
+      latestAt: r.latest_at,
+      firstAt: r.first_at,
+    }));
+  },
+
+  /**
+   * Per-message lifecycle log for the unified delivery feed. Returns
+   * every event for a single send attempt (one provider message id, or
+   * one local attempt id when the send failed pre-dispatch), scoped to
+   * the calling workspace so admins can't peek at another workspace's
+   * deliveries.
+   *
+   * `key` is what `listEmailDeliveriesForCompany` returned: either a
+   * raw provider message_id or `attempt:<eventId>` for a failed
+   * pre-dispatch attempt.
+   */
+  async listEmailDeliveryEvents(
+    transport: "invitation" | "password_reset",
+    companyId: number,
+    key: string,
+  ): Promise<
+    Array<{
+      id: string;
+      messageId: string | null;
+      type: string;
+      error: string | null;
+      createdAt: string | null;
+    }>
+  > {
+    const isAttempt = key.startsWith("attempt:");
+    const attemptId = isAttempt ? key.slice("attempt:".length) : null;
+
+    if (transport === "invitation") {
+      const rows = await db.execute(sql`
+        SELECT e.id, e.message_id, e.type, e.error, e.created_at
+        FROM invitation_email_events e
+        INNER JOIN invitations i ON i.id = e.invitation_id
+        WHERE i.company_id = ${companyId}
+          AND (
+            (${attemptId}::text IS NOT NULL AND e.id = ${attemptId}::text)
+            OR (${attemptId}::text IS NULL AND e.message_id = ${key}::text)
+          )
+        ORDER BY e.created_at DESC
+      `);
+      const list = (rows as any).rows ?? (rows as any);
+      return (list as any[]).map((r) => ({
+        id: r.id,
+        messageId: r.message_id,
+        type: r.type,
+        error: r.error,
+        createdAt: r.created_at,
+      }));
+    }
+
+    const rows = await db.execute(sql`
+      SELECT e.id, e.message_id, e.type, e.error, e.created_at
+      FROM password_reset_email_events e
+      INNER JOIN memberships m ON m.user_id = e.user_id AND m.company_id = ${companyId}
+      WHERE
+        (
+          (${attemptId}::text IS NOT NULL AND e.id = ${attemptId}::text)
+          OR (${attemptId}::text IS NULL AND e.message_id = ${key}::text)
+        )
+      ORDER BY e.created_at DESC
+    `);
+    const list = (rows as any).rows ?? (rows as any);
+    return (list as any[]).map((r) => ({
+      id: r.id,
+      messageId: r.message_id,
+      type: r.type,
+      error: r.error,
+      createdAt: r.created_at,
+    }));
+  },
+
   async listPasswordResetTokensForUser(userId: string): Promise<PasswordResetToken[]> {
     return db
       .select()

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight } from "lucide-react";
+import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight, MailCheck } from "lucide-react";
 import type { OrgSettings } from "@/lib/format";
 import { CompaniesPanel, FxPanel } from "@/pages/fixed-assets";
 import { useCompany } from "@/contexts/company-context";
@@ -69,6 +69,19 @@ function SettingsSubpagesNav() {
               ? "Invite teammates and set roles."
               : "View workspace members.",
             testid: "link-settings-members",
+          },
+        ]
+      : []),
+    ...(can.manageMembers
+      ? [
+          {
+            href: "/app/settings/email-delivery",
+            icon: MailCheck,
+            title: ar ? "صحة بريد المعاملات" : "Email delivery health",
+            desc: ar
+              ? "كل دعوات الفريق ورسائل استعادة كلمة المرور وحالاتها."
+              : "Every team invitation and password-reset email and its status.",
+            testid: "link-settings-email-delivery",
           },
         ]
       : []),

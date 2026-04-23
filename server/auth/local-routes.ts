@@ -597,6 +597,49 @@ export function registerLocalAuthRoutes(app: Express) {
     res.json(events);
   });
 
+  // Unified delivery-health feed across every transactional email transport
+  // in this workspace. Backs the /settings/email-delivery admin page.
+  // One row per send attempt (keyed by provider message id, or local
+  // attempt id when the send failed pre-dispatch).
+  app.get("/api/auth/email-deliveries", requireAuth, requireRole("admin"), async (req, res) => {
+    const ctx = (req as any).membership!;
+    const status = typeof req.query.status === "string" ? req.query.status : null;
+    const email = typeof req.query.email === "string" ? req.query.email : null;
+    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 200;
+    const rows = await authBizStorage.listEmailDeliveriesForCompany(ctx.companyId, {
+      status,
+      email,
+      limit,
+    });
+    res.json(rows);
+  });
+
+  // Per-message lifecycle log used by the delivery-health drawer.
+  // Scopes by workspace so admins can't enumerate other workspaces'
+  // message ids. Accepts URL-encoded keys because some local attempt
+  // ids contain a colon.
+  app.get(
+    "/api/auth/email-deliveries/:transport/:key/events",
+    requireAuth,
+    requireRole("admin"),
+    async (req, res) => {
+      const ctx = (req as any).membership!;
+      const transport = String(req.params.transport);
+      if (transport !== "invitation" && transport !== "password_reset") {
+        return res.status(400).json({ message: "Unknown transport" });
+      }
+      // Express has already URL-decoded `:key` for us — including the
+      // colon in `attempt:<eventId>` keys.
+      const key = String(req.params.key);
+      const events = await authBizStorage.listEmailDeliveryEvents(
+        transport,
+        ctx.companyId,
+        key,
+      );
+      res.json(events);
+    },
+  );
+
   // ---------- Resend webhook ----------
   // Resend signs payloads with the Svix scheme:
   //   svix-id, svix-timestamp, svix-signature ("v1,<base64sig> v1,<base64sig>")

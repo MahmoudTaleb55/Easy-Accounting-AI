@@ -38,6 +38,7 @@ import AcceptInvitationPage from "@/pages/auth/accept-invitation";
 // Settings sub-pages
 import MembersPage from "@/pages/settings/members";
 import ProfilePage from "@/pages/settings/profile";
+import EmailDeliveryPage from "@/pages/settings/email-delivery";
 
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
@@ -77,6 +78,7 @@ function AppShellRoutes() {
       <Route path="/app/settings" component={SettingsPage} />
       <Route path="/app/settings/members" component={MembersPage} />
       <Route path="/app/settings/profile" component={ProfilePage} />
+      <Route path="/app/settings/email-delivery" component={EmailDeliveryPage} />
       <Route path="/app/ai-assistant" component={AiAssistant} />
       <Route component={NotFound} />
     </Switch>
