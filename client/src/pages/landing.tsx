@@ -1700,7 +1700,7 @@ function TrustStrip({ t }: { t: Dict }) {
     globe:  <Globe2      className="size-3.5" />,
   }
   return (
-    <section id="trust" className="border-y border-border bg-card/40">
+    <section id="trust" className="border-y border-border ">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Eyebrow + headline row */}
         <div className="py-8 lg:py-10 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 border-b border-border/60">
@@ -2086,7 +2086,7 @@ function AIAssistant({ t }: { t: Dict }) {
 function DashboardShowcase({ t }: { t: Dict }) {
   const s = t.showcase
   return (
-    <section id="showcase" className="py-24 lg:py-32 bg-card/30 border-b border-border">
+    <section id="showcase" className="py-24 lg:py-32  border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Chapter num="05" eyebrow={s.eyebrow} title={s.title} lead={s.lead} ar={t.ar} />
 
@@ -2500,7 +2500,7 @@ function Testimonials({ t }: { t: Dict }) {
             return (
               <figure
                 key={it.n}
-                className="group rounded-xl border border-border bg-card p-6 lg:p-7 flex flex-col gap-5 hover-elevate transition-shadow hover:shadow-lg"
+                className="group rounded-xl border border-border bg-card p-6 lg:p-7 flex flex-col gap-5"
                 data-testid={`testimonial-${i}`}
               >
                 {/* Top: 5 stars + verified */}
@@ -2572,7 +2572,7 @@ function Testimonials({ t }: { t: Dict }) {
         </div>
 
         {/* Switched-from wordmark strip */}
-        <div className="rounded-xl border border-border bg-card/60 p-5 lg:p-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+        <div className="rounded-xl border border-border  p-5 lg:p-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
           <span className="text-2xs font-mono uppercase tracking-wider text-muted-foreground">
             {t.ar
               ? "محاسب ذكي حلّ محلّ"
@@ -2670,7 +2670,7 @@ function InvoiceMock({ t }: { t: Dict }) {
         { d: "February maintenance",         q: "1", p: "1,300.00", x: "1,300.00" },
       ]
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg">
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
       {/* Window chrome */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
         <div className="flex gap-1.5">
@@ -2753,7 +2753,7 @@ function InvoiceMock({ t }: { t: Dict }) {
         <div className="col-span-12 flex flex-wrap items-center gap-2 pt-4 border-t border-border">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover-elevate"
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium"
             data-testid="invoice-mock-send"
           >
             <Send className="size-3.5" />
@@ -2761,14 +2761,14 @@ function InvoiceMock({ t }: { t: Dict }) {
           </button>
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover-elevate"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground"
           >
             <SiWhatsapp className="size-3.5 text-[#25D366]" />
             WhatsApp
           </button>
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover-elevate"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground"
           >
             <FileText className="size-3.5" />
             PDF
@@ -2837,7 +2837,7 @@ function VatReturnMock({ t }: { t: Dict }) {
     { l: "Adjustments",         v: "4,200.00",   t: "—",          tv: "630.00",    tone: "neutral" },
   ]
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg">
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
         <div className="flex gap-1.5">
           <span className="size-2.5 rounded-full bg-border" />
@@ -2906,7 +2906,7 @@ function VatReturnMock({ t }: { t: Dict }) {
         <div className="flex items-center gap-2 pt-2">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover-elevate"
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium"
           >
             <ShieldCheck className="size-3.5" />
             {ar ? "تقديم لـ ZATCA" : "Submit to ZATCA"}
@@ -2937,7 +2937,7 @@ function MultiOrgMock({ t }: { t: Dict }) {
     { f: "🇯🇴", n: "Smart Accountant · JO",   c: "JOD", b: "112K",   reg: "ISTD",  ok: false },
   ]
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg">
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
         <div className="flex gap-1.5">
           <span className="size-2.5 rounded-full bg-border" />
@@ -2967,7 +2967,7 @@ function MultiOrgMock({ t }: { t: Dict }) {
 
         <ul className="rounded-lg border border-border overflow-hidden divide-y divide-border">
           {orgs.map((o, i) => (
-            <li key={i} className="flex items-center gap-3 px-3.5 py-3 bg-card hover-elevate">
+            <li key={i} className="flex items-center gap-3 px-3.5 py-3 bg-card">
               <span className="text-xl leading-none flex-shrink-0" aria-hidden>{o.f}</span>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-foreground truncate">{o.n}</div>
@@ -3026,7 +3026,7 @@ function CommandMock({ t }: { t: Dict }) {
     { i: <Brain className="size-3.5" />,      p: "Ask",     t: "Is cash enough for February payroll?",   k: "⌘?" },
   ]
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-lg relative">
+    <div className="rounded-xl border border-border bg-card overflow-hidden relative">
       <div className="relative">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40">
           <div className="flex gap-1.5">
@@ -3062,7 +3062,7 @@ function CommandMock({ t }: { t: Dict }) {
                 key={i}
                 className={cn(
                   "flex items-center gap-3 px-3.5 py-2.5",
-                  i === 0 ? "bg-accent text-accent-foreground" : "bg-card hover-elevate"
+                  i === 0 ? "bg-accent text-accent-foreground" : "bg-card"
                 )}
               >
                 <span className={cn(
@@ -3146,7 +3146,7 @@ function PredictiveCapital({ t }: { t: Dict }) {
                       "rounded-md border p-3 transition-colors",
                       s.k === "base"
                         ? "border-primary/30 bg-accent/40"
-                        : "border-border bg-card hover-elevate"
+                        : "border-border bg-card"
                     )}
                     data-testid={`scenario-${s.k}`}
                   >
@@ -3242,7 +3242,7 @@ function Automation({ t }: { t: Dict }) {
         <Chapter num="08" eyebrow={aut.eyebrow} title={aut.title} lead={aut.lead} ar={t.ar} />
 
         {/* Before / After lanes */}
-        <div className="grid md:grid-cols-2 gap-px bg-border border border-border rounded-xl overflow-hidden">
+        <div className="grid md:grid-cols-2 gap-0 border border-border rounded-xl overflow-hidden">
           {/* Before lane — manual */}
           <div className="bg-muted/30 p-6 lg:p-8">
             <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-border/70">
@@ -3318,7 +3318,7 @@ function Automation({ t }: { t: Dict }) {
           </div>
         </div>
 
-        <div className="mt-10 grid md:grid-cols-3 gap-px bg-border border border-border rounded-xl overflow-hidden">
+        <div className="mt-10 grid md:grid-cols-3 gap-0 border border-border rounded-xl overflow-hidden">
           {aut.cases.map((c) => (
             <div key={c.t} className="bg-card p-7">
               <h3 className="text-base font-semibold text-foreground mb-2">{c.t}</h3>
@@ -3339,7 +3339,7 @@ function Automation({ t }: { t: Dict }) {
 function LiveAuditor({ t }: { t: Dict }) {
   const a = t.auditor
   return (
-    <section id="auditor" className="py-24 lg:py-32 bg-card/30 border-b border-border">
+    <section id="auditor" className="py-24 lg:py-32  border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Chapter num="09" eyebrow={a.eyebrow} title={a.title} lead={a.lead} ar={t.ar} />
 
@@ -3441,7 +3441,7 @@ function LocalIntegrations({ t }: { t: Dict }) {
 
   /* A compact node chip — used for every regulator / bank / commerce platform. */
   const Node = ({ n, b }: { n: string; b: string }) => (
-    <div className="group relative rounded-lg border border-card-border bg-card px-3 py-2 hover:border-primary/40 hover:shadow-sm transition-all min-w-0">
+    <div className="group relative rounded-lg border border-card-border bg-card px-3 py-2 hover:border-primary/40 transition-all min-w-0">
       <div className="text-xs font-semibold text-foreground truncate" title={n}>{n}</div>
       <div className="text-2xs text-muted-foreground truncate mt-0.5" title={b}>{b}</div>
     </div>
@@ -3587,7 +3587,7 @@ function ComplianceCalendar({ t }: { t: Dict }) {
         <Chapter num="11" eyebrow={c.eyebrow} title={c.title} lead={c.lead} ar={t.ar} />
 
         {/* Stats strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border mb-10">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-0 rounded-xl overflow-hidden border border-border mb-10">
           {c.stats.map((s) => (
             <div key={s.l} className="bg-card p-5 lg:p-6">
               <div className="text-3xl lg:text-4xl font-semibold text-foreground tracking-tight tabular-nums">
@@ -3599,7 +3599,7 @@ function ComplianceCalendar({ t }: { t: Dict }) {
         </div>
 
         {/* Calendar surface */}
-        <div className="card-premium relative rounded-2xl border border-card-border bg-card shadow-md overflow-hidden">
+        <div className="card-premium relative rounded-none border border-card-border bg-card overflow-hidden">
           {/* Months header */}
           <div className="grid grid-cols-[8.5rem_repeat(12,minmax(0,1fr))] border-b border-border bg-muted/30">
             <div className="px-4 py-3 font-mono text-2xs uppercase tracking-widest text-muted-foreground">
@@ -3739,11 +3739,11 @@ function Security({ t }: { t: Dict }) {
     <MapPin className="size-5" />,
   ]
   return (
-    <section id="security" className="py-24 lg:py-32 bg-card/30 border-b border-border">
+    <section id="security" className="py-24 lg:py-32  border-b border-border">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Chapter num="12" eyebrow={sec.eyebrow} title={sec.title} lead={sec.lead} ar={t.ar} />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-0 rounded-xl overflow-hidden border border-border">
           {sec.items.map((it, i) => (
             <div key={it.t} className="bg-card p-7 lg:p-8">
               <div className="text-primary/70 mb-5">{icons[i]}</div>
@@ -3866,7 +3866,7 @@ function MiniForecast({ ar }: { ar: boolean }) {
   const bars = [42, 58, 51, 67, 79, 88]
   const max = 100
   return (
-    <div className="mt-4 mb-6 rounded-lg border border-card-border bg-card/60 px-3.5 py-3">
+    <div className="mt-4 mb-6 rounded-lg border border-card-border  px-3.5 py-3">
       <div className="flex items-center justify-between mb-2">
         <span className="text-2xs text-muted-foreground tracking-wide uppercase">
           {ar ? "توقّع ٦ أشهر" : "6-mo outlook"}
@@ -3937,7 +3937,7 @@ function Pricing({ t }: { t: Dict }) {
     k === "growth" ? "lg:col-span-5" : k === "starter" ? "lg:col-span-3" : "lg:col-span-4"
 
   return (
-    <section id="pricing" className="relative py-24 lg:py-32 border-b border-border bg-card/30">
+    <section id="pricing" className="relative py-24 lg:py-32 border-b border-border ">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Chapter num="15" eyebrow={p.eyebrow} title={p.title} lead={p.lead} ar={t.ar} />
 
@@ -4008,7 +4008,7 @@ function Pricing({ t }: { t: Dict }) {
                 key={tier.k}
                 data-testid={`pricing-tier-${tier.k}`}
                 className={cn(
-                  "relative rounded-2xl border bg-card flex flex-col",
+                  "relative rounded-none border bg-card flex flex-col",
                   tierSpan(tier.k),
                   popular
                     ? "border-foreground/30 lg:-my-4 p-7 lg:p-9"
@@ -4016,7 +4016,7 @@ function Pricing({ t }: { t: Dict }) {
                 )}
               >
                 {popular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-primary text-primary-foreground text-2xs font-medium tracking-wide shadow-sm">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-primary text-primary-foreground text-2xs font-medium tracking-wide">
                     {p.mostPopular}
                   </span>
                 )}
@@ -4125,7 +4125,7 @@ function FAQ({ t }: { t: Dict }) {
   return (
     <section
       id="faq"
-      className="relative py-24 lg:py-32 bg-card/30"
+      className="relative py-24 lg:py-32 "
       style={{ borderBottom: "1px solid hsl(220 18% 6%)" }}
     >
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
@@ -4412,7 +4412,7 @@ function BentoCard({ children, className }: { children: React.ReactNode; classNa
   return (
     <div className={cn(
       "card-premium rounded-xl border border-card-border bg-card p-6 lg:p-7",
-      "shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200",
+      "shadow-sm transition-all duration-200",
       className
     )}>
       {children}
