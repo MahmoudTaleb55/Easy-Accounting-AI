@@ -795,10 +795,27 @@ export async function registerRoutes(
         if (settings?.currencyCode) currency = settings.currencyCode;
       } catch { /* settings optional */ }
 
+      const LANG_NAMES: Record<string, string> = {
+        ar: "Arabic (العربية)",
+        en: "English",
+        de: "German (Deutsch)",
+        fr: "French (Français)",
+      };
+      const uiLocale: "ar" | "en" | "de" | "fr" =
+        input.locale && LANG_NAMES[input.locale] ? input.locale : "ar";
+      const uiLangName = LANG_NAMES[uiLocale];
+
       const systemPrompt = `You are the executive accounting assistant for the "Mohaseb" platform.
-You are fully multilingual: detect the user's language on every turn and ALWAYS reply in that same language.
-Supported languages: Arabic (العربية), English, German (Deutsch), French (Français).
-Use Arabic only when the user writes in Arabic; otherwise mirror their language exactly.
+
+PRIMARY LANGUAGE — STRICT
+The user has chosen ${uiLangName} as their interface language.
+You MUST reply in ${uiLangName} for every turn, regardless of the language the user typed in.
+The only exception: if the user explicitly writes a sentence in another supported language
+AND explicitly asks you to switch ("answer in English", "réponds en français", …),
+honour the override for that turn only.
+Supported languages: Arabic, English, German, French.
+For Arabic, use modern standard Arabic (الفصحى البسيطة), right-to-left.
+When you call any generate_*_document tool, ALWAYS pass language="${uiLocale}" so the file is produced in the user's language with correct direction.
 
 Your job is to EXECUTE — not just answer. You have real tools that write to the books, manage HR, and produce real downloadable Office files.
 
@@ -928,6 +945,88 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
       } catch {
         return res.status(500).json({ message: "حدث خطأ في معالجة الطلب" });
       }
+    }
+  });
+
+  // ============================================================================
+  // Voice — speech-to-text (Whisper) + text-to-speech (gpt-4o-mini-tts)
+  // ============================================================================
+  // Multipart upload limited to 25 MB (OpenAI's whisper hard cap).
+  const audioUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (!file.mimetype.startsWith("audio/") && !file.mimetype.startsWith("video/webm")) {
+        return cb(new Error("Only audio uploads are supported."));
+      }
+      cb(null, true);
+    },
+  });
+
+  app.post(
+    "/api/assistant/transcribe",
+    audioUpload.single("audio"),
+    async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ message: "Missing audio file" });
+        const locale =
+          typeof req.body?.locale === "string" &&
+          ["ar", "en", "de", "fr"].includes(req.body.locale)
+            ? (req.body.locale as "ar" | "en" | "de" | "fr")
+            : undefined;
+
+        // Pick a sensible filename so OpenAI can sniff the format. Browsers
+        // typically record `audio/webm;codecs=opus` from MediaRecorder.
+        const ext =
+          req.file.mimetype.includes("mp4") || req.file.mimetype.includes("m4a")
+            ? "m4a"
+            : req.file.mimetype.includes("mpeg") || req.file.mimetype.includes("mp3")
+            ? "mp3"
+            : req.file.mimetype.includes("wav")
+            ? "wav"
+            : req.file.mimetype.includes("ogg")
+            ? "ogg"
+            : "webm";
+
+        // OpenAI's SDK accepts a Web `File` (Node 20+ provides it globally).
+        const audioFile = new File([req.file.buffer], `voice.${ext}`, {
+          type: req.file.mimetype || "audio/webm",
+        });
+
+        const transcription = await openai.audio.transcriptions.create({
+          file: audioFile,
+          // gpt-4o-mini-transcribe gives better quality on short utterances and
+          // handles all four supported languages natively.
+          model: "gpt-4o-mini-transcribe",
+          language: locale, // hint when known, auto-detect when not
+        });
+
+        res.json({ text: transcription.text || "", locale: locale || null });
+      } catch (err: any) {
+        console.error("[transcribe] failed", err);
+        res.status(500).json({ message: err?.message || "Transcription failed" });
+      }
+    },
+  );
+
+  app.post("/api/assistant/speech", async (req, res) => {
+    try {
+      const text = String(req.body?.text || "").slice(0, 4000);
+      if (!text.trim()) return res.status(400).json({ message: "Missing text" });
+      // gpt-4o-mini-tts handles AR/EN/DE/FR with the same multilingual voice.
+      const speech = await openai.audio.speech.create({
+        model: "gpt-4o-mini-tts",
+        voice: "alloy",
+        input: text,
+        response_format: "mp3",
+      });
+      const buf = Buffer.from(await speech.arrayBuffer());
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(buf);
+    } catch (err: any) {
+      console.error("[tts] failed", err);
+      res.status(500).json({ message: err?.message || "Speech synthesis failed" });
     }
   });
 

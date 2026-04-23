@@ -214,6 +214,8 @@ export const api = {
             return bytes <= 10 * 1024 * 1024;
           }, 'حجم الصورة كبير جداً (الحد الأقصى 10 ميجابايت)')
           .optional(),
+        // UI locale of the active session — drives the assistant's reply language.
+        locale: z.enum(['ar', 'en', 'de', 'fr']).optional(),
       }),
       responses: {
         200: z.custom<typeof chatMessages.$inferSelect>(),

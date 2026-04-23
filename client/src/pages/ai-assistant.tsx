@@ -16,6 +16,8 @@ import {
   BookOpen,
   ArrowRight,
   ArrowLeft,
+  Mic,
+  Square,
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
 import { cn } from "@/lib/utils"
@@ -23,6 +25,14 @@ import { cn } from "@/lib/utils"
 /* ══════════════════════════════════════════════════════════════════════════ */
 /*  Assistant — accounting work surface                                      */
 /* ══════════════════════════════════════════════════════════════════════════ */
+
+// Pick a localized string from a 4-language map, with English as fallback.
+function pickByLocale<T extends string>(
+  locale: string,
+  map: { ar: T; en: T; de: T; fr: T },
+): T {
+  return (map as Record<string, T>)[locale] ?? map.en
+}
 
 export default function AiAssistant() {
   const { locale } = useLocale()
@@ -33,33 +43,67 @@ export default function AiAssistant() {
 
   const [input, setInput] = useState("")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const audioStreamRef = useRef<MediaStream | null>(null)
 
   const t = useMemo(
     () => ({
-      sectionLabel: isAr ? "المساعد" : "Assistant",
-      title: isAr ? "اختصر يومك المحاسبي." : "Shorten your accounting day.",
-      subtitle: isAr
-        ? "اطلب من المساعد أن يسجّل معاملة، يكتب قيداً، أو يولّد تقريراً. النتائج تُرحّل مباشرة إلى دفاترك."
-        : "Ask the assistant to post a transaction, write a journal, or build a report. Results post straight to your books.",
-      quickHeader: isAr ? "عمليات سريعة" : "Quick actions",
-      placeholder: isAr
-        ? "اكتب طلبك… مثلاً: ولّد ميزان مراجعة Excel"
-        : "Type a request… e.g. Generate a Trial Balance in Excel",
-      placeholderWithImage: isAr ? "أضف ملاحظة (اختياري)…" : "Add a note (optional)…",
-      sizeError: isAr ? "حجم كبير جداً" : "File too large",
-      sizeErrorDesc: isAr ? "الحد الأقصى ١٠ ميجابايت." : "Maximum size is 10MB.",
-      typeError: isAr ? "نوع غير مدعوم" : "Unsupported type",
-      typeErrorDesc: isAr ? "الرجاء اختيار صورة فقط." : "Please choose an image file.",
-      footnote: isAr
-        ? "كل ناتج هنا يُسجَّل في اليومية. راجع دفاترك بعد كل عملية."
-        : "Every result here is recorded in the journal. Review your books after each action.",
-      uploadAria: isAr ? "ارفع صورة فاتورة" : "Upload a receipt image",
-      sendAria: isAr ? "إرسال" : "Send",
-      receipt: isAr ? "فاتورة" : "Receipt",
-      newChat: isAr ? "محادثة جديدة" : "New",
+      sectionLabel: pickByLocale(locale, { ar: "المساعد", en: "Assistant", de: "Assistent", fr: "Assistant" }),
+      title: pickByLocale(locale, {
+        ar: "اختصر يومك المحاسبي.",
+        en: "Shorten your accounting day.",
+        de: "Kürzer arbeiten – mehr erledigen.",
+        fr: "Raccourcissez votre journée comptable.",
+      }),
+      subtitle: pickByLocale(locale, {
+        ar: "اطلب من المساعد أن يسجّل معاملة، يكتب قيداً، أو يولّد تقريراً. النتائج تُرحّل مباشرة إلى دفاترك.",
+        en: "Ask the assistant to post a transaction, write a journal, or build a report. Results post straight to your books.",
+        de: "Bitten Sie den Assistenten, eine Transaktion zu buchen, einen Journalbuchungssatz zu erstellen oder einen Bericht zu generieren. Ergebnisse fließen direkt in Ihre Bücher.",
+        fr: "Demandez à l'assistant d'enregistrer une transaction, d'écrire un journal ou de générer un rapport. Les résultats sont publiés directement dans vos livres.",
+      }),
+      quickHeader: pickByLocale(locale, { ar: "عمليات سريعة", en: "Quick actions", de: "Schnellaktionen", fr: "Actions rapides" }),
+      placeholder: pickByLocale(locale, {
+        ar: "اكتب أو تحدّث… مثلاً: ولّد ميزان مراجعة Excel",
+        en: "Type or speak… e.g. Generate a Trial Balance in Excel",
+        de: "Tippen oder sprechen… z. B. Generiere eine Saldenliste in Excel",
+        fr: "Écrivez ou parlez… ex. Générez une balance dans Excel",
+      }),
+      placeholderWithImage: pickByLocale(locale, { ar: "أضف ملاحظة (اختياري)…", en: "Add a note (optional)…", de: "Notiz hinzufügen (optional)…", fr: "Ajouter une note (facultatif)…" }),
+      sizeError: pickByLocale(locale, { ar: "حجم كبير جداً", en: "File too large", de: "Datei zu groß", fr: "Fichier trop volumineux" }),
+      sizeErrorDesc: pickByLocale(locale, { ar: "الحد الأقصى ١٠ ميجابايت.", en: "Maximum size is 10MB.", de: "Maximale Größe: 10 MB.", fr: "Taille maximale : 10 Mo." }),
+      typeError: pickByLocale(locale, { ar: "نوع غير مدعوم", en: "Unsupported type", de: "Nicht unterstützter Typ", fr: "Type non pris en charge" }),
+      typeErrorDesc: pickByLocale(locale, { ar: "الرجاء اختيار صورة فقط.", en: "Please choose an image file.", de: "Bitte nur Bilddateien wählen.", fr: "Veuillez choisir uniquement une image." }),
+      footnote: pickByLocale(locale, {
+        ar: "كل ناتج هنا يُسجَّل في اليومية. راجع دفاترك بعد كل عملية.",
+        en: "Every result here is recorded in the journal. Review your books after each action.",
+        de: "Jedes Ergebnis hier wird im Journal erfasst. Prüfen Sie Ihre Bücher nach jeder Aktion.",
+        fr: "Chaque résultat est enregistré dans le journal. Consultez vos livres après chaque action.",
+      }),
+      uploadAria: pickByLocale(locale, { ar: "ارفع صورة فاتورة", en: "Upload a receipt image", de: "Belegbild hochladen", fr: "Téléverser une image de reçu" }),
+      sendAria: pickByLocale(locale, { ar: "إرسال", en: "Send", de: "Senden", fr: "Envoyer" }),
+      receipt: pickByLocale(locale, { ar: "فاتورة", en: "Receipt", de: "Beleg", fr: "Reçu" }),
+      newChat: pickByLocale(locale, { ar: "محادثة جديدة", en: "New", de: "Neu", fr: "Nouveau" }),
+      micStartAria: pickByLocale(locale, { ar: "تحدّث إلى المساعد", en: "Speak to the assistant", de: "Mit dem Assistenten sprechen", fr: "Parler à l'assistant" }),
+      micStopAria: pickByLocale(locale, { ar: "إيقاف التسجيل", en: "Stop recording", de: "Aufnahme beenden", fr: "Arrêter l'enregistrement" }),
+      micErrorTitle: pickByLocale(locale, { ar: "تعذّر استخدام المايك", en: "Microphone unavailable", de: "Mikrofon nicht verfügbar", fr: "Micro indisponible" }),
+      micErrorDesc: pickByLocale(locale, {
+        ar: "تأكد من السماح للمتصفح باستخدام المايكروفون.",
+        en: "Please allow the browser to use your microphone.",
+        de: "Bitte erlauben Sie dem Browser den Mikrofonzugriff.",
+        fr: "Autorisez le navigateur à accéder au microphone.",
+      }),
+      transcribeError: pickByLocale(locale, {
+        ar: "تعذّر تحويل الصوت إلى نص.",
+        en: "Failed to transcribe audio.",
+        de: "Audio konnte nicht transkribiert werden.",
+        fr: "Échec de la transcription audio.",
+      }),
       capabilities: isAr ? [
         { icon: FileSpreadsheet, label: "ولّد ميزان مراجعة بصيغة Excel", prompt: "ولّد لي ميزان مراجعة بصيغة Excel" },
         { icon: FileText, label: "اطبع قائمة الدخل بصيغة PDF", prompt: "اطبع قائمة الدخل بصيغة PDF" },
@@ -124,6 +168,76 @@ export default function AiAssistant() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit() }
   }
+
+  /* ── Voice input — record via MediaRecorder, transcribe via /api/assistant/transcribe ── */
+
+  const stopMicTracks = () => {
+    audioStreamRef.current?.getTracks().forEach((tr) => tr.stop())
+    audioStreamRef.current = null
+  }
+
+  const startRecording = async () => {
+    if (isRecording || isTranscribing || sendMessage.isPending) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      audioStreamRef.current = stream
+      // Pick a supported mime — webm/opus on Chromium-family, mp4 on Safari.
+      const mimeCandidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", ""]
+      const mime = mimeCandidates.find(
+        (m) => !m || (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(m)),
+      ) || ""
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      audioChunksRef.current = []
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+      recorder.onstop = async () => {
+        stopMicTracks()
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" })
+        if (blob.size < 1000) return // ignore empty / accidental taps
+        setIsTranscribing(true)
+        try {
+          const fd = new FormData()
+          fd.append("audio", blob, `voice.${(recorder.mimeType || "audio/webm").includes("mp4") ? "m4a" : "webm"}`)
+          fd.append("locale", locale)
+          const r = await fetch("/api/assistant/transcribe", { method: "POST", body: fd, credentials: "include" })
+          if (!r.ok) throw new Error(await r.text())
+          const j = await r.json()
+          const text = String(j?.text || "").trim()
+          if (text) setInput((prev) => (prev ? prev + " " + text : text))
+        } catch (err) {
+          console.error(err)
+          toast({ title: t.transcribeError, variant: "destructive" })
+        } finally {
+          setIsTranscribing(false)
+        }
+      }
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setIsRecording(true)
+    } catch (err) {
+      console.error(err)
+      stopMicTracks()
+      toast({ title: t.micErrorTitle, description: t.micErrorDesc, variant: "destructive" })
+    }
+  }
+
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current
+    setIsRecording(false)
+    if (!recorder) {
+      stopMicTracks()
+      return
+    }
+    if (recorder.state !== "inactive") {
+      try { recorder.stop() } catch { stopMicTracks() }
+    } else {
+      stopMicTracks()
+    }
+  }
+
+  // Cleanup on unmount.
+  useEffect(() => () => stopMicTracks(), [])
 
   const handleQuickPrompt = (prompt: string) => {
     if (sendMessage.isPending) return
@@ -259,6 +373,31 @@ export default function AiAssistant() {
                 title={t.uploadAria}
               >
                 <ImagePlus className="w-4 h-4" />
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={isTranscribing || sendMessage.isPending}
+                className={cn(
+                  "shrink-0",
+                  isRecording
+                    ? "text-red-600 hover:text-red-700"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                data-testid="button-voice-record"
+                aria-label={isRecording ? t.micStopAria : t.micStartAria}
+                title={isRecording ? t.micStopAria : t.micStartAria}
+              >
+                {isTranscribing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : isRecording ? (
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                ) : (
+                  <Mic className="w-4 h-4" />
+                )}
               </Button>
 
               <textarea

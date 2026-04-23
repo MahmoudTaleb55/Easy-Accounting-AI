@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ChatMessageInput } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
+import { useLocale } from "@/contexts/locale-context";
 
 function parseWithLogging<T>(schema: any, data: unknown, label: string): T {
   const result = schema.safeParse(data);
@@ -26,13 +27,17 @@ export function useChatMessages() {
 export function useSendMessage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  
+  const { locale } = useLocale();
+
   return useMutation({
     mutationFn: async (data: ChatMessageInput) => {
+      // Always pass the active UI locale so the assistant replies in the
+      // same language the user is viewing the app in.
+      const payload: ChatMessageInput = { locale, ...data };
       const res = await fetch(api.chat.message.path, {
         method: api.chat.message.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
         credentials: "include",
       });
       

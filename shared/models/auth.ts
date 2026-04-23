@@ -164,7 +164,7 @@ export const signUpSchema = z.object({
   firstName: z.string().min(1).max(80).optional().nullable(),
   lastName: z.string().min(1).max(80).optional().nullable(),
   invitationToken: z.string().optional().nullable(),
-  preferredLocale: z.enum(["ar", "en"]).optional().default("ar"),
+  preferredLocale: z.enum(["ar", "en", "de", "fr"]).optional().default("ar"),
   // Workspace currency. Server validates against the shared allowlist and
   // derives the symbol — clients cannot inject arbitrary symbols.
   currencyCode: z.string().min(2).max(8).optional(),
@@ -193,7 +193,7 @@ export const updateProfileSchema = z.object({
   firstName: z.string().min(1).max(80).optional().nullable(),
   lastName: z.string().min(1).max(80).optional().nullable(),
   profileImageUrl: z.string().url().max(500).optional().nullable(),
-  preferredLocale: z.enum(["ar", "en"]).optional(),
+  preferredLocale: z.enum(["ar", "en", "de", "fr"]).optional(),
 });
 
 export const changePasswordSchema = z.object({

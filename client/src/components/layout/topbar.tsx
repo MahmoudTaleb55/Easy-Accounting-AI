@@ -23,14 +23,23 @@ import { useCompany } from "@/contexts/company-context";
 import { usePeriod, type PeriodKey } from "@/contexts/period-context";
 import { CommandPaletteTrigger } from "./command-palette";
 import { TrustCluster } from "@/components/trust/trust-cluster";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Locale } from "@/contexts/locale-context";
 
 interface Props {
   onOpenPalette: () => void;
   onToggleAiRail: () => void;
   aiRailOpen: boolean;
 }
+
+const LANG_NATIVE: Record<Locale, string> = {
+  ar: "العربية",
+  en: "English",
+  de: "Deutsch",
+  fr: "Français",
+};
 
 export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
   const t = useT();
@@ -40,6 +49,24 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
   const { period, setPeriodKey, compareToPrevious, setCompareToPrevious } = usePeriod();
   const { role } = useAuth();
   const [, setLocation] = useLocation();
+
+  // Persist the chosen UI language to the user's profile so it survives across
+  // devices and so the assistant always sees the latest preference. We never
+  // block the UI on the network call — local state and storage update first.
+  const updateLocaleMut = useMutation({
+    mutationFn: async (preferredLocale: Locale) => {
+      const res = await apiRequest("PATCH", "/api/auth/profile", { preferredLocale });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    },
+  });
+
+  function changeLanguage(code: Locale) {
+    setLocale(code);
+    if (role) updateLocaleMut.mutate(code);
+  }
 
   const roleChipKey =
     role === "reviewer" ? "role_chip_reviewer" :
@@ -254,23 +281,25 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
 
-          {/* Language sub-menu */}
+          {/* Language sub-menu — Arabic, English, German, French */}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="text-small">
               <Globe className="size-3.5 me-2 opacity-70" />
               <span className="flex-1">{t("language_label")}</span>
-              <span className="text-caption text-muted-foreground">{locale === "ar" ? "العربية" : "English"}</span>
+              <span className="text-caption text-muted-foreground">{LANG_NATIVE[locale]}</span>
             </DropdownMenuSubTrigger>
             <DropdownMenuPortal>
               <DropdownMenuSubContent className="shadow-md motion-enter">
-                <DropdownMenuItem onClick={() => setLocale("ar")} data-testid="menu-lang-ar">
-                  <Check className={`size-3.5 me-2 ${locale === "ar" ? "opacity-100" : "opacity-0"}`} />
-                  <span className="text-small">العربية</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setLocale("en")} data-testid="menu-lang-en">
-                  <Check className={`size-3.5 me-2 ${locale === "en" ? "opacity-100" : "opacity-0"}`} />
-                  <span className="text-small">English</span>
-                </DropdownMenuItem>
+                {(["ar", "en", "de", "fr"] as const).map((code) => (
+                  <DropdownMenuItem
+                    key={code}
+                    onClick={() => changeLanguage(code)}
+                    data-testid={`menu-lang-${code}`}
+                  >
+                    <Check className={`size-3.5 me-2 ${locale === code ? "opacity-100" : "opacity-0"}`} />
+                    <span className="text-small">{LANG_NATIVE[code]}</span>
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuSubContent>
             </DropdownMenuPortal>
           </DropdownMenuSub>
