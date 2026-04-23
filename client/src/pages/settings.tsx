@@ -20,7 +20,7 @@ import { TeamPanel } from "@/components/team/team-panel";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/contexts/locale-context";
-import { WriteGuard } from "@/components/auth/write-guard";
+import { OwnerGuard } from "@/components/auth/write-guard";
 
 interface LocalizationPack {
   code: string;
@@ -269,12 +269,12 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <WriteGuard forceDisabled={mutation.isPending}>
+          <OwnerGuard forceDisabled={mutation.isPending}>
             <Button type="submit" size="lg" data-testid="button-save-settings">
               <Save className="w-4 h-4 ml-2" />
               {mutation.isPending ? "جاري الحفظ..." : "حفظ الإعدادات"}
             </Button>
-          </WriteGuard>
+          </OwnerGuard>
         </form>
       </Form>
 

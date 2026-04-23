@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { WriteGuard } from "@/components/auth/write-guard";
+import { WriteGuard, OwnerGuard } from "@/components/auth/write-guard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck } from "lucide-react";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
@@ -1121,7 +1121,7 @@ export function CompaniesPanel() {
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-lg">الشركات</CardTitle>
         <Dialog open={open} onOpenChange={setOpen}>
-          <WriteGuard><Button data-testid="button-add-company" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-1" /> إضافة شركة</Button></WriteGuard>
+          <OwnerGuard><Button data-testid="button-add-company" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-1" /> إضافة شركة</Button></OwnerGuard>
           <DialogContent dir="rtl">
             <DialogHeader><DialogTitle>شركة جديدة</DialogTitle></DialogHeader>
             <div className="grid gap-3">
@@ -1188,9 +1188,9 @@ export function FxPanel({ company }: { company: Company }) {
           <div><Label>إلى</Label><Input value={form.toCurrency} onChange={(e) => setForm({ ...form, toCurrency: e.target.value.toUpperCase() })} data-testid="input-fx-to" /></div>
           <div><Label>التاريخ</Label><Input type="date" value={form.rateDate} onChange={(e) => setForm({ ...form, rateDate: e.target.value })} data-testid="input-fx-date" /></div>
           <div><Label>السعر</Label><Input type="number" step="0.0001" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} data-testid="input-fx-rate-value" /></div>
-          <WriteGuard forceDisabled={m.isPending}>
+          <OwnerGuard forceDisabled={m.isPending}>
             <Button onClick={() => m.mutate()} data-testid="button-save-fx"><Plus className="w-4 h-4 ml-1" /> إضافة</Button>
-          </WriteGuard>
+          </OwnerGuard>
         </div>
         {!rates || rates.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد أسعار صرف.</div> : (
           <div className="table-sticky-first"><table className="w-full text-sm">
@@ -1201,7 +1201,7 @@ export function FxPanel({ company }: { company: Company }) {
                 <td className="py-2">{r.fromCurrency}</td>
                 <td className="py-2">{r.toCurrency}</td>
                 <td className="py-2 tabular-nums">{r.rate}</td>
-                <td className="py-2"><WriteGuard><Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)} data-testid={`button-delete-fx-${r.id}`}><Trash2 className="w-4 h-4 text-rose-600" /></Button></WriteGuard></td>
+                <td className="py-2"><OwnerGuard><Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)} data-testid={`button-delete-fx-${r.id}`}><Trash2 className="w-4 h-4 text-rose-600" /></Button></OwnerGuard></td>
               </tr>
             ))}</tbody>
           </table></div>
