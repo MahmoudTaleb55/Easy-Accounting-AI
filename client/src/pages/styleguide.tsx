@@ -394,7 +394,7 @@ export default function Styleguide() {
                 <code className="font-mono">.motion-confirm</code> ping on success
               </span>
               <span className="inline-flex items-center gap-1.5 text-small text-muted-foreground">
-                <span className="status-dot bg-success animate-pulse" /> live status dot
+                <span className="status-dot bg-success" /> live status dot
               </span>
             </div>
           </Section>

@@ -57,7 +57,7 @@ export function PeriodBar() {
         </div>
         <span className="hairline-v hidden md:inline-block h-4" />
         <div className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
-          <CircleDot className={`w-3 h-3 ${pulse ? "text-success animate-pulse" : "text-success/60"}`} />
+          <CircleDot className={`w-3 h-3 ${pulse ? "text-success" : "text-success/60"}`} />
           <span>{t("synced")} {syncedAgo}</span>
         </div>
       </div>

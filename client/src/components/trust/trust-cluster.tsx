@@ -160,7 +160,6 @@ export function TrustCluster() {
               className={cn(
                 "h-2 w-2 rounded-full",
                 HEALTH_TONE[overall],
-                isFetching && "motion-safe:animate-pulse"
               )}
             />
           </span>

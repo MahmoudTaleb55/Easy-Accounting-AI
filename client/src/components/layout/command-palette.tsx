@@ -5,7 +5,7 @@ import {
   CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator,
 } from "@/components/ui/command";
 import {
-  Home, ListOrdered, BookText, BookOpen, BarChart3, Sparkles, Users, Building2, Bot, Settings as SettingsIcon,
+  Home, ListOrdered, BookText, BookOpen, BarChart3, Activity, Users, Building2, Bot, Settings as SettingsIcon,
   Plus, Search,
 } from "lucide-react";
 import { useT } from "@/i18n/dict";
@@ -33,7 +33,7 @@ export function CommandPalette({ open, onOpenChange }: Props) {
     { key: "nav-je",     label: t("nav_journal"),      icon: BookText,    path: "/app/journal" },
     { key: "nav-acc",    label: t("nav_accounts"),     icon: BookOpen,    path: "/app/accounts" },
     { key: "nav-rep",    label: t("nav_reports"),      icon: BarChart3,   path: "/app/reports" },
-    { key: "nav-ins",    label: t("nav_insights"),     icon: Sparkles,    path: "/app/insights" },
+    { key: "nav-ins",    label: t("nav_insights"),     icon: Activity,    path: "/app/insights" },
     { key: "nav-hr",     label: t("nav_hr"),           icon: Users,       path: "/app/hr" },
     { key: "nav-fa",     label: t("nav_assets"),       icon: Building2,   path: "/app/fixed-assets" },
     { key: "nav-ai",     label: t("nav_ai"),           icon: Bot,         path: "/app/ai-assistant" },

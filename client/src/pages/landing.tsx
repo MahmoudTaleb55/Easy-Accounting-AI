@@ -1285,55 +1285,51 @@ function HeroProductMockup({ t }: { t: Dict }) {
 
 function TrustStrip({ t }: { t: Dict }) {
   const pillarIcon: Record<string, React.ReactNode> = {
-    shield: <ShieldCheck className="size-4" />,
-    scale:  <Scale       className="size-4" />,
-    lock:   <Lock        className="size-4" />,
-    globe:  <Globe2      className="size-4" />,
+    shield: <ShieldCheck className="size-3.5" />,
+    scale:  <Scale       className="size-3.5" />,
+    lock:   <Lock        className="size-3.5" />,
+    globe:  <Globe2      className="size-3.5" />,
   }
   return (
     <section className="border-y border-border bg-card/40">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 lg:py-12">
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-4">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Eyebrow + headline row */}
+        <div className="py-8 lg:py-10 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 border-b border-border/60">
+          <div>
             <div className="eyebrow eyebrow-lead mb-2"><span className="chapter-index">01</span>{t.trust.eyebrow}</div>
-            <div className="text-sm text-foreground/85 leading-relaxed">
-              <span className="font-semibold text-foreground">{t.trust.headline}</span>{" "}
-              {t.trust.sub1}
+            <div className="text-base lg:text-lg leading-relaxed text-foreground max-w-2xl">
+              <span className="font-semibold">{t.trust.headline}</span>{" "}
+              <span className="text-muted-foreground">{t.trust.sub1}</span>
             </div>
           </div>
-          <div className="lg:col-span-8">
-            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-border rounded-lg overflow-hidden border border-border">
-              {t.trust.pillars.map((p) => (
-                <li
-                  key={p.l}
-                  className="bg-card p-4 lg:p-5 flex flex-col gap-1.5"
-                  data-testid={`pillar-${p.k}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="size-7 rounded-md bg-accent text-accent-foreground border border-accent-border flex items-center justify-center flex-shrink-0">
-                      {pillarIcon[p.k]}
-                    </span>
-                    <div className="font-mono text-2xs text-foreground tracking-wide flex items-center gap-1.5 min-w-0">
-                      <span className="truncate">{p.l}</span>
-                      {p.k === "shield" && (
-                        <span className="relative inline-flex size-1.5 flex-shrink-0" aria-hidden>
-                          <span className="absolute inset-0 rounded-full bg-success animate-ping opacity-60 motion-reduce:animate-none" />
-                          <span className="relative inline-flex size-1.5 rounded-full bg-success" />
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-2xs text-muted-foreground leading-relaxed break-words">
-                    {p.c}
-                  </div>
-                </li>
-              ))}
-            </ul>
+          <div className="font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground inline-flex items-center gap-2">
+            <span className="size-1.5 rounded-full bg-success" aria-hidden />
+            <span>verified · {new Date().getFullYear()}</span>
           </div>
         </div>
-        <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-lg overflow-hidden border border-border">
+
+        {/* Bloomberg-style ticker — regulators + metrics on one rule, hairline dividers, mono numerics */}
+        <div className="py-6 lg:py-7 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 divide-x divide-border [&>*]:px-4 lg:[&>*]:px-5 first:[&>*]:ps-0 last:[&>*]:pe-0 rtl:divide-x-reverse">
+          {t.trust.pillars.map((p) => (
+            <div key={p.l} className="flex flex-col gap-1.5 min-w-0" data-testid={`pillar-${p.k}`}>
+              <div className="font-mono text-2xs uppercase tracking-[0.16em] text-muted-foreground inline-flex items-center gap-1.5">
+                <span className="text-foreground/60">{pillarIcon[p.k]}</span>
+                <span className="truncate">{p.l}</span>
+                {p.k === "shield" && (
+                  <span className="inline-flex size-1 rounded-full bg-success ms-0.5" aria-hidden />
+                )}
+              </div>
+              <div className="text-xs text-foreground leading-snug truncate" title={p.c}>{p.c}</div>
+            </div>
+          ))}
           {t.trust.metrics.map((m) => (
-            <Metric key={m.l} value={m.v} label={m.l} mono={m.mono} />
+            <div key={m.l} className="flex flex-col gap-1.5 min-w-0">
+              <div className="font-mono text-2xs uppercase tracking-[0.16em] text-muted-foreground truncate">{m.l}</div>
+              <div className={cn(
+                "text-foreground leading-none",
+                m.mono ? "font-mono text-base" : "font-display text-xl font-semibold tracking-tight",
+              )}>{m.v}</div>
+            </div>
           ))}
         </div>
       </div>
@@ -2746,10 +2742,7 @@ function LiveAuditor({ t }: { t: Dict }) {
             <BentoCard className="h-full">
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
                 <div className="flex items-center gap-2">
-                  <span className="relative flex size-2">
-                    <span className="absolute inset-0 rounded-full bg-success animate-ping opacity-60" />
-                    <span className="relative inline-flex size-2 rounded-full bg-success" />
-                  </span>
+                  <span className="inline-flex size-2 rounded-full bg-success" aria-hidden />
                   <div className="text-sm font-medium text-foreground">{a.feedTitle}</div>
                 </div>
                 <div className="text-2xs text-muted-foreground font-mono">{a.feedSub}</div>

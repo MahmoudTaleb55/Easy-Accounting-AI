@@ -60,7 +60,7 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
 
   return (
     <header
-      className="sticky top-0 z-40 hidden md:flex h-14 items-center gap-2 border-b border-border bg-background/85 backdrop-blur-md px-4 lg:px-6"
+      className="sticky top-0 z-40 hidden md:flex h-14 items-center gap-2 border-b border-border bg-background px-4 lg:px-6"
       data-testid="app-topbar"
     >
       {companies.length > 0 && (

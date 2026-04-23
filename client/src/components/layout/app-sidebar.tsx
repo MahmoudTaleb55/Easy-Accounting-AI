@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import {
   Home, ListOrdered, Bot, Wallet, Menu, BarChart3, BookOpen, BookText,
-  Sparkles, Users, Building2, Inbox, Settings as SettingsIcon, ChevronLeft, ChevronRight,
+  Activity, Users, Building2, Inbox, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   LogOut, User as UserIcon, type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -50,7 +50,7 @@ const GROUPS: NavGroup[] = [
   {
     label: "group_intelligence",
     items: [
-      { key: "nav_insights",     url: "/app/insights",       icon: Sparkles },
+      { key: "nav_insights",     url: "/app/insights",       icon: Activity },
       { key: "nav_ai",           url: "/app/ai-assistant",   icon: Bot },
     ],
   },

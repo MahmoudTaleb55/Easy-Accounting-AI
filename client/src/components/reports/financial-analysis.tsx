@@ -6,14 +6,13 @@ import type { Transaction } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Sparkles,
+  Activity,
   TrendingUp,
   TrendingDown,
   AlertCircle,
   CheckCircle2,
   Target,
   Loader2,
-  Activity,
   Percent,
   Zap,
   Lightbulb,
@@ -143,12 +142,12 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
       </div>
 
       {/* Trigger card */}
-      <Card className="rounded-2xl border-none shadow-lg shadow-black/5 bg-gradient-to-l from-primary/10 via-card to-emerald-500/10 overflow-hidden">
+      <Card className="rounded-xl border border-border shadow-none bg-card overflow-hidden">
         <CardContent className="p-6 lg:p-8">
           <div className="flex flex-col lg:flex-row items-start gap-6 justify-between">
             <div className="flex items-start gap-4 flex-1">
-              <div className="p-3 bg-primary/15 rounded-2xl shrink-0">
-                <Sparkles className="w-7 h-7 text-primary" />
+              <div className="p-2.5 border border-border rounded-md shrink-0">
+                <Activity className="w-5 h-5 text-primary" />
               </div>
               <div>
                 <h3 className="text-xl font-extrabold text-foreground">

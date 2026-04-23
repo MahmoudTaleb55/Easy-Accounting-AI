@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Sparkles, X, AlertTriangle, AlertCircle, Info, CheckCircle2, ArrowRight } from "lucide-react";
+import { Bot, X, AlertTriangle, AlertCircle, Info, CheckCircle2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n/dict";
 import { useLocale } from "@/contexts/locale-context";
@@ -52,7 +52,7 @@ export function AiRail({ open, onClose }: Props) {
       <div className="flex items-center justify-between border-b border-border px-4 h-14 shrink-0">
         <div className="flex items-center gap-2">
           <div className="bg-primary/10 p-1.5 rounded-md">
-            <Sparkles className="w-4 h-4 text-primary" />
+            <Bot className="w-4 h-4 text-primary" />
           </div>
           <div>
             <div className="text-sm font-semibold leading-tight">{t("ai_title")}</div>

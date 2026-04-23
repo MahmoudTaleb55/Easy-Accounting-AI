@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, ArrowDownRight, Plus, Sparkles } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Plus } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, LineChart, Line } from "recharts";
 import { usePeriod } from "@/contexts/period-context";
 import { useT } from "@/i18n/dict";
@@ -242,13 +242,11 @@ function EmptyHero() {
   const t = useT();
   return (
     <Link href="/app/transactions?new=1" className="block lg:row-span-2 group" data-testid="kpi-empty-hero">
-      <div className="h-full border border-dashed border-border bg-card/50 rounded-xl p-6 flex flex-col items-center justify-center text-center gap-4 transition-colors hover:border-foreground/30 hover:bg-card">
-        <div className="h-12 w-12 rounded-xl border border-border bg-background inline-flex items-center justify-center">
-          <Sparkles className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
-        </div>
-        <div className="space-y-1.5 max-w-xs">
-          <div className="font-display text-xl font-semibold leading-tight">{t("start_first_tx")}</div>
-          <div className="text-sm text-muted-foreground leading-relaxed">{t("start_first_tx_hint")}</div>
+      <div className="h-full border border-dashed border-border bg-card/50 rounded-xl p-6 flex flex-col items-start justify-end text-start gap-4 transition-colors hover:border-foreground/30 hover:bg-card">
+        <div className="font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground">— {t("kpi_cash")}</div>
+        <div className="space-y-2">
+          <div className="font-display text-3xl font-semibold leading-[0.95] tracking-tight text-foreground">{t("start_first_tx")}</div>
+          <div className="text-sm text-muted-foreground leading-relaxed max-w-sm">{t("start_first_tx_hint")}</div>
         </div>
         <div className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground border border-border rounded-md px-3 py-1.5 group-hover:bg-foreground group-hover:text-background transition-colors">
           <Plus className="w-3.5 h-3.5" />

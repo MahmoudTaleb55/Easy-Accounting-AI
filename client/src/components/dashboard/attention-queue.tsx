@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
-  AlertTriangle, AlertCircle, Info, CheckCircle2, ArrowRight, BookText, Sparkles, FileQuestion,
+  AlertTriangle, AlertCircle, Info, CheckCircle2, ArrowRight, BookText, Activity, FileQuestion,
 } from "lucide-react";
 import { useT } from "@/i18n/dict";
 import { useLocale } from "@/contexts/locale-context";
@@ -25,7 +25,7 @@ const sevConfig: Record<AttentionItem["severity"], { icon: any; color: string; r
 };
 
 const kindIcon = {
-  anomaly:    Sparkles,
+  anomaly:    Activity,
   pending_je: BookText,
   inactivity: FileQuestion,
   alert:      Info,
