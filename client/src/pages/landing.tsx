@@ -1447,16 +1447,15 @@ function Hero({ t }: { t: Dict }) {
 
           {/* ── Editorial column ──────────────────────────────────────── */}
           <div className={cn("lg:col-span-7", t.ar ? "lg:order-last" : "")}>
-            {/* Live-counter pill — mono in EN, plain in AR (mono+uppercase mangle Arabic) */}
-            <div
-              className={cn(
-                "inline-flex items-center gap-2.5 rounded-full px-3 py-1.5 text-2xs",
-                t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.14em]",
-              )}
-              style={{ border: `1px solid ${HERO_LINE}`, color: HERO_MUTE, background: HERO_CARD }}
-            >
-              <span className="inline-block size-1.5 rounded-full" style={{ background: HERO_GLOW }} />
-              <span>{t.hero.tag}</span>
+            {/* Edition slug — set as printed mark, not a SaaS pill */}
+            <div className="flex items-baseline gap-3 pb-3 border-b" style={{ borderColor: HERO_LINE }}>
+              <span aria-hidden className="size-1 translate-y-[-2px] rounded-full" style={{ background: HERO_GLOW }} />
+              <span
+                className={cn("text-2xs", t.ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]")}
+                style={{ color: HERO_MUTE }}
+              >
+                {t.hero.tag}
+              </span>
             </div>
 
             {/* Editorial display headline — dramatic three-beat */}
@@ -2266,75 +2265,107 @@ function DashboardShowcase({ t }: { t: Dict }) {
 /*  2.5 · Manifesto — full-bleed typographic anchor                           */
 /* ────────────────────────────────────────────────────────────────────────── */
 
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Manifesto — Articles of Founding.                                         */
+/*  This is the page's emotional anchor. It is set as a constitutional        */
+/*  document, not a landing-page section. Three Articles, each on its own     */
+/*  rule, each set in monumental type, each given the silence to land.        */
+/*  No gradient mesh. No chips. No italic on Arabic. No colored period.       */
+/*  The page must look like it was printed, not deployed.                     */
+/* ────────────────────────────────────────────────────────────────────────── */
+
 function Manifesto({ t }: { t: Dict }) {
-  const m = t.manifesto
+  const m  = t.manifesto
+  const ar = t.ar
+  const articleNum = (i: number) =>
+    ar ? ["الأوّل", "الثاني", "الثالث"][i] : ["I", "II", "III"][i]
+  const articleLabel = ar ? "المادّة" : "Article"
+
   return (
     <section
       id="belief"
-      className="relative isolate overflow-hidden bg-foreground text-background py-24 lg:py-36"
+      className="relative bg-foreground text-background py-28 lg:py-44"
       data-testid="section-manifesto"
     >
-      {/* Layered ambient mesh — emerald glow on dark canvas */}
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10"
-        style={{
-          background:
-            "radial-gradient(60% 50% at 20% 30%, hsl(158 64% 28% / 0.32), transparent 60%), radial-gradient(50% 45% at 85% 75%, hsl(158 64% 28% / 0.22), transparent 65%)",
-        }}
-      />
-      {/* Top hairline */}
-      <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-border" />
-      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-border" />
+      {/* No gradient. No glow. Just the page edge as a printed rule. */}
+      <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-background/20" />
+      <div aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-background/20" />
 
-      <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-        {/* Eyebrow with chapter mark */}
-        <div className="flex items-center gap-3 mb-10 lg:mb-14">
-          <span className="font-mono text-xs uppercase tracking-[0.3em] text-primary-foreground bg-primary/30 ring-1 ring-primary/50 px-2.5 py-1 rounded-full">
-            00 · {m.eyebrow}
+      <div className="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+
+        {/* Top printer's slug — date, document title, reading direction */}
+        <div className="flex items-baseline gap-3 pb-3 mb-16 lg:mb-24 border-b border-background/15">
+          <span aria-hidden className="size-1 translate-y-[-2px] rounded-full bg-primary" />
+          <span className={cn("text-2xs", ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]", "text-background/70")}>
+            {ar ? "بيان · وثيقة التأسيس · ٢٠٢٦" : "belief · articles of founding · mmxxvi"}
           </span>
-          <span aria-hidden className="h-px flex-1 bg-background/20" />
-          <span className="font-mono text-xs text-background/75">{t.ar ? "اقرأ ببطء" : "Read slowly"}</span>
+          <span className="flex-1" />
+          <span className={cn("text-2xs", ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]", "text-background/55")}>
+            {ar ? "اقرأ ببطء" : "read slowly"}
+          </span>
         </div>
 
-        {/* Kicker */}
-        <p className="font-mono text-xs sm:text-sm uppercase tracking-[0.25em] text-background/80 mb-6 lg:mb-10">
-          {m.kicker}
+        {/* Lead-in — the declarative sentence that opens the document */}
+        <p className={cn(
+          "mb-20 lg:mb-28 max-w-4xl",
+          ar
+            ? "text-3xl sm:text-4xl lg:text-5xl font-semibold leading-[1.4] text-background"
+            : "font-display text-4xl sm:text-5xl lg:text-6xl tracking-[-0.025em] leading-[1.04] text-background",
+        )}>
+          {m.kicker}<span className="text-primary">.</span>
         </p>
 
-        {/* Three monumental lines */}
-        <div className="space-y-3 lg:space-y-5">
+        {/* The three Articles. Each Article gets its own page-feel: a rule    */}
+        {/* across the top, a tiny printer's mark naming it, and the body of   */}
+        {/* the Article set in monumental display type with breath.            */}
+        <div className="space-y-20 lg:space-y-32">
           {m.lines.map((l, i) => (
-            <div
+            <article
               key={i}
-              className="flex items-baseline gap-4 lg:gap-6"
+              className="relative pt-8 border-t border-background/15"
               data-testid={`manifesto-line-${i}`}
             >
-              <span className="font-mono text-xs text-primary tracking-widest pt-2 hidden sm:inline">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <h2 className="text-display-mega text-background leading-[1.05]">
-                <span className="text-background">{l.t}</span>
-                <span className="text-background/75">
-                  {" "}
-                  <em className="display-italic">{l.em}</em>
+              <div className="mb-7 lg:mb-10">
+                <span className={cn(
+                  "text-2xs",
+                  ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]",
+                  "text-primary",
+                )}>
+                  {articleLabel} &nbsp;·&nbsp; {articleNum(i)}
                 </span>
-                <span className="text-primary">.</span>
+              </div>
+
+              <h2 className={cn(
+                "text-background",
+                ar
+                  ? "text-[clamp(2.5rem,7vw,5.75rem)] font-semibold leading-[1.18] tracking-tight"
+                  : "font-display text-[clamp(2.75rem,7.4vw,6rem)] tracking-[-0.028em] leading-[1.02]",
+              )}>
+                <span>{l.t}</span>{" "}
+                <span className="text-background/65">{l.em}.</span>
               </h2>
-            </div>
+            </article>
           ))}
         </div>
 
-        {/* Footnote */}
-        <div className="mt-14 lg:mt-20 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 pt-8 border-t border-background/20">
-          <p className="max-w-xl text-base lg:text-lg leading-relaxed text-background/90">
+        {/* Closing rule + footnote + signature — set as colophon */}
+        <div className="mt-24 lg:mt-32 pt-8 border-t border-background/20 grid lg:grid-cols-12 gap-8 lg:gap-10">
+          <p className={cn(
+            "lg:col-span-8 text-background/85",
+            ar
+              ? "text-lg lg:text-xl leading-[1.7]"
+              : "font-display italic text-xl lg:text-2xl leading-snug",
+          )}>
             {m.footnote}
           </p>
-          <div className="flex items-center gap-3 text-end">
-            <span className="font-mono text-xs uppercase tracking-[0.25em] text-background/75">
-              {m.sig}
+          <div className="lg:col-span-4 lg:text-end self-end">
+            <span className={cn(
+              "text-2xs",
+              ar ? "tracking-normal" : "font-mono uppercase tracking-[0.22em]",
+              "text-background/65",
+            )}>
+              — {m.sig}
             </span>
-            <span aria-hidden className="size-1.5 rounded-full bg-primary" />
           </div>
         </div>
       </div>
@@ -2355,84 +2386,99 @@ function Testimonials({ t }: { t: Dict }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Chapter num="14" eyebrow={ts.eyebrow} title={ts.title} lead={ts.lead} ar={t.ar} />
 
-        {/* Proof-stats strip */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden mb-12">
-          <div className="grid grid-cols-2 lg:grid-cols-4 divide-y divide-border lg:divide-y-0 lg:divide-x lg:rtl:divide-x-reverse">
+        {/* Proof-stats — broadsheet four-up, no card chrome */}
+        <div className="border-y-2 border-foreground mb-16 lg:mb-24">
+          <div className="grid grid-cols-2 lg:grid-cols-4">
             {ts.stats.map((s, i) => (
-              <div key={i} className="p-6 lg:p-7" data-testid={`testimonial-stat-${i}`}>
-                <div className="font-mono text-3xl lg:text-4xl font-semibold text-foreground tabular-nums leading-none tracking-tight">
+              <div
+                key={i}
+                className={cn(
+                  "py-7 lg:py-9 px-5 lg:px-7 border-border",
+                  i > 0 && "border-s",
+                  (i === 2) && "lg:border-s border-t lg:border-t-0",
+                  (i === 3) && "border-t lg:border-t-0",
+                )}
+                data-testid={`testimonial-stat-${i}`}
+              >
+                <div
+                  className={cn(
+                    "tabular-nums leading-none tracking-tight mb-2",
+                    t.ar ? "font-semibold" : "font-display",
+                  )}
+                  style={{ fontSize: "clamp(2rem, 4vw, 3rem)" }}
+                >
                   {s.n}
                 </div>
-                <div className="mt-2.5 text-sm font-medium text-foreground/90 leading-snug">{s.l}</div>
-                <div className="mt-1 text-2xs font-mono text-primary uppercase tracking-wider">{s.s}</div>
+                <div className="mt-2.5 text-sm leading-snug text-foreground">{s.l}</div>
+                <div className={cn("mt-1.5 text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.16em]", "text-muted-foreground")}>
+                  {s.s}
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Featured testimonial — luxe pull-quote */}
-        <figure
-          className="relative rounded-2xl border border-primary/25 bg-card overflow-hidden mb-10 shadow-xl"
-          data-testid="testimonial-featured"
-        >
-          {/* (decorative wash removed for restraint) */}
-          {/* Gigantic quote glyph */}
-          <span
-            aria-hidden
-            className="absolute top-6 start-8 text-[10rem] leading-none font-serif text-primary/12 select-none pointer-events-none"
+        {/* Featured testimonial — set as a printed pull-quote, no card */}
+        <figure className="mb-20 lg:mb-28" data-testid="testimonial-featured">
+          {/* Top printer's mark */}
+          <div className="flex items-baseline gap-3 pb-3 border-b border-border mb-10 lg:mb-14">
+            <span aria-hidden className="size-1 translate-y-[-2px] rounded-full bg-primary" />
+            <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.22em]", "text-muted-foreground")}>
+              {t.ar ? "تقرير ميدانيّ · عميلةٌ موثّقة" : "field report · verified customer"}
+            </span>
+            <span className="flex-1" />
+            <span className={cn("text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.22em]", "text-muted-foreground")}>
+              {f.since}
+            </span>
+          </div>
+
+          {/* The quote — set monumental, no curly-quote glyph crutch */}
+          <blockquote
+            className={cn(
+              "max-w-4xl mb-10 lg:mb-14 text-foreground",
+              t.ar
+                ? "text-2xl sm:text-3xl lg:text-4xl font-semibold leading-[1.5] tracking-tight"
+                : "font-display text-3xl sm:text-4xl lg:text-5xl tracking-[-0.022em] leading-[1.12]",
+            )}
           >
-            “
-          </span>
+            {f.q}
+          </blockquote>
 
-          <div className="relative grid lg:grid-cols-12 gap-0">
-            {/* Quote side */}
-            <div className="lg:col-span-8 p-8 lg:p-12 xl:p-14">
-              <div className="flex items-center gap-2 mb-6">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1">
-                  <ShieldCheck className="size-3 text-primary" />
-                  <span className="text-2xs font-mono uppercase tracking-wider text-primary">
-                    {t.ar ? "عميلة موثّقة" : "Verified customer"}
-                  </span>
-                </span>
-                <span className="font-mono text-2xs text-muted-foreground">{f.since}</span>
+          {/* Attribution + KPIs as a single broadsheet row */}
+          <div className="grid lg:grid-cols-12 gap-y-8 lg:gap-x-10 pt-7 border-t border-border">
+            <figcaption className="lg:col-span-5">
+              <div className={cn("text-2xs mb-2", t.ar ? "" : "font-mono uppercase tracking-[0.18em]", "text-muted-foreground")}>
+                — {t.ar ? "بقلم" : "by"}
               </div>
-
-              <blockquote className="text-xl lg:text-2xl xl:text-3xl leading-relaxed text-foreground font-medium tracking-tight">
-                {f.q}
-              </blockquote>
-
-              <figcaption className="mt-8 pt-6 border-t border-border flex items-center gap-4">
-                <div
-                  aria-hidden
-                  className="size-14 lg:size-16 rounded-full bg-foreground text-background flex items-center justify-center font-semibold text-lg flex-shrink-0"
-                >
-                  {fInit}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-base font-semibold text-foreground">{f.n}</div>
-                  <div className="text-sm text-muted-foreground mt-0.5">{f.r}</div>
-                  <div className="text-sm text-foreground/80 mt-0.5">{f.c}</div>
-                </div>
-              </figcaption>
-
-              <div className="mt-5 inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5">
-                <span className="text-2xs font-mono uppercase tracking-wider text-muted-foreground">
-                  {ts.switchedLabel}
-                </span>
-                <span className="text-xs font-medium text-foreground line-through decoration-loss/60 decoration-[1.5px]">
-                  {f.switched}
+              <div className="text-base font-semibold text-foreground">{f.n}</div>
+              <div className="text-sm text-muted-foreground mt-0.5">{f.r}</div>
+              <div className="text-sm text-foreground/80 mt-0.5">{f.c}</div>
+              <div className={cn("mt-4 text-2xs", t.ar ? "" : "font-mono uppercase tracking-[0.16em]", "text-muted-foreground")}>
+                {ts.switchedLabel}{" "}
+                <span className="text-foreground/85">
+                  <span aria-hidden>×</span>{" "}{f.switched}
                 </span>
               </div>
-            </div>
+            </figcaption>
 
-            {/* KPI rail */}
-            <div className="lg:col-span-4 lg:border-s lg:border-border bg-muted/30 grid grid-cols-3 lg:grid-cols-1 lg:divide-y lg:divide-border divide-x lg:divide-x-0 rtl:divide-x-reverse divide-border">
+            {/* Three KPIs as set type, no boxes */}
+            <div className="lg:col-span-7 grid grid-cols-3 gap-x-5 lg:gap-x-8">
               {f.kpis.map((k, i) => (
-                <div key={i} className="p-5 lg:p-7 text-center lg:text-start" data-testid={`featured-kpi-${i}`}>
-                  <div className="font-mono text-2xl lg:text-3xl font-semibold text-primary tabular-nums leading-none tracking-tight">
+                <div
+                  key={i}
+                  className={cn("ps-5 lg:ps-6 border-s border-border", i === 0 && "ps-0 lg:ps-0 border-s-0")}
+                  data-testid={`featured-kpi-${i}`}
+                >
+                  <div
+                    className={cn(
+                      "tabular-nums leading-none tracking-tight mb-2 text-foreground",
+                      t.ar ? "font-semibold" : "font-display",
+                    )}
+                    style={{ fontSize: "clamp(1.75rem, 3.6vw, 2.5rem)" }}
+                  >
                     {k.v}
                   </div>
-                  <div className="mt-2 text-2xs lg:text-xs leading-snug text-muted-foreground">
+                  <div className="text-2xs lg:text-xs leading-snug text-muted-foreground">
                     {k.l}
                   </div>
                 </div>
