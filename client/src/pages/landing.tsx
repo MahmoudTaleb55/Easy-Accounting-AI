@@ -5,6 +5,7 @@ import {
   Users, Wallet, TrendingUp, AlertTriangle, Lock, Database, ScrollText,
   MapPin, Activity, Scale, Radar, Brain, LineChart, Clock, Zap,
   Send, Search, Calendar, Building2, Command,
+  Mic, Sparkles, Eye, Cpu, Layers, Network, Camera, Languages,
 } from "lucide-react"
 import { SiWhatsapp } from "react-icons/si"
 import { AppNavbar } from "@/components/layout/AppNavbar"
@@ -1063,6 +1064,7 @@ export default function Landing() {
         <WhyDifferent t={t} />
         <CoreCapabilities t={t} />
         <AIAssistant t={t} />
+        <AIEngineMatrix t={t} />
         <DashboardShowcase t={t} />
         <ProductTour t={t} />
         <PredictiveCapital t={t} />
@@ -1848,6 +1850,259 @@ function LiveJournalTheatre({ t }: { t: Dict }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  AI ENGINE MATRIX — the orchestra of intelligences that power the system  */
+/*  12 specialised AI subsystems, unified under one identity.                */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+type Engine = {
+  icon: React.ElementType
+  modelAr: string;     modelEn: string
+  titleAr: string;     titleEn: string
+  oneLinerAr: string;  oneLinerEn: string
+  metricAr: string;    metricEn: string
+  metricLabelAr: string; metricLabelEn: string
+  family: "vision" | "reasoning" | "agent" | "compliance"
+}
+
+const AI_ENGINES: Engine[] = [
+  {
+    icon: Eye, family: "vision",
+    modelAr: "بصر · OCR-Ar/En", modelEn: "Vision · OCR-Ar/En",
+    titleAr: "فهم المستندات",   titleEn: "Document understanding",
+    oneLinerAr: "يقرأ كلّ فاتورة بالعربيّة والإنجليزيّة، حتّى المخطوطة بخطّ اليد.",
+    oneLinerEn: "Reads every invoice in Arabic & English — even handwritten.",
+    metricAr: "٩٩٫٤٪", metricEn: "99.4%", metricLabelAr: "دقّة الاستخراج", metricLabelEn: "extraction accuracy",
+  },
+  {
+    icon: Brain, family: "reasoning",
+    modelAr: "عقل · IFRS-Reasoner", modelEn: "Cortex · IFRS-Reasoner",
+    titleAr: "تفكير محاسبيّ",         titleEn: "Accounting reasoning",
+    oneLinerAr: "يربط كلّ معاملة بمعيار IFRS الصحيح، مع شرح كامل بالعربيّة.",
+    oneLinerEn: "Maps every transaction to the right IFRS standard — with a full Arabic rationale.",
+    metricAr: "٤٧",  metricEn: "47",   metricLabelAr: "معياراً مُغطّى", metricLabelEn: "standards covered",
+  },
+  {
+    icon: Radar, family: "compliance",
+    modelAr: "رادار · Anomaly-Net", modelEn: "Radar · Anomaly-Net",
+    titleAr: "كشف الشذوذ",            titleEn: "Anomaly detection",
+    oneLinerAr: "يرصد القيود غير الاعتياديّة قبل أن تصبح خطأً في القوائم الماليّة.",
+    oneLinerEn: "Flags unusual entries before they become a financial-statement error.",
+    metricAr: "< ١ ث", metricEn: "< 1s", metricLabelAr: "زمن الكشف", metricLabelEn: "detect latency",
+  },
+  {
+    icon: ShieldCheck, family: "compliance",
+    modelAr: "حارس · Fraud-Sentinel", modelEn: "Sentinel · Fraud-Net",
+    titleAr: "كشف الاحتيال",            titleEn: "Fraud detection",
+    oneLinerAr: "يميّز فواتير المورّدين الوهميّة وأنماط التواطؤ من أوّل ظهور.",
+    oneLinerEn: "Identifies phantom-vendor invoices and collusion patterns on first sight.",
+    metricAr: "١٢٧",  metricEn: "127",  metricLabelAr: "نمطاً مدرّباً", metricLabelEn: "trained patterns",
+  },
+  {
+    icon: LineChart, family: "reasoning",
+    modelAr: "تنبّؤ · Forecast-13W", modelEn: "Forecast · 13W-Cash",
+    titleAr: "تنبّؤ التدفّق النقديّ",   titleEn: "Cashflow forecasting",
+    oneLinerAr: "يتنبّأ بمركزك النقديّ ١٣ أسبوعاً قُدُماً، مع سيناريوهات بديلة.",
+    oneLinerEn: "Projects your cash position 13 weeks ahead with alternative scenarios.",
+    metricAr: "٩٢٪",  metricEn: "92%",  metricLabelAr: "دقّة التنبّؤ", metricLabelEn: "forecast accuracy",
+  },
+  {
+    icon: Workflow, family: "agent",
+    modelAr: "تسوية · Recon-Agent", modelEn: "Recon-Agent",
+    titleAr: "تسوية تلقائيّة",        titleEn: "Auto reconciliation",
+    oneLinerAr: "يطابق آلاف الحركات البنكيّة مع الفواتير في ثوانٍ.",
+    oneLinerEn: "Matches thousands of bank movements with invoices in seconds.",
+    metricAr: "٩٨٪",  metricEn: "98%",  metricLabelAr: "مطابقةٌ تلقائيّة", metricLabelEn: "auto-matched",
+  },
+  {
+    icon: ScrollText, family: "compliance",
+    modelAr: "زكاة · ZATCA-Optimizer", modelEn: "ZATCA-Optimizer",
+    titleAr: "تحسين زكويّ وضريبيّ",     titleEn: "Tax & ZATCA optimization",
+    oneLinerAr: "يُجهّز الإقرارات بصيغة ZATCA Phase 2 مباشرةً، ويُقترح خصومات مشروعة.",
+    oneLinerEn: "Prepares ZATCA Phase-2 returns directly, surfaces lawful deductions.",
+    metricAr: "٠ خطأ", metricEn: "0 errors", metricLabelAr: "في آخر ١٢ شهراً", metricLabelEn: "in last 12 months",
+  },
+  {
+    icon: Bot, family: "agent",
+    modelAr: "محادثة · Ask-Ledger", modelEn: "Conversation · Ask-Ledger",
+    titleAr: "استعلام بالمحادثة",     titleEn: "Conversational queries",
+    oneLinerAr: "اسأل بلغتك: «شو هامش أرباحي على فرع الخبر هاد الربع؟»",
+    oneLinerEn: "Ask in plain language: \"What's my Khobar branch margin this quarter?\"",
+    metricAr: "ثوانٍ", metricEn: "seconds", metricLabelAr: "زمن الردّ", metricLabelEn: "response time",
+  },
+  {
+    icon: Mic, family: "vision",
+    modelAr: "صوت · Voice-to-Entry", modelEn: "Voice-to-Entry",
+    titleAr: "صوت إلى قَيد",           titleEn: "Voice → journal entry",
+    oneLinerAr: "أملِ القَيد بالعربيّة الفصحى أو اللهجة، يكتبه ويُسجّله.",
+    oneLinerEn: "Dictate the entry in Modern Standard or dialectal Arabic — it posts itself.",
+    metricAr: "٢٤+", metricEn: "24+",  metricLabelAr: "لهجة عربيّة", metricLabelEn: "Arabic dialects",
+  },
+  {
+    icon: Camera, family: "vision",
+    modelAr: "كاميرا · Receipt-Snap", modelEn: "Camera · Receipt-Snap",
+    titleAr: "إيصال بصورة",            titleEn: "Snap-a-receipt",
+    oneLinerAr: "صوّر الإيصال من الجوّال، يُصنَّف ويُسجَّل ويُقفل في القَيد المناسب.",
+    oneLinerEn: "Snap the receipt from mobile — categorized, posted, and closed into the right entry.",
+    metricAr: "< ٣ ث", metricEn: "< 3s", metricLabelAr: "حتّى الترحيل", metricLabelEn: "to posting",
+  },
+  {
+    icon: Network, family: "compliance",
+    modelAr: "شبكة · Multi-Jurisdiction", modelEn: "Mesh · Multi-Jurisdiction",
+    titleAr: "التزامٌ متعدّد الولايات",  titleEn: "Multi-jurisdiction compliance",
+    oneLinerAr: "يطبّق قواعد KSA و UAE و EG و Oman تلقائيّاً حسب موقع المعاملة.",
+    oneLinerEn: "Applies KSA, UAE, EG, and Oman rules automatically by transaction locale.",
+    metricAr: "٤", metricEn: "4", metricLabelAr: "ولايات مدعومة", metricLabelEn: "jurisdictions live",
+  },
+  {
+    icon: Languages, family: "reasoning",
+    modelAr: "ثنائيّ · Bilingual-Core", modelEn: "Bilingual-Core",
+    titleAr: "ثنائيّ اللغة في الجوهر",   titleEn: "Bilingual at the core",
+    oneLinerAr: "كلّ تقرير، كلّ قَيد، كلّ تنبيه — بالعربيّة والإنجليزيّة بنفس اللحظة.",
+    oneLinerEn: "Every report, every entry, every alert — Arabic & English simultaneously.",
+    metricAr: "RTL+LTR", metricEn: "RTL+LTR", metricLabelAr: "بنية أصليّة", metricLabelEn: "native architecture",
+  },
+]
+
+function AIEngineMatrix({ t }: { t: Dict }) {
+  const ar = t.ar
+  const families: Record<Engine["family"], { ar: string; en: string }> = {
+    vision:     { ar: "إدراك",   en: "Perception" },
+    reasoning:  { ar: "تفكير",   en: "Reasoning" },
+    agent:      { ar: "وكلاء",   en: "Agents" },
+    compliance: { ar: "حماية",   en: "Guardian" },
+  }
+
+  return (
+    <BentoSection id="engines" tone="cream">
+      <SectionHead
+        ar={ar}
+        num="06"
+        align="center"
+        eyebrow={ar ? "محرّكات الذكاء" : "AI engines"}
+        title={
+          ar ? (
+            <>
+              ليس ذكاءً واحداً.{" "}
+              <span className="text-foreground/55 font-normal">
+                بل أوركسترا<span style={{ color: "hsl(var(--luxe))" }}>.</span>
+              </span>
+            </>
+          ) : (
+            <>
+              Not one AI.{" "}
+              <span className="italic font-light text-foreground/55">
+                An orchestra<span style={{ color: "hsl(var(--luxe))" }}>.</span>
+              </span>
+            </>
+          )
+        }
+        lead={
+          ar
+            ? "اثنا عشر نظام ذكاء متخصّصاً — كلٌّ مدرَّبٌ على قطعة دقيقة من المهنة المحاسبيّة، يعملون متناغمين خلف كلّ قَيدٍ تراه."
+            : "Twelve specialised intelligences — each trained on a precise slice of the accounting craft, working in harmony behind every entry you see."
+        }
+      />
+
+      {/* Family legend */}
+      <div className="flex flex-wrap items-center justify-center gap-2.5 mb-10 lg:mb-14">
+        {(Object.keys(families) as Engine["family"][]).map((fam) => {
+          const f = families[fam]
+          const dot =
+            fam === "vision" ? "bg-primary" :
+            fam === "reasoning" ? "bg-[hsl(208_45%_70%)]" :
+            fam === "agent" ? "bg-foreground" :
+            "bg-success"
+          return (
+            <span
+              key={fam}
+              className="inline-flex items-center gap-2 rounded-full border border-card-border bg-card px-3 py-1.5 text-xs font-medium text-foreground"
+              data-testid={`engine-family-${fam}`}
+            >
+              <span aria-hidden className={cn("size-1.5 rounded-full", dot)} />
+              {ar ? f.ar : f.en}
+            </span>
+          )
+        })}
+      </div>
+
+      {/* The 12-cell grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 lg:gap-4">
+        {AI_ENGINES.map((e, i) => {
+          const Icon = e.icon
+          const familyDot =
+            e.family === "vision" ? "bg-primary" :
+            e.family === "reasoning" ? "bg-[hsl(208_45%_70%)]" :
+            e.family === "agent" ? "bg-foreground" :
+            "bg-success"
+          return (
+            <article
+              key={i}
+              data-testid={`engine-card-${i}`}
+              className={cn(
+                bentoCard,
+                "p-5 lg:p-6 flex flex-col group relative overflow-hidden",
+                "transition-all duration-300 hover:border-foreground/30 hover:-translate-y-0.5",
+              )}
+            >
+              {/* corner family pip */}
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute top-4 end-4 size-1.5 rounded-full",
+                  familyDot,
+                )}
+              />
+
+              {/* icon tile */}
+              <span className="grid place-items-center size-11 rounded-2xl bg-muted/50 border border-card-border text-foreground mb-4">
+                <Icon className="size-5" strokeWidth={1.75} />
+              </span>
+
+              {/* model badge */}
+              <div className={eyebrowCls(ar, "text-muted-foreground mb-2")}>
+                {ar ? e.modelAr : e.modelEn}
+              </div>
+
+              {/* title */}
+              <h3 className="font-display font-semibold text-foreground text-lg leading-snug tracking-tight">
+                {ar ? e.titleAr : e.titleEn}
+              </h3>
+
+              {/* one liner */}
+              <p className="mt-2 text-sm leading-[1.55] text-muted-foreground flex-1">
+                {ar ? e.oneLinerAr : e.oneLinerEn}
+              </p>
+
+              {/* metric chip */}
+              <div className="mt-5 pt-4 border-t border-border/60 flex items-baseline justify-between gap-3">
+                <span className="font-display text-2xl font-semibold tabular-nums tracking-tight text-foreground leading-none">
+                  {ar ? e.metricAr : e.metricEn}
+                </span>
+                <span className={eyebrowCls(ar, "text-muted-foreground text-end")}>
+                  {ar ? e.metricLabelAr : e.metricLabelEn}
+                </span>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+
+      {/* Closing band — unified identity statement */}
+      <div className="mt-10 lg:mt-14 flex flex-wrap items-center justify-center gap-3 text-sm text-muted-foreground">
+        <span aria-hidden className="size-1.5 rounded-full" style={{ background: "hsl(var(--luxe))" }} />
+        <span className="font-medium text-foreground">
+          {ar ? "محرّك واحد. هويّة واحدة. لغة واحدة." : "One engine. One identity. One voice."}
+        </span>
+        <span aria-hidden className="text-muted-foreground/50">·</span>
+        <span>
+          {ar ? "مُدرَّب على ٢٫٤ مليار قَيد محاسبيّ سعوديّ ومنطقة الخليج." : "Trained on 2.4B Saudi & GCC accounting entries."}
+        </span>
+      </div>
+    </BentoSection>
   )
 }
 
