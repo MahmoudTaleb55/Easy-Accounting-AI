@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { apiRequest, queryClient } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
-import { format } from "date-fns"
+import { format, type Locale } from "date-fns"
 import { ar, enUS } from "date-fns/locale"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { WriteGuard } from "@/components/auth/write-guard"
 import {
   Select,
@@ -27,7 +28,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2, Scale, History } from "lucide-react"
-import { HistoryDrawer } from "@/components/audit/history-drawer"
+import { HistoryDrawer, HistoryTimeline } from "@/components/audit/history-drawer"
 import { EmptyState } from "@/components/feedback/empty-state"
 import { ErrorState } from "@/components/feedback/error-state"
 import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
@@ -62,6 +63,7 @@ export default function JournalEntriesPage() {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [historyEntry, setHistoryEntry] = useState<JE | null>(null)
+  const [detailEntry, setDetailEntry] = useState<JE | null>(null)
 
   const t = useMemo(
     () => ({
@@ -103,6 +105,12 @@ export default function JournalEntriesPage() {
       sourceManual: locale === "ar" ? "يدوي" : "Manual",
       sourceAuto: locale === "ar" ? "تلقائي" : "Auto",
       sourceAi: "AI",
+      detailDesc:
+        locale === "ar"
+          ? "أسطر القيد وسجل التغييرات في مكان واحد."
+          : "Entry lines and change history in one place.",
+      tabLines: locale === "ar" ? "الأسطر" : "Lines",
+      tabChanges: locale === "ar" ? "التغييرات" : "Changes",
     }),
     [locale]
   )
@@ -403,14 +411,19 @@ export default function JournalEntriesPage() {
               >
                 <div className="px-5 py-3.5 flex items-start justify-between gap-4 border-b border-border">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setDetailEntry(je)}
+                      className="flex items-center gap-2.5 flex-wrap text-start hover:underline"
+                      data-testid={`link-entry-${je.id}`}
+                    >
                       <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
                         {je.reference}
                       </span>
                       <h3 className="text-sm font-medium text-foreground truncate">
                         {je.description}
                       </h3>
-                    </div>
+                    </button>
                     <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-muted-foreground">
                       <span className="font-numeric tabular-nums">
                         {format(new Date(je.entryDate), "d MMM yyyy", { locale: dfLocale })}
@@ -497,6 +510,147 @@ export default function JournalEntriesPage() {
         entityType="journal_entry"
         entityId={historyEntry?.id}
       />
+      {detailEntry && (
+        <JournalEntryDetailDialog
+          entry={detailEntry}
+          onClose={() => setDetailEntry(null)}
+          labels={{
+            description: t.detailDesc,
+            tabLines: t.tabLines,
+            tabChanges: t.tabChanges,
+            account: t.account,
+            debit: t.debit,
+            credit: t.credit,
+            total: t.total,
+            sourceManual: t.sourceManual,
+            sourceAuto: t.sourceAuto,
+            sourceAi: t.sourceAi,
+          }}
+          dfLocale={dfLocale}
+          fmt={fmt}
+        />
+      )}
     </div>
+  )
+}
+
+interface JournalEntryDetailDialogProps {
+  entry: JE
+  onClose: () => void
+  labels: {
+    description: string
+    tabLines: string
+    tabChanges: string
+    account: string
+    debit: string
+    credit: string
+    total: string
+    sourceManual: string
+    sourceAuto: string
+    sourceAi: string
+  }
+  dfLocale: Locale
+  fmt: ReturnType<typeof useFormatMoney>
+}
+
+function JournalEntryDetailDialog({ entry, onClose, labels, dfLocale, fmt }: JournalEntryDetailDialogProps) {
+  const totalDebit = entry.lines.reduce((s, l) => s + Number(l.debit || 0), 0)
+  const totalCredit = entry.lines.reduce((s, l) => s + Number(l.credit || 0), 0)
+  const sourceLabel =
+    entry.source === "transaction"
+      ? labels.sourceAuto
+      : entry.source === "ai"
+      ? labels.sourceAi
+      : labels.sourceManual
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-entry-detail">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
+              {entry.reference}
+            </span>
+            <span className="truncate">{entry.description}</span>
+          </DialogTitle>
+          <DialogDescription>{labels.description}</DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
+          <span className="font-numeric tabular-nums">
+            {format(new Date(entry.entryDate), "d MMM yyyy", { locale: dfLocale })}
+          </span>
+          <span className="text-muted-foreground/50">·</span>
+          <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4">
+            {sourceLabel}
+          </Badge>
+        </div>
+        <Tabs defaultValue="lines" className="mt-3">
+          <TabsList className="grid grid-cols-2 w-full">
+            <TabsTrigger value="lines" data-testid="tab-entry-lines">{labels.tabLines}</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-entry-changes">{labels.tabChanges}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="lines" className="mt-4">
+            <div className="border border-border rounded-md table-sticky-first">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-start font-medium">{labels.account}</th>
+                    <th className="px-3 py-2 text-end font-medium w-28">{labels.debit}</th>
+                    <th className="px-3 py-2 text-end font-medium w-28">{labels.credit}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {entry.lines.map((l, i) => (
+                    <tr key={i}>
+                      <td className="px-3 py-2">
+                        <span className="font-numeric text-[11px] text-muted-foreground tabular-nums me-2">
+                          {l.account?.code}
+                        </span>
+                        <span className="text-foreground">
+                          {l.account?.nameAr || "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-end font-numeric tabular-nums text-foreground">
+                        {Number(l.debit) > 0 ? fmt(Number(l.debit)) : ""}
+                      </td>
+                      <td className="px-3 py-2 text-end font-numeric tabular-nums text-foreground">
+                        {Number(l.credit) > 0 ? fmt(Number(l.credit)) : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-muted/40 text-sm font-semibold border-t border-border">
+                  <tr>
+                    <td className="px-3 py-2 text-start text-muted-foreground uppercase tracking-wider text-[11px]">
+                      {labels.total}
+                    </td>
+                    <td
+                      className="px-3 py-2 text-end font-numeric tabular-nums"
+                      data-testid="text-entry-detail-total-debit"
+                    >
+                      {fmt(totalDebit)}
+                    </td>
+                    <td
+                      className="px-3 py-2 text-end font-numeric tabular-nums"
+                      data-testid="text-entry-detail-total-credit"
+                    >
+                      {fmt(totalCredit)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </TabsContent>
+          <TabsContent value="changes" className="mt-4" data-testid="tab-content-entry-changes">
+            <div className="rounded-md border border-border max-h-96 overflow-hidden flex flex-col">
+              <HistoryTimeline
+                entityType="journal_entry"
+                entityId={entry.id}
+                className="flex-1 min-h-0"
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   )
 }

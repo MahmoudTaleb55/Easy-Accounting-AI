@@ -21,7 +21,7 @@ import { Users, Plus, Trash2, Calendar, FileText, PlayCircle, AlertCircle, Check
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { ErrorState } from "@/components/feedback/error-state";
-import { HistoryDrawer } from "@/components/audit/history-drawer";
+import { HistoryDrawer, HistoryTimeline } from "@/components/audit/history-drawer";
 import { PeriodChip } from "@/components/dashboard/period-chip";
 import { usePeriod } from "@/contexts/period-context";
 import type { Employee, Leave, Attendance, PayrollRun } from "@shared/schema";
@@ -86,6 +86,7 @@ function EmployeesTab() {
   const fmt = useFormatMoney();
   const [open, setOpen] = useState(false);
   const [historyEmp, setHistoryEmp] = useState<Employee | null>(null);
+  const [detailEmp, setDetailEmp] = useState<Employee | null>(null);
   const { data: employees = [], isLoading } = useQuery<Employee[]>({ queryKey: ["/api/hr/employees"] });
 
   const form = useForm<z.infer<typeof employeeFormSchema>>({
@@ -184,7 +185,16 @@ function EmployeesTab() {
             <TableBody>
               {employees.map((e) => (
                 <TableRow key={e.id} data-testid={`row-employee-${e.id}`}>
-                  <TableCell className="font-medium">{e.fullName}</TableCell>
+                  <TableCell className="font-medium">
+                    <button
+                      type="button"
+                      onClick={() => setDetailEmp(e)}
+                      className="hover:underline text-foreground text-start"
+                      data-testid={`link-employee-${e.id}`}
+                    >
+                      {e.fullName}
+                    </button>
+                  </TableCell>
                   <TableCell>{e.jobTitle || "—"}</TableCell>
                   <TableCell>{e.hireDate}</TableCell>
                   <TableCell>{fmt(e.baseSalary)}</TableCell>
@@ -218,7 +228,54 @@ function EmployeesTab() {
         entityType="employee"
         entityId={historyEmp?.id}
       />
+      {detailEmp && (
+        <EmployeeDetailDialog
+          employee={detailEmp}
+          onClose={() => setDetailEmp(null)}
+        />
+      )}
     </Card>
+  );
+}
+
+function EmployeeDetailDialog({ employee, onClose }: { employee: Employee; onClose: () => void }) {
+  const fmt = useFormatMoney();
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-employee-detail">
+        <DialogHeader>
+          <DialogTitle>{employee.fullName}</DialogTitle>
+          <DialogDescription>تفاصيل الموظف وسجل التغييرات.</DialogDescription>
+        </DialogHeader>
+        <Tabs defaultValue="summary">
+          <TabsList className="grid grid-cols-2 w-full">
+            <TabsTrigger value="summary" data-testid="tab-employee-summary">ملخص</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-employee-changes">التغييرات</TabsTrigger>
+          </TabsList>
+          <TabsContent value="summary" className="mt-4">
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div><dt className="text-muted-foreground">الكود</dt><dd className="font-mono">EMP-{employee.id}</dd></div>
+              <div><dt className="text-muted-foreground">المسمى الوظيفي</dt><dd>{employee.jobTitle || "—"}</dd></div>
+              <div><dt className="text-muted-foreground">تاريخ التعيين</dt><dd className="font-numeric tabular-nums">{employee.hireDate}</dd></div>
+              <div><dt className="text-muted-foreground">الحالة</dt><dd>{employee.isActive ? <Badge variant="default">نشط</Badge> : <Badge variant="secondary">معطل</Badge>}</dd></div>
+              <div><dt className="text-muted-foreground">الراتب الأساسي</dt><dd className="font-numeric tabular-nums">{fmt(employee.baseSalary)}</dd></div>
+              <div><dt className="text-muted-foreground">البدلات</dt><dd className="font-numeric tabular-nums">{fmt(employee.allowances)}</dd></div>
+              <div><dt className="text-muted-foreground">مواطن</dt><dd>{employee.isNational ? "نعم" : "لا"}</dd></div>
+              <div><dt className="text-muted-foreground">رصيد إجازة سنوي مخصص</dt><dd>{employee.annualLeaveDaysOverride ?? "—"}</dd></div>
+            </dl>
+          </TabsContent>
+          <TabsContent value="changes" className="mt-4" data-testid="tab-content-employee-changes">
+            <div className="rounded-md border border-border max-h-96 overflow-hidden flex flex-col">
+              <HistoryTimeline
+                entityType="employee"
+                entityId={employee.id}
+                className="flex-1 min-h-0"
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 }
 
