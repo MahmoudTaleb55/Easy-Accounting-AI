@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck, History } from "lucide-react";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { HistoryDrawer } from "@/components/audit/history-drawer";
+import { HistoryDrawer, HistoryTimeline } from "@/components/audit/history-drawer";
 import { PeriodChip } from "@/components/dashboard/period-chip";
 import { usePeriod } from "@/contexts/period-context";
 import type { Account, AssetCategory, AssetComponent, Company, FixedAsset, FxRate, DepreciationMethod } from "@shared/schema";
@@ -640,10 +640,11 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
         </DialogHeader>
         {isLoading || !data ? <Skeleton className="h-40" /> : (
           <Tabs defaultValue="summary">
-            <TabsList className="grid grid-cols-6 w-full">
+            <TabsList className="grid grid-cols-7 w-full">
               <TabsTrigger value="summary" data-testid="tab-detail-summary">ملخص</TabsTrigger>
               <TabsTrigger value="schedule" data-testid="tab-detail-schedule">الجدول</TabsTrigger>
               <TabsTrigger value="history" data-testid="tab-detail-history">السجل المحاسبي</TabsTrigger>
+              <TabsTrigger value="changes" data-testid="tab-detail-changes">التغييرات</TabsTrigger>
               <TabsTrigger value="impairments" data-testid="tab-detail-impairments">الانخفاض</TabsTrigger>
               <TabsTrigger value="revaluations" data-testid="tab-detail-revaluations">إعادة تقييم</TabsTrigger>
               <TabsTrigger value="components" data-testid="tab-detail-components">المكونات</TabsTrigger>
@@ -699,6 +700,15 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                   الأصل تم استبعاده في {data.disposals[0].eventDate} مع متحصلات {fmt(data.disposals[0].proceeds, company.currencySymbol)}.
                 </div>
               )}
+            </TabsContent>
+            <TabsContent value="changes" className="mt-4" data-testid="tab-content-changes">
+              <div className="rounded-md border border-border max-h-96 overflow-hidden flex flex-col">
+                <HistoryTimeline
+                  entityType="fixed_asset"
+                  entityId={assetId}
+                  className="flex-1 min-h-0"
+                />
+              </div>
             </TabsContent>
             <TabsContent value="impairments" className="mt-4">
               {data.impairments.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد قيود انخفاض.</div> : (
