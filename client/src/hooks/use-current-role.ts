@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { WorkspaceRole } from "@shared/schema";
+import { useAuth } from "./use-auth";
 
 export interface CurrentMember {
   id: number;
@@ -20,17 +21,34 @@ export interface CurrentRoleInfo {
   canManageWorkspace: boolean;
 }
 
+/**
+ * Thin wrapper around `useAuth` that exposes the current user's workspace
+ * role under a permission-shaped API. Both hooks now read from the same
+ * canonical role enum (owner | accountant | viewer) — historically they
+ * spoke different vocabularies, which led to subtle gating drift, so this
+ * file delegates to `useAuth` to guarantee a single source of truth.
+ *
+ * The `/api/auth/me` query is kept as a fallback (and primary signal for
+ * anonymous visitors) because the workspace_members mirror is what the
+ * server's RBAC middleware reads to decide if the request is anonymous.
+ */
 export function useCurrentRole(): CurrentRoleInfo {
-  const { data, isLoading } = useQuery<CurrentMember>({
+  const { role: authRole, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { data: me, isLoading: meLoading } = useQuery<CurrentMember>({
     queryKey: ["/api/auth/me"],
     staleTime: 60_000,
     retry: false,
   });
-  const role = data?.role;
-  const isAnonymous = !data || data.id === 0;
+
+  // Prefer the membership-derived role from useAuth so the gating reflects
+  // the active workspace; fall back to the workspace_members mirror for
+  // anonymous visitors (where useAuth has no role to surface).
+  const role = authRole ?? me?.role;
+  const isAnonymous = !isAuthenticated && (!me || me.id === 0);
+
   return {
     role,
-    isLoading,
+    isLoading: authLoading || meLoading,
     isOwner: role === "owner",
     isAccountant: role === "accountant",
     isViewer: role === "viewer",

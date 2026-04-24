@@ -68,10 +68,9 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
     if (role) updateLocaleMut.mutate(code);
   }
 
-  const roleChipKey =
-    role === "reviewer" ? "role_chip_reviewer" :
-    role === "readonly" ? "role_chip_readonly" :
-    null;
+  // Surface a "Viewer" chip in the topbar when the active membership is
+  // read-only, so the user always knows why write actions are disabled.
+  const roleChipKey = role === "viewer" ? "role_chip_viewer" : null;
   const roleChipLabel = roleChipKey ? t(roleChipKey) : null;
 
   const PERIODS: { key: PeriodKey; label: string }[] = [

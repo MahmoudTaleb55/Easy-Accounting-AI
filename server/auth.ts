@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { db } from "./db";
-import { workspaceMembers, workspaceInvites, type WorkspaceMember, type WorkspaceRole } from "@shared/schema";
+import { workspaceMembers, workspaceInvites, type WorkspaceMember, type WorkspaceRole, ROLES } from "@shared/schema";
 import { eq, and, asc } from "drizzle-orm";
 import crypto from "crypto";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -28,12 +28,16 @@ declare global {
 }
 
 /**
- * Map a new-system role (admin|accountant|reviewer|readonly) to the legacy
- * WorkspaceRole (owner|accountant|viewer) used by the team/RBAC layer.
+ * Coerce a stored role value into the canonical WorkspaceRole enum
+ * (owner|accountant|viewer). Membership rows are now stored using the
+ * canonical strings directly, so this is effectively the identity
+ * function — but it stays in place to defensively normalise any stale
+ * row that slipped past the data migration.
  */
 function mapRole(role: string | undefined | null): WorkspaceRole {
-  if (role === "admin") return "owner";
-  if (role === "accountant") return "accountant";
+  if (role && (ROLES as readonly string[]).includes(role)) {
+    return role as WorkspaceRole;
+  }
   return "viewer";
 }
 

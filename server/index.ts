@@ -87,6 +87,16 @@ app.use((req, res, next) => {
     console.error("Failed to bootstrap IFRS COA:", err);
   }
 
+  // Normalise any membership/invitation rows that still carry the legacy
+  // role vocabulary (admin/reviewer/readonly) onto the canonical
+  // owner|accountant|viewer enum. Idempotent — see migration 0003.
+  try {
+    const { unifyRoleEnumOnStartup } = await import("./auth/storage");
+    await unifyRoleEnumOnStartup();
+  } catch (err) {
+    console.error("Failed to normalise role enum:", err);
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

@@ -165,7 +165,7 @@ export default function EmailDeliveryPage() {
   const { locale } = useLocale();
   const ar = locale === "ar";
   const { role } = useAuth();
-  const isAdmin = role === "admin";
+  const isAdmin = role === "owner";
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [emailInput, setEmailInput] = useState("");

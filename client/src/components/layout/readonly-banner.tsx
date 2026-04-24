@@ -26,12 +26,9 @@ export function ReadOnlyBanner() {
   }, [dismissed]);
 
   if (dismissed) return null;
-  if (role !== "reviewer" && role !== "readonly") return null;
+  if (role !== "viewer") return null;
 
-  const message =
-    role === "reviewer"
-      ? t("readonly_banner_reviewer")
-      : t("readonly_banner_readonly");
+  const message = t("readonly_banner_viewer");
 
   return (
     <div

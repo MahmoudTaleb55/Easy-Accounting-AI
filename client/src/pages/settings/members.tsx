@@ -172,10 +172,9 @@ function deliveryBadge(
 }
 
 const ROLE_LABELS: Record<Role, { ar: string; en: string; tone: "default" | "secondary" | "outline" | "destructive" }> = {
-  admin: { ar: "مالك", en: "Admin", tone: "default" },
-  accountant: { ar: "محاسب", en: "Accountant", tone: "secondary" },
-  reviewer: { ar: "مراجع", en: "Reviewer", tone: "outline" },
-  readonly: { ar: "قراءة فقط", en: "Read-only", tone: "outline" },
+  owner:      { ar: "مالك",   en: "Owner",      tone: "default" },
+  accountant: { ar: "محاسب",  en: "Accountant", tone: "secondary" },
+  viewer:     { ar: "عارض",   en: "Viewer",     tone: "outline" },
 };
 
 function initials(first?: string | null, last?: string | null, email?: string | null) {
@@ -195,7 +194,7 @@ export default function MembersPage() {
   const [historyInvitation, setHistoryInvitation] = useState<InvitationRow | null>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilterId>("all");
   const [historyResetToken, setHistoryResetToken] = useState<PasswordResetTokenRow | null>(null);
-  const isAdmin = role === "admin";
+  const isAdmin = role === "owner";
 
   useEffect(() => {
     setHistoryFilter("all");
@@ -327,7 +326,7 @@ export default function MembersPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           {ar
             ? "إدارة الأعضاء متاحة لمالك مساحة العمل فقط."
-            : "Member management is restricted to workspace admins."}
+            : "Member management is restricted to workspace owners."}
         </p>
       </div>
     );
@@ -340,7 +339,7 @@ export default function MembersPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           {ar
             ? "ادعُ زملاء فريقك بدور محدد. يمكن للمالك إدارة الأدوار وحذف الأعضاء."
-            : "Invite teammates with a specific role. Admins can update roles and remove members."}
+            : "Invite teammates with a specific role. Owners can update roles and remove members."}
         </p>
       </header>
 

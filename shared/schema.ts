@@ -533,8 +533,13 @@ export type Disposal = typeof disposals.$inferSelect;
 // Workspace members (RBAC) & invites
 // ============================================================================
 
-export const WORKSPACE_ROLES = ["owner", "accountant", "viewer"] as const;
-export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
+// Re-export the canonical role enum from `shared/models/auth.ts` under the
+// historical `WORKSPACE_ROLES` / `WorkspaceRole` names so existing imports
+// keep working. There is now a single role vocabulary across the app — see
+// `shared/models/auth.ts` for the source of truth.
+import { ROLES as _ROLES, type Role as _Role } from "./models/auth";
+export const WORKSPACE_ROLES = _ROLES;
+export type WorkspaceRole = _Role;
 
 export const workspaceMembers = pgTable("workspace_members", {
   id: serial("id").primaryKey(),

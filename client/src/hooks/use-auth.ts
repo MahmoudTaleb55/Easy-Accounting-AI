@@ -30,6 +30,15 @@ async function fetchMemberships(): Promise<MembershipsPayload | null> {
   return r.json();
 }
 
+/**
+ * `useAuth` is the single source of truth for who is signed in and what
+ * role they hold in the active workspace. The role here is the canonical
+ * workspace role (owner | accountant | viewer) — the same enum exposed
+ * by `useCurrentRole`, the server's `requireRole`, and the database. The
+ * legacy 4-role enum (admin/reviewer/readonly) was retired in 2026-04;
+ * see `shared/models/auth.ts` for the enum and migration 0003 for the
+ * data fix-up.
+ */
 export function useAuth() {
   const qc = useQueryClient();
 
@@ -64,9 +73,9 @@ export function useAuth() {
     return ROLE_TIER[role] >= min;
   }
   const can = {
-    write: role === "admin" || role === "accountant",
-    manageMembers: role === "admin",
-    invite: role === "admin",
+    write: role === "owner" || role === "accountant",
+    manageMembers: role === "owner",
+    invite: role === "owner",
     view: !!role,
   };
 

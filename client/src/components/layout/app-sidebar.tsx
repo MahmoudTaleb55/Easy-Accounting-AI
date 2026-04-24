@@ -188,7 +188,7 @@ function UserBadge({ collapsed }: { collapsed: boolean }) {
             <a className="flex items-center gap-2"><UserIcon className="size-3.5" /> Profile</a>
           </Link>
         </DropdownMenuItem>
-        {role === "admin" && (
+        {role === "owner" && (
           <DropdownMenuItem asChild data-testid="menu-members">
             <Link href="/app/settings/members">
               <a className="flex items-center gap-2"><Users className="size-3.5" /> Members</a>

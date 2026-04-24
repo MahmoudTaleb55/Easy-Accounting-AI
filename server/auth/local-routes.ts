@@ -447,24 +447,24 @@ export function registerLocalAuthRoutes(app: Express) {
     res.json({ ok: true });
   });
 
-  // ---------- members management (admin only) ----------
-  app.get("/api/auth/members", requireAuth, requireRole("admin"), async (req, res) => {
+  // ---------- members management (owner only) ----------
+  app.get("/api/auth/members", requireAuth, requireRole("owner"), async (req, res) => {
     const ctx = (req as any).membership!;
     const rows = await authBizStorage.listMembersForCompany(ctx.companyId);
     res.json(rows);
   });
 
-  app.patch("/api/auth/members/:id", requireAuth, requireRole("admin"), async (req, res, next) => {
+  app.patch("/api/auth/members/:id", requireAuth, requireRole("owner"), async (req, res, next) => {
     try {
       const ctx = (req as any).membership!;
       const { role } = updateMemberRoleSchema.parse(req.body);
       const all = await authBizStorage.listMembersForCompany(ctx.companyId);
       const target = all.find((m) => m.id === String(req.params.id));
       if (!target) return res.status(404).json({ message: "Member not found" });
-      // Don't allow demoting the last admin.
-      if (target.role === "admin" && role !== "admin") {
-        const admins = await authBizStorage.countAdminsForCompany(ctx.companyId);
-        if (admins <= 1) return res.status(400).json({ message: "Cannot demote the only admin" });
+      // Don't allow demoting the last owner.
+      if (target.role === "owner" && role !== "owner") {
+        const owners = await authBizStorage.countOwnersForCompany(ctx.companyId);
+        if (owners <= 1) return res.status(400).json({ message: "Cannot demote the only owner" });
       }
       const m = await authBizStorage.updateMembershipRole(String(req.params.id), role as Role);
       res.json(m);
@@ -474,7 +474,7 @@ export function registerLocalAuthRoutes(app: Express) {
     }
   });
 
-  app.get("/api/auth/members/:id/activity", requireAuth, requireRole("admin"), async (req, res) => {
+  app.get("/api/auth/members/:id/activity", requireAuth, requireRole("owner"), async (req, res) => {
     const ctx = (req as any).membership!;
     const all = await authBizStorage.listMembersForCompany(ctx.companyId);
     const target = all.find((m) => m.id === String(req.params.id));
@@ -496,7 +496,7 @@ export function registerLocalAuthRoutes(app: Express) {
   app.get(
     "/api/auth/password-reset-tokens/:id/events",
     requireAuth,
-    requireRole("admin"),
+    requireRole("owner"),
     async (req, res) => {
       const ctx = (req as any).membership!;
       const token = await authBizStorage.getPasswordResetTokenById(String(req.params.id));
@@ -510,27 +510,27 @@ export function registerLocalAuthRoutes(app: Express) {
     },
   );
 
-  app.delete("/api/auth/members/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  app.delete("/api/auth/members/:id", requireAuth, requireRole("owner"), async (req, res) => {
     const ctx = (req as any).membership!;
     const all = await authBizStorage.listMembersForCompany(ctx.companyId);
     const target = all.find((m) => m.id === String(req.params.id));
     if (!target) return res.status(404).json({ message: "Member not found" });
-    if (target.role === "admin") {
-      const admins = await authBizStorage.countAdminsForCompany(ctx.companyId);
-      if (admins <= 1) return res.status(400).json({ message: "Cannot remove the only admin" });
+    if (target.role === "owner") {
+      const owners = await authBizStorage.countOwnersForCompany(ctx.companyId);
+      if (owners <= 1) return res.status(400).json({ message: "Cannot remove the only owner" });
     }
     await authBizStorage.deleteMembership(String(req.params.id));
     res.status(204).send();
   });
 
   // ---------- invitations ----------
-  app.get("/api/auth/invitations", requireAuth, requireRole("admin"), async (req, res) => {
+  app.get("/api/auth/invitations", requireAuth, requireRole("owner"), async (req, res) => {
     const ctx = (req as any).membership!;
     const rows = await authBizStorage.listInvitationsForCompany(ctx.companyId);
     res.json(rows);
   });
 
-  app.post("/api/auth/invitations", requireAuth, requireRole("admin"), async (req, res, next) => {
+  app.post("/api/auth/invitations", requireAuth, requireRole("owner"), async (req, res, next) => {
     try {
       const ctx = (req as any).membership!;
       const input = inviteSchema.parse(req.body);
@@ -549,14 +549,14 @@ export function registerLocalAuthRoutes(app: Express) {
     }
   });
 
-  app.post("/api/auth/invitations/:id/resend", requireAuth, requireRole("admin"), async (req, res) => {
+  app.post("/api/auth/invitations/:id/resend", requireAuth, requireRole("owner"), async (req, res) => {
     const inv = await authBizStorage.resendInvitation(String(req.params.id));
     const link = `${req.protocol}://${req.get("host")}/accept-invitation/${inv.token}`;
     const emailResult = await sendInvitationOrLog(inv, link);
     res.json({ invitation: inv, link, emailSent: emailResult.ok });
   });
 
-  app.delete("/api/auth/invitations/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  app.delete("/api/auth/invitations/:id", requireAuth, requireRole("owner"), async (req, res) => {
     await authBizStorage.revokeInvitation(String(req.params.id));
     res.status(204).send();
   });
@@ -592,7 +592,7 @@ export function registerLocalAuthRoutes(app: Express) {
 
   // Per-invitation lifecycle log (admin-only). Powers the "why did this fail?"
   // tooltip / drilldown in the Members UI.
-  app.get("/api/auth/invitations/:id/events", requireAuth, requireRole("admin"), async (req, res) => {
+  app.get("/api/auth/invitations/:id/events", requireAuth, requireRole("owner"), async (req, res) => {
     const events = await authBizStorage.listInvitationEmailEvents(String(req.params.id));
     res.json(events);
   });
@@ -601,7 +601,7 @@ export function registerLocalAuthRoutes(app: Express) {
   // in this workspace. Backs the /settings/email-delivery admin page.
   // One row per send attempt (keyed by provider message id, or local
   // attempt id when the send failed pre-dispatch).
-  app.get("/api/auth/email-deliveries", requireAuth, requireRole("admin"), async (req, res) => {
+  app.get("/api/auth/email-deliveries", requireAuth, requireRole("owner"), async (req, res) => {
     const ctx = (req as any).membership!;
     const status = typeof req.query.status === "string" ? req.query.status : null;
     const email = typeof req.query.email === "string" ? req.query.email : null;
@@ -661,7 +661,7 @@ export function registerLocalAuthRoutes(app: Express) {
   app.get(
     "/api/auth/email-deliveries/trends",
     requireAuth,
-    requireRole("admin"),
+    requireRole("owner"),
     async (req, res) => {
       const ctx = (req as any).membership!;
       const daysRaw = Number(req.query.days);
@@ -678,7 +678,7 @@ export function registerLocalAuthRoutes(app: Express) {
   app.get(
     "/api/auth/email-deliveries/:transport/:key/events",
     requireAuth,
-    requireRole("admin"),
+    requireRole("owner"),
     async (req, res) => {
       const ctx = (req as any).membership!;
       const transport = String(req.params.transport);

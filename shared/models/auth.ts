@@ -34,9 +34,19 @@ export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
 // Roles (highest to lowest). Numeric tier used for role comparisons.
-export const ROLES = ["admin", "accountant", "reviewer", "readonly"] as const;
+//
+// This is the single canonical role enum used end-to-end across the client,
+// the server, and the database. Both `/api/auth/me` (workspace_members
+// mirror) and `/api/auth/memberships` (memberships table) speak this enum,
+// and the membership rows are stored using exactly these strings.
+//
+// The legacy enum (admin/accountant/reviewer/readonly) was migrated to
+// owner/accountant/viewer in 2026-04 — see migrations/0003_unify_role_enum.sql
+// and the bootstrap step in `server/index.ts` that re-runs the data fix-up
+// idempotently on each boot.
+export const ROLES = ["owner", "accountant", "viewer"] as const;
 export type Role = (typeof ROLES)[number];
-export const ROLE_TIER: Record<Role, number> = { admin: 4, accountant: 3, reviewer: 2, readonly: 1 };
+export const ROLE_TIER: Record<Role, number> = { owner: 3, accountant: 2, viewer: 1 };
 
 // Workspace memberships: user × company × role.
 export const memberships = pgTable(
@@ -45,7 +55,7 @@ export const memberships = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: varchar("user_id").notNull(),
     companyId: integer("company_id").notNull(),
-    role: text("role").notNull(), // admin | accountant | reviewer | readonly
+    role: text("role").notNull(), // owner | accountant | viewer (see ROLES)
     createdAt: timestamp("created_at").defaultNow(),
     lastActiveAt: timestamp("last_active_at"),
   },

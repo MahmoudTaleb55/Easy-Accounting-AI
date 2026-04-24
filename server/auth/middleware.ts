@@ -123,7 +123,7 @@ export function requireRole(...minRoles: Role[]): RequestHandler {
 
 /** Permissive default for the /api/* surface area:
  *  - GET / HEAD → any authenticated member
- *  - mutations  → admin or accountant only (reviewer can comment/approve via dedicated routes; readonly cannot write)
+ *  - mutations  → owner or accountant only (viewers are read-only)
  */
 export const requireWriteRoleForMutations: RequestHandler = async (req, res, next) => {
   if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return next();
@@ -135,11 +135,9 @@ export const requireWriteRoleForMutations: RequestHandler = async (req, res, nex
     (req as any).membership = loaded;
     ctx = loaded;
   }
-  if (ctx.role === "admin" || ctx.role === "accountant") return next();
+  if (ctx.role === "owner" || ctx.role === "accountant") return next();
   return res.status(403).json({
-    message: ctx.role === "readonly"
-      ? "Read-only members cannot modify data"
-      : "This action requires Admin or Accountant role",
+    message: "Viewers have read-only access and cannot modify data",
   });
 };
 

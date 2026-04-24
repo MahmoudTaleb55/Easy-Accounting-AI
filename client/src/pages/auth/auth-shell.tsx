@@ -27,13 +27,13 @@ export function AuthShell({ title, subtitle, side, children, footer }: AuthShell
   const sideLede =
     side?.lede ??
     (ar
-      ? "محاسبة متعدّدة العملات، مصمّمة للفرق الصغيرة والمتوسّطة. أنشئ مساحة عمل خلال دقائق وادعُ المحاسب والمراجع."
-      : "Multi-currency accounting designed for small and mid-sized teams. Spin up a workspace in minutes and invite your accountant and reviewer.");
+      ? "محاسبة متعدّدة العملات، مصمّمة للفرق الصغيرة والمتوسّطة. أنشئ مساحة عمل خلال دقائق وادعُ المحاسب والعارضين."
+      : "Multi-currency accounting designed for small and mid-sized teams. Spin up a workspace in minutes and invite your accountant and viewers.");
   const sideBullets =
     side?.bullets ??
     (ar
-      ? ["دفتر يوميّة وفق IFRS تلقائيّاً", "أدوار: مالك، محاسب، مراجع، قراءة فقط", "تدقيق وسجلّات لكلّ تعديل"]
-      : ["IFRS-compliant journal, posted automatically", "Roles: owner, accountant, reviewer, read-only", "Full audit log on every change"]);
+      ? ["دفتر يوميّة وفق IFRS تلقائيّاً", "أدوار: مالك، محاسب، عارض", "تدقيق وسجلّات لكلّ تعديل"]
+      : ["IFRS-compliant journal, posted automatically", "Roles: owner, accountant, viewer", "Full audit log on every change"]);
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground" dir={dir}>

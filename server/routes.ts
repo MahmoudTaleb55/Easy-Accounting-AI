@@ -115,7 +115,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   // Global API gate: every /api/* request that is NOT in the public allowlist
   // must be authenticated. Mutations additionally require a workspace role of
-  // admin or accountant (reviewer/readonly are blocked from writes).
+  // owner or accountant (viewers are blocked from writes).
   app.use("/api", (req, res, next) => {
     if (isPublic(req.path)) return next();
     return requireAuth(req, res, (err?: any) => {
@@ -472,7 +472,7 @@ export async function registerRoutes(
   // configuration).
   app.patch("/api/settings", async (req, res, next) => {
     const ctx = (req as any).membership as MembershipContext | undefined;
-    if (!ctx || ctx.role !== "admin") return res.status(403).json({ message: "Admins only" });
+    if (!ctx || ctx.role !== "owner") return res.status(403).json({ message: "Owners only" });
     try {
       const { upsertSettingsSchema } = await import("@shared/schema");
       const input = upsertSettingsSchema.parse(req.body);
@@ -1347,7 +1347,7 @@ async function registerFixedAssetRoutes(app: Express) {
       const company = await storage.createCompany({ ...input, ownerUserId: userId ?? null });
       if (userId) {
         const { authBizStorage } = await import("./auth/storage");
-        await authBizStorage.createMembership({ userId, companyId: company.id, role: "admin" });
+        await authBizStorage.createMembership({ userId, companyId: company.id, role: "owner" });
       }
       res.status(201).json(company);
     } catch (err) {
@@ -1359,10 +1359,10 @@ async function registerFixedAssetRoutes(app: Express) {
     try {
       const id = Number(req.params.id);
       const ctx = (req as Request & { membership?: MembershipContext }).membership;
-      // Authorization: must be admin of the active workspace, and the target
+      // Authorization: must be owner of the active workspace, and the target
       // workspace must match it (no cross-tenant edits).
-      if (!ctx || ctx.role !== "admin" || id !== ctx.companyId) {
-        return res.status(403).json({ message: "Admins only" });
+      if (!ctx || ctx.role !== "owner" || id !== ctx.companyId) {
+        return res.status(403).json({ message: "Owners only" });
       }
       const input = insertCompanySchema.partial().parse(req.body);
       res.json(await storage.updateCompany(id, input));

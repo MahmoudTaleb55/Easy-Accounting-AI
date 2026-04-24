@@ -160,11 +160,11 @@ export const authBizStorage = {
     await db.delete(memberships).where(eq(memberships.id, id));
   },
 
-  async countAdminsForCompany(companyId: number): Promise<number> {
+  async countOwnersForCompany(companyId: number): Promise<number> {
     const rows = await db
       .select({ c: sql<number>`count(*)::int` })
       .from(memberships)
-      .where(and(eq(memberships.companyId, companyId), eq(memberships.role, "admin")));
+      .where(and(eq(memberships.companyId, companyId), eq(memberships.role, "owner")));
     return rows[0]?.c ?? 0;
   },
 
@@ -718,7 +718,7 @@ export const authBizStorage = {
   },
 
   /** First-signup bootstrap: if the legacy seed companies have no owner,
-   *  give the new user Admin membership on each so the seeded data is usable.
+   *  give the new user Owner membership on each so the seeded data is usable.
    *  Otherwise we provision them a fresh personal workspace. */
   async bootstrapWorkspaceForUser(
     userId: string,
@@ -731,24 +731,37 @@ export const authBizStorage = {
       .where(sql`${companies.ownerUserId} IS NULL`);
 
     if (orphan.length > 0) {
-      // First user adopts all orphan seed companies as owner + admin member.
+      // First user adopts all orphan seed companies as owner + owner member.
       for (const c of orphan) {
         await db.update(companies).set({ ownerUserId: userId }).where(eq(companies.id, c.id));
         const existing = await this.getMembership(userId, c.id);
         if (!existing) {
-          await this.createMembership({ userId, companyId: c.id, role: "admin" });
+          await this.createMembership({ userId, companyId: c.id, role: "owner" });
         }
       }
       const def = orphan.find((c) => c.isDefault) ?? orphan[0];
-      return { companyId: def.id, role: "admin", bootstrapped: "adopted" };
+      return { companyId: def.id, role: "owner", bootstrapped: "adopted" };
     }
 
     // Otherwise create a fresh personal workspace.
     const c = await this.createCompanyForOwner(userId, `${displayName} — Workspace`, opts);
-    await this.createMembership({ userId, companyId: c.id, role: "admin" });
-    return { companyId: c.id, role: "admin", bootstrapped: "created" };
+    await this.createMembership({ userId, companyId: c.id, role: "owner" });
+    return { companyId: c.id, role: "owner", bootstrapped: "created" };
   },
 };
+
+/**
+ * Idempotent data fix-up that re-applies migrations/0003_unify_role_enum.sql
+ * on every boot. Workspaces restored from older backups (or rows written by
+ * an older deploy mid-rollout) get normalised back onto the canonical
+ * owner|accountant|viewer enum without operator action.
+ */
+export async function unifyRoleEnumOnStartup(): Promise<void> {
+  await db.execute(sql`UPDATE memberships SET role = 'owner'  WHERE role = 'admin'`);
+  await db.execute(sql`UPDATE memberships SET role = 'viewer' WHERE role IN ('reviewer','readonly')`);
+  await db.execute(sql`UPDATE invitations SET role = 'owner'  WHERE role = 'admin'`);
+  await db.execute(sql`UPDATE invitations SET role = 'viewer' WHERE role IN ('reviewer','readonly')`);
+}
 
 export async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, 12);
