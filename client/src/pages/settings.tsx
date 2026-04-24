@@ -152,6 +152,11 @@ export default function SettingsPage() {
       await apiRequest("PATCH", "/api/settings", { ...vals, vatRate: vals.vatRate / 100 }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      // The currency is also stored on the active company record (used by Fixed
+      // Assets, the workspace switcher, and the command palette), so refetch
+      // those so the new currency shows up everywhere immediately.
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/memberships"] });
       toast({ title: "تم الحفظ", description: "تم تحديث الإعدادات بنجاح" });
     },
     onError: (e: any) => toast({ title: "خطأ", description: e?.message || "فشل الحفظ", variant: "destructive" }),

@@ -679,12 +679,25 @@ export class DatabaseStorage implements IStorage {
 
   async updateSettings(companyId: number, input: UpsertOrgSettings): Promise<OrgSettings> {
     const existing = await this.getSettings(companyId);
-    const [updated] = await db
-      .update(settings)
-      .set({ ...input, vatRate: String(input.vatRate) })
-      .where(eq(settings.id, existing.id))
-      .returning();
-    return updated;
+    // Update the workspace settings row and the corresponding company row in a
+    // single transaction so the two stored copies of currency (settings.* and
+    // companies.*) can never drift after a partial failure. The companies row
+    // backs Fixed Assets, the workspace switcher, and the command palette.
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(settings)
+        .set({ ...input, vatRate: String(input.vatRate) })
+        .where(eq(settings.id, existing.id))
+        .returning();
+      await tx
+        .update(companies)
+        .set({
+          functionalCurrency: input.currencyCode,
+          currencySymbol: input.currencySymbol,
+        })
+        .where(eq(companies.id, companyId));
+      return updated;
+    });
   }
 
   // ----- HR -----
