@@ -71,8 +71,10 @@ app.use((req, res, next) => {
   registerLocalAuthRoutes(app);
   registerAuthRoutes(app);
 
-  // Legacy team/RBAC layer (req.member cookie-based) — kept alongside the new
-  // user/membership system.
+  // Legacy /api/team layer. The middleware just attaches `req.member`
+  // (the workspace_members mirror row) for the team routes — write
+  // authorization on every other /api/* path is enforced inside
+  // registerRoutes by the new auth/membership system.
   app.use(rbacMiddleware());
   registerTeamRoutes(app);
 

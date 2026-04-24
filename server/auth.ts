@@ -7,18 +7,6 @@ import { authStorage } from "./replit_integrations/auth/storage";
 import { authBizStorage } from "./auth/storage";
 import { resolveActiveCompanyId } from "./auth/middleware";
 
-// Anonymous identity used for any request without a real authenticated session.
-// It carries the viewer role so the same write-gating logic blocks every
-// mutation. It is never persisted.
-const ANONYMOUS_MEMBER: WorkspaceMember = {
-  id: 0,
-  name: "Anonymous",
-  email: "",
-  role: "viewer",
-  status: "active",
-  createdAt: null,
-};
-
 declare global {
   namespace Express {
     interface Request {
@@ -29,10 +17,12 @@ declare global {
 
 /**
  * Coerce a stored role value into the canonical WorkspaceRole enum
- * (owner|accountant|viewer). Membership rows are now stored using the
- * canonical strings directly, so this is effectively the identity
- * function — but it stays in place to defensively normalise any stale
- * row that slipped past the data migration.
+ * (owner|accountant|viewer) used by the legacy /api/team layer. Membership
+ * rows are now stored using the canonical strings directly, so this is
+ * effectively the identity function — but it stays in place to defensively
+ * normalise any stale row that slipped past the data migration, and so the
+ * legacy /api/team mirror still derives its role from the authoritative
+ * memberships table rather than the retired wm_id cookie.
  */
 function mapRole(role: string | undefined | null): WorkspaceRole {
   if (role && (ROLES as readonly string[]).includes(role)) {
@@ -44,7 +34,7 @@ function mapRole(role: string | undefined | null): WorkspaceRole {
 /**
  * Shape of the passport session payload. Both auth providers (Replit OIDC
  * and the local email+password provider) populate `claims.sub` with the
- * stable user id; that's all the legacy RBAC layer needs.
+ * stable user id.
  */
 interface SessionUser {
   claims?: { sub?: string } & Record<string, unknown>;
@@ -58,20 +48,23 @@ function getSessionUserId(req: Request): string | null {
 }
 
 /**
- * Resolves the workspace member behind the current request from the real
- * authenticated session (passport).
+ * Resolve the workspace_members mirror row for the current passport session.
  *
- *   1. If there is no authenticated session → anonymous (read-only).
- *   2. Otherwise the signed-in user is mirrored into a `workspace_members`
- *      row keyed by their email, with the role derived from their active
- *      workspace membership. The mirror is created or refreshed in place so
- *      role changes in the new system propagate to the legacy team layer.
+ * The mirror exists purely so the legacy /api/team UI (which lists / edits
+ * `workspace_members` by id) stays consistent with the new memberships
+ * system. It is never used to authorize writes — every /api endpoint is
+ * gated by `requireAuth` + `requireWriteRoleForMutations` in `server/routes.ts`,
+ * which read the authoritative role straight from the `memberships` table.
+ *
+ * Returns `null` when the request has no authenticated session — there is no
+ * "anonymous viewer" identity anymore. Callers that need a member must check
+ * for null and respond with 401/403 themselves.
  */
-async function resolveCurrentMember(req: Request, _res: Response): Promise<WorkspaceMember> {
+async function resolveCurrentMember(req: Request): Promise<WorkspaceMember | null> {
   const userId = getSessionUserId(req);
-  if (!userId) return ANONYMOUS_MEMBER;
+  if (!userId) return null;
   const u = await authStorage.getUser(userId);
-  if (!u || !u.email) return ANONYMOUS_MEMBER;
+  if (!u || !u.email) return null;
 
   const companyId = await resolveActiveCompanyId(req, userId);
   let mappedRole: WorkspaceRole = "viewer";
@@ -109,74 +102,22 @@ async function resolveCurrentMember(req: Request, _res: Response): Promise<Works
   return created;
 }
 
-// Endpoints that must remain available regardless of role
-// (current-user lookup and accepting an invite). Matches against req.path.
-const ROLE_BYPASS_PATHS = new Set<string>([
-  "/api/auth/me",
-  "/api/team/invites/accept",
-]);
-
-// Routes that only owners may write to (workspace-level configuration).
-const OWNER_ONLY_PREFIXES = ["/api/team", "/api/settings", "/api/companies", "/api/fx-rates"];
-
-// Explicit allowlist of write prefixes accountants are permitted to use.
-// Anything outside this list (and outside owner-only prefixes) is denied for
-// accountants — deny-by-default for any future write surface.
-const ACCOUNTANT_WRITE_PREFIXES = [
-  "/api/transactions",
-  "/api/journal-entries",
-  "/api/accounts",
-  "/api/budgets",
-  "/api/hr",
-  "/api/insights",
-  "/api/analysis",
-  "/api/chat",
-  "/api/asset-categories",
-  "/api/fixed-assets",
-  "/api/depreciation-runs",
-];
-
-function pathMatchesPrefix(path: string, prefixes: string[]): boolean {
-  return prefixes.some((p) => path === p || path.startsWith(p + "/"));
-}
-
+/**
+ * Thin attachment middleware that populates `req.member` for the legacy
+ * /api/team routes from the real authenticated session. It does NOT gate
+ * writes — that is done globally in `server/routes.ts` against the
+ * `memberships` table. Unauthenticated requests simply pass through with
+ * `req.member` left undefined; downstream handlers decide whether they care.
+ */
 export function rbacMiddleware() {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, _res: Response, next: NextFunction) => {
     if (!req.path.startsWith("/api")) return next();
     try {
-      const member = await resolveCurrentMember(req, res);
-      req.member = member;
-
-      const isWrite = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
-      if (!isWrite) return next();
-      if (ROLE_BYPASS_PATHS.has(req.path)) return next();
-
-      if (member.role === "viewer") {
-        return res.status(403).json({
-          message: "صلاحيات القراءة فقط — لا يمكن إجراء تعديلات.",
-          messageEn: "Viewers have read-only access.",
-          role: member.role,
-        });
-      }
-      if (member.role === "accountant") {
-        if (pathMatchesPrefix(req.path, OWNER_ONLY_PREFIXES)) {
-          return res.status(403).json({
-            message: "هذه الإعدادات يحررها المالك فقط.",
-            messageEn: "Workspace owners only.",
-            role: member.role,
-          });
-        }
-        if (!pathMatchesPrefix(req.path, ACCOUNTANT_WRITE_PREFIXES)) {
-          return res.status(403).json({
-            message: "هذا الإجراء غير مسموح للمحاسب.",
-            messageEn: "This action is not permitted for accountants.",
-            role: member.role,
-          });
-        }
-      }
+      const member = await resolveCurrentMember(req);
+      if (member) req.member = member;
       next();
     } catch (err) {
-      console.error("rbac middleware error", err);
+      console.error("legacy member resolve error", err);
       next(err);
     }
   };
@@ -188,7 +129,12 @@ function newToken(): string {
 
 export function registerAuthRoutes(app: Express) {
   app.get("/api/auth/me", async (req, res) => {
-    const member = req.member!;
+    const member = req.member;
+    if (!member) {
+      // Unauthenticated — return the legacy anonymous shape so existing
+      // frontend code that branches on `role === "viewer"` still works.
+      return res.json({ id: 0, name: "Anonymous", email: "", role: "viewer", status: "active" });
+    }
     res.json({
       id: member.id,
       name: member.name,
@@ -199,9 +145,8 @@ export function registerAuthRoutes(app: Express) {
   });
 
   app.get("/api/team/members", async (req, res) => {
-    // Only real (active) workspace members can see the team roster — anonymous
-    // visitors get a 403 here so we don't leak the member list publicly.
-    if (!req.member || req.member.id === 0) {
+    // Only authenticated workspace members can see the team roster.
+    if (!req.member) {
       return res.status(403).json({ message: "Workspace members only." });
     }
     const list = await db.select().from(workspaceMembers).orderBy(asc(workspaceMembers.id));
@@ -218,7 +163,16 @@ export function registerAuthRoutes(app: Express) {
     res.json(list);
   });
 
+  function requireOwner(req: Request, res: Response): boolean {
+    if (req.member?.role !== "owner") {
+      res.status(403).json({ message: "Owners only." });
+      return false;
+    }
+    return true;
+  }
+
   app.post("/api/team/invites", async (req, res) => {
+    if (!requireOwner(req, res)) return;
     const { inviteMemberSchema } = await import("@shared/schema");
     const parsed = inviteMemberSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
@@ -256,6 +210,7 @@ export function registerAuthRoutes(app: Express) {
   });
 
   app.delete("/api/team/invites/:id", async (req, res) => {
+    if (!requireOwner(req, res)) return;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
     await db.update(workspaceInvites).set({ status: "revoked" }).where(eq(workspaceInvites.id, id));
@@ -317,6 +272,7 @@ export function registerAuthRoutes(app: Express) {
   });
 
   app.patch("/api/team/members/:id", async (req, res) => {
+    if (!requireOwner(req, res)) return;
     const { updateMemberRoleSchema } = await import("@shared/schema");
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
@@ -343,6 +299,7 @@ export function registerAuthRoutes(app: Express) {
   });
 
   app.delete("/api/team/members/:id", async (req, res) => {
+    if (!requireOwner(req, res)) return;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
     const target = await db.select().from(workspaceMembers).where(eq(workspaceMembers.id, id)).limit(1);

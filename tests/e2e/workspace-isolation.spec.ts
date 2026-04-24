@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import crypto from "node:crypto";
 
 /**
  * Cross-workspace data isolation regression net.
@@ -26,25 +25,6 @@ import crypto from "node:crypto";
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5000";
 const RUN_TAG = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const PASSWORD = "Sup3rS3cret!42";
-
-/**
- * The legacy workspace-member RBAC layer (server/auth.ts) is independent of
- * the new tenant model under test here — it gates writes by a signed `wm_id`
- * cookie. Without that cookie every caller is treated as an anonymous viewer
- * and blocked from POSTing. We sign the cookie ourselves using the same
- * SESSION_SECRET the server uses, granting both test users the existing
- * "Workspace Owner" identity. Tenant isolation under test still flows through
- * the new auth session + X-Company-Id header, so sharing this cookie does not
- * weaken what we're verifying.
- */
-const WM_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET || "";
-function signedWmCookie(memberId: number): string {
-  if (!WM_SECRET) {
-    throw new Error("SESSION_SECRET / WM_COOKIE_SECRET must be set for the workspace-isolation test");
-  }
-  const sig = crypto.createHmac("sha256", WM_SECRET).update(String(memberId)).digest("hex").slice(0, 32);
-  return `${memberId}.${sig}`;
-}
 
 class CookieJar {
   private store = new Map<string, string>();
@@ -128,7 +108,7 @@ function asNumber(value: unknown, label: string): number {
 }
 
 async function bootstrapUser(label: "A" | "B", salt = ""): Promise<Session> {
-  const jar = new CookieJar({ wm_id: signedWmCookie(1) });
+  const jar = new CookieJar();
   const email = `iso-${label.toLowerCase()}-${salt}${RUN_TAG}@example.test`;
   // Spoof a unique forwarded IP per user so the express signup/signin rate
   // limiters (keyed by client IP) do not throttle this test when re-run.
