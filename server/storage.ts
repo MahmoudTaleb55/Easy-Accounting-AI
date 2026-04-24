@@ -66,6 +66,7 @@ import {
   type InsertAttendance,
   type Leave,
   type InsertLeave,
+  type PayrollRun,
 } from "@shared/schema";
 import {
   CASH_ACCOUNT_CODE,
@@ -98,6 +99,7 @@ export const AUDIT_ENTITY_TYPES = [
   "employee",
   "attendance",
   "leave",
+  "payroll_run",
 ] as const;
 
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
@@ -150,6 +152,16 @@ export interface IStorage {
   getLeaves(companyId: number, employeeId?: number): Promise<Leave[]>;
   createLeave(companyId: number, input: InsertLeave, ctx?: AuditContext): Promise<Leave>;
   deleteLeave(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
+
+  // Payroll runs (history list + delete + audit hook used by payroll engine)
+  listPayrollRuns(companyId: number): Promise<PayrollRun[]>;
+  deletePayrollRun(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
+  recordPayrollRunAudit(input: {
+    payrollRunId: number;
+    action: "create" | "update" | "delete" | "post";
+    changes?: AuditChange[];
+    ctx?: AuditContext;
+  }): Promise<void>;
 
   // Audit log — scoped: only returns history when the underlying entity
   // belongs to the caller's active workspace. Cross-workspace lookups return
@@ -1037,6 +1049,49 @@ export class DatabaseStorage implements IStorage {
     return c;
   }
 
+  // ----- Payroll runs -----
+  async listPayrollRuns(companyId: number): Promise<PayrollRun[]> {
+    return await db
+      .select()
+      .from(payrollRuns)
+      .where(eq(payrollRuns.companyId, companyId))
+      .orderBy(desc(payrollRuns.year), desc(payrollRuns.month), desc(payrollRuns.id));
+  }
+
+  async deletePayrollRun(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
+    const [before] = await db
+      .select()
+      .from(payrollRuns)
+      .where(and(eq(payrollRuns.id, id), eq(payrollRuns.companyId, companyId)));
+    if (!before) return;
+    await db.transaction(async (tx) => {
+      await tx.delete(payrollLines).where(eq(payrollLines.payrollRunId, id));
+      await tx.delete(payrollRuns).where(and(eq(payrollRuns.id, id), eq(payrollRuns.companyId, companyId)));
+    });
+    await recordAudit({
+      entityType: "payroll_run",
+      entityId: id,
+      action: "delete",
+      changes: snapshotChanges(before),
+      ctx,
+    });
+  }
+
+  async recordPayrollRunAudit(input: {
+    payrollRunId: number;
+    action: "create" | "update" | "delete" | "post";
+    changes?: AuditChange[];
+    ctx?: AuditContext;
+  }): Promise<void> {
+    await recordAudit({
+      entityType: "payroll_run",
+      entityId: input.payrollRunId,
+      action: input.action,
+      changes: input.changes,
+      ctx: input.ctx,
+    });
+  }
+
   // ----- Audit log (workspace-scoped) -----
   async entityBelongsToCompany(
     entityType: AuditEntityType,
@@ -1100,6 +1155,14 @@ export class DatabaseStorage implements IStorage {
           .select({ id: leaves.id })
           .from(leaves)
           .where(and(eq(leaves.id, entityId), eq(leaves.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "payroll_run": {
+        const rows = await db
+          .select({ id: payrollRuns.id })
+          .from(payrollRuns)
+          .where(and(eq(payrollRuns.id, entityId), eq(payrollRuns.companyId, companyId)))
           .limit(1);
         return rows.length > 0;
       }

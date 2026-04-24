@@ -19,7 +19,7 @@ import {
   EOS_LIABILITY_CODE,
 } from "@shared/coa-seed";
 import { getPack, monthlyEndOfServiceAccrual, monthlyLeaveAccrual } from "@shared/localization";
-import { storage } from "./storage";
+import { storage, type AuditContext } from "./storage";
 import { eq, and } from "drizzle-orm";
 
 export interface PayrollPreviewLine {
@@ -136,6 +136,7 @@ export async function runPayroll(
   companyId: number,
   year: number,
   month: number,
+  ctx?: AuditContext,
 ): Promise<{ runId: number; journalEntryId: number; lines: PayrollPreviewLine[] }> {
   const lines = await computePayrollPreview(companyId, year, month);
   if (!lines.length) throw new Error("لا يوجد موظفون نشطون");
@@ -204,7 +205,7 @@ export async function runPayroll(
       credit: l.credit,
       description: l.description,
     })),
-  });
+  }, ctx);
 
   // Create the run + lines
   const [run] = await db
@@ -237,6 +238,32 @@ export async function runPayroll(
       leaveAccrual: l.leaveAccrual.toFixed(2),
     });
   }
+
+  // Emit audit events for the payroll run lifecycle. We record both
+  // "create" (the run row was inserted) and "post" (status transitioned to
+  // posted + linked to a journal entry) so the History drawer can show the
+  // full story even though they happen in the same transaction today.
+  await storage.recordPayrollRunAudit({
+    payrollRunId: run.id,
+    action: "create",
+    changes: [
+      { field: "year", to: year },
+      { field: "month", to: month },
+      { field: "totalGross", to: totalGross.toFixed(2) },
+      { field: "totalNet", to: totalNet.toFixed(2) },
+      { field: "employees", to: lines.length },
+    ],
+    ctx,
+  });
+  await storage.recordPayrollRunAudit({
+    payrollRunId: run.id,
+    action: "post",
+    changes: [
+      { field: "status", to: "posted" },
+      { field: "journalEntryId", to: je.id },
+    ],
+    ctx,
+  });
 
   return { runId: run.id, journalEntryId: je.id, lines };
 }

@@ -618,10 +618,31 @@ export async function registerRoutes(
         year: req.body?.year || new Date().getFullYear(),
         month: req.body?.month || new Date().getMonth() + 1,
       });
-      res.status(201).json(await runPayroll(cid(req), year, month));
+      res.status(201).json(await runPayroll(cid(req), year, month, userCtx(req)));
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(400).json({ message: err?.message || "تعذر تنفيذ كشف الرواتب" });
+    }
+  });
+
+  // Past payroll runs — feeds the History list under the Payroll Run tab so
+  // users can audit calculate/post/delete events for each run.
+  app.get("/api/hr/payroll/runs", async (req, res) => {
+    res.json(await storage.listPayrollRuns(cid(req)));
+  });
+
+  app.delete("/api/hr/payroll/runs/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid id" });
+      }
+      const owned = await storage.entityBelongsToCompany("payroll_run", id, cid(req));
+      if (!owned) return res.status(404).json({ message: "غير موجود" });
+      await storage.deletePayrollRun(cid(req), id, userCtx(req));
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر حذف كشف الرواتب" });
     }
   });
 

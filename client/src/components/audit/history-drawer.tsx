@@ -21,7 +21,8 @@ export type HistoryEntityType =
   | "fixed_asset"
   | "employee"
   | "attendance"
-  | "leave";
+  | "leave"
+  | "payroll_run";
 
 export interface HistoryEvent {
   id: string | number;

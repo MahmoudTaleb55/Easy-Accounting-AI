@@ -24,7 +24,7 @@ import { ErrorState } from "@/components/feedback/error-state";
 import { HistoryDrawer } from "@/components/audit/history-drawer";
 import { PeriodChip } from "@/components/dashboard/period-chip";
 import { usePeriod } from "@/contexts/period-context";
-import type { Employee, Leave, Attendance } from "@shared/schema";
+import type { Employee, Leave, Attendance, PayrollRun } from "@shared/schema";
 
 // ====================================================================
 // Page wrapper
@@ -527,6 +527,7 @@ function PayrollTab() {
   const month = period.end.getMonth() + 1;
   const prevYear = previousRange.end.getFullYear();
   const prevMonth = previousRange.end.getMonth() + 1;
+  const [historyRun, setHistoryRun] = useState<PayrollRun | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery<{ year: number; month: number; lines: PreviewLine[] }>({
     queryKey: ["/api/hr/payroll/preview", { year, month }],
@@ -547,12 +548,26 @@ function PayrollTab() {
     enabled: compareToPrevious,
   });
 
+  const { data: pastRuns = [] } = useQuery<PayrollRun[]>({
+    queryKey: ["/api/hr/payroll/runs"],
+  });
+
   const run = useMutation({
     mutationFn: async () => await apiRequest("POST", "/api/hr/payroll/run", { year, month }),
     onSuccess: () => {
       toast({ title: "✅ تم", description: "تم اعتماد الرواتب وتسجيل القيود المحاسبية تلقائياً" });
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/insights"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/runs"] });
+    },
+    onError: (e: any) => toast({ title: "خطأ", description: e?.message, variant: "destructive" }),
+  });
+
+  const removeRun = useMutation({
+    mutationFn: async (id: number) => await apiRequest("DELETE", `/api/hr/payroll/runs/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/runs"] });
+      toast({ title: "تم", description: "تم حذف كشف الرواتب" });
     },
     onError: (e: any) => toast({ title: "خطأ", description: e?.message, variant: "destructive" }),
   });
@@ -695,6 +710,88 @@ function PayrollTab() {
           )}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" /> كشوف الرواتب السابقة</CardTitle>
+          <CardDescription>سجل كشوف الرواتب التي تم اعتمادها — افتح "السجل" لمراجعة من قام بكل خطوة (احتساب، اعتماد، حذف).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {pastRuns.length === 0 ? (
+            <EmptyState
+              icon={<FileText className="w-5 h-5" />}
+              title="لا توجد كشوف سابقة"
+              description="بعد اعتماد أول كشف رواتب، سيظهر هنا مع كل التغييرات والتدقيق."
+              testId="empty-payroll-runs"
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>الفترة</TableHead>
+                  <TableHead>الحالة</TableHead>
+                  <TableHead>إجمالي قبل الخصم</TableHead>
+                  <TableHead>صافي للصرف</TableHead>
+                  <TableHead>القيد المحاسبي</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pastRuns.map((r) => (
+                  <TableRow key={r.id} data-testid={`row-payroll-run-${r.id}`}>
+                    <TableCell className="font-medium font-numeric tabular-nums">
+                      {String(r.month).padStart(2, "0")}/{r.year}
+                    </TableCell>
+                    <TableCell>
+                      {r.status === "posted"
+                        ? <Badge variant="default">معتمد</Badge>
+                        : <Badge variant="secondary">{r.status}</Badge>}
+                    </TableCell>
+                    <TableCell>{fmt(Number(r.totalGross))}</TableCell>
+                    <TableCell className="font-bold text-primary">{fmt(Number(r.totalNet))}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">
+                      {r.journalEntryId ? `JE-${r.journalEntryId}` : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setHistoryRun(r)}
+                          aria-label="السجل"
+                          data-testid={`button-history-payroll-run-${r.id}`}
+                        >
+                          <History className="w-4 h-4" />
+                        </Button>
+                        <WriteGuard>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeRun.mutate(r.id)}
+                            disabled={removeRun.isPending}
+                            data-testid={`button-delete-payroll-run-${r.id}`}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </WriteGuard>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <HistoryDrawer
+        open={!!historyRun}
+        onOpenChange={(o) => { if (!o) setHistoryRun(null); }}
+        title={historyRun ? `كشف رواتب ${String(historyRun.month).padStart(2, "0")}/${historyRun.year}` : ""}
+        reference={historyRun ? `PR-${historyRun.id}` : undefined}
+        entityType="payroll_run"
+        entityId={historyRun?.id}
+      />
     </div>
   );
 }
