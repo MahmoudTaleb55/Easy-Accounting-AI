@@ -1,5 +1,12 @@
-// IFRS-aligned default Chart of Accounts (Saudi Arabian small business friendly)
-// Codes follow the standard 1xxx-5xxx grouping.
+// Default Chart of Accounts (شجرة الحسابات).
+//
+// The base tree below mirrors the customer-supplied workbook
+// "شجرة الحسابات - شركة محمد حجاج". The IFRS-required extras the rest
+// of the app depends on (per-class accumulated depreciation, accumulated
+// impairment, OCI revaluation surplus, gain/loss on disposal, payroll
+// liabilities, etc.) are appended via PAYROLL_EXTRA_ACCOUNTS and
+// FIXED_ASSETS_EXTRA_ACCOUNTS using codes that fit the same numbering
+// scheme so they slot under the right header without overlapping.
 
 export interface SeedAccount {
   code: string;
@@ -12,84 +19,100 @@ export interface SeedAccount {
 }
 
 export const DEFAULT_COA: SeedAccount[] = [
-  // ASSETS
+  // ============================================================
+  // ASSETS — الأصول
+  // ============================================================
   { code: "1000", nameAr: "الأصول", nameEn: "Assets", type: "asset", subtype: "header", isHeader: true },
+
   { code: "1100", nameAr: "الأصول المتداولة", nameEn: "Current Assets", type: "asset", subtype: "header", isHeader: true, parentCode: "1000" },
-  { code: "1110", nameAr: "النقدية في الصندوق", nameEn: "Cash on Hand", type: "asset", subtype: "current_asset", parentCode: "1100" },
-  { code: "1120", nameAr: "البنك", nameEn: "Bank", type: "asset", subtype: "current_asset", parentCode: "1100" },
-  { code: "1130", nameAr: "العملاء (المدينون)", nameEn: "Accounts Receivable", type: "asset", subtype: "current_asset", parentCode: "1100" },
-  { code: "1140", nameAr: "المخزون", nameEn: "Inventory", type: "asset", subtype: "current_asset", parentCode: "1100" },
-  { code: "1150", nameAr: "المصروفات المدفوعة مقدماً", nameEn: "Prepaid Expenses", type: "asset", subtype: "current_asset", parentCode: "1100" },
-  { code: "1200", nameAr: "الأصول غير المتداولة", nameEn: "Non-Current Assets", type: "asset", subtype: "header", isHeader: true, parentCode: "1000" },
-  { code: "1210", nameAr: "الأثاث والمعدات", nameEn: "Furniture & Equipment", type: "asset", subtype: "non_current_asset", parentCode: "1200" },
-  { code: "1220", nameAr: "المركبات", nameEn: "Vehicles", type: "asset", subtype: "non_current_asset", parentCode: "1200" },
-  { code: "1230", nameAr: "المباني", nameEn: "Buildings", type: "asset", subtype: "non_current_asset", parentCode: "1200" },
-  { code: "1290", nameAr: "مجمع الإهلاك", nameEn: "Accumulated Depreciation", type: "asset", subtype: "contra_asset", parentCode: "1200" },
+  { code: "1110", nameAr: "النقد بالصندوق", nameEn: "Cash on Hand", type: "asset", subtype: "current_asset", parentCode: "1100" },
+  { code: "1120", nameAr: "البنوك", nameEn: "Banks", type: "asset", subtype: "header", isHeader: true, parentCode: "1100" },
+  { code: "1121", nameAr: "بنك الراجحي - فرع الرياض (22525998)", nameEn: "Al Rajhi Bank — Riyadh (22525998)", type: "asset", subtype: "current_asset", parentCode: "1120" },
 
-  // LIABILITIES
-  { code: "2000", nameAr: "الخصوم (الالتزامات)", nameEn: "Liabilities", type: "liability", subtype: "header", isHeader: true },
-  { code: "2100", nameAr: "الخصوم المتداولة", nameEn: "Current Liabilities", type: "liability", subtype: "header", isHeader: true, parentCode: "2000" },
-  { code: "2110", nameAr: "الموردون (الدائنون)", nameEn: "Accounts Payable", type: "liability", subtype: "current_liability", parentCode: "2100" },
-  { code: "2120", nameAr: "ضريبة القيمة المضافة المستحقة", nameEn: "VAT Payable", type: "liability", subtype: "current_liability", parentCode: "2100" },
-  { code: "2130", nameAr: "الرواتب المستحقة", nameEn: "Salaries Payable", type: "liability", subtype: "current_liability", parentCode: "2100" },
-  { code: "2140", nameAr: "إيرادات مقبوضة مقدماً", nameEn: "Unearned Revenue", type: "liability", subtype: "current_liability", parentCode: "2100" },
-  { code: "2200", nameAr: "الخصوم غير المتداولة", nameEn: "Non-Current Liabilities", type: "liability", subtype: "header", isHeader: true, parentCode: "2000" },
-  { code: "2210", nameAr: "القروض طويلة الأجل", nameEn: "Long-Term Loans", type: "liability", subtype: "non_current_liability", parentCode: "2200" },
+  { code: "1200", nameAr: "ذمم مدينة", nameEn: "Receivables", type: "asset", subtype: "header", isHeader: true, parentCode: "1000" },
+  { code: "1210", nameAr: "العملاء", nameEn: "Customers (AR)", type: "asset", subtype: "current_asset", parentCode: "1200" },
 
-  // EQUITY
+  { code: "1300", nameAr: "المخزون", nameEn: "Inventory", type: "asset", subtype: "current_asset", parentCode: "1000" },
+
+  { code: "1400", nameAr: "أصول غير متداولة", nameEn: "Non-Current Assets", type: "asset", subtype: "header", isHeader: true, parentCode: "1000" },
+  { code: "1410", nameAr: "الأصول الثابتة", nameEn: "Fixed Assets", type: "asset", subtype: "header", isHeader: true, parentCode: "1400" },
+  { code: "1411", nameAr: "معدات وأدوات", nameEn: "Equipment & Tools", type: "asset", subtype: "non_current_asset", parentCode: "1410" },
+  { code: "1412", nameAr: "أثاث وتجهيزات", nameEn: "Furniture & Fixtures", type: "asset", subtype: "non_current_asset", parentCode: "1410" },
+  { code: "1413", nameAr: "مركبات", nameEn: "Vehicles", type: "asset", subtype: "non_current_asset", parentCode: "1410" },
+
+  { code: "1420", nameAr: "مجمع الإهلاك", nameEn: "Accumulated Depreciation", type: "asset", subtype: "header", isHeader: true, parentCode: "1400" },
+  { code: "1421", nameAr: "مجمع إهلاك معدات وأدوات", nameEn: "Accum. Dep — Equipment & Tools", type: "asset", subtype: "contra_asset", parentCode: "1420" },
+  { code: "1422", nameAr: "مجمع إهلاك أثاث وتجهيزات", nameEn: "Accum. Dep — Furniture & Fixtures", type: "asset", subtype: "contra_asset", parentCode: "1420" },
+  { code: "1423", nameAr: "مجمع إهلاك مركبات", nameEn: "Accum. Dep — Vehicles", type: "asset", subtype: "contra_asset", parentCode: "1420" },
+
+  // ============================================================
+  // LIABILITIES — الالتزامات
+  // ============================================================
+  { code: "2000", nameAr: "الالتزامات", nameEn: "Liabilities", type: "liability", subtype: "header", isHeader: true },
+
+  { code: "2100", nameAr: "الالتزامات المتداولة", nameEn: "Current Liabilities", type: "liability", subtype: "header", isHeader: true, parentCode: "2000" },
+  { code: "2110", nameAr: "الموردون (ذمم دائنة)", nameEn: "Suppliers (AP)", type: "liability", subtype: "current_liability", parentCode: "2100" },
+  { code: "2120", nameAr: "مصروفات مستحقة", nameEn: "Accrued Expenses", type: "liability", subtype: "current_liability", parentCode: "2100" },
+  { code: "2130", nameAr: "ضريبة القيمة المضافة المستحقة", nameEn: "VAT Payable", type: "liability", subtype: "current_liability", parentCode: "2100" },
+
+  { code: "2200", nameAr: "التزامات غير متداولة", nameEn: "Non-Current Liabilities", type: "liability", subtype: "header", isHeader: true, parentCode: "2000" },
+  { code: "2210", nameAr: "قروض طويلة الأجل", nameEn: "Long-Term Loans", type: "liability", subtype: "non_current_liability", parentCode: "2200" },
+
+  // ============================================================
+  // EQUITY — حقوق الملكية
+  // ============================================================
   { code: "3000", nameAr: "حقوق الملكية", nameEn: "Equity", type: "equity", subtype: "header", isHeader: true },
-  { code: "3010", nameAr: "رأس المال", nameEn: "Capital", type: "equity", subtype: "capital", parentCode: "3000" },
-  { code: "3020", nameAr: "الأرباح المحتجزة", nameEn: "Retained Earnings", type: "equity", subtype: "retained_earnings", parentCode: "3000" },
-  { code: "3030", nameAr: "المسحوبات الشخصية", nameEn: "Owner's Drawings", type: "equity", subtype: "drawings", parentCode: "3000" },
+  { code: "3100", nameAr: "رأس المال", nameEn: "Capital", type: "equity", subtype: "capital", parentCode: "3000" },
+  { code: "3200", nameAr: "الأرباح/الخسائر المرحلة", nameEn: "Retained Earnings (Brought Forward)", type: "equity", subtype: "retained_earnings", parentCode: "3000" },
+  { code: "3300", nameAr: "صافي ربح/خسارة الفترة", nameEn: "Net P&L for the Period", type: "equity", subtype: "retained_earnings", parentCode: "3000" },
 
-  // REVENUE
+  // ============================================================
+  // REVENUE — الإيرادات
+  // ============================================================
   { code: "4000", nameAr: "الإيرادات", nameEn: "Revenue", type: "revenue", subtype: "header", isHeader: true },
-  { code: "4010", nameAr: "إيرادات المبيعات", nameEn: "Sales Revenue", type: "revenue", subtype: "operating_revenue", parentCode: "4000" },
-  { code: "4020", nameAr: "إيرادات الخدمات", nameEn: "Service Revenue", type: "revenue", subtype: "operating_revenue", parentCode: "4000" },
-  { code: "4030", nameAr: "خصم المبيعات", nameEn: "Sales Discounts", type: "revenue", subtype: "contra_revenue", parentCode: "4000" },
-  { code: "4090", nameAr: "إيرادات أخرى", nameEn: "Other Income", type: "revenue", subtype: "other_income", parentCode: "4000" },
+  { code: "4100", nameAr: "إيرادات المبيعات", nameEn: "Sales Revenue", type: "revenue", subtype: "operating_revenue", parentCode: "4000" },
+  { code: "4200", nameAr: "إيرادات خدمات", nameEn: "Service Revenue", type: "revenue", subtype: "operating_revenue", parentCode: "4000" },
 
-  // COGS & EXPENSES
+  // ============================================================
+  // COGS — تكلفة المبيعات
+  // ============================================================
   { code: "5000", nameAr: "تكلفة المبيعات", nameEn: "Cost of Sales", type: "expense", subtype: "header", isHeader: true },
-  { code: "5010", nameAr: "تكلفة البضاعة المباعة", nameEn: "Cost of Goods Sold", type: "expense", subtype: "cogs", parentCode: "5000" },
-  { code: "5020", nameAr: "خصم المشتريات", nameEn: "Purchase Discounts", type: "expense", subtype: "contra_cogs", parentCode: "5000" },
+  { code: "5100", nameAr: "تكلفة البضاعة المباعة", nameEn: "Cost of Goods Sold", type: "expense", subtype: "cogs", parentCode: "5000" },
 
+  // ============================================================
+  // OPERATING EXPENSES — المصروفات التشغيلية
+  // ============================================================
   { code: "6000", nameAr: "المصروفات التشغيلية", nameEn: "Operating Expenses", type: "expense", subtype: "header", isHeader: true },
-  { code: "6010", nameAr: "الرواتب والأجور", nameEn: "Salaries & Wages", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6020", nameAr: "الإيجار", nameEn: "Rent", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6030", nameAr: "المرافق (كهرباء/ماء)", nameEn: "Utilities", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6040", nameAr: "الإنترنت والاتصالات", nameEn: "Internet & Telecom", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6050", nameAr: "التسويق والإعلان", nameEn: "Marketing & Advertising", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6060", nameAr: "الصيانة والإصلاح", nameEn: "Repairs & Maintenance", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6070", nameAr: "الشحن والنقل", nameEn: "Shipping & Transport", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6080", nameAr: "العمولات والرسوم البنكية", nameEn: "Bank Fees & Commissions", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6090", nameAr: "الطعام والضيافة", nameEn: "Meals & Entertainment", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6100", nameAr: "المواصلات", nameEn: "Transportation", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6110", nameAr: "مصروفات الإهلاك", nameEn: "Depreciation Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6900", nameAr: "مصروفات عمومية أخرى", nameEn: "Other Operating Expenses", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6100", nameAr: "رواتب وأجور", nameEn: "Salaries & Wages", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6200", nameAr: "إيجارات", nameEn: "Rent", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6300", nameAr: "كهرباء ومياه", nameEn: "Utilities", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6400", nameAr: "اتصالات وإنترنت", nameEn: "Telecom & Internet", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6500", nameAr: "مصاريف نقل", nameEn: "Transport & Shipping", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6600", nameAr: "مصاريف تسويق", nameEn: "Marketing", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6700", nameAr: "مصاريف مكتبية", nameEn: "Office Expenses", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6800", nameAr: "مصاريف بنكية", nameEn: "Bank Fees", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6900", nameAr: "مصاريف أخرى", nameEn: "Other Expenses", type: "expense", subtype: "operating_expense", parentCode: "6000" },
 ];
 
 // Map free-text Arabic categories to default account codes (used to auto-classify
 // quick transactions into proper IFRS journal entries).
 export const CATEGORY_TO_ACCOUNT_CODE: { keywords: string[]; code: string }[] = [
   // Income side
-  { keywords: ["مبيعات", "بيع"], code: "4010" },
-  { keywords: ["خدمات", "أتعاب"], code: "4020" },
-  { keywords: ["خصم مبيعات"], code: "4030" },
-  { keywords: ["راتب", "مرتب", "أجر"], code: "4090" }, // personal salary income → other income
+  { keywords: ["مبيعات", "بيع"], code: "4100" },
+  { keywords: ["خدمات", "أتعاب"], code: "4200" },
+  { keywords: ["خصم مبيعات"], code: "4300" }, // contra-revenue (added below)
+  { keywords: ["راتب", "مرتب", "أجر"], code: "4990" }, // personal salary income → other income
   // Expense side
-  { keywords: ["تكلفة البضائع", "تكلفة البضاعة", "بضاعة", "مشتريات"], code: "5010" },
-  { keywords: ["رواتب", "أجور", "مرتبات"], code: "6010" },
-  { keywords: ["إيجار", "ايجار"], code: "6020" },
-  { keywords: ["كهرباء", "ماء", "مرافق", "فواتير"], code: "6030" },
-  { keywords: ["إنترنت", "انترنت", "اتصالات", "هاتف", "جوال"], code: "6040" },
-  { keywords: ["تسويق", "إعلان", "اعلان"], code: "6050" },
-  { keywords: ["صيانة", "إصلاح", "اصلاح"], code: "6060" },
-  { keywords: ["شحن", "توصيل", "نقل بضاعة"], code: "6070" },
-  { keywords: ["عمولة", "بنك", "رسوم"], code: "6080" },
-  { keywords: ["طعام", "غداء", "عشاء", "فطور", "قهوة", "مطعم", "بقالة"], code: "6090" },
-  { keywords: ["مواصلات", "بنزين", "وقود", "تاكسي", "أوبر", "كريم"], code: "6100" },
-  { keywords: ["إهلاك", "اهلاك"], code: "6110" },
+  { keywords: ["تكلفة البضائع", "تكلفة البضاعة", "بضاعة", "مشتريات"], code: "5100" },
+  { keywords: ["رواتب", "أجور", "مرتبات"], code: "6100" },
+  { keywords: ["إيجار", "ايجار"], code: "6200" },
+  { keywords: ["كهرباء", "ماء", "مرافق", "فواتير"], code: "6300" },
+  { keywords: ["إنترنت", "انترنت", "اتصالات", "هاتف", "جوال"], code: "6400" },
+  { keywords: ["شحن", "توصيل", "نقل بضاعة", "مواصلات", "بنزين", "وقود", "تاكسي", "أوبر", "كريم"], code: "6500" },
+  { keywords: ["تسويق", "إعلان", "اعلان"], code: "6600" },
+  { keywords: ["مكتب", "قرطاسية", "أدوات مكتبية"], code: "6700" },
+  { keywords: ["عمولة", "بنك", "رسوم"], code: "6800" },
+  { keywords: ["إهلاك", "اهلاك"], code: "6150" },
 ];
 
 export function pickExpenseAccountCode(category: string, description: string): string {
@@ -107,27 +130,35 @@ export function pickRevenueAccountCode(category: string, description: string): s
       return map.code;
     }
   }
-  return "4010"; // sales revenue default
+  return "4100"; // sales revenue default
 }
 
+// ============================================================================
+// Account-code constants used by the rest of the codebase. The numbering
+// above leaves dedicated bands free for these IFRS-required extras so the
+// HR / fixed-asset / disposal flows don't collide with the customer's
+// numbering above.
+// ============================================================================
+
 export const CASH_ACCOUNT_CODE = "1110";
-// HR / Payroll account codes
-export const SALARIES_EXPENSE_CODE = "6010";              // existing
-export const SOCIAL_INSURANCE_EXPENSE_CODE = "6011";      // added below
-export const EOS_EXPENSE_CODE = "6012";                   // added below
-export const ACCRUED_SALARIES_CODE = "2130";              // existing (Salaries Payable)
+
+// HR / Payroll
+export const SALARIES_EXPENSE_CODE = "6100";              // base salaries (in user tree)
+export const SOCIAL_INSURANCE_EXPENSE_CODE = "6110";      // added below
+export const EOS_EXPENSE_CODE = "6120";                   // added below
+export const ACCRUED_SALARIES_CODE = "2140";              // added below — separate from VAT (2130)
 export const SOCIAL_INSURANCE_PAYABLE_CODE = "2150";      // added below
 export const ACCRUED_LEAVE_LIABILITY_CODE = "2160";       // added below
 export const EOS_LIABILITY_CODE = "2220";                 // added below
 
-// Fixed-Asset (IAS 16) account codes
-export const FA_ASSET_COST_CODE = "1210";                  // existing PPE base
-export const FA_ACCUM_DEP_CODE = "1290";                   // existing accumulated depreciation
-export const FA_ACCUM_IMP_CODE = "1295";                   // added below
-export const FA_DEP_EXPENSE_CODE = "6110";                 // existing depreciation expense
-export const FA_IMP_LOSS_CODE = "6120";                    // added below
-export const FA_REVAL_SURPLUS_CODE = "3040";               // added below
-export const FA_GAIN_LOSS_DISPOSAL_CODE = "4080";          // added below (revenue side – may be gain or loss)
+// Fixed-Asset (IAS 16) account codes — anchored on the user's 14xx PPE band
+export const FA_ASSET_COST_CODE = "1411";                 // Equipment & Tools (default class)
+export const FA_ACCUM_DEP_CODE = "1421";                  // Accum. Dep — Equipment (default class)
+export const FA_ACCUM_IMP_CODE = "1430";                  // added below
+export const FA_DEP_EXPENSE_CODE = "6150";                // added below
+export const FA_IMP_LOSS_CODE = "6160";                   // added below
+export const FA_REVAL_SURPLUS_CODE = "3400";              // added below
+export const FA_GAIN_LOSS_DISPOSAL_CODE = "4900";         // added below
 
 // Per-class default cost & contra accounts for category seeding
 export const FA_CATEGORY_DEFAULTS: Array<{
@@ -136,30 +167,34 @@ export const FA_CATEGORY_DEFAULTS: Array<{
   accumDepCode: string;
   defaultUsefulLifeMonths: number;
 }> = [
-  { name: "أثاث ومعدات / Furniture & Equipment", assetCostCode: "1210", accumDepCode: "1291", defaultUsefulLifeMonths: 60 },
-  { name: "مركبات / Vehicles", assetCostCode: "1220", accumDepCode: "1292", defaultUsefulLifeMonths: 60 },
-  { name: "مباني / Buildings", assetCostCode: "1230", accumDepCode: "1293", defaultUsefulLifeMonths: 480 },
+  { name: "معدات وأدوات / Equipment & Tools", assetCostCode: "1411", accumDepCode: "1421", defaultUsefulLifeMonths: 60 },
+  { name: "أثاث وتجهيزات / Furniture & Fixtures", assetCostCode: "1412", accumDepCode: "1422", defaultUsefulLifeMonths: 60 },
+  { name: "مركبات / Vehicles", assetCostCode: "1413", accumDepCode: "1423", defaultUsefulLifeMonths: 60 },
 ];
 
-// Extra Fixed-Asset accounts to merge into seed at startup (in init-coa).
-export const FIXED_ASSETS_EXTRA_ACCOUNTS = [
-  // Per-class accumulated depreciation contra-asset accounts
-  { code: "1291", nameAr: "مجمع إهلاك الأثاث والمعدات", nameEn: "Accum. Dep — Furniture & Equipment", type: "asset", subtype: "contra_asset", parentCode: "1200" },
-  { code: "1292", nameAr: "مجمع إهلاك المركبات", nameEn: "Accum. Dep — Vehicles", type: "asset", subtype: "contra_asset", parentCode: "1200" },
-  { code: "1293", nameAr: "مجمع إهلاك المباني", nameEn: "Accum. Dep — Buildings", type: "asset", subtype: "contra_asset", parentCode: "1200" },
-  { code: "1295", nameAr: "مجمع خسائر الانخفاض في القيمة", nameEn: "Accumulated Impairment", type: "asset", subtype: "contra_asset", parentCode: "1200" },
-  // Equity / OCI surplus
-  { code: "3040", nameAr: "فائض إعادة التقييم (الدخل الشامل الآخر)", nameEn: "Revaluation Surplus (OCI)", type: "equity", subtype: "oci", parentCode: "3000" },
-  // Gains/losses on disposal — as other income (gains positive, losses negative)
-  { code: "4080", nameAr: "أرباح / خسائر بيع أصول ثابتة", nameEn: "Gain/Loss on Disposal of PPE", type: "revenue", subtype: "other_income", parentCode: "4000" },
+// Extra Fixed-Asset accounts to merge into the seed at startup (in init-coa).
+export const FIXED_ASSETS_EXTRA_ACCOUNTS: SeedAccount[] = [
+  // Single accumulated impairment bucket (sits beside 142x accum dep)
+  { code: "1430", nameAr: "مجمع خسائر الانخفاض في القيمة", nameEn: "Accumulated Impairment", type: "asset", subtype: "contra_asset", parentCode: "1400" },
+  // Equity / OCI surplus from revaluation model
+  { code: "3400", nameAr: "فائض إعادة التقييم (الدخل الشامل الآخر)", nameEn: "Revaluation Surplus (OCI)", type: "equity", subtype: "oci", parentCode: "3000" },
+  // Gain/Loss on disposal (parked under Revenue per IAS 1 presentation)
+  { code: "4900", nameAr: "أرباح / خسائر بيع أصول ثابتة", nameEn: "Gain/Loss on Disposal of PPE", type: "revenue", subtype: "other_income", parentCode: "4000" },
+  // Sales discounts (contra-revenue) — kept for AI auto-classification
+  { code: "4300", nameAr: "خصم المبيعات", nameEn: "Sales Discounts", type: "revenue", subtype: "contra_revenue", parentCode: "4000" },
+  // Other income catch-all (used when AI sees personal-salary keywords)
+  { code: "4990", nameAr: "إيرادات أخرى", nameEn: "Other Income", type: "revenue", subtype: "other_income", parentCode: "4000" },
+  // Depreciation expense
+  { code: "6150", nameAr: "مصروفات الإهلاك", nameEn: "Depreciation Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },
   // Impairment loss expense
-  { code: "6120", nameAr: "خسائر الانخفاض في قيمة الأصول", nameEn: "Impairment Loss", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6160", nameAr: "خسائر الانخفاض في قيمة الأصول", nameEn: "Impairment Loss", type: "expense", subtype: "operating_expense", parentCode: "6000" },
 ];
 
-// Extra payroll-related accounts to merge into seed at startup (in init-coa).
-export const PAYROLL_EXTRA_ACCOUNTS = [
-  { code: "6011", nameAr: "اشتراكات التأمينات الاجتماعية", nameEn: "Social Insurance Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },
-  { code: "6012", nameAr: "مصروف مكافأة نهاية الخدمة", nameEn: "End of Service Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+// Extra payroll-related accounts to merge into the seed at startup (in init-coa).
+export const PAYROLL_EXTRA_ACCOUNTS: SeedAccount[] = [
+  { code: "6110", nameAr: "اشتراكات التأمينات الاجتماعية", nameEn: "Social Insurance Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "6120", nameAr: "مصروف مكافأة نهاية الخدمة", nameEn: "End of Service Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },
+  { code: "2140", nameAr: "رواتب مستحقة", nameEn: "Salaries Payable", type: "liability", subtype: "current_liability", parentCode: "2100" },
   { code: "2150", nameAr: "تأمينات اجتماعية مستحقة", nameEn: "Social Insurance Payable", type: "liability", subtype: "current_liability", parentCode: "2100" },
   { code: "2160", nameAr: "إجازات مستحقة للموظفين", nameEn: "Accrued Leave Liability", type: "liability", subtype: "current_liability", parentCode: "2100" },
   { code: "2220", nameAr: "التزامات نهاية الخدمة", nameEn: "End of Service Liability", type: "liability", subtype: "non_current_liability", parentCode: "2200" },

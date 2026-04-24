@@ -1372,7 +1372,7 @@ async function registerFixedAssetRoutes(app: Express) {
     CASH_ACCOUNT_CODE,
   } = await import("@shared/coa-seed");
 
-  const RETAINED_EARNINGS_CODE = "3020";
+  const RETAINED_EARNINGS_CODE = "3200";
 
   async function resolveAccountId(companyId: number, code: string): Promise<number | null> {
     const acc = await storage.getAccountByCode(companyId, code);

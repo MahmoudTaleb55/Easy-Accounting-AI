@@ -2,38 +2,214 @@ import { db } from "./db";
 import { accounts, journalEntries, journalLines, transactions } from "@shared/schema";
 import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode, PAYROLL_EXTRA_ACCOUNTS, FIXED_ASSETS_EXTRA_ACCOUNTS, FA_CATEGORY_DEFAULTS, FA_ACCUM_IMP_CODE, FA_DEP_EXPENSE_CODE, FA_IMP_LOSS_CODE, FA_REVAL_SURPLUS_CODE, FA_GAIN_LOSS_DISPOSAL_CODE } from "@shared/coa-seed";
 import { companies, assetCategories } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
+
+/**
+ * Converge the chart of accounts to the canonical seed defined in
+ * `@shared/coa-seed`. Idempotent and non-destructive to real data:
+ *
+ * 1. Any row whose `code` is in the canonical seed but whose name / type /
+ *    subtype drifted (e.g. an older seed where 6110 meant "Depreciation
+ *    Expense" but the new seed maps 6110 to "Social Insurance Expense") is
+ *    UPDATED in place so a subsequent constant-by-code lookup lands on the
+ *    semantically correct account.
+ * 2. Any row whose `code` is NOT in the canonical seed is dropped — but
+ *    only if it has no journal_lines, no asset_categories, and no child
+ *    accounts pointing at it. Anything still referenced is left alone so
+ *    historical postings stay valid.
+ * 3. Any canonical code that does not yet exist in the table is inserted.
+ *
+ * The whole thing runs inside a single transaction so a partial converge
+ * cannot leave the chart of accounts in a half-migrated state.
+ */
+/**
+ * Returns true if the row carries *semantic* references — i.e. references
+ * whose meaning would silently change if we relabeled the row.
+ *
+ * Journal lines and asset_category FK columns count: those rows post real
+ * money against this account id, so renaming the row from e.g. "Depreciation
+ * Expense" to "Social Insurance Expense" would corrupt the books.
+ *
+ * Child accounts (`accounts.parent_id`) do NOT count: a child pointing at
+ * its parent by id is a structural link, not a semantic one. Renaming a
+ * drifted header in place is exactly what we want — the children stay
+ * correctly attached and the canonical name reaches the UI.
+ */
+async function rowIsReferenced(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  accountId: number,
+): Promise<boolean> {
+  const [{ c: jl }] = await tx
+    .select({ c: sql<number>`count(*)::int` })
+    .from(journalLines)
+    .where(eq(journalLines.accountId, accountId));
+  if (jl > 0) return true;
+
+  const acColumns = [
+    assetCategories.assetCostAccountId,
+    assetCategories.accumulatedDepAccountId,
+    assetCategories.depExpenseAccountId,
+    assetCategories.accumulatedImpAccountId,
+    assetCategories.impLossAccountId,
+    assetCategories.revalSurplusAccountId,
+    assetCategories.gainLossDisposalAccountId,
+  ];
+  for (const col of acColumns) {
+    const [{ c }] = await tx
+      .select({ c: sql<number>`count(*)::int` })
+      .from(assetCategories)
+      .where(eq(col, accountId));
+    if (c > 0) return true;
+  }
+
+  return false;
+}
 
 export async function initChartOfAccounts(): Promise<void> {
-  const existing = await db.select({ code: accounts.code }).from(accounts);
-  const existingCodes = new Set(existing.map((a) => a.code));
-
-  // Two-pass insert: first headers (so children can find parents), then leaves.
-  const codeToId = new Map<string, number>();
-  for (const acc of existing) codeToId.set(acc.code, 0);
-
-  // Reload existing with ids
-  const fullExisting = await db.select().from(accounts);
-  fullExisting.forEach((a) => codeToId.set(a.code, a.id));
-
   const allSeed = [...DEFAULT_COA, ...PAYROLL_EXTRA_ACCOUNTS, ...FIXED_ASSETS_EXTRA_ACCOUNTS];
-  for (const seed of allSeed) {
-    if (existingCodes.has(seed.code)) continue;
-    const parentId = seed.parentCode ? codeToId.get(seed.parentCode) ?? null : null;
-    const [created] = await db
-      .insert(accounts)
-      .values({
-        code: seed.code,
-        nameAr: seed.nameAr,
-        nameEn: seed.nameEn,
-        type: seed.type,
-        subtype: seed.subtype,
-        parentId: parentId ?? undefined,
-        isHeader: ("isHeader" in seed ? seed.isHeader : false) ?? false,
-      })
-      .returning();
-    codeToId.set(created.code, created.id);
-  }
+  const seedByCode = new Map(allSeed.map((s) => [s.code, s]));
+
+  await db.transaction(async (tx) => {
+    const fullExisting = await tx.select().from(accounts);
+    const existingByCode = new Map(fullExisting.map((a) => [a.code, a] as const));
+
+    // (1) Reconcile drift on any seed code that already exists with stale
+    // name/type/subtype/header flag.
+    //
+    // If the existing row is *unreferenced* (no journal lines, no asset
+    // categories, no children), we update it in place — its id is purely
+    // cosmetic.
+    //
+    // If it IS referenced, we cannot safely rewrite its name/type, because
+    // every existing reference (e.g. an asset_category's depExpenseAccountId
+    // or a journal line) would silently start meaning something different.
+    // In that case we renumber the legacy row out of the canonical band
+    // (suffixing its code with `_legacy`) so the fresh insert in step (3)
+    // can take over the canonical code without touching prior bookings.
+    const renamedLegacyIds = new Set<number>();
+    for (const [code, seed] of seedByCode) {
+      const row = existingByCode.get(code);
+      if (!row) continue;
+      const headerFlag = ("isHeader" in seed ? seed.isHeader : false) ?? false;
+      const drifted =
+        row.nameAr !== seed.nameAr ||
+        row.nameEn !== seed.nameEn ||
+        row.type !== seed.type ||
+        row.subtype !== seed.subtype ||
+        row.isHeader !== headerFlag;
+      if (!drifted) continue;
+
+      const isReferenced = await rowIsReferenced(tx, row.id);
+      if (!isReferenced) {
+        await tx
+          .update(accounts)
+          .set({
+            nameAr: seed.nameAr,
+            nameEn: seed.nameEn,
+            type: seed.type,
+            subtype: seed.subtype,
+            isHeader: headerFlag,
+          })
+          .where(eq(accounts.id, row.id));
+      } else {
+        // Suffix the code so the fresh insert in step (3) doesn't collide
+        // on the global UNIQUE on accounts.code. The row keeps its id and
+        // every downstream reference still resolves to the same semantics
+        // it had before this boot.
+        let legacyCode = `${row.code}_legacy`;
+        // In the unlikely event _legacy already exists too, append a
+        // counter so we never lose a row to a unique-violation.
+        let n = 2;
+        while (existingByCode.has(legacyCode)) {
+          legacyCode = `${row.code}_legacy${n++}`;
+        }
+        await tx
+          .update(accounts)
+          .set({ code: legacyCode })
+          .where(eq(accounts.id, row.id));
+        existingByCode.delete(row.code);
+        existingByCode.set(legacyCode, { ...row, code: legacyCode });
+        renamedLegacyIds.add(row.id);
+      }
+    }
+
+    // (2) Drop accounts whose code is not in the canonical seed AND that
+    // nothing references — keeps the COA tree tidy without ever touching
+    // data the books depend on.
+    const orphanCandidates = fullExisting.filter((a) => !seedByCode.has(a.code));
+    if (orphanCandidates.length > 0) {
+      const orphanIds = orphanCandidates.map((a) => a.id);
+      const referenced = new Set<number>();
+
+      const jlRefs = await tx
+        .select({ accountId: journalLines.accountId })
+        .from(journalLines)
+        .where(inArray(journalLines.accountId, orphanIds));
+      jlRefs.forEach((r) => referenced.add(r.accountId));
+
+      // Asset categories reference accounts via a half-dozen FK columns —
+      // one targeted query per column is the simplest portable form.
+      const acColumns = [
+        assetCategories.assetCostAccountId,
+        assetCategories.accumulatedDepAccountId,
+        assetCategories.depExpenseAccountId,
+        assetCategories.accumulatedImpAccountId,
+        assetCategories.impLossAccountId,
+        assetCategories.revalSurplusAccountId,
+        assetCategories.gainLossDisposalAccountId,
+      ];
+      for (const col of acColumns) {
+        const rows = await tx
+          .select({ id: col })
+          .from(assetCategories)
+          .where(inArray(col, orphanIds));
+        for (const r of rows) {
+          if (r.id != null) referenced.add(r.id);
+        }
+      }
+
+      // Children that haven't been deleted yet still need their parent.
+      const childRefs = await tx
+        .select({ parentId: accounts.parentId })
+        .from(accounts)
+        .where(inArray(accounts.parentId, orphanIds));
+      childRefs.forEach((r) => r.parentId != null && referenced.add(r.parentId));
+
+      const droppable = orphanCandidates.filter((a) => !referenced.has(a.id));
+      if (droppable.length > 0) {
+        // Delete in ascending depth order so a parent isn't yanked while a
+        // child still points at it. Sort by parent_id NULLs last is a good
+        // proxy: leaves first, then headers.
+        droppable.sort((a, b) => Number(b.parentId != null) - Number(a.parentId != null));
+        for (const row of droppable) {
+          await tx.delete(accounts).where(eq(accounts.id, row.id));
+        }
+      }
+    }
+
+    // (3) Insert anything from the canonical seed that still isn't present.
+    // Reload after the converge/drop steps so parent ids are accurate.
+    const refreshed = await tx.select().from(accounts);
+    const codeToId = new Map<string, number>(refreshed.map((a) => [a.code, a.id]));
+
+    for (const seed of allSeed) {
+      if (codeToId.has(seed.code)) continue;
+      const parentId = seed.parentCode ? codeToId.get(seed.parentCode) ?? null : null;
+      const [created] = await tx
+        .insert(accounts)
+        .values({
+          code: seed.code,
+          nameAr: seed.nameAr,
+          nameEn: seed.nameEn,
+          type: seed.type,
+          subtype: seed.subtype,
+          parentId: parentId ?? undefined,
+          isHeader: ("isHeader" in seed ? seed.isHeader : false) ?? false,
+        })
+        .returning();
+      codeToId.set(created.code, created.id);
+    }
+  });
 }
 
 /**
@@ -88,7 +264,7 @@ export async function backfillJournalForLegacyTransactions(): Promise<void> {
     let cr: number | undefined;
     if (tx.type === "income") {
       dr = cashId;
-      cr = codeToId.get(pickRevenueAccountCode(tx.category, tx.description)) ?? codeToId.get("4010");
+      cr = codeToId.get(pickRevenueAccountCode(tx.category, tx.description)) ?? codeToId.get("4100");
     } else {
       dr = codeToId.get(pickExpenseAccountCode(tx.category, tx.description)) ?? codeToId.get("6900");
       cr = cashId;
