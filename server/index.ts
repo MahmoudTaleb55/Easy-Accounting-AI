@@ -71,10 +71,11 @@ app.use((req, res, next) => {
   registerLocalAuthRoutes(app);
   registerAuthRoutes(app);
 
-  // Legacy /api/team layer. The middleware just attaches `req.member`
-  // (the workspace_members mirror row) for the team routes — write
-  // authorization on every other /api/* path is enforced inside
-  // registerRoutes by the new auth/membership system.
+  // Attaches `req.member` — a small in-memory projection of the active
+  // user's `users` row + `memberships` role — so the `/api/auth/me`
+  // identity probe can answer in one place. It does NOT gate writes;
+  // write authorization on every /api/* path is enforced inside
+  // registerRoutes by the canonical auth/membership system.
   app.use(rbacMiddleware());
   registerTeamRoutes(app);
 
@@ -97,6 +98,16 @@ app.use((req, res, next) => {
     await unifyRoleEnumOnStartup();
   } catch (err) {
     console.error("Failed to normalise role enum:", err);
+  }
+
+  // Re-apply migration 0006 on boot so the retired `workspace_members`
+  // mirror table never lingers in dev databases or in deploys that boot
+  // ahead of the migration runner. Idempotent.
+  try {
+    const { dropWorkspaceMembersMirrorOnStartup } = await import("./auth/storage");
+    await dropWorkspaceMembersMirrorOnStartup();
+  } catch (err) {
+    console.error("Failed to drop workspace_members mirror:", err);
   }
 
   // Background sweep that turns the failure-class delivery trends into a

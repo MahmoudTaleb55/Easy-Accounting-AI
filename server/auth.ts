@@ -1,15 +1,28 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { db } from "./db";
-import { workspaceMembers, type WorkspaceMember, type WorkspaceRole, ROLES } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { type WorkspaceRole, ROLES } from "@shared/schema";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { authBizStorage } from "./auth/storage";
 import { resolveActiveCompanyId } from "./auth/middleware";
 
+/**
+ * Projected identity for the signed-in user, attached to `req.member` for
+ * the `/api/auth/me` handler. This is *not* a database row — the legacy
+ * `workspace_members` mirror table was retired in 2026-04 and identity
+ * now lives in a single place: the canonical `users` + `memberships`
+ * tables. The shape here is shaped specifically to keep the
+ * `/api/auth/me` JSON response stable for existing frontend consumers.
+ */
+export interface CurrentMember {
+  name: string;
+  email: string;
+  role: WorkspaceRole;
+  status: "active";
+}
+
 declare global {
   namespace Express {
     interface Request {
-      member?: WorkspaceMember;
+      member?: CurrentMember;
     }
   }
 }
@@ -17,11 +30,9 @@ declare global {
 /**
  * Coerce a stored role value into the canonical WorkspaceRole enum
  * (owner|accountant|viewer). Membership rows are stored using the canonical
- * strings directly, so this is effectively the identity function — but it
+ * strings directly, so this is effectively the identity function — it
  * stays in place to defensively normalise any stale row that slipped past
- * the data migration, and so the workspace_members mirror still derives its
- * role from the authoritative `memberships` table rather than the retired
- * wm_id cookie.
+ * the data migration.
  */
 function mapRole(role: string | undefined | null): WorkspaceRole {
   if (role && (ROLES as readonly string[]).includes(role)) {
@@ -47,23 +58,18 @@ function getSessionUserId(req: Request): string | null {
 }
 
 /**
- * Resolve the workspace_members mirror row for the current passport session.
+ * Build the projected `CurrentMember` for the active passport session by
+ * reading directly from the canonical `users` row + active-workspace
+ * `memberships` row. Returns `null` for unauthenticated requests; the
+ * `/api/auth/me` handler then falls back to the historical "anonymous
+ * viewer" shape so role-aware UI components keep rendering.
  *
- * `workspace_members` is now a *read-only mirror* of the canonical
- * `memberships` table. The real invite + member-management flow lives on
- * `/api/auth/members` and `/api/auth/invitations` (server/auth/local-routes.ts).
- * The mirror is refreshed here, on demand, so existing call sites that read
- * `req.member` (most importantly `/api/auth/me` below) keep working without
- * a second lookup. It is never used to authorize writes — every /api endpoint
- * is gated by `requireAuth` + `requireWriteRoleForMutations` in
- * `server/routes.ts`, which read the authoritative role straight from the
- * `memberships` table.
- *
- * Returns `null` when the request has no authenticated session. `/api/auth/me`
- * still projects an "anonymous viewer" identity to the client for that case
- * so role-aware UI components keep rendering.
+ * No writes happen on the request path — there is no longer a mirror
+ * table to keep in sync. Member management (invite, role change, removal)
+ * lives on `/api/auth/members` and `/api/auth/invitations`
+ * (server/auth/local-routes.ts).
  */
-async function resolveCurrentMember(req: Request): Promise<WorkspaceMember | null> {
+async function resolveCurrentMember(req: Request): Promise<CurrentMember | null> {
   const userId = getSessionUserId(req);
   if (!userId) return null;
   const u = await authStorage.getUser(userId);
@@ -79,30 +85,7 @@ async function resolveCurrentMember(req: Request): Promise<WorkspaceMember | nul
   const email = u.email.trim().toLowerCase();
   const display = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || email;
 
-  const existing = await db
-    .select()
-    .from(workspaceMembers)
-    .where(eq(workspaceMembers.email, email))
-    .limit(1);
-
-  if (existing.length > 0) {
-    const row = existing[0];
-    if (row.role !== mappedRole || row.name !== display || row.status !== "active") {
-      const [updated] = await db
-        .update(workspaceMembers)
-        .set({ role: mappedRole, name: display, status: "active" })
-        .where(eq(workspaceMembers.id, row.id))
-        .returning();
-      return updated;
-    }
-    return row;
-  }
-
-  const [created] = await db
-    .insert(workspaceMembers)
-    .values({ name: display, email, role: mappedRole, status: "active" })
-    .returning();
-  return created;
+  return { name: display, email, role: mappedRole, status: "active" };
 }
 
 /**
@@ -120,16 +103,20 @@ export function rbacMiddleware() {
       if (member) req.member = member;
       next();
     } catch (err) {
-      console.error("legacy member resolve error", err);
+      console.error("current member resolve error", err);
       next(err);
     }
   };
 }
 
 export function registerAuthRoutes(app: Express) {
-  // Identity probe used by trust + role-aware UI components. Sources `req.member`
-  // from the workspace_members mirror (see `resolveCurrentMember` above), which
-  // is itself derived from the canonical memberships table.
+  // Identity probe used by trust + role-aware UI components. Sources
+  // `req.member` directly from the canonical users + memberships tables
+  // (see `resolveCurrentMember` above). The numeric `id` field is a
+  // historical artefact: it used to be the row id of the now-removed
+  // `workspace_members` mirror table. Frontend code only branches on
+  // `id === 0` to detect the anonymous shape, so we keep `1` for
+  // authenticated users and `0` for anonymous to preserve that contract.
   app.get("/api/auth/me", async (req, res) => {
     const member = req.member;
     if (!member) {
@@ -138,7 +125,7 @@ export function registerAuthRoutes(app: Express) {
       return res.json({ id: 0, name: "Anonymous", email: "", role: "viewer", status: "active" });
     }
     res.json({
-      id: member.id,
+      id: 1,
       name: member.name,
       email: member.email,
       role: member.role,

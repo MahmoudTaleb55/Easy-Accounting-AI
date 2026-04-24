@@ -12,8 +12,8 @@
 -- again, and so a future `drizzle-kit push` doesn't try to recreate it from
 -- a stale schema snapshot.
 --
--- `workspace_members` is intentionally kept: it remains the read-only mirror
--- of `memberships` that backs `req.member` in the rbac middleware. See the
--- comment on `workspaceMembers` in shared/schema.ts.
+-- (Note: `workspace_members` was kept here at the time as a read-only
+-- mirror of `memberships`. It has since been retired too — see
+-- migrations/0006_drop_workspace_members.sql.)
 
 DROP TABLE IF EXISTS workspace_invites;

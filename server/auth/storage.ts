@@ -1070,6 +1070,17 @@ export async function unifyRoleEnumOnStartup(): Promise<void> {
   await db.execute(sql`UPDATE invitations SET role = 'viewer' WHERE role IN ('reviewer','readonly')`);
 }
 
+/**
+ * Idempotent re-apply of migrations/0006_drop_workspace_members.sql so dev
+ * databases and any deploy that boots ahead of the migration runner end up
+ * in the same shape as the canonical schema. The table has had no readers
+ * since `req.member` started being projected in memory from `users` +
+ * `memberships`, so dropping it on boot is safe.
+ */
+export async function dropWorkspaceMembersMirrorOnStartup(): Promise<void> {
+  await db.execute(sql`DROP TABLE IF EXISTS workspace_members`);
+}
+
 export async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, 12);
 }

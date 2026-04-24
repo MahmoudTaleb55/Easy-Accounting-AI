@@ -25,13 +25,13 @@ import uidSafe from "uid-safe";
  *      with the canonical role enum (owner | accountant | viewer) — the
  *      legacy admin/reviewer/readonly enum was retired in migration 0003,
  *      so anything outside that enum gets normalised back to "viewer" by
- *      `mapRole` and silently breaks owner/accountant gating.
- *   3. Inserts a `workspace_members` mirror row keyed by email so the legacy
- *      RBAC layer also recognizes the user.
- *   4. Forges a passport session row + signs the connect.sid cookie so the
+ *      `mapRole` and silently breaks owner/accountant gating. The
+ *      `memberships` row is the single source of truth — the legacy
+ *      `workspace_members` mirror table was dropped in migration 0006.
+ *   3. Forges a passport session row + signs the connect.sid cookie so the
  *      browser context is "logged in" without ever calling /api/auth/signin
  *      (which is rate-limited per IP).
- *   5. Writes the per-role storage state to .playwright/role-{role}.json,
+ *   4. Writes the per-role storage state to .playwright/role-{role}.json,
  *      which the spec then loads via `test.use({ storageState })`.
  *
  * Shared seed data (one employee, one FX rate) is also inserted so the HR
@@ -39,11 +39,11 @@ import uidSafe from "uid-safe";
  * delete — both required to assert the *enabled* state for the owner.
  */
 
-const COOKIE_NAME = "wm_id";
 const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
 
 interface RoleSpec {
-  /** Same enum as `memberships.role` and `workspace_members.role` post-0003. */
+  /** Canonical workspace role enum (owner|accountant|viewer) — see
+   *  shared/models/auth.ts and migration 0003. */
   role: "owner" | "accountant" | "viewer";
   email: string;
   password: string;
@@ -72,26 +72,16 @@ const ROLE_SPECS: RoleSpec[] = [
   },
 ];
 
-function signMemberId(id: number): string {
-  if (!COOKIE_SECRET) {
-    throw new Error(
-      "SESSION_SECRET (or WM_COOKIE_SECRET) must be set for the role-based-buttons setup.",
-    );
-  }
-  const sig = crypto
-    .createHmac("sha256", COOKIE_SECRET)
-    .update(String(id))
-    .digest("hex")
-    .slice(0, 32);
-  return `${id}.${sig}`;
-}
-
 setup("authenticate + seed role-based fixtures", async ({ page }) => {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) throw new Error("DATABASE_URL must be set for the role-based-buttons setup.");
+  if (!COOKIE_SECRET) {
+    throw new Error(
+      "SESSION_SECRET (or WM_COOKIE_SECRET) must be set for the role-based-buttons setup to sign the connect.sid cookie.",
+    );
+  }
 
   const userIds = new Map<string, string>();
-  const memberIds = new Map<string, number>();
   let companyId: number;
 
   const client = new pg.Client({ connectionString: dbUrl });
@@ -166,39 +156,7 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
       }
     }
 
-    // ---- (d) Mirror rows in workspace_members so the legacy RBAC layer
-    //         can sign per-user wm_id cookies. The role here mirrors the
-    //         WorkspaceRole the new auth layer would derive on first /me hit
-    //         — pre-populating it avoids a chicken-and-egg with cookie signing.
-    for (const spec of ROLE_SPECS) {
-      const display = `E2E Role-${spec.role}`;
-      const existingMember = (
-        await client.query(`SELECT id FROM workspace_members WHERE email = $1 LIMIT 1`, [
-          spec.email,
-        ])
-      ).rows[0];
-      let memberId: number;
-      if (existingMember) {
-        memberId = Number(existingMember.id);
-        await client.query(
-          `UPDATE workspace_members SET role=$1, name=$2, status='active' WHERE id=$3`,
-          [spec.role, display, memberId],
-        );
-      } else {
-        memberId = Number(
-          (
-            await client.query(
-              `INSERT INTO workspace_members (name, email, role, status)
-               VALUES ($1, $2, $3, 'active') RETURNING id`,
-              [display, spec.email, spec.role],
-            )
-          ).rows[0].id,
-        );
-      }
-      memberIds.set(spec.role, memberId);
-    }
-
-    // ---- (e) Seed minimal data so non-RBAC disable conditions don't fire ----
+    // ---- (d) Seed minimal data so non-RBAC disable conditions don't fire ----
     // The Run Payroll button is `forceDisabled` when the company has no
     // payroll lines (no employees → no preview). One employee is enough for
     // the preview to produce a line so the owner sees the button enabled.
@@ -228,7 +186,7 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
     await client.end();
   }
 
-  // ---- (f) For each role: forge a session, plant cookies, save state ----
+  // ---- (e) For each role: forge a session, plant cookies, save state ----
   const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
   const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
   const sessionsClient = new pg.Client({ connectionString: dbUrl });
@@ -236,7 +194,6 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
   try {
     for (const spec of ROLE_SPECS) {
       const uid = userIds.get(spec.role)!;
-      const memberId = memberIds.get(spec.role)!;
       const sessionId = await uidSafe(24);
       const sessionExpire = new Date(Date.now() + sessionTtlMs);
       const sessionPayload = {
@@ -266,13 +223,11 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
         [sessionId, JSON.stringify(sessionPayload), sessionExpire],
       );
       const signedSid = "s:" + cookieSignature.sign(sessionId, COOKIE_SECRET!);
-      const wmCookie = signMemberId(memberId);
 
       // Reset the test page's cookie jar between roles so each saved state
       // contains exactly one user's cookies and nothing leaks across roles.
       await page.context().clearCookies();
       await page.context().addCookies([
-        { name: COOKIE_NAME, value: wmCookie, url: baseURL, sameSite: "Lax" },
         { name: "connect.sid", value: signedSid, url: baseURL, sameSite: "Lax" },
       ]);
 

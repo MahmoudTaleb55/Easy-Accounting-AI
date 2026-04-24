@@ -656,22 +656,11 @@ import { ROLES as _ROLES, type Role as _Role } from "./models/auth";
 export const WORKSPACE_ROLES = _ROLES;
 export type WorkspaceRole = _Role;
 
-// `workspace_members` is a *read-only mirror* of the canonical `memberships`
-// table (shared/models/auth.ts). The rbac middleware in `server/auth.ts`
-// upserts a row here for the signed-in user on every request so legacy
-// `req.member` consumers (and the `/api/auth/me` identity probe) keep
-// working without doing a second lookup against `memberships`. Member
-// management (invite, role change, removal) lives on `/api/auth/members` and
-// `/api/auth/invitations`; do NOT add new write paths against this table.
-export const workspaceMembers = pgTable("workspace_members", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  role: text("role").notNull().default("viewer"), // owner|accountant|viewer
-  status: text("status").notNull().default("active"), // active|suspended
-  createdAt: timestamp("created_at").defaultNow(),
-});
-export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
+// The legacy `workspace_members` mirror table was retired in 2026-04 (see
+// migrations/0006_drop_workspace_members.sql). Identity now lives in a
+// single place: the canonical `users` + `memberships` tables. The
+// `req.member` shape that backs `/api/auth/me` is now built in memory by
+// `resolveCurrentMember` in `server/auth.ts` — see `CurrentMember` there.
 
 // The legacy `workspace_invites` table + its `inviteMemberSchema` /
 // `acceptInviteSchema` validators were retired in 2026-04. Real invitations

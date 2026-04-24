@@ -19,65 +19,39 @@ import uidSafe from "uid-safe";
  *   contrast checks have something to render against.
  *
  * What this does:
- *   1. Mints the workspace-owner cookie that the legacy RBAC layer
- *      (server/auth.ts) demands for any write — signed with SESSION_SECRET.
- *   2. Inserts the dashboard test user directly into the DB with a bcrypt
+ *   1. Inserts the dashboard test user directly into the DB with a bcrypt
  *      password hash (skips the signup rate limit entirely).
- *   3. Signs in over HTTP to populate the passport session cookie.
+ *   2. Ensures the user owns a workspace via a `memberships` row — that
+ *      single canonical row is what the server reads to derive role on
+ *      every request (the legacy `workspace_members` mirror was retired).
+ *   3. Forges a passport session row + signs the connect.sid cookie so the
+ *      browser context is "logged in" without ever calling /api/auth/signin.
  *   4. Seeds a small set of transactions so the KPI strip + Recent Activity
  *      have data to render.
  *   5. Saves the resulting cookies to `.playwright/dashboard-state.json`,
  *      which the dashboard-shell spec then reuses via `storageState`.
  */
 
-const COOKIE_NAME = "wm_id";
 const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
 
 const TEST_EMAIL = "e2e-dashboard@example.test";
 const TEST_PASSWORD = "playwright-dashboard-pw-2025";
 const STORAGE_PATH = path.resolve(".playwright/dashboard-state.json");
 
-function signMemberId(id: number): string {
-  if (!COOKIE_SECRET) {
-    throw new Error(
-      "SESSION_SECRET (or WM_COOKIE_SECRET) must be set for the dashboard test to mint a workspace-owner cookie.",
-    );
-  }
-  const sig = crypto
-    .createHmac("sha256", COOKIE_SECRET)
-    .update(String(id))
-    .digest("hex")
-    .slice(0, 32);
-  return `${id}.${sig}`;
-}
-
 setup("authenticate + seed dashboard fixtures", async ({ page, request }) => {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) throw new Error("DATABASE_URL must be set for the dashboard-shell setup.");
+  if (!COOKIE_SECRET) {
+    throw new Error(
+      "SESSION_SECRET (or WM_COOKIE_SECRET) must be set for the dashboard-shell setup to sign the connect.sid cookie.",
+    );
+  }
 
   const client = new pg.Client({ connectionString: dbUrl });
   await client.connect();
-  let ownerCookie: string;
   let userId: string;
   try {
-    // ---- (a) Resolve / mint the legacy workspace-owner cookie ----
-    let ownerRow = (
-      await client.query(
-        `SELECT id FROM workspace_members WHERE role='owner' AND status='active' ORDER BY id ASC LIMIT 1`,
-      )
-    ).rows[0];
-    if (!ownerRow) {
-      ownerRow = (
-        await client.query(
-          `INSERT INTO workspace_members (name, email, role, status)
-           VALUES ('Playwright Owner', 'playwright-owner@workspace.local', 'owner', 'active')
-           RETURNING id`,
-        )
-      ).rows[0];
-    }
-    ownerCookie = signMemberId(Number(ownerRow.id));
-
-    // ---- (b) Ensure the test user exists with a known password ----
+    // ---- (a) Ensure the test user exists with a known password ----
     const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
     const existing = (
       await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [TEST_EMAIL])
@@ -97,12 +71,17 @@ setup("authenticate + seed dashboard fixtures", async ({ page, request }) => {
       );
     }
 
-    // ---- (c) Ensure the user has at least one workspace they own ----
+    // ---- (b) Ensure the user has at least one workspace they own ----
+    // Roles use the canonical enum (owner|accountant|viewer) — see
+    // shared/models/auth.ts and migration 0003. Legacy 'admin' rows that
+    // pre-date that migration are normalised back to 'owner' on every
+    // boot by `unifyRoleEnumOnStartup`, so seeding 'owner' here keeps
+    // the setup idempotent across runs.
     let companyRow = (
       await client.query(
         `SELECT c.id FROM memberships m
          JOIN companies c ON c.id = m.company_id
-         WHERE m.user_id = $1 AND m.role = 'admin'
+         WHERE m.user_id = $1 AND m.role = 'owner'
          ORDER BY m.created_at ASC LIMIT 1`,
         [userId],
       )
@@ -129,14 +108,14 @@ setup("authenticate + seed dashboard fixtures", async ({ page, request }) => {
       }
       await client.query(
         `INSERT INTO memberships (id, user_id, company_id, role)
-         VALUES ($1, $2, $3, 'admin')
+         VALUES ($1, $2, $3, 'owner')
          ON CONFLICT DO NOTHING`,
         [crypto.randomUUID(), userId, companyRow.id],
       );
     }
     const companyId = Number(companyRow.id);
 
-    // ---- (d) Seed a deterministic transaction set ----
+    // ---- (c) Seed a deterministic transaction set ----
     await client.query(`DELETE FROM transactions WHERE company_id = $1`, [companyId]);
     await client.query(
       `INSERT INTO transactions (company_id, type, amount, description, category) VALUES
@@ -192,10 +171,9 @@ setup("authenticate + seed dashboard fixtures", async ({ page, request }) => {
   }
   const signedSid = "s:" + cookieSignature.sign(sessionId, COOKIE_SECRET!);
 
-  // ---- (f) Plant both cookies (owner + session) in the browser context ----
+  // ---- (f) Plant the session cookie in the browser context ----
   const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
   await page.context().addCookies([
-    { name: COOKIE_NAME, value: ownerCookie, url: baseURL, sameSite: "Lax" },
     {
       name: "connect.sid",
       value: signedSid,

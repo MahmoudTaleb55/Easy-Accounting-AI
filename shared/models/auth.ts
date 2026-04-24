@@ -36,9 +36,10 @@ export type User = typeof users.$inferSelect;
 // Roles (highest to lowest). Numeric tier used for role comparisons.
 //
 // This is the single canonical role enum used end-to-end across the client,
-// the server, and the database. Both `/api/auth/me` (workspace_members
-// mirror) and `/api/auth/memberships` (memberships table) speak this enum,
-// and the membership rows are stored using exactly these strings.
+// the server, and the database. Both `/api/auth/me` (in-memory projection
+// of the active membership) and `/api/auth/memberships` (memberships
+// table) speak this enum, and the membership rows are stored using
+// exactly these strings.
 //
 // The legacy enum (admin/accountant/reviewer/readonly) was migrated to
 // owner/accountant/viewer in 2026-04 — see migrations/0003_unify_role_enum.sql
