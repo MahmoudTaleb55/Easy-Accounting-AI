@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Mail,
   MailCheck,
@@ -57,6 +58,23 @@ interface DeliveryRow {
   latestError: string | null;
   latestAt: string | null;
   firstAt: string | null;
+}
+
+interface TrendPoint {
+  date: string;
+  count: number;
+}
+
+interface FailureTrends {
+  days: number;
+  start: string;
+  end: string;
+  series: {
+    bounced: TrendPoint[];
+    complained: TrendPoint[];
+    send_failed: TrendPoint[];
+  };
+  totals: { bounced: number; complained: number; send_failed: number };
 }
 
 interface EventRow {
@@ -192,6 +210,18 @@ export default function EmailDeliveryPage() {
     return totals;
   }, [deliveries]);
 
+  const { data: trends } = useQuery<FailureTrends>({
+    queryKey: ["/api/auth/email-deliveries/trends", 7],
+    queryFn: async () => {
+      const r = await fetch(`/api/auth/email-deliveries/trends?days=7`, {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(`${r.status}: ${r.statusText}`);
+      return r.json();
+    },
+    enabled: isAdmin,
+  });
+
   const { data: events = [], isLoading: loadingEvents, error: eventsError } = useQuery<EventRow[]>({
     queryKey: ["/api/auth/email-deliveries", "events", selected?.transport, selected?.key],
     queryFn: async () => {
@@ -252,6 +282,59 @@ export default function EmailDeliveryPage() {
           testid="stat-pending"
         />
       </div>
+
+      {trends && (
+        <TooltipProvider delayDuration={150}>
+          <div
+            className="rounded-md border bg-card p-4"
+            data-testid="trends-failures-7d"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  {ar ? "آخر 7 أيام" : "Last 7 days"}
+                </div>
+                <div className="mt-0.5 text-sm font-medium">
+                  {ar
+                    ? "تنبيهات سمعة المُرسِل"
+                    : "Sender-reputation signals"}
+                </div>
+              </div>
+              <p className="hidden text-xs text-muted-foreground sm:block">
+                {ar
+                  ? "مرّر فوق رقم لرؤية التوزيع اليومي."
+                  : "Hover a chip to see the daily breakdown."}
+              </p>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="grid-trends">
+              <TrendChip
+                label={ar ? "ارتدّت" : "Bounced"}
+                Icon={MailX}
+                series={trends.series.bounced}
+                total={trends.totals.bounced}
+                ar={ar}
+                testid="chip-trend-bounced"
+              />
+              <TrendChip
+                label={ar ? "بلاغات سبام" : "Spam reports"}
+                Icon={MailWarning}
+                series={trends.series.complained}
+                total={trends.totals.complained}
+                ar={ar}
+                testid="chip-trend-complained"
+              />
+              <TrendChip
+                label={ar ? "فشل الإرسال" : "Send failures"}
+                Icon={AlertTriangle}
+                series={trends.series.send_failed}
+                total={trends.totals.send_failed}
+                ar={ar}
+                testid="chip-trend-send-failed"
+              />
+            </div>
+          </div>
+        </TooltipProvider>
+      )}
 
       <Card>
         <CardHeader>
@@ -454,6 +537,119 @@ export default function EmailDeliveryPage() {
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+function TrendChip({
+  label,
+  Icon,
+  series,
+  total,
+  ar,
+  testid,
+}: {
+  label: string;
+  Icon: typeof Mail;
+  series: TrendPoint[];
+  total: number;
+  ar: boolean;
+  testid: string;
+}) {
+  const isQuiet = total === 0;
+  const tone = isQuiet ? "muted" : "destructive";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors hover:bg-accent/40 ${TONE_BADGE[tone]}`}
+          data-testid={testid}
+          tabIndex={0}
+        >
+          <div className="flex items-center gap-2 text-xs font-medium">
+            <Icon className="h-3.5 w-3.5" />
+            <span>{label}</span>
+          </div>
+          <span className="tabular-nums text-base font-semibold" data-testid={`${testid}-total`}>
+            {total}
+          </span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="end" className="p-2">
+        <div className="mb-1.5 text-xs font-medium" data-testid={`${testid}-tooltip-title`}>
+          {label} · {ar ? "آخر 7 أيام" : "Last 7 days"}
+        </div>
+        <div className="mb-2" data-testid={`${testid}-tooltip-sparkline`}>
+          <Sparkline points={series} tone={tone} />
+        </div>
+        <ul className="space-y-0.5 text-xs" data-testid={`${testid}-tooltip-list`}>
+          {series.map((p) => (
+            <li
+              key={p.date}
+              className="flex items-center justify-between gap-4 tabular-nums"
+              data-testid={`${testid}-day-${p.date}`}
+            >
+              <span className="text-muted-foreground">
+                {new Date(`${p.date}T00:00:00Z`).toLocaleDateString(ar ? "ar" : "en", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+              <span className={p.count > 0 ? "font-medium text-foreground" : "text-muted-foreground"}>
+                {p.count}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function Sparkline({ points, tone }: { points: TrendPoint[]; tone: DeliveryTone }) {
+  const w = 140;
+  const h = 28;
+  const n = points.length;
+  if (n === 0) return null;
+  const max = Math.max(1, ...points.map((p) => p.count));
+  const stepX = n > 1 ? w / (n - 1) : 0;
+  const path = points
+    .map((p, i) => {
+      const x = i * stepX;
+      const y = h - (p.count / max) * (h - 2) - 1;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      className={tone === "destructive" ? "text-rose-500 dark:text-rose-300" : "text-muted-foreground/60"}
+      aria-hidden="true"
+    >
+      <path
+        d={path}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {points.map((p, i) => {
+        const x = i * stepX;
+        const y = h - (p.count / max) * (h - 2) - 1;
+        return (
+          <circle
+            key={p.date}
+            cx={x.toFixed(1)}
+            cy={y.toFixed(1)}
+            r={p.count > 0 ? 1.6 : 1}
+            fill="currentColor"
+          />
+        );
+      })}
+    </svg>
   );
 }
 

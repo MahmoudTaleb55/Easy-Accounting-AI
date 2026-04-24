@@ -561,6 +561,102 @@ export const authBizStorage = {
     }));
   },
 
+  /**
+   * Daily counts of failure-class email events over a rolling window
+   * (default 7 days), aggregated across both invitation and
+   * password-reset transports for a single workspace. Backs the
+   * trend chips + sparklines on /settings/email-delivery.
+   *
+   * The result is densified server-side: every day in the window
+   * appears in the series even when count = 0, so the frontend can
+   * render a stable-length sparkline without gap-filling logic.
+   *
+   * Only the three failure-class types matter for sender-reputation
+   * monitoring — bounced, complained (spam reports) and send_failed
+   * — so other event types are filtered out in SQL to keep the
+   * payload small.
+   */
+  async getEmailDeliveryFailureTrends(
+    companyId: number,
+    opts: { days?: number } = {},
+  ): Promise<{
+    days: number;
+    start: string;
+    end: string;
+    series: {
+      bounced: { date: string; count: number }[];
+      complained: { date: string; count: number }[];
+      send_failed: { date: string; count: number }[];
+    };
+    totals: { bounced: number; complained: number; send_failed: number };
+  }> {
+    const days = Math.max(1, Math.min(opts.days ?? 7, 90));
+    const rows = await db.execute(sql`
+      WITH window_days AS (
+        SELECT generate_series(
+          (CURRENT_DATE - (${days - 1}::int))::date,
+          CURRENT_DATE,
+          INTERVAL '1 day'
+        )::date AS day
+      ),
+      failure_events AS (
+        SELECT e.type, e.created_at
+        FROM invitation_email_events e
+        INNER JOIN invitations i ON i.id = e.invitation_id
+        WHERE i.company_id = ${companyId}
+          AND e.type IN ('bounced','complained','send_failed')
+          AND e.created_at >= (CURRENT_DATE - (${days - 1}::int))::date
+
+        UNION ALL
+
+        SELECT e.type, e.created_at
+        FROM password_reset_email_events e
+        INNER JOIN memberships m ON m.user_id = e.user_id AND m.company_id = ${companyId}
+        WHERE e.type IN ('bounced','complained','send_failed')
+          AND e.created_at >= (CURRENT_DATE - (${days - 1}::int))::date
+      ),
+      event_types AS (
+        SELECT unnest(ARRAY['bounced','complained','send_failed']) AS type
+      ),
+      grid AS (
+        SELECT d.day, t.type
+        FROM window_days d CROSS JOIN event_types t
+      ),
+      counted AS (
+        SELECT
+          (created_at AT TIME ZONE 'UTC')::date AS day,
+          type,
+          COUNT(*)::int AS count
+        FROM failure_events
+        GROUP BY 1, 2
+      )
+      SELECT
+        to_char(g.day, 'YYYY-MM-DD') AS day,
+        g.type                       AS type,
+        COALESCE(c.count, 0)         AS count
+      FROM grid g
+      LEFT JOIN counted c ON c.day = g.day AND c.type = g.type
+      ORDER BY g.day ASC, g.type ASC
+    `);
+    const list = (rows as any).rows ?? (rows as any);
+    const series = {
+      bounced: [] as { date: string; count: number }[],
+      complained: [] as { date: string; count: number }[],
+      send_failed: [] as { date: string; count: number }[],
+    };
+    const totals = { bounced: 0, complained: 0, send_failed: 0 };
+    for (const r of list as any[]) {
+      const t = r.type as keyof typeof series;
+      if (!series[t]) continue;
+      const count = Number(r.count) || 0;
+      series[t].push({ date: r.day, count });
+      totals[t] += count;
+    }
+    const start = series.bounced[0]?.date ?? "";
+    const end = series.bounced[series.bounced.length - 1]?.date ?? "";
+    return { days, start, end, series, totals };
+  },
+
   async listPasswordResetTokensForUser(userId: string): Promise<PasswordResetToken[]> {
     return db
       .select()

@@ -614,6 +614,23 @@ export function registerLocalAuthRoutes(app: Express) {
     res.json(rows);
   });
 
+  // 7-day (or N-day) failure-class trend for the delivery-health header.
+  // Returns densified daily counts for bounced / complained / send_failed
+  // across both invitation and password-reset transports, scoped to the
+  // calling workspace. Used by the trend chips and sparkline tooltips.
+  app.get(
+    "/api/auth/email-deliveries/trends",
+    requireAuth,
+    requireRole("admin"),
+    async (req, res) => {
+      const ctx = (req as any).membership!;
+      const daysRaw = Number(req.query.days);
+      const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 90) : 7;
+      const trends = await authBizStorage.getEmailDeliveryFailureTrends(ctx.companyId, { days });
+      res.json(trends);
+    },
+  );
+
   // Per-message lifecycle log used by the delivery-health drawer.
   // Scopes by workspace so admins can't enumerate other workspaces'
   // message ids. Accepts URL-encoded keys because some local attempt
