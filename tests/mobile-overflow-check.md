@@ -3,8 +3,8 @@
 Automated Playwright check that catches a future page (or table) that
 forgets the `.table-sticky-first` wrapper or otherwise overflows the viewport
 on a small phone. It is intentionally cheap and selector-free: it loads each
-app page at 360x720 and asserts that the document itself does not overflow
-horizontally. Overflow inside an intentional scroll container (e.g. a table
+app and public marketing page at 360x720 and asserts that the document itself
+does not overflow horizontally. Overflow inside an intentional scroll container (e.g. a table
 wrapped in `.table-sticky-first` or `overflow-x-auto`) is allowed by design —
 only the document/body overflowing the viewport fails the check.
 
@@ -29,7 +29,9 @@ this Repl, so it can be invoked through the project's validation runner.
 
 ## What it covers
 
-Pages × locales (14 combinations total):
+Pages × locales (20 combinations total):
+
+App shell (authenticated, dense tables):
 
 | Page                  | Path                  |
 | --------------------- | --------------------- |
@@ -41,9 +43,18 @@ Pages × locales (14 combinations total):
 | Chart of Accounts     | `/app/accounts`       |
 | Transactions          | `/app/transactions`   |
 
+Public marketing surface (the first thing prospects see on a phone):
+
+| Page            | Path                                    |
+| --------------- | --------------------------------------- |
+| Landing         | `/`                                     |
+| Demo request    | `/demo`                                 |
+| Invite accept   | `/invite/sample-overflow-check-token`   |
+
 Each is loaded once with `app.locale` set to `en` (LTR) and once with `ar`
 (RTL) — the second pass also exercises the RTL sticky-shadow direction in
-`.table-sticky-first`.
+`.table-sticky-first`. The invite token does not need to be valid: the page
+renders its accept form regardless and only hits the API on submit.
 
 For every (path × locale) the test asserts:
 
