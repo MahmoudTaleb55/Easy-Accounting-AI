@@ -38,6 +38,7 @@ export default defineConfig({
         /mobile-overflow\.spec\.ts/,
         /dashboard-shell\.spec\.ts/,
         /period-selector\.spec\.ts/,
+        /role-based-buttons\.spec\.ts/,
       ],
     },
     {
@@ -69,6 +70,23 @@ export default defineConfig({
       use: {
         viewport: { width: 1280, height: 800 },
         storageState: ".playwright/period-selector-state.json",
+      },
+    },
+    {
+      // One-time setup: provisions owner / accountant / viewer test users in
+      // a shared workspace and writes per-role storage states under
+      // .playwright/role-{role}.json.
+      name: "role-based-buttons-setup",
+      testMatch: /role-based-buttons\.setup\.ts/,
+    },
+    {
+      // The spec itself loads a different storage state in each describe()
+      // block, so we don't pin one here at the project level.
+      name: "role-based-buttons",
+      testMatch: /role-based-buttons\.spec\.ts/,
+      dependencies: ["role-based-buttons-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
       },
     },
   ],
