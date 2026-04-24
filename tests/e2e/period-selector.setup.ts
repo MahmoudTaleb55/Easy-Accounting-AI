@@ -1,13 +1,14 @@
 import { test as setup } from "@playwright/test";
-import crypto from "node:crypto";
-import bcrypt from "bcryptjs";
-import pg from "pg";
 import fs from "node:fs";
 import path from "node:path";
-// @ts-ignore — express-session ships these without bundled types
-import cookieSignature from "cookie-signature";
-// @ts-ignore
-import uidSafe from "uid-safe";
+import pg from "pg";
+import {
+  ensureCompany,
+  ensureUser,
+  forgeSession,
+  requireCookieSecret,
+  requireDbUrl,
+} from "./_helpers/forge-session";
 
 /**
  * One-time auth + seed setup for the period-selector spec.
@@ -33,19 +34,16 @@ import uidSafe from "uid-safe";
  * both the setup and the spec invoke `new Date()` close in time, but
  * persisting the canonical strings removes any chance of drift.
  *
- * We sign the test user in the same way the dashboard-shell setup does:
- * by inserting the user + a passport session row directly and signing the
- * `connect.sid` cookie with `SESSION_SECRET`. The dev server's cookie is
- * marked `Secure`, which a browser would normally refuse over HTTP, so we
- * sidestep the round-trip by minting both cookies ourselves.
+ * The session-cookie + passport-row machinery is shared with the
+ * dashboard-shell setup via `tests/e2e/_helpers/forge-session.ts`.
  */
-
-const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
 
 const TEST_EMAIL = "e2e-period-selector@example.test";
 const TEST_PASSWORD = "playwright-period-pw-2026";
 const STORAGE_PATH = path.resolve(".playwright/period-selector-state.json");
-const FIXTURES_PATH = path.resolve(".playwright/period-selector-fixtures.json");
+const FIXTURES_PATH = path.resolve(
+  ".playwright/period-selector-fixtures.json",
+);
 
 function isoDate(d: Date): string {
   // YYYY-MM-DD in UTC — matches how the schema stores `acquisition_date`
@@ -54,9 +52,8 @@ function isoDate(d: Date): string {
 }
 
 setup("authenticate + seed period-selector fixtures", async ({ page }) => {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) throw new Error("DATABASE_URL must be set for the period-selector setup.");
-  if (!COOKIE_SECRET) throw new Error("SESSION_SECRET must be set for the period-selector setup.");
+  const dbUrl = requireDbUrl("the period-selector setup");
+  requireCookieSecret("the period-selector setup");
 
   // Compute fixture dates relative to now. Layered by visibility:
   //   • old      → before "today" → in every period
@@ -68,16 +65,18 @@ setup("authenticate + seed period-selector fixtures", async ({ page }) => {
   //                quarter; this is acceptable for our 24-04-2026 test
   //                horizon and is verified by the spec's own derivation)
   const now = new Date();
-  const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const todayUTC = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
   const tomorrowUTC = new Date(todayUTC.getTime() + 24 * 60 * 60 * 1000);
   const farUTC = new Date(todayUTC.getTime() + 50 * 24 * 60 * 60 * 1000);
   const oldUTC = new Date(Date.UTC(2020, 0, 1));
 
   const assetSeed = [
-    { code: "FA-OLD",   name: "Pre-period asset",       acq: isoDate(oldUTC) },
-    { code: "FA-TODAY", name: "Today asset",            acq: isoDate(todayUTC) },
-    { code: "FA-NEXT",  name: "Just-after-today asset", acq: isoDate(tomorrowUTC) },
-    { code: "FA-FAR",   name: "Future-quarter asset",   acq: isoDate(farUTC) },
+    { code: "FA-OLD", name: "Pre-period asset", acq: isoDate(oldUTC) },
+    { code: "FA-TODAY", name: "Today asset", acq: isoDate(todayUTC) },
+    { code: "FA-NEXT", name: "Just-after-today asset", acq: isoDate(tomorrowUTC) },
+    { code: "FA-FAR", name: "Future-quarter asset", acq: isoDate(farUTC) },
   ];
 
   const client = new pg.Client({ connectionString: dbUrl });
@@ -86,69 +85,38 @@ setup("authenticate + seed period-selector fixtures", async ({ page }) => {
   let companyId: number;
   try {
     // ---- (a) Ensure the test user exists with a known password ----
-    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
-    const existing = (
-      await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [TEST_EMAIL])
-    ).rows[0];
-    if (existing) {
-      userId = existing.id;
-      await client.query(
-        `UPDATE users SET password_hash=$1, first_name='E2E', last_name='Period' WHERE id=$2`,
-        [passwordHash, userId],
-      );
-    } else {
-      userId = crypto.randomUUID();
-      await client.query(
-        `INSERT INTO users (id, email, password_hash, first_name, last_name, preferred_locale)
-         VALUES ($1, $2, $3, 'E2E', 'Period', 'en')`,
-        [userId, TEST_EMAIL, passwordHash],
-      );
-    }
+    userId = await ensureUser(client, {
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+      firstName: "E2E",
+      lastName: "Period",
+    });
 
     // ---- (b) Ensure the user owns a workspace ----
-    let companyRow = (
-      await client.query(
-        `SELECT c.id FROM memberships m
-         JOIN companies c ON c.id = m.company_id
-         WHERE m.user_id = $1 AND m.role = 'admin'
-         ORDER BY m.created_at ASC LIMIT 1`,
-        [userId],
-      )
-    ).rows[0];
-    if (!companyRow) {
-      companyRow = (
-        await client.query(
-          `INSERT INTO companies (name, owner_user_id, functional_currency, currency_symbol, is_default)
-           VALUES ('E2E Period Co', $1, 'USD', '$', true)
-           RETURNING id`,
-          [userId],
-        )
-      ).rows[0];
-      await client.query(
-        `INSERT INTO memberships (id, user_id, company_id, role)
-         VALUES ($1, $2, $3, 'admin')
-         ON CONFLICT DO NOTHING`,
-        [crypto.randomUUID(), userId, companyRow.id],
-      );
-    }
-    companyId = Number(companyRow.id);
+    companyId = await ensureCompany(client, {
+      userId,
+      role: "admin",
+      companyName: "E2E Period Co",
+    });
 
     // ---- (c) Reset the workspace's seed data so the spec is deterministic ----
     // Delete in dependency order to avoid FK violations.
-    await client.query(`DELETE FROM transactions WHERE company_id = $1`, [companyId]);
-    await client.query(
-      `DELETE FROM fixed_assets WHERE company_id = $1`,
-      [companyId],
-    );
-    await client.query(
-      `DELETE FROM asset_categories WHERE company_id = $1`,
-      [companyId],
-    );
+    await client.query(`DELETE FROM transactions WHERE company_id = $1`, [
+      companyId,
+    ]);
+    await client.query(`DELETE FROM fixed_assets WHERE company_id = $1`, [
+      companyId,
+    ]);
+    await client.query(`DELETE FROM asset_categories WHERE company_id = $1`, [
+      companyId,
+    ]);
     await client.query(
       `DELETE FROM attendance WHERE employee_id IN (SELECT id FROM employees WHERE company_id = $1)`,
       [companyId],
     );
-    await client.query(`DELETE FROM employees WHERE company_id = $1`, [companyId]);
+    await client.query(`DELETE FROM employees WHERE company_id = $1`, [
+      companyId,
+    ]);
     // Accounts: drop only the placeholder we inject below (idempotent reseed).
     await client.query(
       `DELETE FROM accounts WHERE company_id = $1 AND code = $2`,
@@ -220,77 +188,33 @@ setup("authenticate + seed period-selector fixtures", async ({ page }) => {
     await client.end();
   }
 
-  // ---- (g) Forge a passport session row + signed connect.sid cookie ----
-  const sessionId = await uidSafe(24);
-  const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
-  const sessionExpire = new Date(Date.now() + sessionTtlMs);
-  const sessionPayload = {
-    cookie: {
-      originalMaxAge: sessionTtlMs,
-      expires: sessionExpire.toISOString(),
-      httpOnly: true,
-      path: "/",
-      secure: true,
-    },
-    passport: {
-      user: {
-        _local: true,
-        claims: {
-          sub: userId,
-          email: TEST_EMAIL,
-          first_name: "E2E",
-          last_name: "Period",
-          profile_image_url: null,
-        },
-      },
-    },
-  };
-  const reopen = new pg.Client({ connectionString: dbUrl });
-  await reopen.connect();
-  try {
-    await reopen.query(
-      `INSERT INTO sessions (sid, sess, expire) VALUES ($1, $2::json, $3)
-       ON CONFLICT (sid) DO UPDATE SET sess = EXCLUDED.sess, expire = EXCLUDED.expire`,
-      [sessionId, JSON.stringify(sessionPayload), sessionExpire],
-    );
-  } finally {
-    await reopen.end();
-  }
-  const signedSid = "s:" + cookieSignature.sign(sessionId, COOKIE_SECRET);
-
-  // ---- (h) Plant the cookie + persist the active company in localStorage ----
+  // ---- (g) Forge a passport session + plant cookie + persist state ----
+  // Uses the shared helper, with an `afterCookiesPlanted` hook so we can
+  // pre-seed `active_company_id` in localStorage between cookie planting
+  // and the /api/auth/user verification — that way the very first
+  // authenticated render in the spec already targets the right scope.
   const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
-  await page.context().addCookies([
-    {
-      name: "connect.sid",
-      value: signedSid,
-      url: baseURL,
-      sameSite: "Lax",
+  await forgeSession({
+    page,
+    dbUrl,
+    userId,
+    email: TEST_EMAIL,
+    firstName: "E2E",
+    lastName: "Period",
+    storagePath: STORAGE_PATH,
+    baseURL,
+    afterCookiesPlanted: async (p) => {
+      // Pre-seed `active_company_id` so the CompanyProvider doesn't have
+      // to wait for /api/companies to return before the period-driven
+      // queries can run with the right `X-Company-Id` header.
+      await p.goto(baseURL, { waitUntil: "domcontentloaded" });
+      await p.evaluate((id) => {
+        window.localStorage.setItem("active_company_id", String(id));
+      }, companyId);
     },
-  ]);
+  });
 
-  // Pre-seed `active_company_id` so the CompanyProvider doesn't have to wait
-  // for /api/companies to return before the period-driven queries can run
-  // with the right `X-Company-Id` header.
-  await page.goto(baseURL, { waitUntil: "domcontentloaded" });
-  await page.evaluate((id) => {
-    window.localStorage.setItem("active_company_id", String(id));
-  }, companyId);
-
-  // ---- (i) Confirm the session is real before saving storageState ----
-  const me = await page.request.get("/api/auth/user");
-  if (me.status() !== 200) {
-    throw new Error(
-      `Expected /api/auth/user to be 200 after session injection but got ${me.status()}.\n` +
-        `userId=${userId} sid=${sessionId}\n` +
-        `Body: ${await me.text()}`,
-    );
-  }
-
-  fs.mkdirSync(path.dirname(STORAGE_PATH), { recursive: true });
-  await page.context().storageState({ path: STORAGE_PATH });
-
-  // ---- (j) Persist canonical seed dates so the spec stays in lock-step ----
+  // ---- (h) Persist canonical seed dates so the spec stays in lock-step ----
   fs.writeFileSync(
     FIXTURES_PATH,
     JSON.stringify({ assetSeed }, null, 2) + "\n",
