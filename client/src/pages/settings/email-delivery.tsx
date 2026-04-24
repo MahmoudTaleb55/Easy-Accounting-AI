@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale } from "@/contexts/locale-context";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -381,6 +384,8 @@ export default function EmailDeliveryPage() {
           testid="stat-pending"
         />
       </div>
+
+      {role === "owner" && <AlertSettingsCard ar={ar} />}
 
       {trends && (
         <TooltipProvider delayDuration={150}>
@@ -890,5 +895,334 @@ function SummaryStat({
         {value}
       </div>
     </div>
+  );
+}
+
+interface AlertSettings {
+  enabled: boolean;
+  emailEnabled: boolean;
+  windowHours: number;
+  absoluteThreshold: number;
+  ratioThreshold: number;
+  minSamplesForRatio: number;
+  cooldownMinutes: number;
+  updatedAt: string | null;
+}
+
+/**
+ * Owner-only configuration block for the failure-rate alert. Lives below the
+ * top-level summary so admins can see the current numbers and dial the
+ * threshold against them in the same view. The "evaluate now" button reuses
+ * the same evaluator the cron uses, so it produces real banners.
+ */
+function AlertSettingsCard({ ar }: { ar: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery<AlertSettings>({
+    queryKey: ["/api/auth/email-delivery-alerts/settings"],
+  });
+
+  // Local form mirror — keeps inputs responsive and lets us defer the save
+  // round-trip until the admin hits the button.
+  const [enabled, setEnabled] = useState(true);
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const [windowHours, setWindowHours] = useState(24);
+  const [absoluteThreshold, setAbsoluteThreshold] = useState(5);
+  const [ratioPercent, setRatioPercent] = useState(2);
+  const [minSamplesForRatio, setMinSamplesForRatio] = useState(20);
+  const [cooldownMinutes, setCooldownMinutes] = useState(360);
+
+  useEffect(() => {
+    if (!data) return;
+    setEnabled(data.enabled);
+    setEmailEnabled(data.emailEnabled);
+    setWindowHours(data.windowHours);
+    setAbsoluteThreshold(data.absoluteThreshold);
+    setRatioPercent(Number((data.ratioThreshold * 100).toFixed(2)));
+    setMinSamplesForRatio(data.minSamplesForRatio);
+    setCooldownMinutes(data.cooldownMinutes);
+  }, [data]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PUT", "/api/auth/email-delivery-alerts/settings", {
+        enabled,
+        emailEnabled,
+        windowHours,
+        absoluteThreshold,
+        // Server stores as 0..1 ratio; UI is friendlier as a percent.
+        ratioThreshold: Number((ratioPercent / 100).toFixed(4)),
+        minSamplesForRatio,
+        cooldownMinutes,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/auth/email-delivery-alerts/settings"] });
+      toast({
+        title: ar ? "تم الحفظ" : "Saved",
+        description: ar
+          ? "تم تحديث إعدادات التنبيهات."
+          : "Alert thresholds updated.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        variant: "destructive",
+        title: ar ? "تعذّر الحفظ" : "Save failed",
+        description: err.message ?? "",
+      });
+    },
+  });
+
+  type EvaluateResult =
+    | {
+        fired: false;
+        reason: "disabled" | "below_threshold" | "in_cooldown";
+        failures: number;
+        sends: number;
+        windowHours: number;
+      }
+    | {
+        fired: true;
+        alertId: string;
+        reason: "absolute" | "ratio";
+        failures: number;
+        sends: number;
+        windowHours: number;
+        emailSent: boolean;
+        emailRecipients: number;
+      };
+
+  const evaluateNow = useMutation<EvaluateResult>({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        "POST",
+        "/api/auth/email-delivery-alerts/evaluate",
+      );
+      return (await res.json()) as EvaluateResult;
+    },
+    onSuccess: (result) => {
+      // Refresh the shell-level banner and the trends/log panels below so
+      // the admin sees the outcome of the manual evaluation everywhere it
+      // matters without a page reload.
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/email-delivery-alerts/active"] });
+      // Use the array-prefix form so every (window-scoped) variant of the
+      // trends query and every (transport+key-scoped) events query refetches.
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/email-deliveries/trends"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/email-deliveries"] });
+      const fired = result.fired === true;
+      toast({
+        title: fired
+          ? ar
+            ? "تم إطلاق التنبيه"
+            : "Alert fired"
+          : ar
+          ? "لا يوجد تنبيه"
+          : "No alert",
+        description: fired
+          ? ar
+            ? `تم تسجيل ${result.failures} إخفاقات خلال ${result.windowHours} ساعة.`
+            : `${result.failures} failures recorded in the last ${result.windowHours}h.`
+          : ar
+          ? "الإخفاقات الحالية ضمن الحد المسموح."
+          : "Current failures are within the configured thresholds.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        variant: "destructive",
+        title: ar ? "تعذّر التشغيل" : "Evaluation failed",
+        description: err.message ?? "",
+      });
+    },
+  });
+
+  const dirty = useMemo(() => {
+    if (!data) return false;
+    return (
+      enabled !== data.enabled ||
+      emailEnabled !== data.emailEnabled ||
+      windowHours !== data.windowHours ||
+      absoluteThreshold !== data.absoluteThreshold ||
+      Number((ratioPercent / 100).toFixed(4)) !== Number(data.ratioThreshold.toFixed(4)) ||
+      minSamplesForRatio !== data.minSamplesForRatio ||
+      cooldownMinutes !== data.cooldownMinutes
+    );
+  }, [data, enabled, emailEnabled, windowHours, absoluteThreshold, ratioPercent, minSamplesForRatio, cooldownMinutes]);
+
+  return (
+    <Card data-testid="card-email-delivery-alerts">
+      <CardHeader>
+        <CardTitle>{ar ? "تنبيهات صحة البريد" : "Delivery health alerts"}</CardTitle>
+        <CardDescription>
+          {ar
+            ? "نبّه المالكين عند ارتفاع نسبة إخفاقات بريد المعاملات فوق الحد المحدّد."
+            : "Notify workspace owners when transactional email failures spike past the configured threshold."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex items-start justify-between gap-4 rounded-md border bg-muted/30 p-3">
+            <div>
+              <Label className="text-sm font-medium">
+                {ar ? "تفعيل التنبيهات" : "Enable alerts"}
+              </Label>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {ar
+                  ? "يعمل التقييم في الخلفية كل 10 دقائق."
+                  : "Evaluator runs in the background every 10 minutes."}
+              </p>
+            </div>
+            <Switch
+              checked={enabled}
+              onCheckedChange={setEnabled}
+              data-testid="switch-alerts-enabled"
+              aria-label={ar ? "تفعيل التنبيهات" : "Enable alerts"}
+            />
+          </div>
+          <div className="flex items-start justify-between gap-4 rounded-md border bg-muted/30 p-3">
+            <div>
+              <Label className="text-sm font-medium">
+                {ar ? "إرسال بريد للمالكين" : "Email owners on alert"}
+              </Label>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {ar
+                  ? "بالإضافة إلى الشريط داخل التطبيق."
+                  : "In addition to the in-app banner."}
+              </p>
+            </div>
+            <Switch
+              checked={emailEnabled}
+              onCheckedChange={setEmailEnabled}
+              data-testid="switch-alerts-email-enabled"
+              aria-label={ar ? "إرسال بريد للمالكين" : "Email owners on alert"}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="alert-window">
+              {ar ? "نافذة المراقبة (ساعات)" : "Window (hours)"}
+            </Label>
+            <Input
+              id="alert-window"
+              type="number"
+              min={1}
+              max={168}
+              value={windowHours}
+              onChange={(e) => setWindowHours(Math.max(1, Math.min(168, Number(e.target.value) || 0)))}
+              data-testid="input-alert-window-hours"
+            />
+            <p className="text-xs text-muted-foreground">
+              {ar ? "1 إلى 168 ساعة." : "Between 1 and 168."}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="alert-absolute">
+              {ar ? "الحد المطلق للإخفاقات" : "Absolute failure threshold"}
+            </Label>
+            <Input
+              id="alert-absolute"
+              type="number"
+              min={1}
+              value={absoluteThreshold}
+              onChange={(e) => setAbsoluteThreshold(Math.max(1, Number(e.target.value) || 0))}
+              data-testid="input-alert-absolute"
+            />
+            <p className="text-xs text-muted-foreground">
+              {ar
+                ? "يطلق عند بلوغ هذا العدد بصرف النظر عن الحجم."
+                : "Fires when failures hit this count regardless of volume."}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="alert-ratio">
+              {ar ? "حد النسبة (%)" : "Ratio threshold (%)"}
+            </Label>
+            <Input
+              id="alert-ratio"
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              value={ratioPercent}
+              onChange={(e) => setRatioPercent(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+              data-testid="input-alert-ratio"
+            />
+            <p className="text-xs text-muted-foreground">
+              {ar ? "اضبط 0 للتعطيل." : "Set to 0 to disable the ratio rule."}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="alert-min-samples">
+              {ar ? "أقل عدد رسائل لاحتساب النسبة" : "Minimum sends for ratio"}
+            </Label>
+            <Input
+              id="alert-min-samples"
+              type="number"
+              min={1}
+              value={minSamplesForRatio}
+              onChange={(e) => setMinSamplesForRatio(Math.max(1, Number(e.target.value) || 0))}
+              data-testid="input-alert-min-samples"
+            />
+            <p className="text-xs text-muted-foreground">
+              {ar
+                ? "يمنع إطلاق التنبيه على أحجام صغيرة."
+                : "Avoids ratio alerts on tiny sample sizes."}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="alert-cooldown">
+              {ar ? "فترة التهدئة (دقائق)" : "Cooldown (minutes)"}
+            </Label>
+            <Input
+              id="alert-cooldown"
+              type="number"
+              min={5}
+              value={cooldownMinutes}
+              onChange={(e) => setCooldownMinutes(Math.max(5, Number(e.target.value) || 0))}
+              data-testid="input-alert-cooldown"
+            />
+            <p className="text-xs text-muted-foreground">
+              {ar
+                ? "أقل فاصل بين تنبيهين متتاليين."
+                : "Minimum gap between consecutive alerts."}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+          <Button
+            variant="outline"
+            onClick={() => evaluateNow.mutate()}
+            disabled={evaluateNow.isPending || isLoading}
+            data-testid="button-evaluate-alerts-now"
+          >
+            {evaluateNow.isPending
+              ? ar
+                ? "جارٍ التقييم..."
+                : "Evaluating..."
+              : ar
+              ? "تقييم الآن"
+              : "Evaluate now"}
+          </Button>
+          <Button
+            onClick={() => save.mutate()}
+            disabled={!dirty || save.isPending || isLoading}
+            data-testid="button-save-alert-settings"
+          >
+            {save.isPending
+              ? ar
+                ? "جارٍ الحفظ..."
+                : "Saving..."
+              : ar
+              ? "حفظ الإعدادات"
+              : "Save settings"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

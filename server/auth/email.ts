@@ -359,6 +359,173 @@ export async function sendInvitationEmail(args: {
   return sendEmail({ to, subject, html, text: copy.textBody });
 }
 
+// ---------- delivery-health alert ----------
+
+type AlertCopy = {
+  subject: string;
+  preview: string;
+  intro: string;
+  reasonLabel: string;
+  ctaLabel: string;
+  noteLabel: string;
+  footerText: string;
+  footerNote: string;
+  textBody: string;
+};
+
+function alertCopy(args: {
+  locale: EmailLocale;
+  workspace: string;
+  reason: "absolute" | "ratio";
+  failures: number;
+  sends: number;
+  windowHours: number;
+  bounced: number;
+  complained: number;
+  sendFailed: number;
+  link: string;
+}): AlertCopy {
+  const {
+    locale,
+    workspace,
+    reason,
+    failures,
+    sends,
+    windowHours,
+    bounced,
+    complained,
+    sendFailed,
+    link,
+  } = args;
+  const ratioPct =
+    sends > 0 ? `${((failures / sends) * 100).toFixed(1)}%` : "—";
+
+  if (locale === "ar") {
+    const reasonAr =
+      reason === "absolute"
+        ? `تجاوزت الإخفاقات (${failures}) العتبة المُعرّفة خلال آخر ${windowHours} ساعة.`
+        : `بلغت نسبة الإخفاقات ${ratioPct} (${failures} من ${sends}) خلال آخر ${windowHours} ساعة.`;
+    return {
+      subject: `تنبيه صحة البريد — ${workspace}`,
+      preview: `${failures} رسالة فشلت خلال ${windowHours} ساعة في ${workspace}`,
+      intro: `لاحظنا ارتفاعاً في إخفاقات البريد التحويلي على مساحة عمل <strong>${escapeHtml(
+        workspace,
+      )}</strong>.`,
+      reasonLabel: reasonAr,
+      ctaLabel: "افتح صحة البريد",
+      noteLabel:
+        "تابع التفاصيل واتخذ إجراء (تحديث القائمة، تنبيه المزود، أو تحديث العتبات) من صفحة صحة بريد المعاملات.",
+      footerText: `${BRAND} — محاسبة آمنة للفرق الحديثة.`,
+      footerNote:
+        "تتلقى هذه الرسالة لأنك مالك المساحة. يمكنك إيقاف التنبيه من إعدادات صحة البريد.",
+      textBody: [
+        `تنبيه صحة البريد — ${workspace}`,
+        "",
+        reasonAr,
+        `الارتدادات: ${bounced} · بلاغات السبام: ${complained} · فشل الإرسال: ${sendFailed}`,
+        "",
+        `افتح: ${link}`,
+      ].join("\n"),
+    };
+  }
+  const reasonEn =
+    reason === "absolute"
+      ? `Failures (${failures}) crossed your configured threshold over the last ${windowHours}h.`
+      : `Failure ratio hit ${ratioPct} (${failures} of ${sends}) over the last ${windowHours}h.`;
+  return {
+    subject: `Email delivery alert — ${workspace}`,
+    preview: `${failures} failures in the last ${windowHours}h on ${workspace}`,
+    intro: `We've noticed a spike in transactional email failures on the <strong>${escapeHtml(
+      workspace,
+    )}</strong> workspace.`,
+    reasonLabel: reasonEn,
+    ctaLabel: "Open delivery health",
+    noteLabel:
+      "Investigate the affected sends and take action (clean the list, contact your provider, adjust the thresholds) from the email delivery page.",
+    footerText: `${BRAND} — secure accounting for modern teams.`,
+    footerNote:
+      "You're receiving this because you own this workspace. You can mute the alert in the email delivery settings.",
+    textBody: [
+      `Email delivery alert — ${workspace}`,
+      "",
+      reasonEn,
+      `Bounced: ${bounced} · Spam reports: ${complained} · Send failures: ${sendFailed}`,
+      "",
+      `Open: ${link}`,
+    ].join("\n"),
+  };
+}
+
+export async function sendEmailDeliveryAlertEmail(args: {
+  to: string[];
+  workspace: string;
+  reason: "absolute" | "ratio";
+  failures: number;
+  sends: number;
+  windowHours: number;
+  bounced: number;
+  complained: number;
+  sendFailed: number;
+  link: string;
+  locale?: EmailLocale;
+}): Promise<SendEmailResult[]> {
+  if (args.to.length === 0) return [];
+  const locale = normalizeLocale(args.locale);
+  const copy = alertCopy({
+    locale,
+    workspace: args.workspace,
+    reason: args.reason,
+    failures: args.failures,
+    sends: args.sends,
+    windowHours: args.windowHours,
+    bounced: args.bounced,
+    complained: args.complained,
+    sendFailed: args.sendFailed,
+    link: args.link,
+  });
+
+  const html = layout({
+    locale,
+    previewText: copy.preview,
+    footerText: copy.footerText,
+    footerNote: copy.footerNote,
+    bodyHtml: `
+      <p style="margin:0 0 12px 0;">${copy.intro}</p>
+      <p style="margin:0 0 16px 0;">${escapeHtml(copy.reasonLabel)}</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 12px 0;border-collapse:collapse;font-size:13px;color:#27272a;">
+        <tr>
+          <td style="padding:6px 12px 6px 0;color:#71717a;">${
+            locale === "ar" ? "الارتدادات" : "Bounced"
+          }</td>
+          <td style="padding:6px 0;font-weight:600;">${args.bounced}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px 6px 0;color:#71717a;">${
+            locale === "ar" ? "بلاغات السبام" : "Spam reports"
+          }</td>
+          <td style="padding:6px 0;font-weight:600;">${args.complained}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px 6px 0;color:#71717a;">${
+            locale === "ar" ? "فشل الإرسال" : "Send failures"
+          }</td>
+          <td style="padding:6px 0;font-weight:600;">${args.sendFailed}</td>
+        </tr>
+      </table>
+      ${button(args.link, copy.ctaLabel)}
+      <p style="margin:0 0 0 0;color:#52525b;font-size:13px;">${escapeHtml(copy.noteLabel)}</p>
+    `,
+  });
+
+  // Send one message per recipient so a bad address can't block the rest.
+  const results = await Promise.all(
+    args.to.map((to) =>
+      sendEmail({ to, subject: copy.subject, html, text: copy.textBody }),
+    ),
+  );
+  return results;
+}
+
 export async function sendPasswordResetEmail(args: {
   to: string;
   link: string;

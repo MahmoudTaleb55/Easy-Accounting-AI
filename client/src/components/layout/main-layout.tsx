@@ -8,6 +8,7 @@ import { TopBar } from "./topbar";
 import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
 import { AiRail } from "./ai-rail";
 import { ReadOnlyBanner } from "./readonly-banner";
+import { EmailDeliveryAlertBanner } from "./email-delivery-alert-banner";
 import { useLocation } from "wouter";
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           aiRailOpen={aiOpen}
         />
         <ReadOnlyBanner />
+        <EmailDeliveryAlertBanner />
         <main
           className={`flex-1 w-full mx-auto px-4 md:px-8 lg:px-10 py-6 md:py-8 ${
             isDashboard ? "max-w-[1400px]" : "max-w-[1600px]"

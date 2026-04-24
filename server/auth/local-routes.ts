@@ -11,12 +11,14 @@ import {
   updateMemberRoleSchema,
   updateProfileSchema,
   changePasswordSchema,
+  upsertEmailDeliveryAlertSettingsSchema,
   ROLES,
   type Role,
 } from "@shared/schema";
 import { authBizStorage, hashPassword, verifyPassword } from "./storage";
 import { authStorage } from "../replit_integrations/auth/storage";
 import { sendInvitationEmail, sendPasswordResetEmail, normalizeLocale } from "./email";
+import { evaluateEmailDeliveryAlertsForCompany } from "./email-delivery-alerts";
 import {
   requireAuth,
   loadMembership,
@@ -677,6 +679,119 @@ export function registerLocalAuthRoutes(app: Express) {
       const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 90) : 7;
       const trends = await authBizStorage.getEmailDeliveryFailureTrends(ctx.companyId, { days });
       res.json(trends);
+    },
+  );
+
+  // ---------- delivery-health alerts ----------
+  // Read/update the per-workspace alert configuration. Defaults are applied
+  // server-side so a workspace that has never written a row still gets
+  // sensible numbers.
+  app.get(
+    "/api/auth/email-delivery-alerts/settings",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res) => {
+      const ctx = (req as any).membership!;
+      const cfg = await authBizStorage.getEmailDeliveryAlertSettings(ctx.companyId);
+      res.json({
+        enabled: cfg.enabled,
+        emailEnabled: cfg.emailEnabled,
+        windowHours: cfg.windowHours,
+        absoluteThreshold: cfg.absoluteThreshold,
+        ratioThreshold: Number(cfg.ratioThreshold),
+        minSamplesForRatio: cfg.minSamplesForRatio,
+        cooldownMinutes: cfg.cooldownMinutes,
+        updatedAt: cfg.updatedAt,
+      });
+    },
+  );
+
+  app.put(
+    "/api/auth/email-delivery-alerts/settings",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res, next) => {
+      try {
+        const ctx = (req as any).membership!;
+        const input = upsertEmailDeliveryAlertSettingsSchema.parse(req.body);
+        const cfg = await authBizStorage.upsertEmailDeliveryAlertSettings(ctx.companyId, {
+          ...input,
+          updatedByUserId: ctx.userId,
+        });
+        res.json({
+          enabled: cfg.enabled,
+          emailEnabled: cfg.emailEnabled,
+          windowHours: cfg.windowHours,
+          absoluteThreshold: cfg.absoluteThreshold,
+          ratioThreshold: Number(cfg.ratioThreshold),
+          minSamplesForRatio: cfg.minSamplesForRatio,
+          cooldownMinutes: cfg.cooldownMinutes,
+          updatedAt: cfg.updatedAt,
+        });
+      } catch (err) {
+        if (handleZod(err, res)) return;
+        next(err);
+      }
+    },
+  );
+
+  // The current un-dismissed alert (if any), for the in-app banner. Polled
+  // by the shell so a freshly-fired alert appears without a page reload.
+  // Returns 200 with `null` when there's nothing to show — easier for the
+  // client to handle than a 404.
+  app.get(
+    "/api/auth/email-delivery-alerts/active",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res) => {
+      const ctx = (req as any).membership!;
+      const alert = await authBizStorage.getActiveEmailDeliveryAlert(ctx.companyId);
+      if (!alert) return res.json(null);
+      res.json({
+        id: alert.id,
+        firedAt: alert.firedAt,
+        windowHours: alert.windowHours,
+        failureCount: alert.failureCount,
+        sendCount: alert.sendCount,
+        reason: alert.reason,
+        snapshot: alert.snapshot,
+        emailSent: alert.emailSent,
+        emailRecipients: alert.emailRecipients,
+      });
+    },
+  );
+
+  app.post(
+    "/api/auth/email-delivery-alerts/:id/dismiss",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res) => {
+      const ctx = (req as any).membership!;
+      const alert = await authBizStorage.dismissEmailDeliveryAlert(
+        String(req.params.id),
+        ctx.companyId,
+        ctx.userId,
+      );
+      if (!alert) return res.status(404).json({ message: "Alert not found" });
+      res.json({ ok: true });
+    },
+  );
+
+  // Run the evaluator on demand. Useful when an admin tightens a threshold
+  // and wants to see whether the new value would already be tripping. Also
+  // used by tests to drive the cron without waiting for the interval.
+  app.post(
+    "/api/auth/email-delivery-alerts/evaluate",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res, next) => {
+      try {
+        const ctx = (req as any).membership!;
+        const result = await evaluateEmailDeliveryAlertsForCompany(ctx.companyId);
+        res.json(result);
+      } catch (err) {
+        next(err);
+      }
     },
   );
 

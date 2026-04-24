@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar, text, integer, boolean } from "drizzle-orm/pg-core";
+import { index, jsonb, numeric, pgTable, timestamp, varchar, text, integer, boolean } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 // Session storage table — required by Replit Auth.
@@ -166,6 +166,76 @@ export const passwordResetEmailEvents = pgTable(
   ]
 );
 export type PasswordResetEmailEvent = typeof passwordResetEmailEvents.$inferSelect;
+
+// Per-workspace configuration for the failure-rate alert evaluator. One row
+// per workspace; the evaluator falls back to defaults when no row exists, so
+// admins only need to write a row when they want to override.
+export const emailDeliveryAlertSettings = pgTable(
+  "email_delivery_alert_settings",
+  {
+    companyId: integer("company_id").primaryKey(),
+    enabled: boolean("enabled").notNull().default(true),
+    emailEnabled: boolean("email_enabled").notNull().default(false),
+    // Rolling window the evaluator looks back over.
+    windowHours: integer("window_hours").notNull().default(24),
+    // Fire if absolute failure count over the window meets/exceeds this.
+    absoluteThreshold: integer("absolute_threshold").notNull().default(5),
+    // Or if failure ratio meets/exceeds this fraction (0..1) AND there are
+    // enough samples to make the ratio meaningful.
+    ratioThreshold: numeric("ratio_threshold", { precision: 5, scale: 4 })
+      .notNull()
+      .default("0.0200"),
+    minSamplesForRatio: integer("min_samples_for_ratio").notNull().default(20),
+    // Suppress repeat alerts for this many minutes after the last fire.
+    cooldownMinutes: integer("cooldown_minutes").notNull().default(360),
+    updatedAt: timestamp("updated_at").defaultNow(),
+    updatedByUserId: varchar("updated_by_user_id"),
+  }
+);
+export type EmailDeliveryAlertSettings = typeof emailDeliveryAlertSettings.$inferSelect;
+
+// History of fired alerts. The most recent un-dismissed row drives the
+// in-app banner; older rows let admins audit the alert history.
+export const emailDeliveryAlerts = pgTable(
+  "email_delivery_alerts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    companyId: integer("company_id").notNull(),
+    firedAt: timestamp("fired_at").notNull().defaultNow(),
+    windowHours: integer("window_hours").notNull(),
+    failureCount: integer("failure_count").notNull(),
+    sendCount: integer("send_count").notNull(),
+    // 'absolute' | 'ratio' — which threshold fired the alert.
+    reason: text("reason").notNull(),
+    snapshot: jsonb("snapshot").$type<{
+      bounced: number;
+      complained: number;
+      send_failed: number;
+    } | null>(),
+    emailSent: boolean("email_sent").notNull().default(false),
+    emailRecipients: integer("email_recipients").notNull().default(0),
+    dismissedAt: timestamp("dismissed_at"),
+    dismissedByUserId: varchar("dismissed_by_user_id"),
+  },
+  (t) => [
+    index("email_delivery_alerts_company_idx").on(t.companyId),
+    index("email_delivery_alerts_company_fired_idx").on(t.companyId, t.firedAt),
+  ]
+);
+export type EmailDeliveryAlert = typeof emailDeliveryAlerts.$inferSelect;
+
+export const upsertEmailDeliveryAlertSettingsSchema = z.object({
+  enabled: z.boolean(),
+  emailEnabled: z.boolean(),
+  windowHours: z.coerce.number().int().min(1).max(168), // 1h..7d
+  absoluteThreshold: z.coerce.number().int().min(1).max(10000),
+  ratioThreshold: z.coerce.number().min(0).max(1),
+  minSamplesForRatio: z.coerce.number().int().min(1).max(10000),
+  cooldownMinutes: z.coerce.number().int().min(5).max(60 * 24 * 7),
+});
+export type UpsertEmailDeliveryAlertSettings = z.infer<
+  typeof upsertEmailDeliveryAlertSettingsSchema
+>;
 
 // Zod schemas for client/server input validation.
 export const signUpSchema = z.object({

@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   users,
   memberships,
@@ -9,12 +9,16 @@ import {
   passwordResetEmailEvents,
   companies,
   settings,
+  emailDeliveryAlertSettings,
+  emailDeliveryAlerts,
   type User,
   type Membership,
   type Invitation,
   type InvitationEmailEvent,
   type PasswordResetToken,
   type PasswordResetEmailEvent,
+  type EmailDeliveryAlertSettings,
+  type EmailDeliveryAlert,
   type Role,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
@@ -775,6 +779,249 @@ export const authBizStorage = {
 
       return c;
     });
+  },
+
+  // ---------- email delivery alerting ----------
+
+  /**
+   * Default alert configuration applied when a workspace has not yet written
+   * its own row. Mirrors the column defaults in the schema so the evaluator
+   * can run identically whether or not a row exists.
+   */
+  defaultEmailDeliveryAlertSettings(companyId: number): EmailDeliveryAlertSettings {
+    return {
+      companyId,
+      enabled: true,
+      emailEnabled: false,
+      windowHours: 24,
+      absoluteThreshold: 5,
+      ratioThreshold: "0.0200",
+      minSamplesForRatio: 20,
+      cooldownMinutes: 360,
+      updatedAt: null,
+      updatedByUserId: null,
+    };
+  },
+
+  async getEmailDeliveryAlertSettings(companyId: number): Promise<EmailDeliveryAlertSettings> {
+    const [row] = await db
+      .select()
+      .from(emailDeliveryAlertSettings)
+      .where(eq(emailDeliveryAlertSettings.companyId, companyId));
+    if (row) return row;
+    return this.defaultEmailDeliveryAlertSettings(companyId);
+  },
+
+  async upsertEmailDeliveryAlertSettings(
+    companyId: number,
+    patch: {
+      enabled: boolean;
+      emailEnabled: boolean;
+      windowHours: number;
+      absoluteThreshold: number;
+      ratioThreshold: number;
+      minSamplesForRatio: number;
+      cooldownMinutes: number;
+      updatedByUserId?: string | null;
+    },
+  ): Promise<EmailDeliveryAlertSettings> {
+    // Ratio is stored as a decimal string to keep numeric column precision.
+    const ratioStr = patch.ratioThreshold.toFixed(4);
+    const values = {
+      companyId,
+      enabled: patch.enabled,
+      emailEnabled: patch.emailEnabled,
+      windowHours: patch.windowHours,
+      absoluteThreshold: patch.absoluteThreshold,
+      ratioThreshold: ratioStr,
+      minSamplesForRatio: patch.minSamplesForRatio,
+      cooldownMinutes: patch.cooldownMinutes,
+      updatedAt: new Date(),
+      updatedByUserId: patch.updatedByUserId ?? null,
+    };
+    const [row] = await db
+      .insert(emailDeliveryAlertSettings)
+      .values(values)
+      .onConflictDoUpdate({
+        target: emailDeliveryAlertSettings.companyId,
+        set: {
+          enabled: values.enabled,
+          emailEnabled: values.emailEnabled,
+          windowHours: values.windowHours,
+          absoluteThreshold: values.absoluteThreshold,
+          ratioThreshold: values.ratioThreshold,
+          minSamplesForRatio: values.minSamplesForRatio,
+          cooldownMinutes: values.cooldownMinutes,
+          updatedAt: values.updatedAt,
+          updatedByUserId: values.updatedByUserId,
+        },
+      })
+      .returning();
+    return row;
+  },
+
+  /**
+   * Roll-up of failure-class events vs all send attempts in a rolling
+   * window for a single workspace. The ratio numerator counts only
+   * failure-class events; the denominator counts every recorded send
+   * attempt (sent / send_failed / not_configured) so the ratio reflects
+   * "what fraction of recent outbound mail blew up".
+   *
+   * Rolling cutoff is `now - windowHours` (not midnight-aligned) because
+   * the evaluator runs throughout the day and admins want a true rolling
+   * read, not a calendar-day snapshot.
+   */
+  async getEmailDeliveryFailureWindow(
+    companyId: number,
+    windowHours: number,
+  ): Promise<{
+    bounced: number;
+    complained: number;
+    sendFailed: number;
+    failures: number;
+    sends: number;
+    windowHours: number;
+  }> {
+    const hours = Math.max(1, Math.min(windowHours, 168));
+    type Row = {
+      bounced: number | string | null;
+      complained: number | string | null;
+      send_failed: number | string | null;
+      sends: number | string | null;
+    };
+    const result = await db.execute<Row>(sql`
+      WITH all_events AS (
+        SELECT e.type
+        FROM invitation_email_events e
+        INNER JOIN invitations i ON i.id = e.invitation_id
+        WHERE i.company_id = ${companyId}
+          AND e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+
+        UNION ALL
+
+        SELECT e.type
+        FROM password_reset_email_events e
+        INNER JOIN memberships m
+          ON m.user_id = e.user_id AND m.company_id = ${companyId}
+        WHERE e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE type = 'bounced')::int        AS bounced,
+        COUNT(*) FILTER (WHERE type = 'complained')::int     AS complained,
+        COUNT(*) FILTER (WHERE type = 'send_failed')::int    AS send_failed,
+        COUNT(*) FILTER (WHERE type IN ('sent','send_failed','not_configured'))::int AS sends
+      FROM all_events
+    `);
+    const r: Partial<Row> = result.rows[0] ?? {};
+    const bounced = Number(r.bounced) || 0;
+    const complained = Number(r.complained) || 0;
+    const sendFailed = Number(r.send_failed) || 0;
+    return {
+      bounced,
+      complained,
+      sendFailed,
+      failures: bounced + complained + sendFailed,
+      sends: Number(r.sends) || 0,
+      windowHours: hours,
+    };
+  },
+
+  async getActiveEmailDeliveryAlert(
+    companyId: number,
+  ): Promise<EmailDeliveryAlert | undefined> {
+    const [row] = await db
+      .select()
+      .from(emailDeliveryAlerts)
+      .where(
+        and(
+          eq(emailDeliveryAlerts.companyId, companyId),
+          isNull(emailDeliveryAlerts.dismissedAt),
+        ),
+      )
+      .orderBy(desc(emailDeliveryAlerts.firedAt))
+      .limit(1);
+    return row;
+  },
+
+  async getMostRecentEmailDeliveryAlert(
+    companyId: number,
+  ): Promise<EmailDeliveryAlert | undefined> {
+    const [row] = await db
+      .select()
+      .from(emailDeliveryAlerts)
+      .where(eq(emailDeliveryAlerts.companyId, companyId))
+      .orderBy(desc(emailDeliveryAlerts.firedAt))
+      .limit(1);
+    return row;
+  },
+
+  async createEmailDeliveryAlert(input: {
+    companyId: number;
+    windowHours: number;
+    failureCount: number;
+    sendCount: number;
+    reason: "absolute" | "ratio";
+    snapshot: { bounced: number; complained: number; send_failed: number };
+    emailSent: boolean;
+    emailRecipients: number;
+  }): Promise<EmailDeliveryAlert> {
+    const [row] = await db
+      .insert(emailDeliveryAlerts)
+      .values({
+        companyId: input.companyId,
+        windowHours: input.windowHours,
+        failureCount: input.failureCount,
+        sendCount: input.sendCount,
+        reason: input.reason,
+        snapshot: input.snapshot,
+        emailSent: input.emailSent,
+        emailRecipients: input.emailRecipients,
+      })
+      .returning();
+    return row;
+  },
+
+  async dismissEmailDeliveryAlert(
+    id: string,
+    companyId: number,
+    userId: string,
+  ): Promise<EmailDeliveryAlert | undefined> {
+    const [row] = await db
+      .update(emailDeliveryAlerts)
+      .set({ dismissedAt: new Date(), dismissedByUserId: userId })
+      .where(
+        and(
+          eq(emailDeliveryAlerts.id, id),
+          eq(emailDeliveryAlerts.companyId, companyId),
+        ),
+      )
+      .returning();
+    return row;
+  },
+
+  /** Owner emails for a workspace. Used as the email-alert recipient list. */
+  async listOwnerEmailsForCompany(companyId: number): Promise<string[]> {
+    const rows = await db
+      .select({ email: users.email })
+      .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .where(
+        and(
+          eq(memberships.companyId, companyId),
+          eq(memberships.role, "owner"),
+        ),
+      );
+    return (rows as { email: string | null }[])
+      .map((r) => r.email)
+      .filter((e): e is string => !!e && e.includes("@"));
+  },
+
+  /** Every company that has at least one membership — the cron sweeps these. */
+  async listCompanyIdsWithMemberships(): Promise<number[]> {
+    const rows = await db
+      .selectDistinct({ companyId: memberships.companyId })
+      .from(memberships);
+    return rows.map((r) => r.companyId);
   },
 
   /** First-signup bootstrap: if the legacy seed companies have no owner,

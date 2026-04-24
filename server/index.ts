@@ -99,6 +99,20 @@ app.use((req, res, next) => {
     console.error("Failed to normalise role enum:", err);
   }
 
+  // Background sweep that turns the failure-class delivery trends into a
+  // banner / email when a workspace's threshold trips. Disabled in test runs
+  // so e2e specs can call the evaluator deterministically.
+  if (process.env.NODE_ENV !== "test") {
+    try {
+      const { startEmailDeliveryAlertJob } = await import(
+        "./auth/email-delivery-alerts"
+      );
+      startEmailDeliveryAlertJob();
+    } catch (err) {
+      console.error("Failed to start email delivery alert job:", err);
+    }
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
