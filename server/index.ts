@@ -81,10 +81,40 @@ app.use((req, res, next) => {
 
   await registerRoutes(httpServer, app);
 
-  // Bootstrap IFRS Chart of Accounts and backfill journal entries for legacy data
+  // Re-apply migration 0007 (composite FKs) BEFORE migration 0008 (RLS) so
+  // that the table structure the policies attach to is in its final shape.
+  try {
+    const { applyExtendedCompositeFksOnStartup } = await import(
+      "./db-bootstrap-composite-fks"
+    );
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:composite-fks", () =>
+      applyExtendedCompositeFksOnStartup(),
+    );
+  } catch (err) {
+    console.error("Failed to apply extended composite FK migration:", err);
+  }
+
+  // Re-apply migration 0008 on boot so RLS policies materialise on dev
+  // databases and on any deploy that boots ahead of the migration runner.
+  // Must run BEFORE any bootstrap that writes to RLS-protected tables —
+  // those bootstraps wrap themselves in `withRlsBypass`. Idempotent — see
+  // docs/design/workspace-isolation-defense-in-depth.md.
+  try {
+    const { applyWorkspaceRlsOnStartup } = await import(
+      "./db-bootstrap-rls"
+    );
+    await applyWorkspaceRlsOnStartup();
+  } catch (err) {
+    console.error("Failed to apply workspace RLS migration:", err);
+  }
+
+  // Bootstrap IFRS Chart of Accounts and backfill journal entries for legacy
+  // data. Reads / writes across every workspace, so it runs under bypass.
   try {
     const { ensureIfrsBootstrap } = await import("./init-coa");
-    await ensureIfrsBootstrap();
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:ifrs-coa", () => ensureIfrsBootstrap());
     log("IFRS chart of accounts initialized");
   } catch (err) {
     console.error("Failed to bootstrap IFRS COA:", err);
@@ -93,9 +123,14 @@ app.use((req, res, next) => {
   // Normalise any membership/invitation rows that still carry the legacy
   // role vocabulary (admin/reviewer/readonly) onto the canonical
   // owner|accountant|viewer enum. Idempotent — see migration 0003.
+  // Touches non-RLS tables (memberships/invitations) but bypass keeps the
+  // pattern consistent across boot helpers.
   try {
     const { unifyRoleEnumOnStartup } = await import("./auth/storage");
-    await unifyRoleEnumOnStartup();
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:role-enum", () =>
+      unifyRoleEnumOnStartup(),
+    );
   } catch (err) {
     console.error("Failed to normalise role enum:", err);
   }
@@ -105,22 +140,12 @@ app.use((req, res, next) => {
   // ahead of the migration runner. Idempotent.
   try {
     const { dropWorkspaceMembersMirrorOnStartup } = await import("./auth/storage");
-    await dropWorkspaceMembersMirrorOnStartup();
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:drop-workspace-members-mirror", () =>
+      dropWorkspaceMembersMirrorOnStartup(),
+    );
   } catch (err) {
     console.error("Failed to drop workspace_members mirror:", err);
-  }
-
-  // Re-apply migration 0007 on boot so the workspace-isolation composite
-  // FKs added for HR / fixed-asset child tables / documents materialise on
-  // dev databases and on any deploy that boots ahead of the migration
-  // runner. Idempotent — see docs/design/workspace-isolation-defense-in-depth.md.
-  try {
-    const { applyExtendedCompositeFksOnStartup } = await import(
-      "./db-bootstrap-composite-fks"
-    );
-    await applyExtendedCompositeFksOnStartup();
-  } catch (err) {
-    console.error("Failed to apply extended composite FK migration:", err);
   }
 
   // Background sweep that turns the failure-class delivery trends into a

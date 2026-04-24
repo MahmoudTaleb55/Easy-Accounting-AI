@@ -43,6 +43,12 @@ test.describe("database-level workspace isolation @db", () => {
     const tag = `db-fk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {
       await client.query("BEGIN");
+      // Task #93 added RLS on workspace-scoped tables. Connecting as the
+      // current DATABASE_URL role happens to bypass RLS today (it's a
+      // superuser in this environment), but make the dependency explicit:
+      // this spec deliberately writes across two workspaces in setup, so
+      // bypass the policies for the lifetime of this transaction.
+      await client.query("SET LOCAL app.rls_bypass = 'on'");
 
       // ----- Setup: two workspaces, one account in each, one JE in A. ------
       const a = await client.query(
@@ -228,6 +234,9 @@ test.describe("database-level workspace isolation @db", () => {
     const tag = `db-fk-ext-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {
       await client.query("BEGIN");
+      // See note in the first test: the spec writes across workspaces in
+      // setup, so explicitly bypass the task-#93 RLS policies.
+      await client.query("SET LOCAL app.rls_bypass = 'on'");
 
       // Two workspaces ------------------------------------------------------
       const a = await client.query(`INSERT INTO companies (name) VALUES ($1) RETURNING id`, [`A-${tag}`]);

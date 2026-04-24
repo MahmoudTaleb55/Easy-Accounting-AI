@@ -1,9 +1,11 @@
 # Workspace isolation: defense-in-depth at the database layer
 
-Status: Accepted — composite foreign keys (Option A)
+Status: Accepted — composite foreign keys (Option A) for writes,
+row-level security keyed on a per-request GUC (Option B) for reads
 Owner: Platform / Data
 Related: task #52 (route-level guard), task #70 (initial constraints),
-task #91 (extension to HR + fixed-asset child tables + documents)
+task #91 (extension to HR + fixed-asset child tables + documents),
+task #93 (read-side RLS layer)
 
 ## Background
 
@@ -279,3 +281,154 @@ this round because they have **no inbound FK columns to constrain**:
 
 If any of these grow a cross-table reference later, the recipe above is
 the template to follow.
+
+## Task #93 extension — RLS on reads
+
+Composite foreign keys close the *write* hole. Reads are still entirely the
+application's responsibility: a `SELECT` that forgets `WHERE company_id = …`
+silently returns another tenant's data. This section adopts Option B from the
+list above and ships it as migration `0008_workspace_rls.sql`.
+
+### Connection-handling decision
+
+Option B requires the active workspace to be visible to Postgres on the
+connection that runs the query. Two implementations are reasonable:
+
+1. **Pinned client per request, session-level GUC.** Middleware checks out a
+   `pg.Client` from the pool, runs `SET app.current_company_id = $1`, stores a
+   request-scoped Drizzle instance bound to that client in
+   `AsyncLocalStorage`, and on `res.finish` / `res.close` runs `RESET` and
+   releases the client.
+2. **Per-request transaction wrapper, `SET LOCAL` GUC.** Middleware opens a
+   single transaction at the start of every request, runs
+   `SET LOCAL app.current_company_id`, and commits / rolls back at the end.
+
+We picked **Option 1 (pinned client + ALS)**. The transaction wrapper is
+attractive because Postgres auto-resets `SET LOCAL` GUCs on commit/rollback,
+but it would force every endpoint into a single top-level transaction:
+- Endpoints that perform irreversible side effects (OpenAI calls, document
+  uploads, sending emails) interleaved with multiple writes would either
+  rollback partial DB state on a late failure (semantic surprise) or have to
+  break out of the wrapping transaction (defeating the wrapper).
+- Several existing storage helpers already call `db.transaction(...)` for
+  their own atomicity. Nesting transactions inside a request-level outer
+  transaction would either flatten into savepoints (changing rollback
+  semantics) or fail outright.
+
+Pinned-client-per-request keeps the transactional shape of every existing
+handler unchanged. The single new invariant is "every request that has a
+membership runs against a client whose `app.current_company_id` matches that
+membership"; everything below it (Drizzle queries, sub-transactions, raw
+SQL) keeps working untouched because the request-scoped Drizzle instance is
+exposed via the same `db` import storage already uses.
+
+### The non-superuser `app_api` role
+
+Postgres exempts **superusers** from RLS unconditionally — `FORCE ROW LEVEL
+SECURITY` only forces it on the table *owner*, not on superusers. The
+`DATABASE_URL` role in this environment happens to be a superuser, which
+would silently make every policy below a no-op.
+
+The migration therefore creates a non-superuser role `app_api`, grants the
+connecting role membership in it (so `SET ROLE app_api` succeeds), and
+grants `app_api` `SELECT/INSERT/UPDATE/DELETE` on every public table plus
+`USAGE/SELECT/UPDATE` on every sequence. `ALTER DEFAULT PRIVILEGES` keeps
+future tables in sync.
+
+`withCompanyScope` then `SET ROLE app_api`s on the checked-out client right
+after setting the GUC, and `RESET ROLE`s on release. `withRlsBypass` does
+**not** switch role — bootstrap helpers run DDL (`ALTER TABLE … FORCE ROW
+LEVEL SECURITY`, `CREATE POLICY`, etc.) that requires owner privileges, and
+staying on the connecting role is harmless because the `app.rls_bypass = on`
+GUC short-circuits the policy expressions anyway.
+
+This means RLS protection only applies to code paths that flow through
+`withCompanyScope` (i.e. `/api/*` requests after `attachMembership`). Code
+that uses `db` directly without either helper runs as the connecting role
+and bypasses RLS — that is the existing behaviour for boot helpers and is
+acceptable, but a future code path that needs RLS protection must wrap
+itself in `withCompanyScope`.
+
+### Schema changes (migration `0008_workspace_rls.sql`)
+
+Two unqualified helper functions live in the `public` schema so policies
+stay terse (the `app.*` GUC names are just settings, not a namespace):
+
+- `current_company_id() RETURNS integer` —
+  `NULLIF(current_setting('app.current_company_id', true), '')::integer`. The
+  `true` second argument means missing-GUC returns `NULL` instead of raising,
+  and `NULLIF` bridges the empty-string default cleanly.
+- `rls_is_bypassed() RETURNS boolean` —
+  `current_setting('app.rls_bypass', true) = 'on'`. Defaults to `false` when
+  unset. Both helpers `GRANT EXECUTE` to `app_api`.
+
+Each in-scope table receives:
+
+```
+ALTER TABLE <t> ENABLE ROW LEVEL SECURITY;
+ALTER TABLE <t> FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS workspace_isolation ON <t>;
+CREATE POLICY workspace_isolation ON <t>
+  USING      (rls_is_bypassed() OR company_id = current_company_id())
+  WITH CHECK (rls_is_bypassed() OR company_id = current_company_id());
+```
+
+`FORCE ROW LEVEL SECURITY` is mandatory because the API role is the table
+owner in our deploy environment, and Postgres exempts owners from RLS by
+default.
+
+### Tables in scope
+
+The full set of workspace-scoped business tables: `accounts`,
+`journal_entries`, `journal_lines`, `transactions`, `budgets`, `settings`,
+`employees`, `attendance`, `leaves`, `payroll_runs`, `payroll_lines`,
+`fx_rates`, `asset_categories`, `fixed_assets`, `asset_components`,
+`depreciation_runs`, `depreciation_schedule`, `depreciation_postings`,
+`asset_usage_periods`, `impairment_events`, `revaluation_events`,
+`disposals`, `chat_messages`, `documents`.
+
+### Tables intentionally out of scope
+
+- **Auth / membership tables** (`users`, `sessions`, `memberships`,
+  `invitations`, `password_reset_*`, `invitation_email_events`,
+  `email_delivery_alert_settings`, `email_delivery_alerts`). These are
+  explicitly read across workspaces by `attachMembership`, the
+  email-delivery alert sweep, and various owner-only admin routes — putting
+  them under RLS would either force every auth lookup through bypass or
+  reject legitimate cross-workspace reads.
+- **`companies`**. The "workspace" itself; not workspace-scoped.
+- **`audit_log`**. No `company_id` column; tenant ownership is implicit
+  through the entity row it points at.
+
+### Bypass paths (audited)
+
+Any code path that legitimately needs to read or write across workspaces
+must run inside `withRlsBypass(reason, fn)` from `server/db.ts`. The helper
+checks out a fresh client, runs `SET app.rls_bypass = 'on'`, executes `fn`
+against a request-scoped Drizzle bound to that client, and `RESET`s + releases
+on completion. Audited bypass call sites (with `reason` strings):
+
+- `bootstrap:ifrs-coa` — `ensureIfrsBootstrap` seeds the default chart of
+  accounts and back-fills journal entries for legacy transactions across
+  every workspace at boot.
+- `bootstrap:role-enum` — `unifyRoleEnumOnStartup` re-runs the legacy →
+  canonical role-enum data fix on the `memberships` / `invitations` tables.
+- `bootstrap:drop-workspace-members-mirror` — re-runs migration 0006.
+- `bootstrap:composite-fks` — re-runs migrations 0005 / 0007.
+- `bootstrap:rls` — re-runs migration 0008 itself.
+- `cron:email-delivery-alert-sweep` — the periodic alert evaluator that
+  iterates every workspace.
+
+If a future code path needs bypass it is expected to wrap itself in
+`withRlsBypass` with a fresh `reason` so the audit list stays grep-able.
+
+### What this still does not cover
+
+- Reads that go through SQL-injected `current_setting` calls or that
+  intentionally `SET LOCAL app.current_company_id` to a different workspace
+  inside a request. The protection is real but is just as easy to mis-use as
+  the route-level guard it complements.
+- Tables not in the in-scope list above. Bringing them under the same rule
+  is a one-line addition to the in-scope table list in the migration and the
+  boot helper.
+

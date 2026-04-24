@@ -19,6 +19,7 @@
 import { authBizStorage } from "./storage";
 import { sendEmailDeliveryAlertEmail, normalizeLocale } from "./email";
 import { authStorage } from "../replit_integrations/auth/storage";
+import { withRlsBypass } from "../db";
 
 export type EvaluationOutcome =
   | { fired: false; reason: "disabled" | "below_threshold" | "in_cooldown"; failures: number; sends: number; windowHours: number }
@@ -182,25 +183,34 @@ export async function evaluateEmailDeliveryAlertsForCompany(
   };
 }
 
-/** Sweep every workspace that has at least one membership. */
+/** Sweep every workspace that has at least one membership.
+ *
+ * Runs under `withRlsBypass` because it intentionally iterates every
+ * workspace and `evaluateEmailDeliveryAlertsForCompany` may need to read
+ * cross-workspace audit / membership data without a single
+ * `app.current_company_id` GUC pinned to the connection. See
+ * docs/design/workspace-isolation-defense-in-depth.md ("Bypass paths").
+ */
 export async function runEmailDeliveryAlertSweep(): Promise<{
   evaluated: number;
   fired: number;
 }> {
-  const ids = await authBizStorage.listCompanyIdsWithMemberships();
-  let fired = 0;
-  for (const id of ids) {
-    try {
-      const out = await evaluateEmailDeliveryAlertsForCompany(id);
-      if (out.fired) fired++;
-    } catch (err) {
-      console.error(
-        `[email-delivery-alert] evaluation failed for company ${id}:`,
-        err,
-      );
+  return withRlsBypass("cron:email-delivery-alert-sweep", async () => {
+    const ids = await authBizStorage.listCompanyIdsWithMemberships();
+    let fired = 0;
+    for (const id of ids) {
+      try {
+        const out = await evaluateEmailDeliveryAlertsForCompany(id);
+        if (out.fired) fired++;
+      } catch (err) {
+        console.error(
+          `[email-delivery-alert] evaluation failed for company ${id}:`,
+          err,
+        );
+      }
     }
-  }
-  return { evaluated: ids.length, fired };
+    return { evaluated: ids.length, fired };
+  });
 }
 
 let timer: NodeJS.Timeout | null = null;

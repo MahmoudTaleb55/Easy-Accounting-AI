@@ -61,7 +61,7 @@ import {
   deleteDocumentFileIfOrphaned,
 } from "./services/document-storage";
 import { postDocumentSchema } from "@shared/schema";
-import { db } from "./db";
+import { db, withCompanyScope } from "./db";
 import { assetComponents, type AssetComponent } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { PeriodKey } from "./fixed-assets";
@@ -127,19 +127,46 @@ export async function registerRoutes(
   // Global API gate: every /api/* request that is NOT in the public allowlist
   // must be authenticated. Mutations additionally require a workspace role of
   // owner or accountant (viewers are blocked from writes).
+  //
+  // Once the membership has been attached, the rest of the request runs
+  // inside `withCompanyScope(companyId, …)` so the underlying `pg.Client`
+  // has `app.current_company_id` set. The row-level-security policies on
+  // every workspace-scoped table consult that GUC, which means a query
+  // that "forgets" `WHERE company_id = …` returns / touches zero rows
+  // for the wrong tenant instead of leaking data. (Task #93 — see
+  // docs/design/workspace-isolation-defense-in-depth.md.)
   app.use("/api", (req, res, next) => {
     if (isPublic(req.path)) return next();
     return requireAuth(req, res, (err?: any) => {
       if (err) return next(err);
       attachMembership(req, res, (err2?: any) => {
         if (err2) return next(err2);
+        const proceed = (err3?: any) => {
+          if (err3) return next(err3);
+          const ctx = (req as any).membership as
+            | { companyId: number }
+            | undefined;
+          if (!ctx) return next(); // self-service / pre-membership paths
+          return withCompanyScope(ctx.companyId, () =>
+            // Register listeners *before* invoking next() so a
+            // synchronous res.end() inside the handler can't beat us.
+            // Both events are wired so an aborted request still releases
+            // the pinned client.
+            new Promise<void>((resolve) => {
+              const finish = () => resolve();
+              res.once("finish", finish);
+              res.once("close", finish);
+              next();
+            }),
+          ).catch(next);
+        };
         // Reads: any authenticated user with attached membership.
         // Self-service writes (profile, password, sessions, accept invite,
         // create/list workspaces): any authenticated user, no role gate.
         // Everything else: requires admin/accountant role for the active workspace.
-        if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return next();
-        if (isSelfServiceWrite(req.path)) return next();
-        return requireWriteRoleForMutations(req, res, next);
+        if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return proceed();
+        if (isSelfServiceWrite(req.path)) return proceed();
+        return requireWriteRoleForMutations(req, res, proceed);
       });
     });
   });
