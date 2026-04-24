@@ -283,7 +283,17 @@ export const attendance = pgTable(
     status: text("status").notNull(), // present|absent|leave|holiday|weekend
     overtimeHours: numeric("overtime_hours", { precision: 5, scale: 2 }).notNull().default("0"),
   },
-  (t) => ({ uniqEmpDate: index("attendance_emp_date_idx").on(t.employeeId, t.date) }),
+  (t) => ({
+    uniqEmpDate: index("attendance_emp_date_idx").on(t.employeeId, t.date),
+    // Defense-in-depth: an attendance row's employee must live in the same
+    // workspace. Closes the same gap composite FKs already close on accounts /
+    // journal_lines / fixed_assets / etc.
+    employeeCompanyFk: foreignKey({
+      columns: [t.employeeId, t.companyId],
+      foreignColumns: [employees.id, employees.companyId],
+      name: "attendance_employee_company_fk",
+    }),
+  }),
 );
 
 export const insertAttendanceSchema = createInsertSchema(attendance)
@@ -292,18 +302,29 @@ export const insertAttendanceSchema = createInsertSchema(attendance)
 export type Attendance = typeof attendance.$inferSelect;
 export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
 
-export const leaves = pgTable("leaves", {
-  id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().default(1),
-  employeeId: integer("employee_id").notNull(),
-  startDate: text("start_date").notNull(),
-  endDate: text("end_date").notNull(),
-  days: integer("days").notNull(),
-  type: text("type").notNull().default("annual"), // annual|sick|unpaid|other
-  status: text("status").notNull().default("approved"), // approved|pending|rejected
-  notes: text("notes").default(""),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const leaves = pgTable(
+  "leaves",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().default(1),
+    employeeId: integer("employee_id").notNull(),
+    startDate: text("start_date").notNull(),
+    endDate: text("end_date").notNull(),
+    days: integer("days").notNull(),
+    type: text("type").notNull().default("annual"), // annual|sick|unpaid|other
+    status: text("status").notNull().default("approved"), // approved|pending|rejected
+    notes: text("notes").default(""),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    // Defense-in-depth: a leave row's employee must live in the same workspace.
+    employeeCompanyFk: foreignKey({
+      columns: [t.employeeId, t.companyId],
+      foreignColumns: [employees.id, employees.companyId],
+      name: "leaves_employee_company_fk",
+    }),
+  }),
+);
 
 export const insertLeaveSchema = createInsertSchema(leaves)
   .omit({ id: true, createdAt: true, companyId: true })
@@ -311,35 +332,66 @@ export const insertLeaveSchema = createInsertSchema(leaves)
 export type Leave = typeof leaves.$inferSelect;
 export type InsertLeave = z.infer<typeof insertLeaveSchema>;
 
-export const payrollRuns = pgTable("payroll_runs", {
-  id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().default(1),
-  year: integer("year").notNull(),
-  month: integer("month").notNull(),
-  status: text("status").notNull().default("draft"), // draft|posted
-  totalGross: numeric("total_gross", { precision: 14, scale: 2 }).notNull().default("0"),
-  totalNet: numeric("total_net", { precision: 14, scale: 2 }).notNull().default("0"),
-  journalEntryId: integer("journal_entry_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const payrollRuns = pgTable(
+  "payroll_runs",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().default(1),
+    year: integer("year").notNull(),
+    month: integer("month").notNull(),
+    status: text("status").notNull().default("draft"), // draft|posted
+    totalGross: numeric("total_gross", { precision: 14, scale: 2 }).notNull().default("0"),
+    totalNet: numeric("total_net", { precision: 14, scale: 2 }).notNull().default("0"),
+    journalEntryId: integer("journal_entry_id"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    // Defense-in-depth: enables a composite FK from payroll_lines back to a
+    // run in the same workspace.
+    idCompanyUq: unique("payroll_runs_id_company_uq").on(t.id, t.companyId),
+  }),
+);
 export type PayrollRun = typeof payrollRuns.$inferSelect;
 
-export const payrollLines = pgTable("payroll_lines", {
-  id: serial("id").primaryKey(),
-  payrollRunId: integer("payroll_run_id").notNull(),
-  employeeId: integer("employee_id").notNull(),
-  baseSalary: numeric("base_salary", { precision: 12, scale: 2 }).notNull(),
-  allowances: numeric("allowances", { precision: 12, scale: 2 }).notNull().default("0"),
-  overtime: numeric("overtime", { precision: 12, scale: 2 }).notNull().default("0"),
-  bonuses: numeric("bonuses", { precision: 12, scale: 2 }).notNull().default("0"),
-  absenceDeduction: numeric("absence_deduction", { precision: 12, scale: 2 }).notNull().default("0"),
-  advances: numeric("advances", { precision: 12, scale: 2 }).notNull().default("0"),
-  socialInsuranceEmployee: numeric("si_employee", { precision: 12, scale: 2 }).notNull().default("0"),
-  socialInsuranceEmployer: numeric("si_employer", { precision: 12, scale: 2 }).notNull().default("0"),
-  netPay: numeric("net_pay", { precision: 12, scale: 2 }).notNull(),
-  endOfServiceAccrual: numeric("eos_accrual", { precision: 12, scale: 2 }).notNull().default("0"),
-  leaveAccrual: numeric("leave_accrual", { precision: 12, scale: 2 }).notNull().default("0"),
-});
+// `payroll_lines` carries a denormalised `companyId` (always equal to the
+// parent run's `companyId`) so the database can enforce composite foreign
+// keys to both `payroll_runs` and `employees`. Same recipe as `journal_lines`
+// — see docs/design/workspace-isolation-defense-in-depth.md.
+//
+// Intentionally NO column default: every insert site must supply the active
+// workspace explicitly so a missing companyId fails loudly.
+export const payrollLines = pgTable(
+  "payroll_lines",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    payrollRunId: integer("payroll_run_id").notNull(),
+    employeeId: integer("employee_id").notNull(),
+    baseSalary: numeric("base_salary", { precision: 12, scale: 2 }).notNull(),
+    allowances: numeric("allowances", { precision: 12, scale: 2 }).notNull().default("0"),
+    overtime: numeric("overtime", { precision: 12, scale: 2 }).notNull().default("0"),
+    bonuses: numeric("bonuses", { precision: 12, scale: 2 }).notNull().default("0"),
+    absenceDeduction: numeric("absence_deduction", { precision: 12, scale: 2 }).notNull().default("0"),
+    advances: numeric("advances", { precision: 12, scale: 2 }).notNull().default("0"),
+    socialInsuranceEmployee: numeric("si_employee", { precision: 12, scale: 2 }).notNull().default("0"),
+    socialInsuranceEmployer: numeric("si_employer", { precision: 12, scale: 2 }).notNull().default("0"),
+    netPay: numeric("net_pay", { precision: 12, scale: 2 }).notNull(),
+    endOfServiceAccrual: numeric("eos_accrual", { precision: 12, scale: 2 }).notNull().default("0"),
+    leaveAccrual: numeric("leave_accrual", { precision: 12, scale: 2 }).notNull().default("0"),
+  },
+  (t) => ({
+    runCompanyFk: foreignKey({
+      columns: [t.payrollRunId, t.companyId],
+      foreignColumns: [payrollRuns.id, payrollRuns.companyId],
+      name: "payroll_lines_run_company_fk",
+    }),
+    employeeCompanyFk: foreignKey({
+      columns: [t.employeeId, t.companyId],
+      foreignColumns: [employees.id, employees.companyId],
+      name: "payroll_lines_employee_company_fk",
+    }),
+  }),
+);
 export type PayrollLine = typeof payrollLines.$inferSelect;
 
 // ============================================================================
@@ -527,21 +579,44 @@ export const insertFixedAssetSchema = createInsertSchema(fixedAssets)
 export type FixedAsset = typeof fixedAssets.$inferSelect;
 export type InsertFixedAsset = z.infer<typeof insertFixedAssetSchema>;
 
-export const assetComponents = pgTable("asset_components", {
-  id: serial("id").primaryKey(),
-  assetId: integer("asset_id").notNull(),
-  name: text("name").notNull(),
-  cost: numeric("cost", { precision: 18, scale: 2 }).notNull(),
-  residual: numeric("residual", { precision: 18, scale: 2 }).notNull().default("0"),
-  usefulLifeMonths: integer("useful_life_months").notNull(),
-  method: text("method").notNull().default("straight_line"),
-  unitsTotal: numeric("units_total", { precision: 18, scale: 2 }),
-  accumDepreciation: numeric("accum_depreciation", { precision: 18, scale: 2 }).notNull().default("0"),
-  accumImpairment: numeric("accum_impairment", { precision: 18, scale: 2 }).notNull().default("0"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// `asset_components` carries a denormalised `companyId` (always equal to the
+// parent asset's `companyId`) so the database can enforce a composite FK back
+// to `fixed_assets` AND act as a parent for further composite FKs from
+// depreciation_schedule, depreciation_postings, asset_usage_periods, etc.
+//
+// Intentionally NO column default: every insert site must supply the active
+// workspace explicitly.
+export const assetComponents = pgTable(
+  "asset_components",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    assetId: integer("asset_id").notNull(),
+    name: text("name").notNull(),
+    cost: numeric("cost", { precision: 18, scale: 2 }).notNull(),
+    residual: numeric("residual", { precision: 18, scale: 2 }).notNull().default("0"),
+    usefulLifeMonths: integer("useful_life_months").notNull(),
+    method: text("method").notNull().default("straight_line"),
+    unitsTotal: numeric("units_total", { precision: 18, scale: 2 }),
+    accumDepreciation: numeric("accum_depreciation", { precision: 18, scale: 2 }).notNull().default("0"),
+    accumImpairment: numeric("accum_impairment", { precision: 18, scale: 2 }).notNull().default("0"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    // Defense-in-depth: the parent asset must live in the same workspace.
+    assetCompanyFk: foreignKey({
+      columns: [t.assetId, t.companyId],
+      foreignColumns: [fixedAssets.id, fixedAssets.companyId],
+      name: "asset_components_asset_company_fk",
+    }),
+    // Lets child tables (depreciation_schedule, depreciation_postings,
+    // asset_usage_periods, impairment_events, revaluation_events) declare
+    // composite FKs back to a component in the same workspace.
+    idCompanyUq: unique("asset_components_id_company_uq").on(t.id, t.companyId),
+  }),
+);
 export const insertAssetComponentSchema = createInsertSchema(assetComponents)
-  .omit({ id: true, createdAt: true, accumDepreciation: true, accumImpairment: true })
+  .omit({ id: true, createdAt: true, accumDepreciation: true, accumImpairment: true, companyId: true })
   .extend({
     cost: z.coerce.number().positive(),
     residual: z.coerce.number().nonnegative().default(0),
@@ -552,96 +627,221 @@ export const insertAssetComponentSchema = createInsertSchema(assetComponents)
 export type AssetComponent = typeof assetComponents.$inferSelect;
 export type InsertAssetComponent = z.infer<typeof insertAssetComponentSchema>;
 
-export const depreciationSchedule = pgTable("depreciation_schedule", {
-  id: serial("id").primaryKey(),
-  assetId: integer("asset_id").notNull(),
-  componentId: integer("component_id"),
-  periodYear: integer("period_year").notNull(),
-  periodMonth: integer("period_month").notNull(),
-  plannedAmount: numeric("planned_amount", { precision: 18, scale: 2 }).notNull(),
-  status: text("status").notNull().default("planned"), // planned|posted
-  runId: integer("run_id"),
-});
-export type DepreciationScheduleRow = typeof depreciationSchedule.$inferSelect;
-
-export const depreciationRuns = pgTable("depreciation_runs", {
-  id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull(),
-  year: integer("year").notNull(),
-  month: integer("month").notNull(),
-  status: text("status").notNull().default("draft"), // draft|posted
-  totalAmount: numeric("total_amount", { precision: 18, scale: 2 }).notNull().default("0"),
-  journalEntryId: integer("journal_entry_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-  postedAt: timestamp("posted_at"),
-});
+export const depreciationRuns = pgTable(
+  "depreciation_runs",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    year: integer("year").notNull(),
+    month: integer("month").notNull(),
+    status: text("status").notNull().default("draft"), // draft|posted
+    totalAmount: numeric("total_amount", { precision: 18, scale: 2 }).notNull().default("0"),
+    journalEntryId: integer("journal_entry_id"),
+    createdAt: timestamp("created_at").defaultNow(),
+    postedAt: timestamp("posted_at"),
+  },
+  (t) => ({
+    // Defense-in-depth: lets depreciation_schedule and depreciation_postings
+    // declare composite FKs back to a run in the same workspace.
+    idCompanyUq: unique("depreciation_runs_id_company_uq").on(t.id, t.companyId),
+  }),
+);
 export type DepreciationRun = typeof depreciationRuns.$inferSelect;
 
-export const depreciationPostings = pgTable("depreciation_postings", {
-  id: serial("id").primaryKey(),
-  runId: integer("run_id").notNull(),
-  assetId: integer("asset_id").notNull(),
-  componentId: integer("component_id"),
-  amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
-});
+// `depreciation_schedule` carries a denormalised `companyId` so it can take
+// part in composite FKs to its parent asset, parent component (when set), and
+// posting run (when set). Intentionally NO column default — every insert
+// site must supply the active workspace explicitly.
+export const depreciationSchedule = pgTable(
+  "depreciation_schedule",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    assetId: integer("asset_id").notNull(),
+    componentId: integer("component_id"),
+    periodYear: integer("period_year").notNull(),
+    periodMonth: integer("period_month").notNull(),
+    plannedAmount: numeric("planned_amount", { precision: 18, scale: 2 }).notNull(),
+    status: text("status").notNull().default("planned"), // planned|posted
+    runId: integer("run_id"),
+  },
+  (t) => ({
+    assetCompanyFk: foreignKey({
+      columns: [t.assetId, t.companyId],
+      foreignColumns: [fixedAssets.id, fixedAssets.companyId],
+      name: "depreciation_schedule_asset_company_fk",
+    }),
+    // componentId is nullable; Postgres MATCH SIMPLE skips the FK check when
+    // any column of the FK is NULL, so component-less rows aren't blocked.
+    componentCompanyFk: foreignKey({
+      columns: [t.componentId, t.companyId],
+      foreignColumns: [assetComponents.id, assetComponents.companyId],
+      name: "depreciation_schedule_component_company_fk",
+    }),
+    // runId is nullable — planned rows have no run yet; posted rows do.
+    runCompanyFk: foreignKey({
+      columns: [t.runId, t.companyId],
+      foreignColumns: [depreciationRuns.id, depreciationRuns.companyId],
+      name: "depreciation_schedule_run_company_fk",
+    }),
+  }),
+);
+export type DepreciationScheduleRow = typeof depreciationSchedule.$inferSelect;
+
+// `depreciation_postings` carries a denormalised `companyId` so it can FK
+// back to its run (in the same workspace) AND to its asset / component.
+// Intentionally NO column default.
+export const depreciationPostings = pgTable(
+  "depreciation_postings",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    runId: integer("run_id").notNull(),
+    assetId: integer("asset_id").notNull(),
+    componentId: integer("component_id"),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+  },
+  (t) => ({
+    runCompanyFk: foreignKey({
+      columns: [t.runId, t.companyId],
+      foreignColumns: [depreciationRuns.id, depreciationRuns.companyId],
+      name: "depreciation_postings_run_company_fk",
+    }),
+    assetCompanyFk: foreignKey({
+      columns: [t.assetId, t.companyId],
+      foreignColumns: [fixedAssets.id, fixedAssets.companyId],
+      name: "depreciation_postings_asset_company_fk",
+    }),
+    componentCompanyFk: foreignKey({
+      columns: [t.componentId, t.companyId],
+      foreignColumns: [assetComponents.id, assetComponents.companyId],
+      name: "depreciation_postings_component_company_fk",
+    }),
+  }),
+);
 export type DepreciationPosting = typeof depreciationPostings.$inferSelect;
 
-// Recorded usage for units-of-production assets, per period.
-export const assetUsagePeriods = pgTable("asset_usage_periods", {
-  id: serial("id").primaryKey(),
-  assetId: integer("asset_id").notNull(),
-  componentId: integer("component_id"),
-  year: integer("year").notNull(),
-  month: integer("month").notNull(),
-  units: numeric("units", { precision: 18, scale: 2 }).notNull(),
-});
-export const insertAssetUsageSchema = createInsertSchema(assetUsagePeriods).omit({ id: true }).extend({
+// Recorded usage for units-of-production assets, per period. Carries a
+// denormalised `companyId` so it can FK to its parent asset / component.
+// Intentionally NO column default.
+export const assetUsagePeriods = pgTable(
+  "asset_usage_periods",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    assetId: integer("asset_id").notNull(),
+    componentId: integer("component_id"),
+    year: integer("year").notNull(),
+    month: integer("month").notNull(),
+    units: numeric("units", { precision: 18, scale: 2 }).notNull(),
+  },
+  (t) => ({
+    assetCompanyFk: foreignKey({
+      columns: [t.assetId, t.companyId],
+      foreignColumns: [fixedAssets.id, fixedAssets.companyId],
+      name: "asset_usage_periods_asset_company_fk",
+    }),
+    componentCompanyFk: foreignKey({
+      columns: [t.componentId, t.companyId],
+      foreignColumns: [assetComponents.id, assetComponents.companyId],
+      name: "asset_usage_periods_component_company_fk",
+    }),
+  }),
+);
+export const insertAssetUsageSchema = createInsertSchema(assetUsagePeriods).omit({ id: true, companyId: true }).extend({
   units: z.coerce.number().nonnegative(),
 });
 export type AssetUsagePeriod = typeof assetUsagePeriods.$inferSelect;
 export type InsertAssetUsagePeriod = z.infer<typeof insertAssetUsageSchema>;
 
-export const impairmentEvents = pgTable("impairment_events", {
-  id: serial("id").primaryKey(),
-  assetId: integer("asset_id").notNull(),
-  componentId: integer("component_id"),
-  eventDate: text("event_date").notNull(),
-  recoverableAmount: numeric("recoverable_amount", { precision: 18, scale: 2 }).notNull(),
-  // positive = loss; negative = reversal
-  lossAmount: numeric("loss_amount", { precision: 18, scale: 2 }).notNull(),
-  journalEntryId: integer("journal_entry_id"),
-  notes: text("notes").default(""),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// `impairment_events` / `revaluation_events` / `disposals` all carry a
+// denormalised `companyId` so they can FK back to their parent asset (and
+// component, where applicable) within the same workspace. Intentionally NO
+// column default on companyId.
+export const impairmentEvents = pgTable(
+  "impairment_events",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    assetId: integer("asset_id").notNull(),
+    componentId: integer("component_id"),
+    eventDate: text("event_date").notNull(),
+    recoverableAmount: numeric("recoverable_amount", { precision: 18, scale: 2 }).notNull(),
+    // positive = loss; negative = reversal
+    lossAmount: numeric("loss_amount", { precision: 18, scale: 2 }).notNull(),
+    journalEntryId: integer("journal_entry_id"),
+    notes: text("notes").default(""),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    assetCompanyFk: foreignKey({
+      columns: [t.assetId, t.companyId],
+      foreignColumns: [fixedAssets.id, fixedAssets.companyId],
+      name: "impairment_events_asset_company_fk",
+    }),
+    componentCompanyFk: foreignKey({
+      columns: [t.componentId, t.companyId],
+      foreignColumns: [assetComponents.id, assetComponents.companyId],
+      name: "impairment_events_component_company_fk",
+    }),
+  }),
+);
 export type ImpairmentEvent = typeof impairmentEvents.$inferSelect;
 
-export const revaluationEvents = pgTable("revaluation_events", {
-  id: serial("id").primaryKey(),
-  assetId: integer("asset_id").notNull(),
-  componentId: integer("component_id"),
-  eventDate: text("event_date").notNull(),
-  fairValue: numeric("fair_value", { precision: 18, scale: 2 }).notNull(),
-  method: text("method").notNull().default("elimination"), // elimination|proportional
-  surplusDelta: numeric("surplus_delta", { precision: 18, scale: 2 }).notNull().default("0"), // change to OCI surplus
-  plImpact: numeric("pl_impact", { precision: 18, scale: 2 }).notNull().default("0"), // change recorded in P&L (negative for loss)
-  journalEntryId: integer("journal_entry_id"),
-  notes: text("notes").default(""),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const revaluationEvents = pgTable(
+  "revaluation_events",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    assetId: integer("asset_id").notNull(),
+    componentId: integer("component_id"),
+    eventDate: text("event_date").notNull(),
+    fairValue: numeric("fair_value", { precision: 18, scale: 2 }).notNull(),
+    method: text("method").notNull().default("elimination"), // elimination|proportional
+    surplusDelta: numeric("surplus_delta", { precision: 18, scale: 2 }).notNull().default("0"), // change to OCI surplus
+    plImpact: numeric("pl_impact", { precision: 18, scale: 2 }).notNull().default("0"), // change recorded in P&L (negative for loss)
+    journalEntryId: integer("journal_entry_id"),
+    notes: text("notes").default(""),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    assetCompanyFk: foreignKey({
+      columns: [t.assetId, t.companyId],
+      foreignColumns: [fixedAssets.id, fixedAssets.companyId],
+      name: "revaluation_events_asset_company_fk",
+    }),
+    componentCompanyFk: foreignKey({
+      columns: [t.componentId, t.companyId],
+      foreignColumns: [assetComponents.id, assetComponents.companyId],
+      name: "revaluation_events_component_company_fk",
+    }),
+  }),
+);
 export type RevaluationEvent = typeof revaluationEvents.$inferSelect;
 
-export const disposals = pgTable("disposals", {
-  id: serial("id").primaryKey(),
-  assetId: integer("asset_id").notNull(),
-  eventDate: text("event_date").notNull(),
-  proceeds: numeric("proceeds", { precision: 18, scale: 2 }).notNull().default("0"),
-  method: text("method").notNull().default("sale"), // sale|scrap|writeoff
-  gainLoss: numeric("gain_loss", { precision: 18, scale: 2 }).notNull().default("0"),
-  surplusTransferred: numeric("surplus_transferred", { precision: 18, scale: 2 }).notNull().default("0"),
-  journalEntryId: integer("journal_entry_id"),
-  notes: text("notes").default(""),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const disposals = pgTable(
+  "disposals",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    assetId: integer("asset_id").notNull(),
+    eventDate: text("event_date").notNull(),
+    proceeds: numeric("proceeds", { precision: 18, scale: 2 }).notNull().default("0"),
+    method: text("method").notNull().default("sale"), // sale|scrap|writeoff
+    gainLoss: numeric("gain_loss", { precision: 18, scale: 2 }).notNull().default("0"),
+    surplusTransferred: numeric("surplus_transferred", { precision: 18, scale: 2 }).notNull().default("0"),
+    journalEntryId: integer("journal_entry_id"),
+    notes: text("notes").default(""),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    assetCompanyFk: foreignKey({
+      columns: [t.assetId, t.companyId],
+      foreignColumns: [fixedAssets.id, fixedAssets.companyId],
+      name: "disposals_asset_company_fk",
+    }),
+  }),
+);
 export type Disposal = typeof disposals.$inferSelect;
 
 // ============================================================================
@@ -741,6 +941,14 @@ export const documents = pgTable(
   (t) => ({
     companyIdx: index("documents_company_idx").on(t.companyId),
     statusIdx: index("documents_status_idx").on(t.companyId, t.status),
+    // Defense-in-depth: when a document is posted, the linked journal entry
+    // must live in the same workspace. journalEntryId is nullable, so MATCH
+    // SIMPLE skips the check for un-posted documents.
+    journalEntryCompanyFk: foreignKey({
+      columns: [t.journalEntryId, t.companyId],
+      foreignColumns: [journalEntries.id, journalEntries.companyId],
+      name: "documents_journal_entry_company_fk",
+    }),
   }),
 );
 

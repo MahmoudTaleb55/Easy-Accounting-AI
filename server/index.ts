@@ -110,6 +110,19 @@ app.use((req, res, next) => {
     console.error("Failed to drop workspace_members mirror:", err);
   }
 
+  // Re-apply migration 0007 on boot so the workspace-isolation composite
+  // FKs added for HR / fixed-asset child tables / documents materialise on
+  // dev databases and on any deploy that boots ahead of the migration
+  // runner. Idempotent — see docs/design/workspace-isolation-defense-in-depth.md.
+  try {
+    const { applyExtendedCompositeFksOnStartup } = await import(
+      "./db-bootstrap-composite-fks"
+    );
+    await applyExtendedCompositeFksOnStartup();
+  } catch (err) {
+    console.error("Failed to apply extended composite FK migration:", err);
+  }
+
   // Background sweep that turns the failure-class delivery trends into a
   // banner / email when a workspace's threshold trips. Disabled in test runs
   // so e2e specs can call the evaluator deterministically.

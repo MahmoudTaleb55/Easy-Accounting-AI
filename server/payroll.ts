@@ -222,7 +222,11 @@ export async function runPayroll(
     .returning();
 
   for (const l of lines) {
+    // companyId on every payroll_lines row must equal the parent run's
+    // companyId — composite FKs to payroll_runs(id, companyId) and
+    // employees(id, companyId) enforce this at the DB layer.
     await db.insert(payrollLines).values({
+      companyId: run.companyId,
       payrollRunId: run.id,
       employeeId: l.employeeId,
       baseSalary: l.baseSalary.toFixed(2),

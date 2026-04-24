@@ -2,7 +2,8 @@
 
 Status: Accepted — composite foreign keys (Option A)
 Owner: Platform / Data
-Related: task #52 (route-level guard), task #70 (this design)
+Related: task #52 (route-level guard), task #70 (initial constraints),
+task #91 (extension to HR + fixed-asset child tables + documents)
 
 ## Background
 
@@ -191,3 +192,90 @@ instead of a raw `23503 foreign_key_violation` bubbling up.
 - **Composite FKs do not replace tenant ownership checks at the route
   layer for ids that have no direct FK target** (e.g. settings ids derived
   from the request body). Those still need explicit guards.
+
+## Task #91 extension — HR + fixed-asset children + documents
+
+Task #70 left the back-fill bullet above ("tables not in scope") as future
+work. Task #91 closes that gap for the remaining workspace-scoped tables
+that hold cross-table references. Migration `0007_workspace_composite_fks_extension.sql`
+follows the exact same recipe as `0005`:
+
+1. `ADD COLUMN company_id … DEFAULT 1` on each child.
+2. Back-fill from the parent (`employees`, `payroll_runs`, `fixed_assets`,
+   `asset_components`, `depreciation_runs`, `journal_entries`).
+3. `SET NOT NULL`, then `DROP DEFAULT` so future inserts must supply it.
+4. Delete orphan rows whose parent no longer exists (safety valve for
+   pre-existing bad data).
+5. `UNIQUE (id, company_id)` on the parents that now need to be referenced
+   by composite FK (`payroll_runs`, `asset_components`, `depreciation_runs`).
+6. Add the composite FKs (in `DO $$` guards that probe `pg_constraint` so
+   the migration is re-runnable).
+
+New parent uniqueness:
+
+- `payroll_runs (id, company_id)`
+- `asset_components (id, company_id)`
+- `depreciation_runs (id, company_id)`
+
+New composite FKs:
+
+- HR
+  - `attendance.employee_id, attendance.company_id` → `employees`.
+  - `leaves.employee_id, leaves.company_id` → `employees`.
+  - `payroll_lines.run_id, payroll_lines.company_id` → `payroll_runs`.
+  - `payroll_lines.employee_id, payroll_lines.company_id` → `employees`.
+- Fixed-asset children
+  - `asset_components.asset_id, asset_components.company_id`
+    → `fixed_assets`.
+  - `depreciation_schedule.asset_id, …` → `fixed_assets`.
+  - `depreciation_schedule.component_id, …` → `asset_components`
+    (nullable, MATCH SIMPLE).
+  - `depreciation_postings.run_id, …` → `depreciation_runs`.
+  - `asset_usage_periods.asset_id, …` → `fixed_assets`.
+  - `impairment_events.asset_id, …` → `fixed_assets`.
+  - `revaluation_events.asset_id, …` → `fixed_assets`.
+  - `disposals.asset_id, …` → `fixed_assets`.
+- Documents
+  - `documents.journal_entry_id, documents.company_id`
+    → `journal_entries` (nullable, MATCH SIMPLE).
+
+All nullable child FK columns rely on Postgres' default `MATCH SIMPLE`
+semantics: when *any* component of the composite key is `NULL`, the FK is
+not checked. That is the desired behaviour for `depreciation_schedule.component_id`
+(asset-level rows have `component_id IS NULL`) and `documents.journal_entry_id`
+(documents that aren't tied to a JE).
+
+### Application-side follow-ups (task #91)
+
+Storage helpers and routes that insert into the newly-constrained child
+tables now copy `companyId` from the request context (or the parent row)
+on every write:
+
+- `server/storage.ts`: `createAssetComponent`, `createDepreciationRun`
+  (postings), `replaceSchedule`, `markScheduledPosted`,
+  `createImpairmentEvent`, `createRevaluationEvent`, `createDisposal`.
+- `server/payroll.ts`: `payrollLines` insert in the run-payroll path.
+- `server/routes.ts`: every caller of the above is updated to pass
+  `companyId` so the type-checker enforces it at the boundary.
+
+The same `applyExtendedCompositeFksOnStartup` boot helper used for prior
+migrations runs `0007` idempotently on app start, mirroring the
+already-shipped pattern for `0003` / `0006`. As a defensive measure it
+*also* re-applies migration `0005`'s parent uniques and composite FKs (no
+boot helper had been written for `0005`, so dev databases that were
+bootstrapped before that migration ran would otherwise be left without
+the task #70 constraints — and without the back-filled
+`journal_lines.company_id` column the application now writes to).
+
+### Tables intentionally not extended
+
+A handful of workspace-scoped tables are left without composite FKs in
+this round because they have **no inbound FK columns to constrain**:
+
+- `transactions`, `fx_rates`, `chat_messages`, `settings`. Each is a
+  flat workspace-scoped table; there is nothing to point them at.
+- `workspace_invites` was dropped in migration `0004` and is no longer
+  part of the schema.
+
+If any of these grow a cross-table reference later, the recipe above is
+the template to follow.

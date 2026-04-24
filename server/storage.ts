@@ -965,11 +965,16 @@ export class DatabaseStorage implements IStorage {
   async getAssetComponents(assetId: number): Promise<AssetComponent[]> {
     return await db.select().from(assetComponents).where(eq(assetComponents.assetId, assetId));
   }
-  async createAssetComponent(input: InsertAssetComponent): Promise<AssetComponent> {
+  async createAssetComponent(
+    input: InsertAssetComponent & { companyId: number },
+  ): Promise<AssetComponent> {
+    // companyId is required so the composite FK to fixed_assets(id, companyId)
+    // is satisfied — see migration 0007 / docs/design/workspace-isolation-defense-in-depth.md.
     const [c] = await db
       .insert(assetComponents)
       .values({
         ...input,
+        companyId: input.companyId,
         cost: String(input.cost),
         residual: String(input.residual ?? 0),
         unitsTotal: input.unitsTotal != null ? String(input.unitsTotal) : null,
@@ -1010,8 +1015,14 @@ export class DatabaseStorage implements IStorage {
       status: "draft", totalAmount: String(total),
     }).returning();
     if (input.postings.length > 0) {
+      // companyId on each posting must match the run — composite FKs to
+      // depreciation_runs and fixed_assets enforce this at the DB layer.
       await db.insert(depreciationPostings).values(input.postings.map((p) => ({
-        runId: run.id, assetId: p.assetId, componentId: p.componentId ?? null, amount: String(p.amount),
+        companyId: input.companyId,
+        runId: run.id,
+        assetId: p.assetId,
+        componentId: p.componentId ?? null,
+        amount: String(p.amount),
       })));
     }
     return run;
@@ -1035,10 +1046,17 @@ export class DatabaseStorage implements IStorage {
   async getSchedule(assetId: number): Promise<DepreciationScheduleRow[]> {
     return await db.select().from(depreciationSchedule).where(eq(depreciationSchedule.assetId, assetId));
   }
-  async replaceSchedule(assetId: number, rows: { periodYear: number; periodMonth: number; plannedAmount: number; componentId?: number | null }[]): Promise<void> {
+  async replaceSchedule(
+    companyId: number,
+    assetId: number,
+    rows: { periodYear: number; periodMonth: number; plannedAmount: number; componentId?: number | null }[],
+  ): Promise<void> {
+    // companyId is required so the inserted schedule rows satisfy the
+    // composite FK back to fixed_assets(id, companyId).
     await db.delete(depreciationSchedule).where(and(eq(depreciationSchedule.assetId, assetId), eq(depreciationSchedule.status, "planned")));
     if (rows.length === 0) return;
     await db.insert(depreciationSchedule).values(rows.map((r) => ({
+      companyId,
       assetId,
       componentId: r.componentId ?? null,
       periodYear: r.periodYear,
@@ -1048,6 +1066,7 @@ export class DatabaseStorage implements IStorage {
     })));
   }
   async markScheduledPosted(
+    companyId: number,
     runId: number,
     period: { year: number; month: number },
     items: { assetId: number; componentId?: number | null; amount: number }[],
@@ -1072,6 +1091,7 @@ export class DatabaseStorage implements IStorage {
         }).where(eq(depreciationSchedule.id, existing[0].id));
       } else {
         await db.insert(depreciationSchedule).values({
+          companyId,
           assetId: it.assetId,
           componentId: it.componentId ?? null,
           periodYear: period.year,
@@ -1103,8 +1123,11 @@ export class DatabaseStorage implements IStorage {
     if (assetId) return await db.select().from(impairmentEvents).where(eq(impairmentEvents.assetId, assetId)).orderBy(desc(impairmentEvents.eventDate));
     return await db.select().from(impairmentEvents).orderBy(desc(impairmentEvents.eventDate));
   }
-  async createImpairmentEvent(input: { assetId: number; componentId?: number | null; eventDate: string; recoverableAmount: number; lossAmount: number; journalEntryId?: number | null; notes?: string }): Promise<ImpairmentEvent> {
+  async createImpairmentEvent(input: { companyId: number; assetId: number; componentId?: number | null; eventDate: string; recoverableAmount: number; lossAmount: number; journalEntryId?: number | null; notes?: string }): Promise<ImpairmentEvent> {
+    // companyId is required so the composite FK to fixed_assets(id, companyId)
+    // (and asset_components(id, companyId) when componentId is set) holds.
     const [c] = await db.insert(impairmentEvents).values({
+      companyId: input.companyId,
       assetId: input.assetId,
       componentId: input.componentId ?? null,
       eventDate: input.eventDate,
@@ -1120,8 +1143,11 @@ export class DatabaseStorage implements IStorage {
     if (assetId) return await db.select().from(revaluationEvents).where(eq(revaluationEvents.assetId, assetId)).orderBy(desc(revaluationEvents.eventDate));
     return await db.select().from(revaluationEvents).orderBy(desc(revaluationEvents.eventDate));
   }
-  async createRevaluationEvent(input: { assetId: number; eventDate: string; fairValue: number; method: string; surplusDelta: number; plImpact: number; journalEntryId?: number | null; notes?: string }): Promise<RevaluationEvent> {
+  async createRevaluationEvent(input: { companyId: number; assetId: number; eventDate: string; fairValue: number; method: string; surplusDelta: number; plImpact: number; journalEntryId?: number | null; notes?: string }): Promise<RevaluationEvent> {
+    // companyId is required so the composite FK to fixed_assets(id, companyId)
+    // holds.
     const [c] = await db.insert(revaluationEvents).values({
+      companyId: input.companyId,
       assetId: input.assetId,
       eventDate: input.eventDate,
       fairValue: String(input.fairValue),
@@ -1138,8 +1164,11 @@ export class DatabaseStorage implements IStorage {
     if (assetId) return await db.select().from(disposals).where(eq(disposals.assetId, assetId)).orderBy(desc(disposals.eventDate));
     return await db.select().from(disposals).orderBy(desc(disposals.eventDate));
   }
-  async createDisposal(input: { assetId: number; eventDate: string; proceeds: number; method: string; gainLoss: number; surplusTransferred: number; journalEntryId?: number | null; notes?: string }): Promise<Disposal> {
+  async createDisposal(input: { companyId: number; assetId: number; eventDate: string; proceeds: number; method: string; gainLoss: number; surplusTransferred: number; journalEntryId?: number | null; notes?: string }): Promise<Disposal> {
+    // companyId is required so the composite FK to fixed_assets(id, companyId)
+    // holds.
     const [c] = await db.insert(disposals).values({
+      companyId: input.companyId,
       assetId: input.assetId,
       eventDate: input.eventDate,
       proceeds: String(input.proceeds),

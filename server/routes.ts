@@ -1588,12 +1588,12 @@ async function registerFixedAssetRoutes(app: Express) {
       }, userCtx(req));
 
       for (const comp of components || []) {
-        await storage.createAssetComponent({ ...comp, assetId: created.id });
+        await storage.createAssetComponent({ ...comp, assetId: created.id, companyId });
       }
       // Generate planned schedule (best-effort; skip for units_of_production / custom)
       if (created.method !== "units_of_production" && created.method !== "custom") {
         const sched = fa.generateSchedule(fa.unitFromAsset(created));
-        await storage.replaceSchedule(created.id, sched.map((r) => ({
+        await storage.replaceSchedule(companyId, created.id, sched.map((r) => ({
           periodYear: r.year, periodMonth: r.month, plannedAmount: r.amount,
         })));
       }
@@ -1778,7 +1778,7 @@ async function registerFixedAssetRoutes(app: Express) {
 
       const run = await storage.createDepreciationRun({ companyId, year: body.year, month: body.month, postings });
       const posted = await storage.markRunPosted(run.id, je.id);
-      await storage.markScheduledPosted(run.id, period, postings.map((p) => ({ assetId: p.assetId, componentId: p.componentId ?? null, amount: p.amount })));
+      await storage.markScheduledPosted(companyId, run.id, period, postings.map((p) => ({ assetId: p.assetId, componentId: p.componentId ?? null, amount: p.amount })));
 
       // Aggregate per-asset deltas before applying to DB (handles multi-component sums)
       type Delta = { accumDep: number; noImp: number };
@@ -1859,6 +1859,7 @@ async function registerFixedAssetRoutes(app: Express) {
         lines: built.lines,
       }, userCtx(req));
       const event = await storage.createImpairmentEvent({
+        companyId: asset.companyId,
         assetId: id,
         eventDate: body.eventDate,
         recoverableAmount: body.recoverableAmount,
@@ -1950,6 +1951,7 @@ async function registerFixedAssetRoutes(app: Express) {
         lines: built.lines,
       }, userCtx(req));
       const event = await storage.createRevaluationEvent({
+        companyId: asset.companyId,
         assetId: id,
         eventDate: body.eventDate,
         fairValue: body.fairValue,
@@ -2013,6 +2015,7 @@ async function registerFixedAssetRoutes(app: Express) {
         lines: built.lines,
       }, userCtx(req));
       const event = await storage.createDisposal({
+        companyId: asset.companyId,
         assetId: id,
         eventDate: body.eventDate,
         proceeds: body.proceeds,

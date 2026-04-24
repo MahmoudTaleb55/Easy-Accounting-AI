@@ -184,4 +184,265 @@ test.describe("database-level workspace isolation @db", () => {
       client.release();
     }
   });
+
+  // --------------------------------------------------------------------------
+  // Task #91 extended the composite-FK pattern to HR (employees /
+  // attendance / leaves / payroll_*) and to the fixed-asset child tables
+  // (asset_components, depreciation_schedule, depreciation_postings,
+  // impairment / revaluation / disposal events). This block exercises the
+  // representative cross-workspace scenarios for each new constraint.
+  // --------------------------------------------------------------------------
+  test("composite FKs reject cross-workspace writes on HR + fixed-asset child tables", async () => {
+    const client = await pool.connect();
+    const tag = `db-fk-ext-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      await client.query("BEGIN");
+
+      // Two workspaces ------------------------------------------------------
+      const a = await client.query(`INSERT INTO companies (name) VALUES ($1) RETURNING id`, [`A-${tag}`]);
+      const b = await client.query(`INSERT INTO companies (name) VALUES ($1) RETURNING id`, [`B-${tag}`]);
+      const cidA: number = a.rows[0].id;
+      const cidB: number = b.rows[0].id;
+
+      // Helper that captures FK / not-null violations into an attempt result
+      async function attempt(
+        sql: string,
+        params: unknown[],
+      ): Promise<{ ok: true } | { ok: false; code: string; constraint?: string }> {
+        await client.query("SAVEPOINT s");
+        try {
+          await client.query(sql, params);
+          await client.query("RELEASE SAVEPOINT s");
+          return { ok: true };
+        } catch (err) {
+          await client.query("ROLLBACK TO SAVEPOINT s");
+          const e = err as { code?: string; constraint?: string };
+          return { ok: false, code: e.code ?? "", constraint: e.constraint };
+        }
+      }
+
+      // ---- HR setup: an employee in B + a payroll run in A --------------
+      const empB = await client.query(
+        `INSERT INTO employees (company_id, full_name, base_salary, hire_date)
+         VALUES ($1, 'B emp', '1000', '2025-01-01') RETURNING id`,
+        [cidB],
+      );
+      const empBId: number = empB.rows[0].id;
+      const empA = await client.query(
+        `INSERT INTO employees (company_id, full_name, base_salary, hire_date)
+         VALUES ($1, 'A emp', '1000', '2025-01-01') RETURNING id`,
+        [cidA],
+      );
+      const empAId: number = empA.rows[0].id;
+      const runA = await client.query(
+        `INSERT INTO payroll_runs (company_id, year, month) VALUES ($1, 2026, 1) RETURNING id`,
+        [cidA],
+      );
+      const runAId: number = runA.rows[0].id;
+
+      // attendance.(employee_id, company_id) — employee in B, row in A
+      const r1 = await attempt(
+        `INSERT INTO attendance (company_id, employee_id, date, status) VALUES ($1, $2, '2026-01-15', 'present')`,
+        [cidA, empBId],
+      );
+      expect(r1.ok).toBe(false);
+      if (!r1.ok) {
+        expect(r1.code).toBe("23503");
+        expect(r1.constraint).toBe("attendance_employee_company_fk");
+      }
+
+      // leaves.(employee_id, company_id) — employee in B, row in A
+      const r2 = await attempt(
+        `INSERT INTO leaves (company_id, employee_id, start_date, end_date, days)
+         VALUES ($1, $2, '2026-01-10', '2026-01-12', 3)`,
+        [cidA, empBId],
+      );
+      expect(r2.ok).toBe(false);
+      if (!r2.ok) {
+        expect(r2.code).toBe("23503");
+        expect(r2.constraint).toBe("leaves_employee_company_fk");
+      }
+
+      // payroll_lines.(employee_id, company_id) — same workspace as run, but
+      // employee belongs to B → composite FK to employees(id, company_id) trips.
+      const r3 = await attempt(
+        `INSERT INTO payroll_lines (company_id, payroll_run_id, employee_id, base_salary, net_pay)
+         VALUES ($1, $2, $3, '1000', '900')`,
+        [cidA, runAId, empBId],
+      );
+      expect(r3.ok).toBe(false);
+      if (!r3.ok) {
+        expect(r3.code).toBe("23503");
+        expect(r3.constraint).toBe("payroll_lines_employee_company_fk");
+      }
+
+      // payroll_lines.(payroll_run_id, company_id) — line claims B but run is A
+      const r4 = await attempt(
+        `INSERT INTO payroll_lines (company_id, payroll_run_id, employee_id, base_salary, net_pay)
+         VALUES ($1, $2, $3, '1000', '900')`,
+        [cidB, runAId, empBId],
+      );
+      expect(r4.ok).toBe(false);
+      if (!r4.ok) {
+        expect(r4.code).toBe("23503");
+        expect(r4.constraint).toBe("payroll_lines_run_company_fk");
+      }
+
+      // payroll_lines: missing company_id must fail closed (NOT NULL, no
+      // default — same recipe as journal_lines).
+      const r5 = await attempt(
+        `INSERT INTO payroll_lines (payroll_run_id, employee_id, base_salary, net_pay)
+         VALUES ($1, $2, '1000', '900')`,
+        [runAId, empAId],
+      );
+      expect(r5.ok).toBe(false);
+      if (!r5.ok) expect(r5.code).toBe("23502");
+
+      // ---- Fixed-assets setup: a category and asset in A ------------------
+      const accA = await client.query(
+        `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype)
+         VALUES ($1, $2, 'fa', 'fa', 'asset', 'non_current_asset') RETURNING id`,
+        [cidA, `FA-${tag}`],
+      );
+      const accAId: number = accA.rows[0].id;
+      const catA = await client.query(
+        `INSERT INTO asset_categories (company_id, name,
+            asset_cost_account_id, accumulated_dep_account_id, dep_expense_account_id,
+            accumulated_imp_account_id, imp_loss_account_id, reval_surplus_account_id,
+            gain_loss_disposal_account_id)
+         VALUES ($1, 'cat', $2, $2, $2, $2, $2, $2, $2) RETURNING id`,
+        [cidA, accAId],
+      );
+      const catAId: number = catA.rows[0].id;
+      const faA = await client.query(
+        `INSERT INTO fixed_assets (company_id, category_id, code, name,
+            acquisition_date, in_service_date, currency, tx_cost, cost,
+            useful_life_months, method, status)
+         VALUES ($1, $2, $3, 'A asset', '2025-01-01', '2025-01-01',
+            'SAR', '1000', '1000', 12, 'straight_line', 'active') RETURNING id`,
+        [cidA, catAId, `FA-${tag}`],
+      );
+      const faAId: number = faA.rows[0].id;
+      const compA = await client.query(
+        `INSERT INTO asset_components (company_id, asset_id, name, cost, useful_life_months)
+         VALUES ($1, $2, 'comp', '500', 12) RETURNING id`,
+        [cidA, faAId],
+      );
+      const compAId: number = compA.rows[0].id;
+      const drA = await client.query(
+        `INSERT INTO depreciation_runs (company_id, year, month) VALUES ($1, 2026, 1) RETURNING id`,
+        [cidA],
+      );
+      const drAId: number = drA.rows[0].id;
+
+      // asset_components.(asset_id, company_id): asset in A, component claims B
+      const r6 = await attempt(
+        `INSERT INTO asset_components (company_id, asset_id, name, cost, useful_life_months)
+         VALUES ($1, $2, 'x', '100', 12)`,
+        [cidB, faAId],
+      );
+      expect(r6.ok).toBe(false);
+      if (!r6.ok) {
+        expect(r6.code).toBe("23503");
+        expect(r6.constraint).toBe("asset_components_asset_company_fk");
+      }
+
+      // depreciation_postings.(run_id, company_id): run in A, posting claims B
+      const r7 = await attempt(
+        `INSERT INTO depreciation_postings (company_id, run_id, asset_id, amount)
+         VALUES ($1, $2, $3, '10')`,
+        [cidB, drAId, faAId],
+      );
+      expect(r7.ok).toBe(false);
+      if (!r7.ok) {
+        expect(r7.code).toBe("23503");
+        expect(r7.constraint).toBe("depreciation_postings_run_company_fk");
+      }
+
+      // depreciation_schedule.(component_id, company_id): nullable, but when
+      // set must live in same workspace.
+      const r8 = await attempt(
+        `INSERT INTO depreciation_schedule
+            (company_id, asset_id, component_id, period_year, period_month, planned_amount)
+         VALUES ($1, $2, $3, 2026, 1, '10')`,
+        [cidB, faAId, compAId],
+      );
+      expect(r8.ok).toBe(false);
+      // The schedule asset_id FK trips first (FK to fixed_assets keyed on
+      // company_id) — the row claims B but the asset lives in A. Either of
+      // the asset / component FKs is acceptable here, both are valid checks.
+      if (!r8.ok) {
+        expect(r8.code).toBe("23503");
+        expect([
+          "depreciation_schedule_asset_company_fk",
+          "depreciation_schedule_component_company_fk",
+        ]).toContain(r8.constraint ?? "");
+      }
+
+      // impairment_events.(asset_id, company_id): asset in A, event claims B
+      const r9 = await attempt(
+        `INSERT INTO impairment_events (company_id, asset_id, event_date, recoverable_amount, loss_amount)
+         VALUES ($1, $2, '2026-01-15', '500', '100')`,
+        [cidB, faAId],
+      );
+      expect(r9.ok).toBe(false);
+      if (!r9.ok) {
+        expect(r9.code).toBe("23503");
+        expect(r9.constraint).toBe("impairment_events_asset_company_fk");
+      }
+
+      // disposals.(asset_id, company_id): asset in A, disposal claims B
+      const r10 = await attempt(
+        `INSERT INTO disposals (company_id, asset_id, event_date, proceeds, method, gain_loss, surplus_transferred)
+         VALUES ($1, $2, '2026-01-15', '0', 'sale', '0', '0')`,
+        [cidB, faAId],
+      );
+      expect(r10.ok).toBe(false);
+      if (!r10.ok) {
+        expect(r10.code).toBe("23503");
+        expect(r10.constraint).toBe("disposals_asset_company_fk");
+      }
+
+      // ---- documents.(journal_entry_id, company_id) ---------------------
+      const jeA = await client.query(
+        `INSERT INTO journal_entries (company_id, reference, description)
+         VALUES ($1, $2, 'doc-fk') RETURNING id`,
+        [cidA, `DOC-${tag}`],
+      );
+      const jeAId: number = jeA.rows[0].id;
+      const r11 = await attempt(
+        `INSERT INTO documents (company_id, file_name, mime_type, size_bytes, storage_path,
+            status, journal_entry_id)
+         VALUES ($1, 'a.pdf', 'application/pdf', 100, '/p', 'posted', $2)`,
+        [cidB, jeAId],
+      );
+      expect(r11.ok).toBe(false);
+      if (!r11.ok) {
+        expect(r11.code).toBe("23503");
+        expect(r11.constraint).toBe("documents_journal_entry_company_fk");
+      }
+
+      // Positive controls: same-workspace writes still succeed -------------
+      const ok1 = await attempt(
+        `INSERT INTO attendance (company_id, employee_id, date, status) VALUES ($1, $2, '2026-01-16', 'present')`,
+        [cidA, empAId],
+      );
+      expect(ok1.ok).toBe(true);
+      const ok2 = await attempt(
+        `INSERT INTO payroll_lines (company_id, payroll_run_id, employee_id, base_salary, net_pay)
+         VALUES ($1, $2, $3, '1000', '900')`,
+        [cidA, runAId, empAId],
+      );
+      expect(ok2.ok).toBe(true);
+      const ok3 = await attempt(
+        `INSERT INTO impairment_events (company_id, asset_id, event_date, recoverable_amount, loss_amount)
+         VALUES ($1, $2, '2026-01-17', '500', '50')`,
+        [cidA, faAId],
+      );
+      expect(ok3.ok).toBe(true);
+    } finally {
+      await client.query("ROLLBACK").catch(() => undefined);
+      client.release();
+    }
+  });
 });
