@@ -25,4 +25,34 @@ export default defineConfig({
         stdout: "ignore",
         stderr: "pipe",
       },
+  projects: [
+    {
+      // Catch-all for any other e2e spec that isn't part of a more
+      // specialized project below (e.g. workspace-isolation,
+      // insert-schemas-strip-company-id). Without this, adding
+      // narrowly-scoped projects above would silently exclude these
+      // from the default `npx playwright test` run.
+      name: "default",
+      testMatch: /.*\.spec\.ts/,
+      testIgnore: [/mobile-overflow\.spec\.ts/, /dashboard-shell\.spec\.ts/],
+    },
+    {
+      name: "mobile-overflow",
+      testMatch: /mobile-overflow\.spec\.ts/,
+      use: { viewport: { width: 360, height: 720 } },
+    },
+    {
+      name: "dashboard-shell-setup",
+      testMatch: /dashboard-shell\.setup\.ts/,
+    },
+    {
+      name: "dashboard-shell",
+      testMatch: /dashboard-shell\.spec\.ts/,
+      dependencies: ["dashboard-shell-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+        storageState: ".playwright/dashboard-state.json",
+      },
+    },
+  ],
 });

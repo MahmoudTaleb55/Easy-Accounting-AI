@@ -1,0 +1,25 @@
+{
+  "cookies": [
+    {
+      "name": "wm_id",
+      "value": "1.8166808cba09fa6c4170f2adfd51dbd2",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "connect.sid",
+      "value": "s:yJK9P3R-TqaFwbaTiR2KyB-OnCUio5ov.d+GY4BS39NK2AWnYPUhaHemCnPDTQ4L5qxTdEM5SG14",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}
