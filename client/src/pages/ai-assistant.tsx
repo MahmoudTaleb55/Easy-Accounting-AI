@@ -14,6 +14,7 @@ import {
   FileText,
   CheckCircle2,
   BookOpen,
+  Wallet,
   ArrowRight,
   ArrowLeft,
   Mic,
@@ -541,6 +542,8 @@ type Artifact =
   | { kind: "transaction"; type: "income" | "expense"; amount: number; description: string; category: string }
   | { kind: "journal_entry"; id: number; description: string; totalDebit: number; totalCredit: number; lines: number }
   | { kind: "file"; fileId: string; filename: string; mime: string; sizeKB: number; report: string; format: string }
+  | { kind: "account"; id: number; code: string; name: string; type: string }
+  | { kind: string }
 
 function parseAssistantContent(content: string): { text: string; artifacts: Artifact[] } {
   if (!content) return { text: "", artifacts: [] }
@@ -614,25 +617,55 @@ function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean })
     )
   }
 
-  // journal_entry
-  return (
-    <div
-      data-testid={`card-je-${artifact.id}`}
-      className="border border-border bg-background p-3 rounded-md"
-    >
-      <div className="flex items-center gap-3">
-        <BookOpen className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.75} />
-        <div className="flex-1 min-w-0">
-          <div className="text-[13.5px] font-medium text-foreground truncate">
-            <span className="font-mono text-muted-foreground">#{artifact.id}</span>
-            <span className="mx-1.5 text-muted-foreground/50">·</span>
-            {artifact.description}
-          </div>
-          <div className="text-[11px] text-muted-foreground mt-0.5 tabular-nums font-mono">
-            {artifact.lines} {isAr ? "سطر" : "lines"} · {isAr ? "مدين" : "Dr"} {artifact.totalDebit.toLocaleString()} = {isAr ? "دائن" : "Cr"} {artifact.totalCredit.toLocaleString()}
+  if (artifact.kind === "account") {
+    const typeLabel = isAr
+      ? ({ asset: "أصول", liability: "التزامات", equity: "حقوق ملكية", revenue: "إيرادات", expense: "مصروفات" } as Record<string, string>)[artifact.type] ?? artifact.type
+      : artifact.type
+    return (
+      <div
+        data-testid={`card-account-${artifact.code}`}
+        className="border border-border bg-background p-3 rounded-md"
+      >
+        <div className="flex items-center gap-3">
+          <Wallet className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.75} />
+          <div className="flex-1 min-w-0">
+            <div className="text-[13.5px] font-medium text-foreground truncate">
+              <span className="font-mono text-muted-foreground">{artifact.code}</span>
+              <span className="mx-1.5 text-muted-foreground/50">·</span>
+              {artifact.name}
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              {isAr ? "تم إضافة الحساب إلى دليل الحسابات" : "Added to chart of accounts"} · {typeLabel}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
+
+  if (artifact.kind === "journal_entry") {
+    return (
+      <div
+        data-testid={`card-je-${artifact.id}`}
+        className="border border-border bg-background p-3 rounded-md"
+      >
+        <div className="flex items-center gap-3">
+          <BookOpen className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.75} />
+          <div className="flex-1 min-w-0">
+            <div className="text-[13.5px] font-medium text-foreground truncate">
+              <span className="font-mono text-muted-foreground">#{artifact.id}</span>
+              <span className="mx-1.5 text-muted-foreground/50">·</span>
+              {artifact.description}
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-0.5 tabular-nums font-mono">
+              {artifact.lines} {isAr ? "سطر" : "lines"} · {isAr ? "مدين" : "Dr"} {artifact.totalDebit.toLocaleString()} = {isAr ? "دائن" : "Cr"} {artifact.totalCredit.toLocaleString()}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Unknown artifact kind — render nothing rather than crashing.
+  return null
 }

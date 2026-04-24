@@ -80,6 +80,31 @@ export const ASSISTANT_TOOLS = [
   {
     type: "function" as const,
     function: {
+      name: "create_account",
+      description:
+        "Create a new GL account in the chart of accounts when a needed account doesn't exist. " +
+        "Always run list_accounts first; only create an account when no existing one fits semantically. " +
+        "Pick a `code` consistent with the existing numbering scheme of the parent (e.g. a new bank under " +
+        "parent 1120 'البنوك' should be 1122/1123/...; a new operating expense under 6000 should be in the " +
+        "6xxx range). If the chosen code already exists, the existing account is returned (idempotent — " +
+        "safe to re-call). Returns { id, code, name } you can immediately use as accountId in create_journal_entry.",
+      parameters: {
+        type: "object",
+        properties: {
+          code:    { type: "string", description: "Account code, e.g. '1122' or '6210'. Must fit the parent's numbering range." },
+          nameAr:  { type: "string", description: "Arabic name, e.g. 'بنك الأهلي'" },
+          nameEn:  { type: "string", description: "English name (optional, defaults to nameAr)" },
+          type:    { type: "string", enum: ["asset", "liability", "equity", "revenue", "expense"], description: "IFRS account type" },
+          subtype: { type: "string", description: "e.g. current_asset, non_current_asset, current_liability, non_current_liability, capital, retained_earnings, operating_revenue, other_income, cogs, operating_expense, contra_revenue, contra_asset. Defaults to a sensible value derived from `type` if omitted." },
+          parentCode: { type: "string", description: "Code of the parent (header) account, e.g. '1120' for a new bank, '6000' for a new opex. Optional but strongly recommended so the new account nests correctly in the tree." },
+        },
+        required: ["code", "nameAr", "type"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "get_financial_summary",
       description: "Return totals: cash balance, total income, total expenses, net (period-to-date).",
       parameters: { type: "object", properties: {} },
@@ -332,6 +357,7 @@ export type ToolArtifact =
   | { kind: "employee"; id: number; fullName: string; jobTitle: string; baseSalary: number }
   | { kind: "attendance"; id: number; employeeId: number; date: string; status: string }
   | { kind: "leave"; id: number; employeeId: number; startDate: string; endDate: string; days: number; type: string }
+  | { kind: "account"; id: number; code: string; name: string; type: string }
   | { kind: "deletion"; entity: string; id: number };
 
 export type ToolExecutionResult = {
@@ -367,6 +393,56 @@ const reportArgs = z.object({
   report: z.enum(["trial_balance", "profit_loss", "balance_sheet"]),
   format: z.enum(["excel", "pdf"]),
 });
+
+const accountTypeEnum = z.enum(["asset", "liability", "equity", "revenue", "expense"]);
+
+// Allow-list of subtypes per IFRS type. The Balance Sheet / P&L grouping
+// in routes.ts is subtype-driven, so a free-form string here would let the
+// assistant silently corrupt report sections. We restrict to the values
+// that the seeded COA uses so reports keep classifying correctly.
+const SUBTYPES_BY_TYPE: Record<z.infer<typeof accountTypeEnum>, readonly string[]> = {
+  asset:     ["current_asset", "non_current_asset", "contra_asset"],
+  liability: ["current_liability", "non_current_liability"],
+  equity:    ["capital", "retained_earnings", "drawings", "reserves"],
+  revenue:   ["operating_revenue", "other_income", "contra_revenue"],
+  expense:   ["cogs", "operating_expense", "other_expense"],
+};
+
+const createAccountArgs = z
+  .object({
+    // Codes are short alphanumeric strings ("1110", "6210", optionally with
+    // dashes for sub-ledgers). Trim whitespace because LLMs sometimes pad them.
+    code: z.string().trim().min(1).max(20),
+    nameAr: z.string().trim().min(1).max(200),
+    nameEn: z.string().trim().max(200).optional(),
+    type: accountTypeEnum,
+    subtype: z.string().trim().max(60).optional(),
+    parentCode: z.string().trim().min(1).max(20).optional(),
+    // `isHeader` is intentionally NOT exposed to the LLM. The seeded COA owns
+    // grouping rows; the assistant should only create postable leaves so it
+    // can't accidentally produce a "header" that callers then try to post to.
+  })
+  .superRefine((v, ctx) => {
+    if (v.subtype && !SUBTYPES_BY_TYPE[v.type].includes(v.subtype)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["subtype"],
+        message: `subtype "${v.subtype}" is not valid for type "${v.type}". Allowed: ${SUBTYPES_BY_TYPE[v.type].join(", ")}`,
+      });
+    }
+  });
+
+// Sensible default subtype per IFRS type so the LLM doesn't have to supply
+// `subtype` for every routine create. The LLM can always override.
+function defaultSubtypeForType(type: z.infer<typeof accountTypeEnum>): string {
+  switch (type) {
+    case "asset":     return "current_asset";
+    case "liability": return "current_liability";
+    case "equity":    return "capital";
+    case "revenue":   return "operating_revenue";
+    case "expense":   return "operating_expense";
+  }
+}
 
 function slugify(s: string): string {
   return (
@@ -413,6 +489,31 @@ export async function executeTool(
         if (Math.abs(totalDebit - totalCredit) > 0.005 || totalDebit <= 0) {
           return { toolName: name, modelResult: { ok: false, error: `Unbalanced: debit=${totalDebit} credit=${totalCredit}` }, error: "unbalanced" };
         }
+
+        // Reject posting to header/grouping rows or to accounts that don't
+        // belong to this workspace. Without this, an LLM could happily post
+        // to a "1100 — Current Assets" header or to an id leaked from a
+        // different tenant, both of which corrupt reports.
+        const wsAccounts = await storage.getAccounts(ctx.companyId);
+        const accountIndex = new Map(wsAccounts.map((x) => [x.id, x] as const));
+        for (const line of a.lines) {
+          const acc = accountIndex.get(line.accountId);
+          if (!acc) {
+            return {
+              toolName: name,
+              modelResult: { ok: false, error: `accountId ${line.accountId} is not in this workspace's chart of accounts. Use list_accounts (or create_account) to get a valid id.` },
+              error: "invalid_account",
+            };
+          }
+          if (acc.isHeader) {
+            return {
+              toolName: name,
+              modelResult: { ok: false, error: `Account ${acc.code} (${acc.nameAr}) is a grouping/header row and cannot receive postings. Use a leaf account or call create_account.` },
+              error: "header_account",
+            };
+          }
+        }
+
         const je = await storage.createJournalEntry(ctx.companyId, {
           description: a.description,
           source: "ai",
@@ -434,6 +535,104 @@ export async function executeTool(
             .filter((x) => !x.isHeader)
             .map((x) => ({ id: x.id, code: x.code, name: x.nameAr, type: x.type })),
         };
+      }
+
+      case "create_account": {
+        const a = createAccountArgs.parse(rawArgs);
+
+        // Fast path: pre-check for an existing row with the same code. This
+        // covers the common "LLM re-tries the same call" case without paying
+        // for an INSERT round-trip.
+        const existing = await storage.getAccountByCode(ctx.companyId, a.code);
+        if (existing) {
+          return {
+            toolName: name,
+            modelResult: {
+              ok: true,
+              created: false,
+              id: existing.id,
+              code: existing.code,
+              name: existing.nameAr,
+              type: existing.type,
+              message: `Account ${a.code} (${existing.nameAr}) already exists — returning existing id.`,
+            },
+          };
+        }
+
+        // Resolve parent by code (workspace-scoped) so the LLM doesn't have
+        // to guess parent ids — and so the parent FK can never cross
+        // workspace boundaries.
+        let parentId: number | undefined;
+        if (a.parentCode) {
+          const parent = await storage.getAccountByCode(ctx.companyId, a.parentCode);
+          if (!parent) {
+            return {
+              toolName: name,
+              modelResult: {
+                ok: false,
+                error: `Parent account code "${a.parentCode}" not found in this workspace. Run list_accounts to see available codes.`,
+              },
+              error: "parent_not_found",
+            };
+          }
+          parentId = parent.id;
+        }
+
+        // Atomic idempotency: catch the (company_id, code) UNIQUE violation
+        // raised by the DB if a concurrent caller inserted the same code
+        // between our pre-check and our INSERT, and return that row instead
+        // of bubbling up a 500 to the LLM.
+        try {
+          const created = await storage.createAccount(
+            ctx.companyId,
+            {
+              code: a.code,
+              nameAr: a.nameAr,
+              nameEn: a.nameEn ?? a.nameAr,
+              type: a.type,
+              subtype: a.subtype ?? defaultSubtypeForType(a.type),
+              parentId: parentId ?? null,
+              isHeader: false,
+              isActive: true,
+            } as any,
+            aiAudit
+          );
+          return {
+            toolName: name,
+            modelResult: {
+              ok: true,
+              created: true,
+              id: created.id,
+              code: created.code,
+              name: created.nameAr,
+              type: created.type,
+            },
+            artifact: { kind: "account", id: created.id, code: created.code, name: created.nameAr, type: created.type },
+          };
+        } catch (err: any) {
+          const isUniqueViolation =
+            err?.code === "23505" ||
+            /accounts_code_company_uq/i.test(err?.message ?? "") ||
+            /duplicate key/i.test(err?.message ?? "");
+          if (isUniqueViolation) {
+            const raced = await storage.getAccountByCode(ctx.companyId, a.code);
+            if (raced) {
+              return {
+                toolName: name,
+                modelResult: {
+                  ok: true,
+                  created: false,
+                  id: raced.id,
+                  code: raced.code,
+                  name: raced.nameAr,
+                  type: raced.type,
+                  message: `Account ${a.code} already exists — returning existing id.`,
+                },
+              };
+            }
+          }
+          throw err;
+        }
       }
 
       case "get_financial_summary": {

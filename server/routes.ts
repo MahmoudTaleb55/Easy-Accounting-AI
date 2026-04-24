@@ -929,6 +929,7 @@ Your job is to EXECUTE — not just answer. You have real tools that write to th
 • add_quick_transaction — record a single income or expense from one sentence.
 • create_journal_entry — full double-entry journal (requires accountId from list_accounts).
 • list_accounts — fetch the chart of accounts before any journal entry.
+• create_account — add a new GL account when none of the existing ones fits. Pick a code that nests under the right parent (e.g. a new bank under 1120, a new opex under 6000) and pass parentCode. Idempotent on code collision.
 • list_transactions — search/filter recent transactions.
 • delete_transaction — remove a transaction (confirm first unless the user is explicit).
 • get_financial_summary — totals: balance, income, expenses, net.
