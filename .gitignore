@@ -7,3 +7,7 @@ vite.config.ts.*
 test-results
 playwright-report
 .cache/ms-playwright
+# Playwright local artifacts
+.playwright/
+test-results/
+
