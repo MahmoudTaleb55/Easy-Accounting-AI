@@ -657,7 +657,25 @@ export function registerLocalAuthRoutes(app: Express) {
             .join(","),
         );
       }
-      const stamp = new Date().toISOString().slice(0, 10);
+      // Reflect the chosen window in the filename so reviewers can save
+      // multiple pulls side-by-side without overwriting each other. Only
+      // accept strict YYYY-MM-DD; anything else (ISO timestamps, bad
+      // input) falls back to a today-stamped name and avoids smuggling
+      // characters into the Content-Disposition header.
+      const isoDate = (v: string | null) =>
+        typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+      const fromStamp = isoDate(from);
+      const toStamp = isoDate(to);
+      let stamp: string;
+      if (fromStamp && toStamp) {
+        stamp = `${fromStamp}_to_${toStamp}`;
+      } else if (fromStamp) {
+        stamp = `from_${fromStamp}`;
+      } else if (toStamp) {
+        stamp = `to_${toStamp}`;
+      } else {
+        stamp = new Date().toISOString().slice(0, 10);
+      }
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader(
         "Content-Disposition",
