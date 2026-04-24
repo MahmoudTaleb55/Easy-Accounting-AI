@@ -152,6 +152,9 @@ export async function registerRoutes(
 
   app.post(api.transactions.create.path, async (req, res) => {
     try {
+      // `insertTransactionSchema` carries no foreign-key id fields (it omits
+      // companyId and date) — the only inputs are type/amount/description/
+      // category, so there is nothing to cross-tenant validate here.
       const input = api.transactions.create.input.parse(req.body);
       const transaction = await storage.createTransaction(cid(req), input, userCtx(req));
       res.status(201).json(transaction);
@@ -292,6 +295,14 @@ export async function registerRoutes(
   app.post(api.accounts.create.path, async (req, res) => {
     try {
       const input = api.accounts.create.input.parse(req.body);
+      // `parentId` is the only foreign-key id the client can supply. Verify it
+      // points at an account in THIS workspace so the books can't be re-parented
+      // under a header from a sibling tenant.
+      if (input.parentId != null) {
+        if (!(await assertAllOwnedByCompany(accountsTable, cid(req), [input.parentId]))) {
+          return res.status(400).json({ message: "حساب أب غير صالح", field: "parentId" });
+        }
+      }
       const created = await storage.createAccount(cid(req), input, userCtx(req));
       res.status(201).json(created);
     } catch (err) {
@@ -567,6 +578,8 @@ export async function registerRoutes(
   app.post("/api/hr/attendance", async (req, res) => {
     try {
       const input = insertAttendanceSchema.parse(req.body);
+      // The body's `employeeId` is the only foreign-key id; verify it points
+      // at an employee in the active workspace.
       if (!(await assertAllOwnedByCompany(employeesTable, cid(req), [input.employeeId]))) {
         return res.status(400).json({ message: "الموظف غير صالح" });
       }
@@ -584,6 +597,8 @@ export async function registerRoutes(
   app.post("/api/hr/leaves", async (req, res) => {
     try {
       const input = insertLeaveSchema.parse(req.body);
+      // The body's `employeeId` is the only foreign-key id; verify it points
+      // at an employee in the active workspace.
       if (!(await assertAllOwnedByCompany(employeesTable, cid(req), [input.employeeId]))) {
         return res.status(400).json({ message: "الموظف غير صالح" });
       }
@@ -737,6 +752,9 @@ export async function registerRoutes(
         year: z.coerce.number().int().min(2000).max(2100),
         month: z.coerce.number().int().min(1).max(12),
       }).parse(req.body);
+      // `accountId` from the body is verified against the active workspace's
+      // chart of accounts (and rejected if it points at a header row), so the
+      // budget can never be attached to a foreign-tenant account.
       const acc = await storage.getAccounts(cid(req));
       if (!acc.find((a) => a.id === input.accountId && !a.isHeader)) {
         return res.status(400).json({ message: "حساب غير صالح" });
@@ -1549,7 +1567,9 @@ async function registerFixedAssetRoutes(app: Express) {
       const body = insertFixedAssetSchema.extend({
         components: componentsSchema,
       }).parse(req.body);
-      // Validate references against THIS workspace's catalog.
+      // `categoryId` is the only foreign-key id the client supplies (component
+      // rows have `assetId` stripped by the schema and are stamped server-side
+      // below). Verify the category against THIS workspace's catalog.
       const cat = (await storage.getAssetCategories(companyId)).find((c) => c.id === body.categoryId);
       if (!cat) return res.status(400).json({ message: "تصنيف الأصل غير صالح" });
       const cost = Number(body.txCost) * Number(body.fxRate ?? 1);
@@ -1612,6 +1632,13 @@ async function registerFixedAssetRoutes(app: Express) {
     })).optional().default([]),
   });
 
+  // The `usage[]` body of /api/depreciation-runs/{preview,post} carries
+  // `assetId` and `componentId` from the client. We do NOT trust them as
+  // a way to pull data — both handlers iterate over `getFixedAssets(cid)`
+  // and `getAssetComponents(asset.id)` (workspace-scoped) and only consult
+  // this map keyed by those server-derived ids. A foreign id from the body
+  // simply never matches a key the loop ever queries, so it can't bleed
+  // depreciation across tenants.
   function usageLookup(usage: Array<{ assetId: number; componentId?: number | null; units: number }>): (assetId: number, componentId?: number | null) => number {
     const map = new Map<string, number>();
     usage.forEach((u) => map.set(`${u.assetId}:${u.componentId ?? ""}`, u.units));
