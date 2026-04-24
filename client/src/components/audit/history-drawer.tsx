@@ -322,6 +322,9 @@ export function HistoryTimeline({
               const meta = SOURCE_META[ev.source];
               const Icon = meta.icon;
               const isLast = i === filteredEvents.length - 1;
+              const isAi = ev.source === "ai";
+              const isAiFallback = isAi && (!ev.actor || ev.actor === "AI assistant");
+              const isAiViaHuman = isAi && !!ev.actor && ev.actor !== "AI assistant";
               return (
                 <li
                   key={ev.id}
@@ -346,12 +349,26 @@ export function HistoryTimeline({
                     </span>
                   </div>
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-                    <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 font-normal">
-                      {locale === "ar" ? meta.ar : meta.en}
-                    </Badge>
-                    <span className="truncate" data-testid="text-history-actor">
-                      {ev.actor || labels.actorUnavailable}
-                    </span>
+                    {!isAiViaHuman && (
+                      <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 font-normal">
+                        {locale === "ar" ? meta.ar : meta.en}
+                      </Badge>
+                    )}
+                    {!isAiFallback && (
+                      <span className="truncate" data-testid="text-history-actor">
+                        {isAiViaHuman ? (
+                          <>
+                            {ev.actor}
+                            <span className="text-muted-foreground/80">
+                              {" "}
+                              {locale === "ar" ? "عبر AI" : "via AI"}
+                            </span>
+                          </>
+                        ) : (
+                          ev.actor || labels.actorUnavailable
+                        )}
+                      </span>
+                    )}
                   </div>
                   {ev.changes && ev.changes.length > 0 && (
                     <ul className="mt-2 space-y-1 border-s border-border ps-3 text-xs">
