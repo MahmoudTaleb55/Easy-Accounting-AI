@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import {
   Plus, Bell, Sun, Moon, Globe, ChevronDown, Bot, Building2, Check,
-  Calendar,
+  Calendar, LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +15,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useT } from "@/i18n/dict";
 import { useLocale } from "@/contexts/locale-context";
 import { useTheme } from "@/contexts/theme-context";
@@ -48,8 +48,24 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
   const { theme, setTheme } = useTheme();
   const { companies, activeCompanyId, activeCompany, setActiveCompanyId } = useCompany();
   const { period, setPeriodKey, compareToPrevious, setCompareToPrevious } = usePeriod();
-  const { role } = useAuth();
+  const { role, user, signOut, isSigningOut } = useAuth();
   const [, setLocation] = useLocation();
+
+  // Build a friendly display name and 1–2 letter monogram for the avatar.
+  // Falls back through full name → first name → email local part → "U" so the
+  // menu always shows *something* identifying the signed-in account.
+  const displayName =
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+    user?.firstName ||
+    user?.email ||
+    "";
+  const initialsSource = displayName || user?.email || "U";
+  const initials = initialsSource
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]!.toUpperCase())
+    .join("") || "U";
 
   // Persist the chosen UI language to the user's profile so it survives across
   // devices and so the assistant always sees the latest preference. We never
@@ -243,10 +259,17 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
           <button
             className="h-9 inline-flex items-center gap-1.5 rounded-md px-1.5 hover-elevate"
             data-testid="button-profile"
+            aria-label={displayName || t("profile")}
           >
             <Avatar className="h-7 w-7">
-              <AvatarFallback className="text-caption bg-primary/10 text-primary font-medium">
-                {(activeCompany?.name || "U").slice(0, 2).toUpperCase()}
+              {user?.profileImageUrl && (
+                <AvatarImage src={user.profileImageUrl} alt={displayName || ""} />
+              )}
+              <AvatarFallback
+                className="text-caption bg-primary/10 text-primary font-medium"
+                data-testid="avatar-fallback-user"
+              >
+                {initials}
               </AvatarFallback>
             </Avatar>
             {roleChipLabel && (
@@ -260,18 +283,50 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
             <ChevronDown className="size-3.5 opacity-60" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56 shadow-md motion-enter">
-          <DropdownMenuLabel className="flex items-center justify-between gap-2 eyebrow text-muted-foreground/80">
-            <span>{t("profile")}</span>
-            {roleChipLabel && (
-              <span
-                data-testid={`badge-role-menu-${role}`}
-                className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-caption font-medium normal-case tracking-normal text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-100"
-              >
-                {roleChipLabel}
-              </span>
-            )}
-          </DropdownMenuLabel>
+        <DropdownMenuContent align="end" className="w-64 shadow-md motion-enter">
+          {user ? (
+            <DropdownMenuLabel className="flex items-start gap-2 py-2 font-normal">
+              <Avatar className="h-9 w-9 mt-0.5">
+                {user.profileImageUrl && (
+                  <AvatarImage src={user.profileImageUrl} alt={displayName || ""} />
+                )}
+                <AvatarFallback className="text-caption bg-primary/10 text-primary font-medium">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="eyebrow text-muted-foreground/80">{t("signed_in_as")}</span>
+                {displayName && (
+                  <span
+                    className="text-small font-medium text-foreground truncate"
+                    data-testid="text-user-name"
+                  >
+                    {displayName}
+                  </span>
+                )}
+                {user.email && (
+                  <span
+                    className="text-caption text-muted-foreground truncate"
+                    data-testid="text-user-email"
+                  >
+                    {user.email}
+                  </span>
+                )}
+                {roleChipLabel && (
+                  <span
+                    data-testid={`badge-role-menu-${role}`}
+                    className="mt-1 self-start inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-caption font-medium normal-case tracking-normal text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-100"
+                  >
+                    {roleChipLabel}
+                  </span>
+                )}
+              </div>
+            </DropdownMenuLabel>
+          ) : (
+            <DropdownMenuLabel className="flex items-center justify-between gap-2 eyebrow text-muted-foreground/80">
+              <span>{t("profile")}</span>
+            </DropdownMenuLabel>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setLocation("/app/ai-assistant")} data-testid="menu-ai">
             <Bot className="size-3.5 me-2 opacity-70" /> <span className="text-small">{t("nav_ai")}</span>
@@ -336,6 +391,28 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
               ⌘.
             </span>
           </DropdownMenuItem>
+
+          {user && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  // Keep the menu mounted long enough for the mutation to fire;
+                  // the signOut hook will hard-redirect to /signin on success.
+                  e.preventDefault();
+                  if (!isSigningOut) signOut();
+                }}
+                disabled={isSigningOut}
+                data-testid="menu-signout"
+                className="text-destructive focus:text-destructive"
+              >
+                <LogOut className="size-3.5 me-2 opacity-70" />
+                <span className="text-small">
+                  {isSigningOut ? t("signing_out") : t("sign_out")}
+                </span>
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

@@ -116,6 +116,11 @@ export const STRINGS = {
 
   // Role chip on profile menu
   role_chip_viewer: { ar: "عارض", en: "Viewer" },
+
+  // User menu — identity & sign out
+  signed_in_as:        { ar: "مسجَّل الدخول باسم", en: "Signed in as" },
+  sign_out:            { ar: "تسجيل الخروج", en: "Sign out" },
+  signing_out:         { ar: "جارٍ تسجيل الخروج…", en: "Signing out…" },
 } as const satisfies Dict;
 
 export type StringKey = keyof typeof STRINGS;
