@@ -41,6 +41,7 @@ export default defineConfig({
         /role-based-buttons\.spec\.ts/,
         /role-based-api\.spec\.ts/,
         /quick-actions\.spec\.ts/,
+        /email-delivery-alerts\.spec\.ts/,
       ],
     },
     {
@@ -113,6 +114,30 @@ export default defineConfig({
       name: "role-based-api",
       testMatch: /role-based-api\.spec\.ts/,
       dependencies: ["role-based-buttons-setup"],
+    },
+    {
+      // One-time setup that provisions a *dedicated* workspace + a
+      // dedicated owner/accountant/viewer trio for the delivery-alert
+      // spec. Using a workspace no other spec touches is what keeps the
+      // evaluator's exact-count assertions deterministic when Playwright
+      // runs spec projects in parallel — the shared workspace from
+      // role-based-buttons-setup accrues invitation events from
+      // role-based-api that would otherwise leak into the failure window.
+      // It also keeps each role pinned to a single membership so the
+      // banner's browser-side dismiss call (which can't easily set
+      // x-company-id) always lands on the correct workspace.
+      name: "email-delivery-alerts-setup",
+      testMatch: /email-delivery-alerts\.setup\.ts/,
+    },
+    {
+      // Evaluator + routes + banner coverage for the delivery-alert
+      // pipeline (see `email-delivery-alerts.spec.ts`).
+      name: "email-delivery-alerts",
+      testMatch: /email-delivery-alerts\.spec\.ts/,
+      dependencies: ["email-delivery-alerts-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+      },
     },
   ],
 });
