@@ -117,6 +117,7 @@ export default function SettingsPage() {
   const { data: settings } = useQuery<OrgSettings>({ queryKey: ["/api/settings"] });
   const { data: packs } = useQuery<LocalizationPack[]>({ queryKey: ["/api/localization/packs"] });
   const { activeCompany } = useCompany();
+  const { setLocale } = useLocale();
 
   const form = useForm<FormVals>({
     resolver: zodResolver(formSchema),
@@ -152,7 +153,8 @@ export default function SettingsPage() {
   const mutation = useMutation({
     mutationFn: async (vals: FormVals) =>
       await apiRequest("PATCH", "/api/settings", { ...vals, vatRate: vals.vatRate / 100 }),
-    onSuccess: () => {
+    onSuccess: (_data, vals) => {
+      setLocale(vals.locale);
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
       // The currency is also stored on the active company record (used by Fixed
       // Assets, the workspace switcher, and the command palette), so refetch

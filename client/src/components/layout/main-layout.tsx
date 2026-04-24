@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar, MobileHeader } from "./app-sidebar";
 import { CompanyProvider } from "@/contexts/company-context";
-import { useLocale } from "@/contexts/locale-context";
+import { useLocale, type Locale } from "@/contexts/locale-context";
 import { PeriodProvider } from "@/contexts/period-context";
 import { TopBar } from "./topbar";
 import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
@@ -10,6 +11,20 @@ import { AiRail } from "./ai-rail";
 import { ReadOnlyBanner } from "./readonly-banner";
 import { EmailDeliveryAlertBanner } from "./email-delivery-alert-banner";
 import { useLocation } from "wouter";
+
+const SUPPORTED_LOCALES: Locale[] = ["ar", "en", "de", "fr"];
+
+function LocaleSync() {
+  const { locale, setLocale } = useLocale();
+  const { data } = useQuery<{ locale?: string }>({ queryKey: ["/api/settings"] });
+  useEffect(() => {
+    const remote = data?.locale;
+    if (remote && SUPPORTED_LOCALES.includes(remote as Locale) && remote !== locale) {
+      setLocale(remote as Locale);
+    }
+  }, [data?.locale, locale, setLocale]);
+  return null;
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { dir } = useLocale();
@@ -23,6 +38,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen w-full bg-background font-sans text-foreground" dir={dir}>
+      <LocaleSync />
       <AppSidebar />
       <div className="flex flex-col flex-1 w-full min-w-0 relative">
         <MobileHeader />
