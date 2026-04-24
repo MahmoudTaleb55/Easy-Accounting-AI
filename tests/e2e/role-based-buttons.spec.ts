@@ -105,6 +105,21 @@ async function expectUnguarded(page: Page, buttonTestId: string) {
   ).toBe(false);
 }
 
+/**
+ * Wait for at least one row matching `<rowTestIdPrefix><id>` to render.
+ * Per-row write/owner buttons (delete-leave-{id}, delete-{assetId}, …) only
+ * exist once their parent row is hydrated by react-query, so resolving the
+ * row first keeps the button assertions deterministic.
+ */
+async function expectAnyRow(page: Page, rowTestIdPrefix: string) {
+  const row = page.locator(`[data-testid^="${rowTestIdPrefix}"]`).first();
+  await expect(
+    row,
+    `expected at least one row matching ${rowTestIdPrefix}* to render`,
+  ).toBeVisible();
+  return row;
+}
+
 test.describe("role-based button gating @rbac", () => {
   // ----------------------------------------------------------------------
   // OWNER — every gated button must be present and untouched by either
@@ -113,27 +128,88 @@ test.describe("role-based button gating @rbac", () => {
   test.describe("owner sees every gated button enabled", () => {
     test.use({ storageState: ROLE_FILES.owner });
 
-    test("transactions: 'Add transaction' is enabled", async ({ page }) => {
+    test("transactions: 'Add transaction' + per-row delete are enabled", async ({ page }) => {
       await gotoApp(page, "/app/transactions");
       await expectUnguarded(page, "button-add-transaction");
       await expect(
         page.locator('[data-testid="button-add-transaction"]').first(),
       ).toBeEnabled();
+
+      // The per-tx delete button only renders after the seeded transaction
+      // row is hydrated. For owners the canWrite branch swaps the WriteGuard
+      // wrapper for an AlertDialogTrigger, so the button must NOT be wrapped
+      // in a guard span — `expectUnguarded` enforces that contract.
+      const txDelete = page.locator('[data-testid^="button-delete-"]').first();
+      await expect(txDelete).toBeVisible();
+      const txButtonId = await txDelete.getAttribute("data-testid");
+      await expectUnguarded(page, txButtonId!);
+      await expect(txDelete).toBeEnabled();
     });
 
-    test("journal: 'New entry' is enabled", async ({ page }) => {
+    test("journal: 'New entry' + per-row manual delete are enabled", async ({ page }) => {
       await gotoApp(page, "/app/journal");
       await expectUnguarded(page, "button-new-entry");
       await expect(page.locator('[data-testid="button-new-entry"]').first()).toBeEnabled();
+
+      // Only manual entries render `button-delete-entry-{id}` — the
+      // setup seeds exactly one such entry inside the current period.
+      const jeDelete = page.locator('[data-testid^="button-delete-entry-"]').first();
+      await expect(jeDelete).toBeVisible();
+      const jeButtonId = await jeDelete.getAttribute("data-testid");
+      await expectUnguarded(page, jeButtonId!);
+      await expect(jeDelete).toBeEnabled();
     });
 
-    test("hr: 'Run payroll' is enabled (employee seeded)", async ({ page }) => {
+    test("hr employees: add + per-row delete are enabled", async ({ page }) => {
+      await gotoApp(page, "/app/hr");
+      await page.locator('[data-testid="tab-employees"]').click();
+      await expectUnguarded(page, "button-add-employee");
+      await expect(
+        page.locator('[data-testid="button-add-employee"]').first(),
+      ).toBeEnabled();
+
+      await expectAnyRow(page, "row-employee-");
+      const empDelete = page.locator('[data-testid^="button-delete-employee-"]').first();
+      const empButtonId = await empDelete.getAttribute("data-testid");
+      await expectUnguarded(page, empButtonId!);
+      await expect(empDelete).toBeEnabled();
+    });
+
+    test("hr attendance: 'Save attendance' is unwrapped (forceDisabled allowed)", async ({ page }) => {
+      // The save button is `forceDisabled` until an employee is picked. For
+      // allowed roles WriteGuard renders the child unwrapped with the
+      // disabled prop forwarded through, so we only assert the absence of
+      // the role-guard wrapper here — it's expected to remain disabled.
+      await gotoApp(page, "/app/hr");
+      await page.locator('[data-testid="tab-attendance"]').click();
+      await expectUnguarded(page, "button-save-attendance");
+    });
+
+    test("hr leaves: save + per-row delete are enabled / unwrapped", async ({ page }) => {
+      await gotoApp(page, "/app/hr");
+      await page.locator('[data-testid="tab-leaves"]').click();
+      await expectUnguarded(page, "button-save-leave");
+
+      await expectAnyRow(page, "row-leave-");
+      const leaveDelete = page.locator('[data-testid^="button-delete-leave-"]').first();
+      const leaveButtonId = await leaveDelete.getAttribute("data-testid");
+      await expectUnguarded(page, leaveButtonId!);
+      await expect(leaveDelete).toBeEnabled();
+    });
+
+    test("hr payroll: 'Run payroll' + per-row delete are enabled", async ({ page }) => {
       await gotoApp(page, "/app/hr");
       await page.locator('[data-testid="tab-payroll"]').click();
-      const button = page.locator('[data-testid="button-run-payroll"]').first();
-      await expect(button).toBeVisible();
+      const runBtn = page.locator('[data-testid="button-run-payroll"]').first();
+      await expect(runBtn).toBeVisible();
       await expectUnguarded(page, "button-run-payroll");
-      await expect(button).toBeEnabled();
+      await expect(runBtn).toBeEnabled();
+
+      await expectAnyRow(page, "row-payroll-run-");
+      const runDelete = page.locator('[data-testid^="button-delete-payroll-run-"]').first();
+      const runDeleteId = await runDelete.getAttribute("data-testid");
+      await expectUnguarded(page, runDeleteId!);
+      await expect(runDelete).toBeEnabled();
     });
 
     test("settings: save, add company, add fx, delete fx are all enabled", async ({ page }) => {
@@ -193,6 +269,57 @@ test.describe("role-based button gating @rbac", () => {
       await expect(fxDelete).toBeVisible();
       await expect(fxDelete).toBeEnabled();
     });
+
+    test("fixed-assets register/categories/depreciation: gated buttons enabled", async ({ page }) => {
+      await gotoApp(page, "/app/fixed-assets");
+
+      // Register tab is the default landing tab. Add-asset is `forceDisabled`
+      // when no categories exist; the seed creates one so it must be live.
+      await page.locator('[data-testid="tab-register"]').click();
+      await expectUnguarded(page, "button-add-asset");
+      await expect(page.locator('[data-testid="button-add-asset"]').first()).toBeEnabled();
+
+      // Per-row impairment/revaluation/dispose/delete are `forceDisabled`
+      // when status !== 'active'. The seed asset is active, so all four
+      // must render unwrapped and enabled for owners.
+      await expectAnyRow(page, "row-asset-");
+      const assetRow = page.locator('[data-testid^="row-asset-"]').first();
+      const assetId = (await assetRow.getAttribute("data-testid"))!.replace("row-asset-", "");
+      for (const action of ["impairment", "revaluation", "dispose", "delete"]) {
+        const btnId = `button-${action}-${assetId}`;
+        await expectUnguarded(page, btnId);
+        await expect(page.locator(`[data-testid="${btnId}"]`).first()).toBeEnabled();
+      }
+
+      // Categories tab → add-category is plain WriteGuard (no forceDisabled).
+      await page.locator('[data-testid="tab-categories"]').click();
+      await expectUnguarded(page, "button-add-category");
+      await expect(page.locator('[data-testid="button-add-category"]').first()).toBeEnabled();
+
+      // Depreciation tab → post-dep is `forceDisabled` until the user
+      // previews. For owners the WriteGuard wrapper must still be absent
+      // even though the inner Button is disabled — `expectUnguarded` is
+      // the right contract here.
+      await page.locator('[data-testid="tab-depreciation"]').click();
+      await expectUnguarded(page, "button-post-dep");
+    });
+
+    test("settings members: invite + per-row remove are enabled", async ({ page }) => {
+      await gotoApp(page, "/app/settings/members");
+
+      // Owners pass the isAdmin hard guard so the full management UI renders.
+      await expect(page.locator('[data-testid="members-forbidden"]')).toHaveCount(0);
+      await expectUnguarded(page, "button-send-invite");
+      await expect(page.locator('[data-testid="button-send-invite"]').first()).toBeEnabled();
+
+      // The owner themselves shows up in the members list with a remove
+      // button. We don't click it (it would log us out of the workspace),
+      // we just verify it's wired up without a guard wrapper.
+      const removeBtn = page.locator('[data-testid^="button-remove-"]').first();
+      await expect(removeBtn).toBeVisible();
+      const removeId = await removeBtn.getAttribute("data-testid");
+      await expectUnguarded(page, removeId!);
+    });
   });
 
   // ----------------------------------------------------------------------
@@ -204,27 +331,114 @@ test.describe("role-based button gating @rbac", () => {
   test.describe("accountant can write but cannot manage workspace", () => {
     test.use({ storageState: ROLE_FILES.accountant });
 
-    test("transactions: 'Add transaction' stays enabled", async ({ page }) => {
+    test("transactions: header + per-row delete stay enabled", async ({ page }) => {
       await gotoApp(page, "/app/transactions");
       await expectUnguarded(page, "button-add-transaction");
       await expect(
         page.locator('[data-testid="button-add-transaction"]').first(),
       ).toBeEnabled();
+
+      const txDelete = page.locator('[data-testid^="button-delete-"]').first();
+      await expect(txDelete).toBeVisible();
+      const txButtonId = await txDelete.getAttribute("data-testid");
+      await expectUnguarded(page, txButtonId!);
+      await expect(txDelete).toBeEnabled();
     });
 
-    test("journal: 'New entry' stays enabled", async ({ page }) => {
+    test("journal: header + per-row manual delete stay enabled", async ({ page }) => {
       await gotoApp(page, "/app/journal");
       await expectUnguarded(page, "button-new-entry");
       await expect(page.locator('[data-testid="button-new-entry"]').first()).toBeEnabled();
+
+      const jeDelete = page.locator('[data-testid^="button-delete-entry-"]').first();
+      await expect(jeDelete).toBeVisible();
+      const jeButtonId = await jeDelete.getAttribute("data-testid");
+      await expectUnguarded(page, jeButtonId!);
+      await expect(jeDelete).toBeEnabled();
     });
 
-    test("hr: 'Run payroll' stays enabled", async ({ page }) => {
+    test("hr employees: add + per-row delete stay enabled", async ({ page }) => {
+      await gotoApp(page, "/app/hr");
+      await page.locator('[data-testid="tab-employees"]').click();
+      await expectUnguarded(page, "button-add-employee");
+      await expect(
+        page.locator('[data-testid="button-add-employee"]').first(),
+      ).toBeEnabled();
+
+      await expectAnyRow(page, "row-employee-");
+      const empDelete = page.locator('[data-testid^="button-delete-employee-"]').first();
+      const empButtonId = await empDelete.getAttribute("data-testid");
+      await expectUnguarded(page, empButtonId!);
+      await expect(empDelete).toBeEnabled();
+    });
+
+    test("hr attendance + leaves: save buttons unwrapped, leave delete enabled", async ({ page }) => {
+      await gotoApp(page, "/app/hr");
+      await page.locator('[data-testid="tab-attendance"]').click();
+      // forceDisabled stays in effect, but the WriteGuard wrapper must
+      // not be present for accountants either.
+      await expectUnguarded(page, "button-save-attendance");
+
+      await page.locator('[data-testid="tab-leaves"]').click();
+      await expectUnguarded(page, "button-save-leave");
+      await expectAnyRow(page, "row-leave-");
+      const leaveDelete = page.locator('[data-testid^="button-delete-leave-"]').first();
+      const leaveDeleteId = await leaveDelete.getAttribute("data-testid");
+      await expectUnguarded(page, leaveDeleteId!);
+      await expect(leaveDelete).toBeEnabled();
+    });
+
+    test("hr payroll: 'Run payroll' + per-row delete stay enabled", async ({ page }) => {
       await gotoApp(page, "/app/hr");
       await page.locator('[data-testid="tab-payroll"]').click();
       const button = page.locator('[data-testid="button-run-payroll"]').first();
       await expect(button).toBeVisible();
       await expectUnguarded(page, "button-run-payroll");
       await expect(button).toBeEnabled();
+
+      await expectAnyRow(page, "row-payroll-run-");
+      const runDelete = page.locator('[data-testid^="button-delete-payroll-run-"]').first();
+      const runDeleteId = await runDelete.getAttribute("data-testid");
+      await expectUnguarded(page, runDeleteId!);
+      await expect(runDelete).toBeEnabled();
+    });
+
+    test("fixed-assets register/categories/depreciation: gated buttons stay enabled", async ({ page }) => {
+      // Accountants pass WriteGuard but fail the OwnerOnly check on the
+      // companies/fx tabs. The register/categories/depreciation tabs are
+      // pure write surfaces, so accountants must see the same enabled
+      // state as the owner here.
+      await gotoApp(page, "/app/fixed-assets");
+
+      await page.locator('[data-testid="tab-register"]').click();
+      await expectUnguarded(page, "button-add-asset");
+      await expect(page.locator('[data-testid="button-add-asset"]').first()).toBeEnabled();
+
+      await expectAnyRow(page, "row-asset-");
+      const assetRow = page.locator('[data-testid^="row-asset-"]').first();
+      const assetId = (await assetRow.getAttribute("data-testid"))!.replace("row-asset-", "");
+      for (const action of ["impairment", "revaluation", "dispose", "delete"]) {
+        const btnId = `button-${action}-${assetId}`;
+        await expectUnguarded(page, btnId);
+        await expect(page.locator(`[data-testid="${btnId}"]`).first()).toBeEnabled();
+      }
+
+      await page.locator('[data-testid="tab-categories"]').click();
+      await expectUnguarded(page, "button-add-category");
+      await expect(page.locator('[data-testid="button-add-category"]').first()).toBeEnabled();
+
+      await page.locator('[data-testid="tab-depreciation"]').click();
+      await expectUnguarded(page, "button-post-dep");
+    });
+
+    test("settings members: page is forbidden for accountants", async ({ page }) => {
+      // Members management is hard-gated on isAdmin, so non-owners get the
+      // forbidden notice instead of the (otherwise WriteGuard-protected)
+      // invite + remove buttons.
+      await gotoApp(page, "/app/settings/members");
+      await expect(page.locator('[data-testid="members-forbidden"]')).toBeVisible();
+      await expect(page.locator('[data-testid="button-send-invite"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-remove-"]')).toHaveCount(0);
     });
 
     test("settings: save is owner-guarded; companies + fx panels are hidden", async ({ page }) => {
@@ -276,7 +490,7 @@ test.describe("role-based button gating @rbac", () => {
   test.describe("viewer is locked out of every write button", () => {
     test.use({ storageState: ROLE_FILES.viewer });
 
-    test("transactions: 'Add transaction' is read-only guarded", async ({ page }) => {
+    test("transactions: header + per-row delete are read-only guarded", async ({ page }) => {
       await gotoApp(page, "/app/transactions");
       await expectGuarded(
         page,
@@ -284,14 +498,68 @@ test.describe("role-based button gating @rbac", () => {
         "write-guard-disabled",
         READ_ONLY_TOOLTIP,
       );
+
+      // Viewers go through the non-canWrite branch which renders the
+      // WriteGuard wrapper directly — exactly what `expectGuarded` checks.
+      const txDelete = page.locator('[data-testid^="button-delete-"]').first();
+      await expect(txDelete).toBeVisible();
+      const txButtonId = await txDelete.getAttribute("data-testid");
+      await expectGuarded(page, txButtonId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
     });
 
-    test("journal: 'New entry' is read-only guarded", async ({ page }) => {
+    test("journal: header + per-row manual delete are read-only guarded", async ({ page }) => {
       await gotoApp(page, "/app/journal");
       await expectGuarded(page, "button-new-entry", "write-guard-disabled", READ_ONLY_TOOLTIP);
+
+      const jeDelete = page.locator('[data-testid^="button-delete-entry-"]').first();
+      await expect(jeDelete).toBeVisible();
+      const jeButtonId = await jeDelete.getAttribute("data-testid");
+      await expectGuarded(page, jeButtonId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
     });
 
-    test("hr: 'Run payroll' is read-only guarded", async ({ page }) => {
+    test("hr employees: add + per-row delete are read-only guarded", async ({ page }) => {
+      await gotoApp(page, "/app/hr");
+      await page.locator('[data-testid="tab-employees"]').click();
+      await expectGuarded(
+        page,
+        "button-add-employee",
+        "write-guard-disabled",
+        READ_ONLY_TOOLTIP,
+      );
+
+      await expectAnyRow(page, "row-employee-");
+      const empDelete = page.locator('[data-testid^="button-delete-employee-"]').first();
+      const empButtonId = await empDelete.getAttribute("data-testid");
+      await expectGuarded(page, empButtonId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
+    });
+
+    test("hr attendance + leaves: save buttons + leave delete are read-only guarded", async ({ page }) => {
+      await gotoApp(page, "/app/hr");
+      await page.locator('[data-testid="tab-attendance"]').click();
+      // forceDisabled + viewer role → WriteGuard renders the wrapper because
+      // the role check fails first; the read-only tooltip wins over the
+      // forceDisabled-only fallback (see write-guard.tsx).
+      await expectGuarded(
+        page,
+        "button-save-attendance",
+        "write-guard-disabled",
+        READ_ONLY_TOOLTIP,
+      );
+
+      await page.locator('[data-testid="tab-leaves"]').click();
+      await expectGuarded(
+        page,
+        "button-save-leave",
+        "write-guard-disabled",
+        READ_ONLY_TOOLTIP,
+      );
+      await expectAnyRow(page, "row-leave-");
+      const leaveDelete = page.locator('[data-testid^="button-delete-leave-"]').first();
+      const leaveDeleteId = await leaveDelete.getAttribute("data-testid");
+      await expectGuarded(page, leaveDeleteId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
+    });
+
+    test("hr payroll: 'Run payroll' + per-row delete are read-only guarded", async ({ page }) => {
       await gotoApp(page, "/app/hr");
       await page.locator('[data-testid="tab-payroll"]').click();
       await expectGuarded(
@@ -300,6 +568,61 @@ test.describe("role-based button gating @rbac", () => {
         "write-guard-disabled",
         READ_ONLY_TOOLTIP,
       );
+
+      await expectAnyRow(page, "row-payroll-run-");
+      const runDelete = page.locator('[data-testid^="button-delete-payroll-run-"]').first();
+      const runDeleteId = await runDelete.getAttribute("data-testid");
+      await expectGuarded(page, runDeleteId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
+    });
+
+    test("fixed-assets register/categories/depreciation: gated buttons are read-only guarded", async ({ page }) => {
+      await gotoApp(page, "/app/fixed-assets");
+
+      await page.locator('[data-testid="tab-register"]').click();
+      await expectGuarded(
+        page,
+        "button-add-asset",
+        "write-guard-disabled",
+        READ_ONLY_TOOLTIP,
+      );
+
+      // Per-row buttons combine `forceDisabled={status !== 'active'}` with
+      // the viewer role failing the canWrite check. The role-fail wins so
+      // the WriteGuard wrapper is rendered with the read-only tooltip.
+      await expectAnyRow(page, "row-asset-");
+      const assetRow = page.locator('[data-testid^="row-asset-"]').first();
+      const assetId = (await assetRow.getAttribute("data-testid"))!.replace("row-asset-", "");
+      for (const action of ["impairment", "revaluation", "dispose", "delete"]) {
+        await expectGuarded(
+          page,
+          `button-${action}-${assetId}`,
+          "write-guard-disabled",
+          READ_ONLY_TOOLTIP,
+        );
+      }
+
+      await page.locator('[data-testid="tab-categories"]').click();
+      await expectGuarded(
+        page,
+        "button-add-category",
+        "write-guard-disabled",
+        READ_ONLY_TOOLTIP,
+      );
+
+      await page.locator('[data-testid="tab-depreciation"]').click();
+      await expectGuarded(
+        page,
+        "button-post-dep",
+        "write-guard-disabled",
+        READ_ONLY_TOOLTIP,
+      );
+    });
+
+    test("settings members: page is forbidden for viewers", async ({ page }) => {
+      await gotoApp(page, "/app/settings/members");
+      await expect(page.locator('[data-testid="members-forbidden"]')).toBeVisible();
+      await expect(page.locator('[data-testid="button-send-invite"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-remove-"]')).toHaveCount(0);
     });
 
     test("settings: save is owner-guarded; companies + fx panels are hidden", async ({ page }) => {

@@ -160,14 +160,24 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
     // The Run Payroll button is `forceDisabled` when the company has no
     // payroll lines (no employees → no preview). One employee is enough for
     // the preview to produce a line so the owner sees the button enabled.
+    // The same employee is reused as the FK target for the seeded leave +
+    // payroll-run rows below, so both per-row delete buttons can render.
+    let employeeId: number;
     const empExists = (
       await client.query(`SELECT id FROM employees WHERE company_id = $1 LIMIT 1`, [companyId])
     ).rows[0];
-    if (!empExists) {
-      await client.query(
-        `INSERT INTO employees (company_id, full_name, job_title, hire_date, base_salary, allowances, is_national, is_active)
-         VALUES ($1, 'Role Test Employee', 'Tester', '2024-01-01', '5000', '0', true, true)`,
-        [companyId],
+    if (empExists) {
+      employeeId = Number(empExists.id);
+    } else {
+      employeeId = Number(
+        (
+          await client.query(
+            `INSERT INTO employees (company_id, full_name, job_title, hire_date, base_salary, allowances, is_national, is_active)
+             VALUES ($1, 'Role Test Employee', 'Tester', '2024-01-01', '5000', '0', true, true)
+             RETURNING id`,
+            [companyId],
+          )
+        ).rows[0].id,
       );
     }
 
@@ -183,11 +193,13 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
       );
     }
 
+    // ---- (d.0) Accounts required by the API-level role spec --------------
     // Two accounts (one asset / current asset, one revenue / operating
-    // revenue) so the API-side role spec can post a balanced journal entry
-    // for the owner success path. Uses idempotent codes scoped to this
-    // shared E2E workspace; the global UNIQUE constraint on accounts.code
-    // is satisfied by including the company id in the code itself.
+    // revenue) so role-based-api.spec.ts can post a balanced journal entry
+    // for the owner success path. Codes are scoped to this workspace by
+    // embedding the company id, satisfying the global UNIQUE constraint on
+    // accounts.code without colliding with the E2EROL-* set seeded below
+    // (which is reserved for UI-level button tests).
     const cashCode = `RB-CASH-${companyId}`;
     const revCode = `RB-REV-${companyId}`;
     await client.query(
@@ -213,6 +225,188 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
        ON CONFLICT (code) DO NOTHING`,
       [companyId],
     );
+
+    // ---- (d.1) Chart of accounts for the workspace ----
+    // Per-row write buttons on Fixed Assets / Journal pages need real GL
+    // accounts wired into an asset_category and into manual journal lines.
+    // The `accounts.code` column is GLOBALLY unique (see migration 0005),
+    // so codes are namespaced with an "E2EROL-" prefix to coexist with the
+    // numeric COA seeded for other workspaces.
+    interface AccountSeed {
+      code: string;
+      nameEn: string;
+      nameAr: string;
+      type: "asset" | "liability" | "equity" | "revenue" | "expense";
+      subtype: string;
+    }
+    const accountSeeds: AccountSeed[] = [
+      { code: "E2EROL-1110", nameEn: "Cash", nameAr: "نقدية", type: "asset", subtype: "cash" },
+      { code: "E2EROL-4100", nameEn: "Sales", nameAr: "مبيعات", type: "revenue", subtype: "operating" },
+      { code: "E2EROL-1610", nameEn: "PPE Cost", nameAr: "أصول ثابتة - تكلفة", type: "asset", subtype: "ppe" },
+      { code: "E2EROL-1611", nameEn: "Accumulated Depreciation", nameAr: "مجمع الإهلاك", type: "asset", subtype: "ppe" },
+      { code: "E2EROL-1612", nameEn: "Accumulated Impairment", nameAr: "مجمع الانخفاض", type: "asset", subtype: "ppe" },
+      { code: "E2EROL-6610", nameEn: "Depreciation Expense", nameAr: "مصروف الإهلاك", type: "expense", subtype: "operating" },
+      { code: "E2EROL-6611", nameEn: "Impairment Loss", nameAr: "خسارة انخفاض القيمة", type: "expense", subtype: "operating" },
+      { code: "E2EROL-3210", nameEn: "Revaluation Surplus", nameAr: "فائض إعادة التقييم", type: "equity", subtype: "reserves" },
+      { code: "E2EROL-7110", nameEn: "Gain/Loss on Disposal", nameAr: "أرباح/خسائر استبعاد", type: "revenue", subtype: "non_operating" },
+    ];
+    const accountIds = new Map<string, number>();
+    for (const a of accountSeeds) {
+      const existing = (
+        await client.query(`SELECT id, company_id FROM accounts WHERE code = $1 LIMIT 1`, [a.code])
+      ).rows[0];
+      if (existing) {
+        // The code is globally unique so a stray row from a previous test
+        // run (different company) would silently break our composite FKs;
+        // re-home it to this workspace so the seed is self-healing.
+        if (Number(existing.company_id) !== companyId) {
+          await client.query(`UPDATE accounts SET company_id = $1 WHERE id = $2`, [companyId, existing.id]);
+        }
+        accountIds.set(a.code, Number(existing.id));
+      } else {
+        const inserted = (
+          await client.query(
+            `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, is_header, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, false, true) RETURNING id`,
+            [companyId, a.code, a.nameAr, a.nameEn, a.type, a.subtype],
+          )
+        ).rows[0];
+        accountIds.set(a.code, Number(inserted.id));
+      }
+    }
+    const accId = (code: string) => {
+      const id = accountIds.get(code);
+      if (!id) throw new Error(`Missing seeded account ${code}`);
+      return id;
+    };
+
+    // ---- (d.2) One asset category so `button-add-asset` is enabled ----
+    // The category is also the FK target for the fixed_asset row seeded
+    // below so the per-row impairment/revaluation/dispose/delete buttons
+    // can be exercised under each role.
+    let categoryId: number;
+    const catExists = (
+      await client.query(`SELECT id FROM asset_categories WHERE company_id = $1 LIMIT 1`, [companyId])
+    ).rows[0];
+    if (catExists) {
+      categoryId = Number(catExists.id);
+    } else {
+      categoryId = Number(
+        (
+          await client.query(
+            `INSERT INTO asset_categories (
+               company_id, name, measurement_model, default_useful_life_months, default_method,
+               asset_cost_account_id, accumulated_dep_account_id, dep_expense_account_id,
+               accumulated_imp_account_id, imp_loss_account_id, reval_surplus_account_id,
+               gain_loss_disposal_account_id
+             ) VALUES ($1, 'Role Test Category', 'cost', 60, 'straight_line', $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id`,
+            [
+              companyId,
+              accId("E2EROL-1610"),
+              accId("E2EROL-1611"),
+              accId("E2EROL-6610"),
+              accId("E2EROL-1612"),
+              accId("E2EROL-6611"),
+              accId("E2EROL-3210"),
+              accId("E2EROL-7110"),
+            ],
+          )
+        ).rows[0].id,
+      );
+    }
+
+    // ---- (d.3) One active fixed asset → renders the per-row action row ----
+    // Status `active` is required so the impairment/revaluation/dispose
+    // buttons are not `forceDisabled` (see fixed-assets.tsx around L333).
+    // Filter on status='active' so a stale disposed/depreciated row from a
+    // previous run doesn't satisfy the existence check and skip the insert.
+    const assetExists = (
+      await client.query(
+        `SELECT id FROM fixed_assets WHERE company_id = $1 AND status = 'active' LIMIT 1`,
+        [companyId],
+      )
+    ).rows[0];
+    if (!assetExists) {
+      await client.query(
+        `INSERT INTO fixed_assets (
+           company_id, category_id, code, name, acquisition_date, in_service_date,
+           currency, tx_cost, fx_rate, cost, residual, useful_life_months, method,
+           measurement_model, status, location
+         ) VALUES ($1, $2, 'FA-E2E-001', 'Role Test Asset', '2024-06-01', '2024-06-01',
+           'USD', '12000', '1', '12000', '0', 60, 'straight_line', 'cost', 'active', '')`,
+        [companyId, categoryId],
+      );
+    }
+
+    // ---- (d.4) One transaction → renders `button-delete-{txId}` ----
+    // The transactions list is period-filtered on the client; using today
+    // keeps the row visible under the default current-month period chip.
+    const today = new Date().toISOString().slice(0, 10);
+    const txExists = (
+      await client.query(`SELECT id FROM transactions WHERE company_id = $1 LIMIT 1`, [companyId])
+    ).rows[0];
+    if (!txExists) {
+      await client.query(
+        `INSERT INTO transactions (company_id, type, amount, description, category, date)
+         VALUES ($1, 'expense', '50.00', 'Role Test Transaction', 'office', $2::timestamp)`,
+        [companyId, today],
+      );
+    }
+
+    // ---- (d.5) One MANUAL journal entry → renders the delete button ----
+    // The journal page only renders `button-delete-entry-{id}` when the
+    // entry's source is NOT 'transaction'. The auto-posted JE created by
+    // the transaction above has source='transaction' and would not match,
+    // so a stand-alone manual entry is seeded explicitly. Two lines (one
+    // debit, one credit) are required by the schema's balance refinement.
+    const jeExists = (
+      await client.query(
+        `SELECT id FROM journal_entries WHERE company_id = $1 AND source = 'manual' LIMIT 1`,
+        [companyId],
+      )
+    ).rows[0];
+    if (!jeExists) {
+      const ref = `JE-E2E-${Date.now()}`;
+      const je = (
+        await client.query(
+          `INSERT INTO journal_entries (company_id, reference, entry_date, description, source)
+           VALUES ($1, $2, $3::timestamp, 'Role Test Manual Entry', 'manual') RETURNING id`,
+          [companyId, ref, today],
+        )
+      ).rows[0];
+      const jeId = Number(je.id);
+      await client.query(
+        `INSERT INTO journal_lines (company_id, journal_entry_id, account_id, debit, credit, description)
+         VALUES ($1, $2, $3, '100.00', '0', 'debit cash'),
+                ($1, $2, $4, '0', '100.00', 'credit sales')`,
+        [companyId, jeId, accId("E2EROL-1110"), accId("E2EROL-4100")],
+      );
+    }
+
+    // ---- (d.6) One leave row → renders `button-delete-leave-{id}` ----
+    const leaveExists = (
+      await client.query(`SELECT id FROM leaves WHERE company_id = $1 LIMIT 1`, [companyId])
+    ).rows[0];
+    if (!leaveExists) {
+      await client.query(
+        `INSERT INTO leaves (company_id, employee_id, start_date, end_date, days, type, status, notes)
+         VALUES ($1, $2, '2024-07-01', '2024-07-03', 3, 'annual', 'approved', '')`,
+        [companyId, employeeId],
+      );
+    }
+
+    // ---- (d.7) One posted payroll run → renders the delete button ----
+    const runExists = (
+      await client.query(`SELECT id FROM payroll_runs WHERE company_id = $1 LIMIT 1`, [companyId])
+    ).rows[0];
+    if (!runExists) {
+      await client.query(
+        `INSERT INTO payroll_runs (company_id, year, month, status, total_gross, total_net, journal_entry_id)
+         VALUES ($1, 2024, 6, 'posted', '5000.00', '4500.00', NULL)`,
+        [companyId],
+      );
+    }
   } finally {
     await client.end();
   }
