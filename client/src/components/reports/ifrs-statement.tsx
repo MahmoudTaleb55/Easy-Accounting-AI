@@ -1,4 +1,5 @@
 import { buildIfrsStatement, formatMoney, type IfrsLineItem } from "@/lib/ifrs-classifier";
+import { useSettings } from "@/lib/format";
 import type { Transaction } from "@shared/schema";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -17,6 +18,7 @@ export function IfrsIncomeStatement({
   companyName = "منشأتي",
 }: Props) {
   const stmt = buildIfrsStatement(transactions);
+  const settings = useSettings();
 
   return (
     <div
@@ -45,7 +47,7 @@ export function IfrsIncomeStatement({
           <thead>
             <tr className="bg-muted/40 text-foreground/70 text-xs uppercase tracking-wider">
               <th className="p-3 text-right font-bold w-3/4">الحساب</th>
-              <th className="p-3 text-left font-bold">الإجمالي (ر.س)</th>
+              <th className="p-3 text-left font-bold">{`الإجمالي (${settings.currencySymbol})`}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/40">
