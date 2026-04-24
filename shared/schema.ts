@@ -21,7 +21,7 @@ export const accounts = pgTable(
   {
     id: serial("id").primaryKey(),
     companyId: integer("company_id").notNull().default(1),
-    code: text("code").notNull().unique(), // e.g., "1110"
+    code: text("code").notNull(), // e.g., "1110" — unique per workspace; see codeCompanyUq below
     nameAr: text("name_ar").notNull(),
     nameEn: text("name_en").notNull(),
     type: text("type").notNull(), // asset|liability|equity|revenue|expense
@@ -36,6 +36,12 @@ export const accounts = pgTable(
     // child tables can declare composite FKs that physically refuse cross-
     // tenant writes. See docs/design/workspace-isolation-defense-in-depth.md.
     idCompanyUq: unique("accounts_id_company_uq").on(t.id, t.companyId),
+    // Account codes are unique *within* a workspace, not globally. Each
+    // workspace seeds its own chart of accounts (cash "1110", revenue
+    // "4010", etc.), so the global unique that drizzle would otherwise
+    // attach to `code` would block every workspace after the first from
+    // owning a "1110" cash account of its own.
+    codeCompanyUq: unique("accounts_code_company_uq").on(t.companyId, t.code),
     // A child account's parent must live in the same workspace.
     parentCompanyFk: foreignKey({
       columns: [t.parentId, t.companyId],

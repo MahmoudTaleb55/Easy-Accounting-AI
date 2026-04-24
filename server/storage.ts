@@ -450,6 +450,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async autoPostFromTransaction(companyId: number, tx: Transaction, ctx?: AuditContext): Promise<void> {
+    const cash = await this.getAccountByCode(companyId, CASH_ACCOUNT_CODE);
     if (!cash) return;
     const amt = Number(tx.amount);
     let drId: number;
@@ -498,7 +499,12 @@ export class DatabaseStorage implements IStorage {
         { field: "Cr accountId", to: crId },
         { field: "amount", to: amt.toFixed(2) },
       ],
-      ctx: { source: "system", actor: ctx?.actor ?? null },
+      // Inherit the calling context's source/actor so that an AI-triggered
+      // quick transaction (which calls createTransaction with source="ai")
+      // produces an AI-attributed JE audit row, not an anonymous "system"
+      // row. Falling back to "system" preserves the previous behaviour for
+      // direct-storage callers that don't pass a ctx (e.g. seed scripts).
+      ctx: ctx ?? { source: "system", actor: null },
     });
   }
 
@@ -834,6 +840,12 @@ export class DatabaseStorage implements IStorage {
       await db.update(companies).set({ isDefault: false });
     }
     const [c] = await db.insert(companies).values(input).returning();
+    // Every workspace needs its own chart of accounts so that downstream
+    // postings (auto-posted JEs from quick transactions, payroll runs, fixed-
+    // asset events, etc.) can resolve `1110` cash, `4010` revenue, `6900`
+    // other-expense by code without falling back to silent no-ops.
+    const { seedDefaultCoaForCompany } = await import("./init-coa");
+    await seedDefaultCoaForCompany(c.id);
     return c;
   }
   async updateCompany(id: number, input: Partial<InsertCompany>): Promise<Company> {

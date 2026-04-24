@@ -197,21 +197,20 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
     // Two accounts (one asset / current asset, one revenue / operating
     // revenue) so role-based-api.spec.ts can post a balanced journal entry
     // for the owner success path. Codes are scoped to this workspace by
-    // embedding the company id, satisfying the global UNIQUE constraint on
-    // accounts.code without colliding with the E2EROL-* set seeded below
-    // (which is reserved for UI-level button tests).
+    // embedding the company id; uniqueness on accounts is now per
+    // (company_id, code), so the conflict target matches that constraint.
     const cashCode = `RB-CASH-${companyId}`;
     const revCode = `RB-REV-${companyId}`;
     await client.query(
       `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, is_header, is_active)
        VALUES ($1, $2, 'صندوق', 'Cash', 'asset', 'current_asset', false, true)
-       ON CONFLICT (code) DO NOTHING`,
+       ON CONFLICT (company_id, code) DO NOTHING`,
       [companyId, cashCode],
     );
     await client.query(
       `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, is_header, is_active)
        VALUES ($1, $2, 'إيرادات', 'Revenue', 'revenue', 'operating_revenue', false, true)
-       ON CONFLICT (code) DO NOTHING`,
+       ON CONFLICT (company_id, code) DO NOTHING`,
       [companyId, revCode],
     );
 
@@ -222,7 +221,7 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
     await client.query(
       `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, is_header, is_active)
        VALUES ($1, '6010', 'الرواتب والأجور', 'Salaries & Wages', 'expense', 'operating_expense', false, true)
-       ON CONFLICT (code) DO NOTHING`,
+       ON CONFLICT (company_id, code) DO NOTHING`,
       [companyId],
     );
 

@@ -243,15 +243,17 @@ test.describe("AI-posted journals carry the human actor in the audit log @api", 
     const jeMatch = jeList
       .filter((j) => (j.description ?? "").includes(uniqueDescription))
       .sort((a, b) => b.id - a.id)[0];
-    if (jeMatch) {
-      const jeAudit = (await getJson(
-        user,
-        `/api/audit/journal_entry/${jeMatch.id}`,
-      )) as AuditRow[];
-      const jeAiRow = findAiAuditRow(jeAudit);
-      expect(jeAiRow.source).toBe("ai");
-      expect(jeAiRow.actor).toBe(HUMAN_ACTOR);
-    }
+    expect(
+      jeMatch,
+      `auto-posted journal entry for ${uniqueDescription} not found in /api/journal-entries`,
+    ).toBeTruthy();
+    const jeAudit = (await getJson(
+      user,
+      `/api/audit/journal_entry/${jeMatch.id}`,
+    )) as AuditRow[];
+    const jeAiRow = findAiAuditRow(jeAudit);
+    expect(jeAiRow.source).toBe("ai");
+    expect(jeAiRow.actor).toBe(HUMAN_ACTOR);
   });
 
   test("POST /api/documents/:id/post records source=ai with the confirming human's name", async () => {

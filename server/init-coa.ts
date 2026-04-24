@@ -65,12 +65,40 @@ async function rowIsReferenced(
   return false;
 }
 
-export async function initChartOfAccounts(): Promise<void> {
+/**
+ * Seed (or top up) the IFRS-aligned default chart of accounts for a single
+ * workspace, while reconciling drift on any seed code that already exists
+ * with a stale name / type / subtype / header flag.
+ *
+ * Idempotent and non-destructive to real data:
+ *
+ *   1. Any row in this workspace whose `code` is in the canonical seed but
+ *      whose name / type / subtype / header flag drifted is UPDATED in
+ *      place when nothing references it. If it IS referenced (journal
+ *      lines, asset_category FKs, child accounts), the row is renumbered
+ *      out of the canonical band (suffixing its code with `_legacy`) so a
+ *      fresh insert in step (3) can take over the canonical code without
+ *      touching prior bookings.
+ *   2. Any row in this workspace whose `code` is NOT in the canonical seed
+ *      is dropped — but only if nothing references it.
+ *   3. Any canonical code missing from this workspace is inserted, with
+ *      `companyId` set so the composite (company_id, code) UNIQUE
+ *      constraint is satisfied. Parent → child links are kept correct
+ *      because each insert immediately registers its new id in `codeToId`
+ *      before any later seed row references it as a parent.
+ *
+ * Everything runs inside a single transaction so a partial converge can't
+ * leave the workspace's chart of accounts in a half-migrated state.
+ */
+export async function seedDefaultCoaForCompany(companyId: number): Promise<void> {
   const allSeed = [...DEFAULT_COA, ...PAYROLL_EXTRA_ACCOUNTS, ...FIXED_ASSETS_EXTRA_ACCOUNTS];
   const seedByCode = new Map(allSeed.map((s) => [s.code, s]));
 
   await db.transaction(async (tx) => {
-    const fullExisting = await tx.select().from(accounts);
+    const fullExisting = await tx
+      .select()
+      .from(accounts)
+      .where(eq(accounts.companyId, companyId));
     const existingByCode = new Map(fullExisting.map((a) => [a.code, a] as const));
 
     // (1) Reconcile drift on any seed code that already exists with stale
@@ -113,9 +141,9 @@ export async function initChartOfAccounts(): Promise<void> {
           .where(eq(accounts.id, row.id));
       } else {
         // Suffix the code so the fresh insert in step (3) doesn't collide
-        // on the global UNIQUE on accounts.code. The row keeps its id and
-        // every downstream reference still resolves to the same semantics
-        // it had before this boot.
+        // on the per-workspace UNIQUE on (company_id, code). The row keeps
+        // its id and every downstream reference still resolves to the same
+        // semantics it had before this boot.
         let legacyCode = `${row.code}_legacy`;
         // In the unlikely event _legacy already exists too, append a
         // counter so we never lose a row to a unique-violation.
@@ -133,9 +161,9 @@ export async function initChartOfAccounts(): Promise<void> {
       }
     }
 
-    // (2) Drop accounts whose code is not in the canonical seed AND that
-    // nothing references — keeps the COA tree tidy without ever touching
-    // data the books depend on.
+    // (2) Drop accounts in this workspace whose code is not in the
+    // canonical seed AND that nothing references — keeps the COA tree
+    // tidy without ever touching data the books depend on.
     const orphanCandidates = fullExisting.filter((a) => !seedByCode.has(a.code));
     if (orphanCandidates.length > 0) {
       const orphanIds = orphanCandidates.map((a) => a.id);
@@ -187,9 +215,13 @@ export async function initChartOfAccounts(): Promise<void> {
       }
     }
 
-    // (3) Insert anything from the canonical seed that still isn't present.
-    // Reload after the converge/drop steps so parent ids are accurate.
-    const refreshed = await tx.select().from(accounts);
+    // (3) Insert anything from the canonical seed that still isn't present
+    // in this workspace. Reload after the converge/drop steps so parent
+    // ids are accurate.
+    const refreshed = await tx
+      .select()
+      .from(accounts)
+      .where(eq(accounts.companyId, companyId));
     const codeToId = new Map<string, number>(refreshed.map((a) => [a.code, a.id]));
 
     for (const seed of allSeed) {
@@ -198,6 +230,7 @@ export async function initChartOfAccounts(): Promise<void> {
       const [created] = await tx
         .insert(accounts)
         .values({
+          companyId,
           code: seed.code,
           nameAr: seed.nameAr,
           nameEn: seed.nameEn,
@@ -210,6 +243,17 @@ export async function initChartOfAccounts(): Promise<void> {
       codeToId.set(created.code, created.id);
     }
   });
+}
+
+export async function initChartOfAccounts(): Promise<void> {
+  // Bootstrap path: seed the CoA for every existing workspace that doesn't
+  // already have one. New workspaces get their CoA at creation time via
+  // `seedDefaultCoaForCompany` directly — see `storage.createCompany` and
+  // `auth/storage.createCompanyForOwner`.
+  const existingCompanies = await db.select({ id: companies.id }).from(companies);
+  for (const c of existingCompanies) {
+    await seedDefaultCoaForCompany(c.id);
+  }
 }
 
 /**

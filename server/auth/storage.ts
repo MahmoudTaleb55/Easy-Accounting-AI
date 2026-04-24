@@ -836,7 +836,7 @@ export const authBizStorage = {
 
     // All-or-nothing: a company without its settings row would leave the
     // workspace bootstrap half-complete, so wrap both writes in a tx.
-    return await db.transaction(async (tx) => {
+    const created = await db.transaction(async (tx) => {
       const [c] = await tx
         .insert(companies)
         .values({
@@ -857,6 +857,14 @@ export const authBizStorage = {
 
       return c;
     });
+    // Seed the default chart of accounts for the new workspace so the first
+    // quick transaction (auto-posted JE) and payroll run can immediately
+    // resolve cash/revenue/expense accounts by code. Done outside the tx
+    // because the seed touches a separate code path and is idempotent if
+    // re-run, while a failure here should not roll back the company itself.
+    const { seedDefaultCoaForCompany } = await import("../init-coa");
+    await seedDefaultCoaForCompany(created.id);
+    return created;
   },
 
   // ---------- email delivery alerting ----------
