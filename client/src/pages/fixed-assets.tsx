@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { WriteGuard, OwnerGuard } from "@/components/auth/write-guard";
+import { WriteGuard, OwnerGuard, useCanManageWorkspace } from "@/components/auth/write-guard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck, History } from "lucide-react";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
@@ -96,6 +96,7 @@ function useAssetMoneyFmt() {
 
 export default function FixedAssetsPage() {
   const { activeCompany } = useCompany();
+  const canManage = useCanManageWorkspace();
 
   return (
     <div className="space-y-8" data-testid="page-fixed-assets">
@@ -116,12 +117,12 @@ export default function FixedAssetsPage() {
       </header>
 
       <Tabs defaultValue="register" className="w-full">
-        <TabsList className="grid grid-cols-5 w-full">
+        <TabsList className={`grid ${canManage ? "grid-cols-5" : "grid-cols-3"} w-full`}>
           <TabsTrigger value="register" data-testid="tab-register">سجل الأصول</TabsTrigger>
           <TabsTrigger value="depreciation" data-testid="tab-depreciation">الإهلاك</TabsTrigger>
           <TabsTrigger value="categories" data-testid="tab-categories">التصنيفات</TabsTrigger>
-          <TabsTrigger value="companies" data-testid="tab-companies">الشركات</TabsTrigger>
-          <TabsTrigger value="fx" data-testid="tab-fx">أسعار الصرف</TabsTrigger>
+          {canManage && <TabsTrigger value="companies" data-testid="tab-companies">الشركات</TabsTrigger>}
+          {canManage && <TabsTrigger value="fx" data-testid="tab-fx">أسعار الصرف</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="register" className="mt-6">
@@ -133,13 +134,26 @@ export default function FixedAssetsPage() {
         <TabsContent value="categories" className="mt-6">
           {activeCompany ? <CategoriesPanel company={activeCompany} /> : <Skeleton className="h-40" />}
         </TabsContent>
-        <TabsContent value="companies" className="mt-6">
-          <CompaniesPanel />
-        </TabsContent>
-        <TabsContent value="fx" className="mt-6">
-          {activeCompany ? <FxPanel company={activeCompany} /> : <Skeleton className="h-40" />}
-        </TabsContent>
+        {canManage && (
+          <TabsContent value="companies" className="mt-6">
+            <CompaniesPanel />
+          </TabsContent>
+        )}
+        {canManage && (
+          <TabsContent value="fx" className="mt-6">
+            {activeCompany ? <FxPanel company={activeCompany} /> : <Skeleton className="h-40" />}
+          </TabsContent>
+        )}
       </Tabs>
+
+      {!canManage && (
+        <EmptyState
+          icon={<Building2 className="w-5 h-5" />}
+          title="الشركات وأسعار الصرف يديرها المالك"
+          description="إعداد الشركات وأسعار الصرف متاح لمالك مساحة العمل فقط. تواصل معه إن احتجت إضافة شركة أو تحديث سعر صرف."
+          testId="empty-owner-only-fa-companies-fx"
+        />
+      )}
     </div>
   );
 }

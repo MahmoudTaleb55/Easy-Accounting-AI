@@ -20,7 +20,8 @@ import { TeamPanel } from "@/components/team/team-panel";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/contexts/locale-context";
-import { OwnerGuard } from "@/components/auth/write-guard";
+import { OwnerGuard, OwnerOnly } from "@/components/auth/write-guard";
+import { EmptyState } from "@/components/feedback/empty-state";
 
 interface LocalizationPack {
   code: string;
@@ -278,31 +279,44 @@ export default function SettingsPage() {
         </form>
       </Form>
 
-      <Card data-testid="card-settings-companies">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Building2 className="w-5 h-5" />الشركات (متعدد الكيانات)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CompaniesPanel />
-        </CardContent>
-      </Card>
+      <OwnerOnly
+        fallback={
+          <EmptyState
+            icon={<Building2 className="w-5 h-5" />}
+            title="الشركات وأسعار الصرف يديرها المالك"
+            description="يستطيع مالك مساحة العمل فقط إضافة الشركات وضبط أسعار الصرف. تواصل معه إن احتجت تغييراً هنا."
+            testId="empty-owner-only-companies-fx"
+          />
+        }
+      >
+        <Card data-testid="card-settings-companies">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Building2 className="w-5 h-5" />الشركات (متعدد الكيانات)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CompaniesPanel />
+          </CardContent>
+        </Card>
+      </OwnerOnly>
 
       <TeamPanel />
 
       <SecurityCompliance />
 
-      <Card data-testid="card-settings-fx">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Globe className="w-5 h-5" />أسعار الصرف</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {activeCompany ? (
-            <FxPanel company={activeCompany} />
-          ) : (
-            <div className="text-sm text-muted-foreground">لا توجد شركة نشطة. أضف شركة أولاً ثم اخترها من شريط العلوي.</div>
-          )}
-        </CardContent>
-      </Card>
+      <OwnerOnly>
+        <Card data-testid="card-settings-fx">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Globe className="w-5 h-5" />أسعار الصرف</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activeCompany ? (
+              <FxPanel company={activeCompany} />
+            ) : (
+              <div className="text-sm text-muted-foreground">لا توجد شركة نشطة. أضف شركة أولاً ثم اخترها من شريط العلوي.</div>
+            )}
+          </CardContent>
+        </Card>
+      </OwnerOnly>
     </div>
   );
 }
