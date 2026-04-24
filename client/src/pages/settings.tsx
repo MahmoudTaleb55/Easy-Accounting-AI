@@ -33,14 +33,14 @@ interface LocalizationPack {
 }
 
 const formSchema = z.object({
-  orgName: z.string().min(1, "اسم المنشأة مطلوب"),
-  countryCode: z.string(),
-  locale: z.enum(["ar", "en"]),
-  currencyCode: z.string().min(1),
-  currencySymbol: z.string().min(1),
-  vatRate: z.coerce.number().min(0).max(99),
+  orgName: z.string().min(1, "اسم المنشأة مطلوب").max(100, "اسم المنشأة طويل جداً (حد أقصى 100 حرف)"),
+  countryCode: z.string().min(2, "اختر الدولة").max(8),
+  locale: z.enum(["ar", "en", "de", "fr"]),
+  currencyCode: z.string().min(1, "أدخل رمز العملة"),
+  currencySymbol: z.string().min(1, "أدخل الرمز الظاهر للعملة"),
+  vatRate: z.coerce.number({ invalid_type_error: "أدخل رقماً صحيحاً" }).min(0, "لا يمكن أن تكون النسبة سالبة").max(99, "النسبة كبيرة جداً"),
   zakatEnabled: z.boolean(),
-  fiscalYearStartMonth: z.coerce.number().int().min(1).max(12),
+  fiscalYearStartMonth: z.coerce.number({ invalid_type_error: "أدخل رقم شهر بين 1 و 12" }).int("يجب أن يكون رقم شهر صحيح").min(1, "الشهر بين 1 و 12").max(12, "الشهر بين 1 و 12"),
 });
 type FormVals = z.infer<typeof formSchema>;
 
@@ -137,7 +137,9 @@ export default function SettingsPage() {
       form.reset({
         orgName: settings.orgName,
         countryCode: settings.countryCode,
-        locale: settings.locale,
+        locale: (["ar", "en", "de", "fr"] as const).includes(settings.locale as any)
+          ? (settings.locale as "ar" | "en" | "de" | "fr")
+          : "ar",
         currencyCode: settings.currencyCode,
         currencySymbol: settings.currencySymbol,
         vatRate: Number(settings.vatRate) * 100, // store as % in form
@@ -236,6 +238,8 @@ export default function SettingsPage() {
                     <SelectContent>
                       <SelectItem value="ar">العربية</SelectItem>
                       <SelectItem value="en">English</SelectItem>
+                      <SelectItem value="de">Deutsch (الألمانية)</SelectItem>
+                      <SelectItem value="fr">Français (الفرنسية)</SelectItem>
                     </SelectContent>
                   </Select>
                 </FormItem>

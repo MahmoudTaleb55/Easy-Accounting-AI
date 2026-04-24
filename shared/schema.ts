@@ -232,9 +232,9 @@ export const settings = pgTable("settings", {
 export const upsertSettingsSchema = z.object({
   orgName: z.string().min(1).max(100),
   countryCode: z.string().min(2).max(8),
-  locale: z.enum(["ar", "en"]),
-  currencyCode: z.string().min(2).max(8),
-  currencySymbol: z.string().min(1).max(8),
+  locale: z.enum(["ar", "en", "de", "fr"]),
+  currencyCode: z.string().min(1),
+  currencySymbol: z.string().min(1),
   vatRate: z.coerce.number().min(0).max(0.99),
   zakatEnabled: z.boolean(),
   fiscalYearStartMonth: z.coerce.number().int().min(1).max(12),
