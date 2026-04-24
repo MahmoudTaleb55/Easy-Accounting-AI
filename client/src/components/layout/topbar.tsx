@@ -252,7 +252,7 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
             {roleChipLabel && (
               <span
                 data-testid={`badge-role-${role}`}
-                className="hidden lg:inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-caption font-medium text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-100"
+                className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-caption font-medium text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-100"
               >
                 {roleChipLabel}
               </span>

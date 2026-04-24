@@ -141,6 +141,33 @@ export function TrustCluster() {
     ? "في انتظار البيانات…"
     : "Waiting for data…";
 
+  // A very short version of the freshness signal so the topbar can keep
+  // showing "how recent" at tablet widths (768–1023px) without blowing the
+  // horizontal budget. "2m", "5h", "3d" — or "الآن" / "now" near zero.
+  const compactFreshLabel = (() => {
+    if (!lastFetchAt) return locale === "ar" ? "—" : "—";
+    const diffSec = Math.max(0, Math.floor((Date.now() - lastFetchAt.getTime()) / 1000));
+    if (diffSec < 45) return locale === "ar" ? "الآن" : "now";
+    const mins = Math.round(diffSec / 60);
+    if (mins < 60) return locale === "ar" ? `${mins}د` : `${mins}m`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return locale === "ar" ? `${hours}س` : `${hours}h`;
+    const days = Math.round(hours / 24);
+    return locale === "ar" ? `${days}ي` : `${days}d`;
+  })();
+
+  const roleLabel = me ? ROLE_LABEL[me.role][locale === "ar" ? "ar" : "en"] : null;
+  // Tablet-width abbreviation: keep role explicit without leaning on title/hover
+  // (which is unreliable on touch). English: first 3 chars + dot when longer.
+  // Arabic labels here are already short, so use them as-is.
+  const roleLabelShort = me
+    ? locale === "ar"
+      ? ROLE_LABEL[me.role].ar
+      : me.role === "accountant"
+      ? "Acc."
+      : ROLE_LABEL[me.role].en
+    : null;
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -166,14 +193,31 @@ export function TrustCluster() {
           <span className="hidden lg:inline tabular-nums" data-testid="text-data-freshness">
             {freshLabel}
           </span>
-          {me && (
-            <span
-              className="hidden lg:inline-flex items-center gap-1 ms-1 px-1.5 py-0.5 rounded border border-border bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground"
-              data-testid="text-current-role"
-            >
-              <UserCheck className="w-3 h-3" />
-              {ROLE_LABEL[me.role][locale === "ar" ? "ar" : "en"]}
-            </span>
+          <span
+            className="hidden md:inline lg:hidden tabular-nums text-[11px]"
+            data-testid="text-data-freshness-compact"
+            title={freshLabel}
+          >
+            {compactFreshLabel}
+          </span>
+          {me && roleLabel && (
+            <>
+              <span
+                className="hidden lg:inline-flex items-center gap-1 ms-1 px-1.5 py-0.5 rounded border border-border bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground"
+                data-testid="text-current-role"
+              >
+                <UserCheck className="w-3 h-3" />
+                {roleLabel}
+              </span>
+              <span
+                className="hidden md:inline-flex lg:hidden items-center gap-1 ms-1 px-1.5 py-0.5 rounded border border-border bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground"
+                data-testid="text-current-role-compact"
+                aria-label={roleLabel}
+              >
+                <UserCheck className="w-3 h-3" />
+                {roleLabelShort}
+              </span>
+            </>
           )}
         </Button>
       </SheetTrigger>
