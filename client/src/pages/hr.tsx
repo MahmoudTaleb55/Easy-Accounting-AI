@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -806,8 +807,19 @@ function PayrollTab() {
                     </TableCell>
                     <TableCell>{fmt(Number(r.totalGross))}</TableCell>
                     <TableCell className="font-bold text-primary">{fmt(Number(r.totalNet))}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {r.journalEntryId ? `JE-${r.journalEntryId}` : "—"}
+                    <TableCell className="text-xs">
+                      {r.journalEntryId ? (
+                        <Link
+                          href={`/app/journal#je-${r.journalEntryId}`}
+                          className="font-numeric tabular-nums text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
+                          data-testid={`link-journal-entry-${r.id}`}
+                          title={`فتح قيد اليومية JE-${r.journalEntryId}`}
+                        >
+                          JE-{r.journalEntryId}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">

@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useLocation } from "wouter"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { apiRequest, queryClient } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
@@ -64,6 +65,8 @@ export default function JournalEntriesPage() {
   const [open, setOpen] = useState(false)
   const [historyEntry, setHistoryEntry] = useState<JE | null>(null)
   const [detailEntry, setDetailEntry] = useState<JE | null>(null)
+  const [location] = useLocation()
+  const [highlightId, setHighlightId] = useState<number | null>(null)
 
   const t = useMemo(
     () => ({
@@ -118,17 +121,67 @@ export default function JournalEntriesPage() {
   const { data: allEntries, isLoading, isError, refetch } = useQuery<JE[]>({
     queryKey: ["/api/journal-entries"],
   })
+  // Read the deep-link target up front so we can always render the linked
+  // entry, even if it falls outside the active period filter. The banner below
+  // signals to the user that it's an out-of-period match.
+  const initialHashId = useMemo(() => {
+    if (typeof window === "undefined") return null
+    const m = window.location.hash.match(/^#je-(\d+)$/)
+    return m ? Number(m[1]) : null
+  }, [])
+  const [hashTargetId, setHashTargetId] = useState<number | null>(initialHashId)
   const entries = useMemo(() => {
     if (!allEntries) return undefined
     const startMs = period.start.getTime()
     const endMs = period.end.getTime()
     return allEntries.filter((je) => {
       const ms = new Date(je.entryDate).getTime()
-      return ms >= startMs && ms <= endMs
+      if (ms >= startMs && ms <= endMs) return true
+      // Always keep the deep-linked entry visible so the link can resolve.
+      return hashTargetId != null && je.id === hashTargetId
     })
-  }, [allEntries, period])
+  }, [allEntries, period, hashTargetId])
   const { data: accounts } = useQuery<Account[]>({ queryKey: ["/api/accounts"] })
   const postable = useMemo(() => (accounts || []).filter((a) => !a.isHeader), [accounts])
+
+  // Re-read #je-<id> from the URL hash whenever the route or hash changes so
+  // navigating from another page (e.g., the payroll-runs table on /app/hr)
+  // lands on the correct entry.
+  useEffect(() => {
+    const read = () => {
+      const m = window.location.hash.match(/^#je-(\d+)$/)
+      setHashTargetId(m ? Number(m[1]) : null)
+    }
+    read()
+    window.addEventListener("hashchange", read)
+    return () => window.removeEventListener("hashchange", read)
+  }, [location])
+
+  // Resolve the target entry against the unfiltered list so we can detect when
+  // it lives outside the current period and surface a hint banner.
+  const targetEntry = useMemo(
+    () => (hashTargetId == null ? null : (allEntries || []).find((e) => e.id === hashTargetId) || null),
+    [allEntries, hashTargetId]
+  )
+  const targetOutOfPeriod = useMemo(() => {
+    if (!targetEntry) return false
+    const ms = new Date(targetEntry.entryDate).getTime()
+    return ms < period.start.getTime() || ms > period.end.getTime()
+  }, [targetEntry, period])
+
+  // Once the target entry is rendered, scroll to it and pulse a highlight ring
+  // for a few seconds so the user can spot it in a long list.
+  useEffect(() => {
+    if (hashTargetId == null) return
+    const inView = (entries || []).some((e) => e.id === hashTargetId)
+    if (!inView) return
+    const el = document.getElementById(`je-${hashTargetId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: "smooth", block: "center" })
+    setHighlightId(hashTargetId)
+    const t = window.setTimeout(() => setHighlightId(null), 2400)
+    return () => window.clearTimeout(t)
+  }, [hashTargetId, entries])
 
   const [description, setDescription] = useState("")
   const [entryDate, setEntryDate] = useState<string>(new Date().toISOString().slice(0, 10))
@@ -385,6 +438,42 @@ export default function JournalEntriesPage() {
         </div>
       </header>
 
+      {/* Linked entry hint when the deep-linked JE is filtered out by the period */}
+      {targetEntry && targetOutOfPeriod && (
+        <div
+          className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground flex items-start justify-between gap-3 flex-wrap"
+          data-testid="banner-linked-entry-out-of-period"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="font-medium">
+              {locale === "ar"
+                ? `القيد المطلوب ${targetEntry.reference} خارج الفترة المختارة`
+                : `Linked entry ${targetEntry.reference} is outside the selected period`}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1 font-numeric tabular-nums">
+              {format(new Date(targetEntry.entryDate), "d MMM yyyy", { locale: dfLocale })}
+              {" · "}
+              {targetEntry.description}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const el = document.getElementById(`je-${targetEntry.id}`)
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" })
+                setHighlightId(targetEntry.id)
+                window.setTimeout(() => setHighlightId(null), 2400)
+              }
+            }}
+            data-testid="button-jump-linked-entry"
+          >
+            {locale === "ar" ? "عرض القيد" : "Show entry"}
+          </Button>
+        </div>
+      )}
+
       {/* Entries list */}
       {isLoading ? (
         <CardGridSkeleton count={4} cols={1} height="h-28" />
@@ -405,9 +494,14 @@ export default function JournalEntriesPage() {
             return (
               <Card
                 key={je.id}
+                id={`je-${je.id}`}
                 variant="default"
-                className="overflow-hidden p-0"
+                className={cn(
+                  "overflow-hidden p-0 scroll-mt-24 transition-all duration-500",
+                  highlightId === je.id && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                )}
                 data-testid={`card-entry-${je.id}`}
+                data-highlighted={highlightId === je.id ? "true" : undefined}
               >
                 <div className="px-5 py-3.5 flex items-start justify-between gap-4 border-b border-border">
                   <div className="min-w-0 flex-1">
