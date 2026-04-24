@@ -605,12 +605,52 @@ export function registerLocalAuthRoutes(app: Express) {
     const ctx = (req as any).membership!;
     const status = typeof req.query.status === "string" ? req.query.status : null;
     const email = typeof req.query.email === "string" ? req.query.email : null;
+    const wantsCsv = req.query.format === "csv";
+    // CSV export must mirror what the admin sees on screen, so use the same
+    // default limit as the JSON list view. Callers can still override via
+    // `?limit=` (capped server-side in the storage layer).
     const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 200;
     const rows = await authBizStorage.listEmailDeliveriesForCompany(ctx.companyId, {
       status,
       email,
       limit,
     });
+    if (wantsCsv) {
+      const header = [
+        "transport",
+        "recipient",
+        "status",
+        "error",
+        "last_event_at",
+        "message_id",
+        "created_at",
+      ];
+      const lines = [header.join(",")];
+      for (const r of rows) {
+        lines.push(
+          [
+            r.transport,
+            r.recipient ?? "",
+            r.latestStatus ?? "",
+            r.latestError ?? "",
+            r.latestAt ?? "",
+            r.messageId ?? "",
+            r.firstAt ?? "",
+          ]
+            .map(csvCell)
+            .join(","),
+        );
+      }
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="email-delivery-${stamp}.csv"`,
+      );
+      // Prepend a UTF-8 BOM so Excel auto-detects encoding for non-ASCII
+      // recipients (Arabic names show up correctly).
+      return res.send("\uFEFF" + lines.join("\r\n") + "\r\n");
+    }
     res.json(rows);
   });
 
@@ -817,4 +857,17 @@ async function resendWebhook(req: Request, res: Response) {
   }
 
   return res.status(200).json({ ok: true, ignored: "no matching record" });
+}
+
+// Quote a CSV cell per RFC 4180: wrap in double-quotes when the value
+// contains a comma, quote, or newline; double up embedded quotes.
+// Cells starting with `=`, `+`, `-`, or `@` are prefixed with a single
+// quote to defuse spreadsheet formula injection (CWE-1236).
+function csvCell(value: unknown): string {
+  let s = value == null ? "" : String(value);
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
+  if (/[",\r\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
 }

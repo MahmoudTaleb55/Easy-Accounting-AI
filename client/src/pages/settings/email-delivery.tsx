@@ -26,6 +26,7 @@ import {
   UserPlus,
   Search,
   RefreshCw,
+  Download,
 } from "lucide-react";
 
 type Transport = "invitation" | "password_reset";
@@ -387,6 +388,21 @@ export default function EmailDeliveryPage() {
             >
               <RefreshCw className={`me-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
               {ar ? "تحديث" : "Refresh"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              asChild
+              disabled={deliveries.length === 0}
+              data-testid="button-download-csv"
+            >
+              <a
+                href={`/api/auth/email-deliveries${qs ? `?${qs}&` : "?"}format=csv`}
+                download
+              >
+                <Download className="me-2 h-4 w-4" />
+                {ar ? "تنزيل CSV" : "Download CSV"}
+              </a>
             </Button>
           </div>
 
