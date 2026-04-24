@@ -127,9 +127,9 @@ function asNumber(value: unknown, label: string): number {
   return value;
 }
 
-async function bootstrapUser(label: "A" | "B"): Promise<Session> {
+async function bootstrapUser(label: "A" | "B", salt = ""): Promise<Session> {
   const jar = new CookieJar({ wm_id: signedWmCookie(1) });
-  const email = `iso-${label.toLowerCase()}-${RUN_TAG}@example.test`;
+  const email = `iso-${label.toLowerCase()}-${salt}${RUN_TAG}@example.test`;
   // Spoof a unique forwarded IP per user so the express signup/signin rate
   // limiters (keyed by client IP) do not throttle this test when re-run.
   const forwardedFor = `10.${(label.charCodeAt(0) + (Date.now() % 200)) & 0xff}.${
@@ -466,5 +466,147 @@ test.describe("workspace isolation across tenants @api", () => {
     expect(asNumber(bal.entitled, "bal.entitled")).toBe(0);
     expect(asNumber(bal.taken, "bal.taken")).toBe(0);
     expect(asNumber(bal.remaining, "bal.remaining")).toBe(0);
+  });
+
+  /**
+   * Write-side isolation: a logged-in user must not be able to attach rows to,
+   * or borrow rows from, another tenant by sending POSTs with body fields that
+   * reference foreign-workspace ids (accountId, categoryId, employeeId, …).
+   *
+   * Each subtest below seeds a row in user A's workspace, then has user B post
+   * a CREATE that references A's id. Every such write must fail with a 4xx.
+   * If the route happily writes the row, the storage layer would silently
+   * cross-link tenants and the read-side checks above would not catch it
+   * (because B's row genuinely belongs to B's workspace, just with a foreign
+   * key pointing at A's data).
+   */
+  test("user B cannot POST writes that reference user A's ids", async () => {
+    const userA = await bootstrapUser("A", "w");
+    const userB = await bootstrapUser("B", "w");
+    expect(userA.companyId).not.toBe(userB.companyId);
+
+    const seededA = await seedWorkspace(userA);
+    // Bootstrap minimal rows in B's workspace so we have a valid local id to
+    // compare the error path against (i.e. same body shape, only the foreign
+    // id is swapped in).
+    const seededB = await seedWorkspace(userB);
+
+    async function expectRejected(path: string, body: Record<string, unknown>, label: string) {
+      const r = await call("POST", path, userB.jar, { body, headers: userB.headers });
+      expect(
+        [400, 403, 404].includes(r.status),
+        `${label}: foreign id POST must be rejected, got ${r.status}: ${r.text}`,
+      ).toBe(true);
+    }
+
+    // 1) Journal entry whose lines reference A's accounts. Must NOT post.
+    await expectRejected(
+      "/api/journal-entries",
+      {
+        description: "cross-tenant je",
+        source: "manual",
+        lines: [
+          { accountId: seededA.accountIds[0], debit: 50, credit: 0 },
+          { accountId: seededA.accountIds[1], debit: 0, credit: 50 },
+        ],
+      },
+      "POST /api/journal-entries with A's accountId",
+    );
+
+    // 2) Budget against A's accountId.
+    await expectRejected(
+      "/api/budgets",
+      { accountId: seededA.accountIds[1], year: 2025, month: 7, amount: 100 },
+      "POST /api/budgets with A's accountId",
+    );
+
+    // 3) Asset category whose GL mappings reference A's accounts.
+    await expectRejected(
+      "/api/asset-categories",
+      {
+        name: `Cross Cat ${RUN_TAG}`,
+        measurementModel: "cost",
+        defaultMethod: "straight_line",
+        defaultUsefulLifeMonths: 60,
+        assetCostAccountId: seededA.accountIds[0],
+        accumulatedDepAccountId: seededA.accountIds[0],
+        depExpenseAccountId: seededA.accountIds[1],
+        accumulatedImpAccountId: seededA.accountIds[0],
+        impLossAccountId: seededA.accountIds[1],
+        revalSurplusAccountId: seededA.accountIds[0],
+        gainLossDisposalAccountId: seededA.accountIds[1],
+      },
+      "POST /api/asset-categories with A's accountIds",
+    );
+
+    // 3b) PATCH B's own category but try to swap in one of A's accounts.
+    const patchResp = await call(
+      "PATCH",
+      `/api/asset-categories/${seededB.categoryId}`,
+      userB.jar,
+      { headers: userB.headers, body: { assetCostAccountId: seededA.accountIds[0] } },
+    );
+    expect(
+      [400, 403, 404].includes(patchResp.status),
+      `PATCH /api/asset-categories with A's accountId must be rejected, got ${patchResp.status}: ${patchResp.text}`,
+    ).toBe(true);
+
+    // 4) Fixed asset against A's category (note: category contains A's account ids).
+    await expectRejected(
+      "/api/fixed-assets",
+      {
+        categoryId: seededA.categoryId,
+        code: `FAX-${RUN_TAG}`,
+        name: "Cross Asset",
+        acquisitionDate: "2025-01-01",
+        inServiceDate: "2025-01-01",
+        currency: "USD",
+        txCost: 1000,
+        fxRate: 1,
+        residual: 0,
+        usefulLifeMonths: 12,
+        method: "straight_line",
+        measurementModel: "cost",
+        status: "active",
+      },
+      "POST /api/fixed-assets with A's categoryId",
+    );
+
+    // 5) HR attendance against A's employeeId.
+    await expectRejected(
+      "/api/hr/attendance",
+      { employeeId: seededA.employeeId, date: "2025-04-01", status: "present", overtimeHours: 0 },
+      "POST /api/hr/attendance with A's employeeId",
+    );
+
+    // 6) HR leave against A's employeeId.
+    await expectRejected(
+      "/api/hr/leaves",
+      {
+        employeeId: seededA.employeeId,
+        startDate: "2025-04-01",
+        endDate: "2025-04-02",
+        days: 2,
+        type: "annual",
+        status: "approved",
+        notes: "x",
+      },
+      "POST /api/hr/leaves with A's employeeId",
+    );
+
+    // Sanity: the same writes with B's own ids still succeed — proves the
+    // gate is the foreign-id check, not a blanket reject.
+    const okJe = await call("POST", "/api/journal-entries", userB.jar, {
+      headers: userB.headers,
+      body: {
+        description: "B local je",
+        source: "manual",
+        lines: [
+          { accountId: seededB.accountIds[0], debit: 1, credit: 0 },
+          { accountId: seededB.accountIds[1], debit: 0, credit: 1 },
+        ],
+      },
+    });
+    expect(okJe.status, `local-only JE must succeed: ${okJe.text}`).toBe(201);
   });
 });

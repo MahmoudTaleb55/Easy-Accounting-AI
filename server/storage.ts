@@ -73,6 +73,7 @@ import {
   pickRevenueAccountCode,
 } from "@shared/coa-seed";
 import { eq, sql, desc, and, inArray } from "drizzle-orm";
+import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
 
 export interface JournalEntryWithLines extends JournalEntry {
   lines: (JournalLine & { account?: Account })[];
@@ -235,6 +236,39 @@ async function recordAudit(input: {
     source: input.ctx?.source ?? "user",
     changes: input.changes ?? [],
   });
+}
+
+/**
+ * Generic ownership guard: returns true iff every id in `ids` exists in
+ * `table` AND has `companyId` equal to the active workspace. Use this at the
+ * route boundary before passing client-supplied foreign-key ids (accountId,
+ * categoryId, employeeId, …) to the storage layer, otherwise a logged-in user
+ * could attach rows to or borrow rows from another tenant by guessing ids.
+ *
+ * The `WorkspaceScopedTable` shape constrains callers to pgTables that expose
+ * a numeric `id` column and an `integer companyId` column — every workspace-
+ * owned schema in this app does. This keeps the helper strongly typed while
+ * staying generic across tables.
+ */
+export type WorkspaceScopedTable = AnyPgTable & {
+  id: PgColumn;
+  companyId: PgColumn;
+};
+
+export async function assertAllOwnedByCompany(
+  table: WorkspaceScopedTable,
+  companyId: number,
+  ids: Array<number | undefined | null>,
+): Promise<boolean> {
+  const cleaned = Array.from(
+    new Set(ids.filter((v): v is number => typeof v === "number" && Number.isFinite(v))),
+  );
+  if (cleaned.length === 0) return true;
+  const rows = await db
+    .select({ id: table.id })
+    .from(table)
+    .where(and(eq(table.companyId, companyId), inArray(table.id, cleaned)));
+  return rows.length === cleaned.length;
 }
 
 async function nextJournalReference(companyId: number): Promise<string> {

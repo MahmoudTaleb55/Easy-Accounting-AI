@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
-import { storage, isAuditEntityType, type AuditContext } from "./storage";
+import { storage, isAuditEntityType, assertAllOwnedByCompany, type AuditContext } from "./storage";
+import { accounts as accountsTable, employees as employeesTable } from "@shared/schema";
 
 // Build an AuditContext for user-initiated mutations. The `actor` is derived
 // only from the verified session principal (passport `req.user.claims`, set by
@@ -302,6 +303,11 @@ export async function registerRoutes(
   app.post(api.journal.create.path, async (req, res) => {
     try {
       const input = api.journal.create.input.parse(req.body);
+      // Reject lines that reference an account from another workspace (cross-tenant write leak).
+      const lineAccountIds = input.lines.map((l) => l.accountId);
+      if (!(await assertAllOwnedByCompany(accountsTable, cid(req), lineAccountIds))) {
+        return res.status(400).json({ message: "حساب غير صالح", field: "lines.accountId" });
+      }
       const created = await storage.createJournalEntry(cid(req), input, userCtx(req));
       res.status(201).json(created);
     } catch (err) {
@@ -550,6 +556,9 @@ export async function registerRoutes(
   app.post("/api/hr/attendance", async (req, res) => {
     try {
       const input = insertAttendanceSchema.parse(req.body);
+      if (!(await assertAllOwnedByCompany(employeesTable, cid(req), [input.employeeId]))) {
+        return res.status(400).json({ message: "الموظف غير صالح" });
+      }
       res.status(201).json(await storage.upsertAttendance(cid(req), input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -564,6 +573,9 @@ export async function registerRoutes(
   app.post("/api/hr/leaves", async (req, res) => {
     try {
       const input = insertLeaveSchema.parse(req.body);
+      if (!(await assertAllOwnedByCompany(employeesTable, cid(req), [input.employeeId]))) {
+        return res.status(400).json({ message: "الموظف غير صالح" });
+      }
       res.status(201).json(await storage.createLeave(cid(req), input, userCtx(req)));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -1374,9 +1386,29 @@ async function registerFixedAssetRoutes(app: Express) {
   app.get("/api/asset-categories", async (req, res) => {
     res.json(await storage.getAssetCategories(cid(req)));
   });
+  // Account-id fields on an asset category that must belong to the active workspace.
+  const ASSET_CATEGORY_ACCOUNT_FIELDS = [
+    "assetCostAccountId",
+    "accumulatedDepAccountId",
+    "depExpenseAccountId",
+    "accumulatedImpAccountId",
+    "impLossAccountId",
+    "revalSurplusAccountId",
+    "gainLossDisposalAccountId",
+  ] as const;
+  function categoryAccountIds(input: Partial<Record<(typeof ASSET_CATEGORY_ACCOUNT_FIELDS)[number], number>>): number[] {
+    return ASSET_CATEGORY_ACCOUNT_FIELDS
+      .map((f) => input[f])
+      .filter((v): v is number => typeof v === "number");
+  }
+
   app.post("/api/asset-categories", async (req, res) => {
     try {
       const input = insertAssetCategorySchema.parse(req.body);
+      // Reject account ids from a foreign workspace.
+      if (!(await assertAllOwnedByCompany(accountsTable, cid(req), categoryAccountIds(input)))) {
+        return res.status(400).json({ message: "حساب غير صالح" });
+      }
       res.status(201).json(await storage.createAssetCategory({ ...input, companyId: cid(req) }));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -1389,6 +1421,9 @@ async function registerFixedAssetRoutes(app: Express) {
       const cats = await storage.getAssetCategories(cid(req));
       if (!cats.find((c) => c.id === id)) return res.status(404).json({ message: "غير موجود" });
       const input = insertAssetCategorySchema.partial().parse(req.body);
+      if (!(await assertAllOwnedByCompany(accountsTable, cid(req), categoryAccountIds(input)))) {
+        return res.status(400).json({ message: "حساب غير صالح" });
+      }
       res.json(await storage.updateAssetCategory(id, input));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
