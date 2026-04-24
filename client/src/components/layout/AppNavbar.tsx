@@ -1,8 +1,21 @@
 import { useEffect, useState } from "react"
-import { Moon, Sun, Languages, ArrowUpRight } from "lucide-react"
+import { Moon, Sun, Languages, ArrowUpRight, Check } from "lucide-react"
 import { Brand } from "./Brand"
 import { cn } from "@/lib/utils"
-import { useLocale } from "@/contexts/locale-context"
+import { useLocale, type Locale } from "@/contexts/locale-context"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+const LANG_NATIVE: Record<Locale, string> = {
+  ar: "العربية",
+  en: "English",
+  de: "Deutsch",
+  fr: "Français",
+}
 
 interface NavLink { label: string; href: string }
 
@@ -43,7 +56,7 @@ export function AppNavbar({
 }: AppNavbarProps) {
   const [scrolled, setScrolled] = useState(false)
   const [isDark, setIsDark] = useState(false)
-  const { locale, toggleLocale } = useLocale()
+  const { locale, setLocale } = useLocale()
   const ar = locale === "ar"
   const resolvedCta = ctaLabel ?? (ar ? "افتح التطبيق" : "Open app")
   const resolvedTertiary = tertiaryLabel ?? (ar ? "تسجيل الدخول" : "Sign in")
@@ -114,16 +127,32 @@ export function AppNavbar({
 
           {/* Right cluster */}
           <div className="flex items-center gap-1.5 pe-1">
-            <button
-              type="button"
-              onClick={toggleLocale}
-              aria-label={ar ? "Switch to English" : "التحويل إلى العربية"}
-              data-testid="button-locale-toggle"
-              title={ar ? "EN" : "AR"}
-              className="size-9 grid place-items-center rounded-full text-foreground/65 hover:text-foreground hover-elevate transition-colors duration-150"
-            >
-              <Languages className="size-4" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={ar ? "تغيير اللغة" : "Change language"}
+                  data-testid="button-locale-toggle"
+                  title={LANG_NATIVE[locale]}
+                  className="size-9 grid place-items-center rounded-full text-foreground/65 hover:text-foreground hover-elevate transition-colors duration-150"
+                >
+                  <Languages className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="shadow-md min-w-[10rem]">
+                {(["ar", "en", "de", "fr"] as const).map((code) => (
+                  <DropdownMenuItem
+                    key={code}
+                    onClick={() => setLocale(code)}
+                    data-testid={`menu-lang-${code}`}
+                    className="text-small"
+                  >
+                    <Check className={`size-3.5 me-2 ${locale === code ? "opacity-100" : "opacity-0"}`} />
+                    {LANG_NATIVE[code]}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <button
               type="button"
               onClick={toggleTheme}

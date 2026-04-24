@@ -50,7 +50,7 @@ export function Brand({
           className="text-foreground"
         />
       )}
-      <div className="inline-flex flex-col items-start gap-0.5">
+      <div className="inline-flex flex-col items-start gap-0.5" dir="rtl">
         <div className={cn("flex items-baseline gap-1.5 font-semibold tracking-tight text-foreground", s.mark)}>
           <span>محاسب</span>
           <span className="inline-block w-1.5 h-1.5 rounded-full translate-y-[-0.18em]" style={{ background: "hsl(var(--luxe))" }} aria-hidden />

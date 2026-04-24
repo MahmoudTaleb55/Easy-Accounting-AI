@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar, MobileHeader } from "./app-sidebar";
@@ -14,15 +14,25 @@ import { useLocation } from "wouter";
 
 const SUPPORTED_LOCALES: Locale[] = ["ar", "en", "de", "fr"];
 
+/**
+ * Adopt the org's saved locale on initial load, then stay out of the way.
+ *
+ * The effect only fires when the *server-reported* locale changes — never when
+ * the in-memory `locale` changes. That's important: the topbar/settings let the
+ * user pick a language, and we must not fight back when they do. The ref tracks
+ * the last value we adopted from the API so the same value isn't re-applied.
+ */
 function LocaleSync() {
-  const { locale, setLocale } = useLocale();
+  const { setLocale } = useLocale();
   const { data } = useQuery<{ locale?: string }>({ queryKey: ["/api/settings"] });
+  const lastAppliedRef = useRef<string | null>(null);
   useEffect(() => {
     const remote = data?.locale;
-    if (remote && SUPPORTED_LOCALES.includes(remote as Locale) && remote !== locale) {
-      setLocale(remote as Locale);
-    }
-  }, [data?.locale, locale, setLocale]);
+    if (!remote || !SUPPORTED_LOCALES.includes(remote as Locale)) return;
+    if (lastAppliedRef.current === remote) return;
+    lastAppliedRef.current = remote;
+    setLocale(remote as Locale);
+  }, [data?.locale, setLocale]);
   return null;
 }
 
