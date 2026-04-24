@@ -39,14 +39,27 @@ export async function initChartOfAccounts(): Promise<void> {
 /**
  * Backfill: any existing transaction without a corresponding journal entry
  * gets one auto-generated against the default cash and category-mapped account.
+ *
+ * Account lookups are scoped per workspace: a transaction in company 13 can
+ * only ever reference an account that lives in company 13. If a workspace
+ * hasn't had its chart of accounts seeded yet (no cash account on file), the
+ * transaction is left for that workspace's bootstrap to handle later — it is
+ * never paired with another workspace's account. This is enforced by the
+ * composite (id, company_id) foreign keys on `journal_lines`, but doing it
+ * explicitly here keeps the boot path noise-free.
  */
 export async function backfillJournalForLegacyTransactions(): Promise<void> {
   const allAccounts = await db.select().from(accounts);
-  const codeToId = new Map<string, number>();
-  allAccounts.forEach((a) => codeToId.set(a.code, a.id));
-
-  const cashId = codeToId.get(CASH_ACCOUNT_CODE);
-  if (!cashId) return;
+  // companyId -> (code -> account.id), so we never cross workspace boundaries.
+  const codeToIdByCompany = new Map<number, Map<string, number>>();
+  for (const a of allAccounts) {
+    let m = codeToIdByCompany.get(a.companyId);
+    if (!m) {
+      m = new Map();
+      codeToIdByCompany.set(a.companyId, m);
+    }
+    m.set(a.code, a.id);
+  }
 
   const allTx = await db.select().from(transactions);
   const existingJEs = await db
@@ -64,23 +77,32 @@ export async function backfillJournalForLegacyTransactions(): Promise<void> {
 
   for (const tx of allTx) {
     if (covered.has(tx.id)) continue;
+
+    const codeToId = codeToIdByCompany.get(tx.companyId);
+    const cashId = codeToId?.get(CASH_ACCOUNT_CODE);
+    // Skip transactions whose workspace has no chart of accounts seeded yet
+    // rather than borrow another workspace's accounts.
+    if (!codeToId || !cashId) continue;
+
+    let dr: number | undefined;
+    let cr: number | undefined;
+    if (tx.type === "income") {
+      dr = cashId;
+      cr = codeToId.get(pickRevenueAccountCode(tx.category, tx.description)) ?? codeToId.get("4010");
+    } else {
+      dr = codeToId.get(pickExpenseAccountCode(tx.category, tx.description)) ?? codeToId.get("6900");
+      cr = cashId;
+    }
+    if (!dr || !cr) continue;
+
     counter += 1;
     const ref = `JE-${String(counter).padStart(5, "0")}`;
     const amt = Number(tx.amount);
 
-    let dr: number;
-    let cr: number;
-    if (tx.type === "income") {
-      dr = cashId;
-      cr = codeToId.get(pickRevenueAccountCode(tx.category, tx.description)) || codeToId.get("4010")!;
-    } else {
-      dr = codeToId.get(pickExpenseAccountCode(tx.category, tx.description)) || codeToId.get("6900")!;
-      cr = cashId;
-    }
-
     const [je] = await db
       .insert(journalEntries)
       .values({
+        companyId: tx.companyId,
         reference: ref,
         entryDate: tx.date ?? new Date(),
         description: tx.description,
@@ -90,8 +112,8 @@ export async function backfillJournalForLegacyTransactions(): Promise<void> {
       .returning();
 
     await db.insert(journalLines).values([
-      { journalEntryId: je.id, accountId: dr, debit: amt.toFixed(2), credit: "0", description: tx.description },
-      { journalEntryId: je.id, accountId: cr, debit: "0", credit: amt.toFixed(2), description: tx.description },
+      { companyId: tx.companyId, journalEntryId: je.id, accountId: dr, debit: amt.toFixed(2), credit: "0", description: tx.description },
+      { companyId: tx.companyId, journalEntryId: je.id, accountId: cr, debit: "0", credit: amt.toFixed(2), description: tx.description },
     ]);
   }
 }

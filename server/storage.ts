@@ -393,8 +393,8 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     await db.insert(journalLines).values([
-      { journalEntryId: je.id, accountId: drId, debit: amt.toFixed(2), credit: "0", description: tx.description },
-      { journalEntryId: je.id, accountId: crId, debit: "0", credit: amt.toFixed(2), description: tx.description },
+      { companyId, journalEntryId: je.id, accountId: drId, debit: amt.toFixed(2), credit: "0", description: tx.description },
+      { companyId, journalEntryId: je.id, accountId: crId, debit: "0", credit: amt.toFixed(2), description: tx.description },
     ]);
     await recordAudit({
       entityType: "journal_entry",
@@ -488,6 +488,7 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     const linesToInsert = input.lines.map((l) => ({
+      companyId,
       journalEntryId: je.id,
       accountId: l.accountId,
       debit: Number(l.debit || 0).toFixed(2),

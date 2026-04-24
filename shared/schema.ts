@@ -1,4 +1,4 @@
-import { pgTable, text, serial, numeric, timestamp, integer, boolean, index, jsonb, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, numeric, timestamp, integer, boolean, index, jsonb, varchar, unique, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -16,19 +16,34 @@ export * from "./models/auth";
 // non_current_liability, capital, retained_earnings, drawings,
 // operating_revenue, other_income, cogs, operating_expense, contra_revenue,
 // contra_asset
-export const accounts = pgTable("accounts", {
-  id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().default(1),
-  code: text("code").notNull().unique(), // e.g., "1110"
-  nameAr: text("name_ar").notNull(),
-  nameEn: text("name_en").notNull(),
-  type: text("type").notNull(), // asset|liability|equity|revenue|expense
-  subtype: text("subtype").notNull(), // see comment above
-  parentId: integer("parent_id"),
-  isHeader: boolean("is_header").notNull().default(false), // grouping rows have no postings
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().default(1),
+    code: text("code").notNull().unique(), // e.g., "1110"
+    nameAr: text("name_ar").notNull(),
+    nameEn: text("name_en").notNull(),
+    type: text("type").notNull(), // asset|liability|equity|revenue|expense
+    subtype: text("subtype").notNull(), // see comment above
+    parentId: integer("parent_id"),
+    isHeader: boolean("is_header").notNull().default(false), // grouping rows have no postings
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    // Defense-in-depth: workspace-scoped uniqueness on (id, company_id) so
+    // child tables can declare composite FKs that physically refuse cross-
+    // tenant writes. See docs/design/workspace-isolation-defense-in-depth.md.
+    idCompanyUq: unique("accounts_id_company_uq").on(t.id, t.companyId),
+    // A child account's parent must live in the same workspace.
+    parentCompanyFk: foreignKey({
+      columns: [t.parentId, t.companyId],
+      foreignColumns: [t.id, t.companyId],
+      name: "accounts_parent_company_fk",
+    }),
+  }),
+);
 
 export const insertAccountSchema = createInsertSchema(accounts).omit({ id: true, createdAt: true, companyId: true });
 export type Account = typeof accounts.$inferSelect;
@@ -49,10 +64,24 @@ export const journalEntries = pgTable("journal_entries", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   dateIdx: index("je_date_idx").on(table.entryDate),
+  // Defense-in-depth: enables composite FKs from journal_lines back to a JE
+  // in the same workspace.
+  idCompanyUq: unique("journal_entries_id_company_uq").on(table.id, table.companyId),
 }));
 
+// `journal_lines` carries a denormalised `companyId` (always equal to the
+// parent JE's `companyId`) so the database can enforce two composite foreign
+// keys: one to the parent journal entry and one to the referenced account,
+// both keyed on `(id, company_id)`. This makes cross-tenant writes impossible
+// regardless of route code. See docs/design/workspace-isolation-defense-in-depth.md.
+//
+// Intentionally NO column default: every insert site must supply the active
+// workspace explicitly so a missing companyId fails loudly rather than
+// silently being attributed to workspace 1. The migration drops the default
+// after back-fill for the same reason.
 export const journalLines = pgTable("journal_lines", {
   id: serial("id").primaryKey(),
+  companyId: integer("company_id").notNull(),
   journalEntryId: integer("journal_entry_id").notNull(),
   accountId: integer("account_id").notNull(),
   debit: numeric("debit", { precision: 14, scale: 2 }).notNull().default("0"),
@@ -61,6 +90,16 @@ export const journalLines = pgTable("journal_lines", {
 }, (table) => ({
   jeIdx: index("jl_je_idx").on(table.journalEntryId),
   accountIdx: index("jl_account_idx").on(table.accountId),
+  jeCompanyFk: foreignKey({
+    columns: [table.journalEntryId, table.companyId],
+    foreignColumns: [journalEntries.id, journalEntries.companyId],
+    name: "journal_lines_je_company_fk",
+  }),
+  accountCompanyFk: foreignKey({
+    columns: [table.accountId, table.companyId],
+    foreignColumns: [accounts.id, accounts.companyId],
+    name: "journal_lines_account_company_fk",
+  }),
 }));
 
 export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({
@@ -74,6 +113,7 @@ export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
 export const insertJournalLineSchema = createInsertSchema(journalLines).omit({
   id: true,
   journalEntryId: true,
+  companyId: true,
 }).extend({
   debit: z.union([z.string(), z.number()]).default(0),
   credit: z.union([z.string(), z.number()]).default(0),
@@ -139,15 +179,26 @@ export type CreateTransactionRequest = InsertTransaction;
 // Budgets (per-account monthly budgets for Budget vs Actual)
 // ============================================================================
 
-export const budgets = pgTable("budgets", {
-  id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().default(1),
-  accountId: integer("account_id").notNull(),
-  year: integer("year").notNull(),
-  month: integer("month").notNull(), // 1-12
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().default(1),
+    accountId: integer("account_id").notNull(),
+    year: integer("year").notNull(),
+    month: integer("month").notNull(), // 1-12
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    // Defense-in-depth: budgeted account must live in the same workspace.
+    accountCompanyFk: foreignKey({
+      columns: [t.accountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "budgets_account_company_fk",
+    }),
+  }),
+);
 
 export const insertBudgetSchema = createInsertSchema(budgets).omit({ id: true, createdAt: true, companyId: true }).extend({
   amount: z.coerce.number().nonnegative(),
@@ -189,19 +240,27 @@ export type UpsertOrgSettings = z.infer<typeof upsertSettingsSchema>;
 // HR — Employees, Attendance, Leaves, Payroll
 // ============================================================================
 
-export const employees = pgTable("employees", {
-  id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().default(1),
-  fullName: text("full_name").notNull(),
-  jobTitle: text("job_title").notNull().default(""),
-  hireDate: text("hire_date").notNull(), // YYYY-MM-DD
-  baseSalary: numeric("base_salary", { precision: 12, scale: 2 }).notNull(),
-  allowances: numeric("allowances", { precision: 12, scale: 2 }).notNull().default("0"),
-  isNational: boolean("is_national").notNull().default(true),
-  annualLeaveDaysOverride: integer("annual_leave_days_override"),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const employees = pgTable(
+  "employees",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull().default(1),
+    fullName: text("full_name").notNull(),
+    jobTitle: text("job_title").notNull().default(""),
+    hireDate: text("hire_date").notNull(), // YYYY-MM-DD
+    baseSalary: numeric("base_salary", { precision: 12, scale: 2 }).notNull(),
+    allowances: numeric("allowances", { precision: 12, scale: 2 }).notNull().default("0"),
+    isNational: boolean("is_national").notNull().default(true),
+    annualLeaveDaysOverride: integer("annual_leave_days_override"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    // Defense-in-depth: lets future child tables (attendance, leaves,
+    // payroll_lines) declare composite FKs back to (id, company_id).
+    idCompanyUq: unique("employees_id_company_uq").on(t.id, t.companyId),
+  }),
+);
 
 export const insertEmployeeSchema = createInsertSchema(employees)
   .omit({ id: true, createdAt: true, companyId: true })
@@ -336,23 +395,68 @@ export type DepreciationMethod = (typeof DEPRECIATION_METHODS)[number];
 export const MEASUREMENT_MODELS = ["cost", "revaluation"] as const;
 export type MeasurementModel = (typeof MEASUREMENT_MODELS)[number];
 
-export const assetCategories = pgTable("asset_categories", {
-  id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull(),
-  name: text("name").notNull(),
-  measurementModel: text("measurement_model").notNull().default("cost"),
-  defaultUsefulLifeMonths: integer("default_useful_life_months").notNull().default(60),
-  defaultMethod: text("default_method").notNull().default("straight_line"),
-  // GL account mappings (account ids)
-  assetCostAccountId: integer("asset_cost_account_id").notNull(),
-  accumulatedDepAccountId: integer("accumulated_dep_account_id").notNull(),
-  depExpenseAccountId: integer("dep_expense_account_id").notNull(),
-  accumulatedImpAccountId: integer("accumulated_imp_account_id").notNull(),
-  impLossAccountId: integer("imp_loss_account_id").notNull(),
-  revalSurplusAccountId: integer("reval_surplus_account_id").notNull(),
-  gainLossDisposalAccountId: integer("gain_loss_disposal_account_id").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const assetCategories = pgTable(
+  "asset_categories",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    name: text("name").notNull(),
+    measurementModel: text("measurement_model").notNull().default("cost"),
+    defaultUsefulLifeMonths: integer("default_useful_life_months").notNull().default(60),
+    defaultMethod: text("default_method").notNull().default("straight_line"),
+    // GL account mappings (account ids)
+    assetCostAccountId: integer("asset_cost_account_id").notNull(),
+    accumulatedDepAccountId: integer("accumulated_dep_account_id").notNull(),
+    depExpenseAccountId: integer("dep_expense_account_id").notNull(),
+    accumulatedImpAccountId: integer("accumulated_imp_account_id").notNull(),
+    impLossAccountId: integer("imp_loss_account_id").notNull(),
+    revalSurplusAccountId: integer("reval_surplus_account_id").notNull(),
+    gainLossDisposalAccountId: integer("gain_loss_disposal_account_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    // Defense-in-depth: enables a composite FK from fixed_assets back to a
+    // category in the same workspace.
+    idCompanyUq: unique("asset_categories_id_company_uq").on(t.id, t.companyId),
+    // Every account-id pointer on this row must reference an account in the
+    // same workspace. Enforced as composite FKs.
+    assetCostCompanyFk: foreignKey({
+      columns: [t.assetCostAccountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "asset_categories_asset_cost_company_fk",
+    }),
+    accumDepCompanyFk: foreignKey({
+      columns: [t.accumulatedDepAccountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "asset_categories_accum_dep_company_fk",
+    }),
+    depExpenseCompanyFk: foreignKey({
+      columns: [t.depExpenseAccountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "asset_categories_dep_expense_company_fk",
+    }),
+    accumImpCompanyFk: foreignKey({
+      columns: [t.accumulatedImpAccountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "asset_categories_accum_imp_company_fk",
+    }),
+    impLossCompanyFk: foreignKey({
+      columns: [t.impLossAccountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "asset_categories_imp_loss_company_fk",
+    }),
+    revalSurplusCompanyFk: foreignKey({
+      columns: [t.revalSurplusAccountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "asset_categories_reval_surplus_company_fk",
+    }),
+    gainLossDisposalCompanyFk: foreignKey({
+      columns: [t.gainLossDisposalAccountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "asset_categories_gain_loss_disposal_company_fk",
+    }),
+  }),
+);
 export const insertAssetCategorySchema = createInsertSchema(assetCategories).omit({ id: true, createdAt: true, companyId: true });
 export type AssetCategory = typeof assetCategories.$inferSelect;
 export type InsertAssetCategory = z.infer<typeof insertAssetCategorySchema>;
@@ -361,6 +465,7 @@ export const fixedAssets = pgTable("fixed_assets", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").notNull(),
   categoryId: integer("category_id").notNull(),
+  // (defense-in-depth FKs declared in the table builder below)
   code: text("code").notNull(),
   name: text("name").notNull(),
   acquisitionDate: text("acquisition_date").notNull(),
@@ -396,7 +501,17 @@ export const fixedAssets = pgTable("fixed_assets", {
   // Last period the asset was depreciated for: YYYY-MM
   lastDepreciatedPeriod: text("last_depreciated_period"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (t) => ({
+  // Defense-in-depth: workspace-scoped uniqueness so future child tables
+  // (asset_components, depreciation_schedule, …) can declare composite FKs.
+  idCompanyUq: unique("fixed_assets_id_company_uq").on(t.id, t.companyId),
+  // The category an asset belongs to must live in the same workspace.
+  categoryCompanyFk: foreignKey({
+    columns: [t.categoryId, t.companyId],
+    foreignColumns: [assetCategories.id, assetCategories.companyId],
+    name: "fixed_assets_category_company_fk",
+  }),
+}));
 export const insertFixedAssetSchema = createInsertSchema(fixedAssets)
   .omit({ id: true, createdAt: true, accumDepreciation: true, accumImpairment: true, revalSurplus: true, accumDepNoImpairment: true, accumRevalLoss: true, lastDepreciatedPeriod: true, cost: true, customSchedule: true, companyId: true })
   .extend({
