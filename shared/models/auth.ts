@@ -270,10 +270,26 @@ export const inviteSchema = z.object({
 });
 export const updateMemberRoleSchema = z.object({ role: z.enum(ROLES) });
 
+// Profile updates come from a form where blank inputs round-trip as empty
+// strings. We preprocess each text field so:
+//   - leading/trailing whitespace is stripped
+//   - an empty/whitespace-only value clears the field (null) instead of
+//     failing min(1) validation
+//   - a non-empty value is still capped at a reasonable length and (for the
+//     image) must look like a URL
+const trimmedNameField = z.preprocess(
+  (v) => (typeof v === "string" ? v.trim() || null : v),
+  z.string().min(1).max(80).nullable().optional(),
+);
+const optionalUrlField = z.preprocess(
+  (v) => (typeof v === "string" ? v.trim() || null : v),
+  z.string().url().max(500).nullable().optional(),
+);
+
 export const updateProfileSchema = z.object({
-  firstName: z.string().min(1).max(80).optional().nullable(),
-  lastName: z.string().min(1).max(80).optional().nullable(),
-  profileImageUrl: z.string().url().max(500).optional().nullable(),
+  firstName: trimmedNameField,
+  lastName: trimmedNameField,
+  profileImageUrl: optionalUrlField,
   preferredLocale: z.enum(["ar", "en", "de", "fr"]).optional(),
 });
 

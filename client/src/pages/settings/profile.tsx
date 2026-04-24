@@ -55,7 +55,10 @@ export default function ProfilePage() {
   const saveProfile = useMutation<User, Error, UpdateProfileInput>({
     mutationFn: async (v) => (await apiRequest("PATCH", "/api/auth/profile", v)).json(),
     onSuccess: (u) => {
+      // Seed the cache so the topbar avatar/name update on the very next paint,
+      // then invalidate so any other consumer (memberships, etc.) refetches.
       queryClient.setQueryData<User>(["/api/auth/user"], u);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       if (u?.preferredLocale === "ar" || u?.preferredLocale === "en") {
         setLocale(u.preferredLocale);
       }
@@ -106,20 +109,57 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <form onSubmit={profileForm.handleSubmit((v) => saveProfile.mutate(v))} className="space-y-4" data-testid="form-profile">
+          <form
+            onSubmit={profileForm.handleSubmit((v) => saveProfile.mutate(v))}
+            className="space-y-4"
+            data-testid="form-profile"
+            noValidate
+          >
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="firstName">{ar ? "الاسم الأول" : "First name"}</Label>
-                <Input id="firstName" data-testid="input-first-name" {...profileForm.register("firstName")} />
+                <Input
+                  id="firstName"
+                  maxLength={80}
+                  data-testid="input-first-name"
+                  {...profileForm.register("firstName")}
+                />
+                {profileForm.formState.errors.firstName && (
+                  <p className="text-xs text-destructive" data-testid="error-first-name">
+                    {ar ? "الاسم الأول غير صالح" : "Invalid first name"}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">{ar ? "اسم العائلة" : "Last name"}</Label>
-                <Input id="lastName" data-testid="input-last-name" {...profileForm.register("lastName")} />
+                <Input
+                  id="lastName"
+                  maxLength={80}
+                  data-testid="input-last-name"
+                  {...profileForm.register("lastName")}
+                />
+                {profileForm.formState.errors.lastName && (
+                  <p className="text-xs text-destructive" data-testid="error-last-name">
+                    {ar ? "اسم العائلة غير صالح" : "Invalid last name"}
+                  </p>
+                )}
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="profileImageUrl">{ar ? "رابط الصورة الشخصية" : "Profile image URL"}</Label>
-              <Input id="profileImageUrl" type="url" data-testid="input-profile-image-url" {...profileForm.register("profileImageUrl")} />
+              <Input
+                id="profileImageUrl"
+                type="url"
+                maxLength={500}
+                placeholder="https://…"
+                data-testid="input-profile-image-url"
+                {...profileForm.register("profileImageUrl")}
+              />
+              {profileForm.formState.errors.profileImageUrl && (
+                <p className="text-xs text-destructive" data-testid="error-profile-image-url">
+                  {ar ? "أدخل رابطاً صحيحاً أو اتركه فارغاً." : "Enter a valid URL or leave blank."}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>{ar ? "اللغة المفضلة" : "Preferred language"}</Label>
