@@ -156,6 +156,37 @@ test.describe("database-level workspace isolation @db", () => {
         );
       }
 
+      // ----- Cross-tenant fixed_assets: category in B, asset claims A ------
+      // Stand up a self-contained category in workspace B so we have a real
+      // B-side categoryId to dangle in front of the FK. Reuse accB for every
+      // account-id pointer column (they all share the same composite-FK
+      // shape; we already exercise an individual pointer above on r4).
+      const catB = await client.query(
+        `INSERT INTO asset_categories
+           (company_id, name,
+            asset_cost_account_id, accumulated_dep_account_id, dep_expense_account_id,
+            accumulated_imp_account_id, imp_loss_account_id, reval_surplus_account_id,
+            gain_loss_disposal_account_id)
+         VALUES ($1, 'B cat', $2, $2, $2, $2, $2, $2, $2) RETURNING id`,
+        [cidB, aidB],
+      );
+      const catBId: number = catB.rows[0].id;
+
+      const rFa = await attempt(
+        `INSERT INTO fixed_assets
+           (company_id, category_id, code, name,
+            acquisition_date, in_service_date, currency, tx_cost, cost,
+            useful_life_months, method, status)
+         VALUES ($1, $2, $3, 'cross asset', '2025-01-01', '2025-01-01',
+                 'SAR', '1000', '1000', 12, 'straight_line', 'active')`,
+        [cidA, catBId, `FAX-${tag}`],
+      );
+      expect(rFa.ok).toBe(false);
+      if (!rFa.ok) {
+        expect(rFa.code).toBe("23503");
+        expect(rFa.constraint).toBe("fixed_assets_category_company_fk");
+      }
+
       // ----- Missing journal_lines.company_id must fail closed --------------
       // The migration drops the column default precisely so a forgotten
       // companyId cannot silently default to workspace 1. Confirm the schema
