@@ -1,11 +1,15 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle, AlertCircle, Info, CheckCircle2, ArrowRight, BookText, Activity, FileQuestion,
 } from "lucide-react";
 import { useT } from "@/i18n/dict";
 import { useLocale } from "@/contexts/locale-context";
+import {
+  useDashboardAlerts,
+  useDashboardJournalEntries,
+  useTransactions,
+} from "@/hooks/use-dashboard-data";
 import { AttentionQueueSkeleton } from "./skeletons";
 
 interface AttentionItem {
@@ -34,11 +38,9 @@ const kindIcon = {
 export function AttentionQueue() {
   const t = useT();
   const { dir } = useLocale();
-  const { data: alerts, isLoading: alertsLoading } = useQuery<{ alerts: any[] }>({
-    queryKey: ["/api/insights/alerts"],
-  });
-  const { data: txs } = useQuery<any[]>({ queryKey: ["/api/transactions"] });
-  const { data: jes } = useQuery<any[]>({ queryKey: ["/api/journal-entries"] });
+  const { data: alerts, isLoading: alertsLoading } = useDashboardAlerts();
+  const { data: txs } = useTransactions();
+  const { data: jes } = useDashboardJournalEntries();
 
   const items: AttentionItem[] = useMemo(() => {
     const out: AttentionItem[] = [];

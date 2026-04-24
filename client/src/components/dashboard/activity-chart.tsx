@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useTransactions } from "@/hooks/use-transactions";
+import { useTransactions } from "@/hooks/use-dashboard-data";
 import { usePeriod } from "@/contexts/period-context";
 import { useT } from "@/i18n/dict";
 import { useLocale } from "@/contexts/locale-context";

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
-import { useTransactions } from "@/hooks/use-transactions";
+import { useTransactions } from "@/hooks/use-dashboard-data";
 import { usePeriod } from "@/contexts/period-context";
 import { useT } from "@/i18n/dict";
 import { useFormatMoney } from "@/lib/format";

@@ -23,7 +23,8 @@ import { useCompany } from "@/contexts/company-context";
 import { usePeriod, type PeriodKey } from "@/contexts/period-context";
 import { CommandPaletteTrigger } from "./command-palette";
 import { TrustCluster } from "@/components/trust/trust-cluster";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
+import { useDashboardAlerts } from "@/hooks/use-dashboard-data";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Locale } from "@/contexts/locale-context";
@@ -85,9 +86,9 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
   const periodLabel = PERIODS.find((p) => p.key === period.key)?.label || period.key;
 
   // Notifications: pull alert count from insights
-  const { data: alertsData } = useQuery<{ alerts: { severity: string }[] }>({
-    queryKey: ["/api/insights/alerts"],
-  });
+  const { data: alertsData } = useDashboardAlerts<{
+    alerts: { severity: string }[];
+  }>();
   const alertCount = alertsData?.alerts?.filter(
     (a) => a.severity === "critical" || a.severity === "warning"
   ).length || 0;

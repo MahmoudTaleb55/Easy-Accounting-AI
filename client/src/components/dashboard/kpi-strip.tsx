@@ -1,12 +1,14 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, ArrowDownRight, Plus } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, LineChart, Line } from "recharts";
 import { usePeriod } from "@/contexts/period-context";
 import { useT } from "@/i18n/dict";
 import { useFormatMoney, useSettings } from "@/lib/format";
-import { useTransactions } from "@/hooks/use-transactions";
+import {
+  useTransactions,
+  useDashboardCashForecast,
+} from "@/hooks/use-dashboard-data";
 import { useLocale } from "@/contexts/locale-context";
 import { startOfDay, eachDayOfInterval, isWithinInterval, format } from "date-fns";
 import { KpiStripSkeleton } from "./skeletons";
@@ -273,10 +275,7 @@ export function KpiStrip() {
   const fmtMoney = useFormatMoney();
   const { period, previousRange, compareToPrevious } = usePeriod();
   const { data: txs, isLoading } = useTransactions();
-  const { data: cashForecast } = useQuery<any>({
-    queryKey: ["/api/insights/cash-forecast", 30],
-    queryFn: () => fetch("/api/insights/cash-forecast?days=30").then((r) => r.json()),
-  });
+  const { data: cashForecast } = useDashboardCashForecast(30);
 
   const data = useMemo(() => {
     const list = (txs || []).filter((t) => t.date);

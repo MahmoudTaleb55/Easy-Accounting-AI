@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { prefetchDashboardData } from "@/hooks/use-dashboard-data";
 import { PeriodBar } from "@/components/dashboard/period-bar";
 import { KpiStrip } from "@/components/dashboard/kpi-strip";
 import { AttentionQueue } from "@/components/dashboard/attention-queue";
@@ -21,14 +22,7 @@ export default function Dashboard() {
   // Kick off the heavier endpoints in parallel as soon as the dashboard mounts
   // so individual widgets don't have to wait for each other to start fetching.
   useEffect(() => {
-    qc.prefetchQuery({
-      queryKey: ["/api/insights/cash-forecast", 30],
-      queryFn: () =>
-        fetch("/api/insights/cash-forecast?days=30").then((r) => r.json()),
-    });
-    qc.prefetchQuery({ queryKey: ["/api/insights/alerts"] });
-    qc.prefetchQuery({ queryKey: ["/api/transactions"] });
-    qc.prefetchQuery({ queryKey: ["/api/journal-entries"] });
+    prefetchDashboardData(qc);
   }, [qc]);
 
   return (
