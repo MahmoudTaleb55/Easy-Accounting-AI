@@ -1405,8 +1405,34 @@ async function registerFixedAssetRoutes(app: Express) {
   });
   app.post("/api/companies", async (req, res) => {
     try {
-      const input = insertCompanySchema.parse(req.body);
+      // Workspace-scoped owner gate. Creating a company is *self-service* for
+      // a brand-new account that has no memberships yet (the bootstrap path
+      // used by signup → "create your first workspace"), but once the caller
+      // already has any membership, only the owner of the active workspace
+      // may add another company. This mirrors the OwnerGuard wrapper on the
+      // <button-add-company> control in the UI: viewers and accountants are
+      // shown the button disabled, and the server must reject the same call
+      // if it bypasses the disable.
+      //
+      // Important: do *not* gate solely on the presence of `membership`.
+      // A non-owner user can force `membership` to be missing on the
+      // request by sending a bogus `x-company-id` / `?companyId=` value
+      // that fails the membership lookup in `attachMembership`. If we
+      // only checked `if (ctx && ctx.role !== "owner")`, that bypass
+      // would still let a viewer or accountant self-service into a
+      // brand-new owner workspace. Instead, when `ctx` is absent we
+      // look up the caller's memberships directly and only allow the
+      // bootstrap path when they truly have none.
       const userId = (req.user as any)?.claims?.sub as string | undefined;
+      const ctx = (req as Request & { membership?: MembershipContext }).membership;
+      if (ctx) {
+        if (ctx.role !== "owner") return res.status(403).json({ message: "Owners only" });
+      } else if (userId) {
+        const { authBizStorage } = await import("./auth/storage");
+        const ms = await authBizStorage.listMembershipsForUser(userId);
+        if (ms.length > 0) return res.status(403).json({ message: "Owners only" });
+      }
+      const input = insertCompanySchema.parse(req.body);
       const company = await storage.createCompany({ ...input, ownerUserId: userId ?? null });
       if (userId) {
         const { authBizStorage } = await import("./auth/storage");
@@ -1440,6 +1466,11 @@ async function registerFixedAssetRoutes(app: Express) {
     res.json(await storage.getFxRates(cid(req)));
   });
   app.post("/api/fx-rates", async (req, res) => {
+    // Owner-only mutation. The matching <button-save-fx> control is wrapped
+    // in <OwnerGuard>; viewers and accountants must hit a 403 here too if
+    // they bypass the disabled state and call the API directly.
+    const ctx = (req as Request & { membership?: MembershipContext }).membership;
+    if (!ctx || ctx.role !== "owner") return res.status(403).json({ message: "Owners only" });
     try {
       const input = insertFxRateSchema.parse(req.body);
       res.status(201).json(await storage.createFxRate({ ...input, companyId: cid(req) }));
@@ -1449,6 +1480,10 @@ async function registerFixedAssetRoutes(app: Express) {
     }
   });
   app.delete("/api/fx-rates/:id", async (req, res) => {
+    // Owner-only mutation — see POST /api/fx-rates above. The per-row
+    // <button-delete-fx-{id}> in the FX panel is OwnerGuard-wrapped.
+    const ctx = (req as Request & { membership?: MembershipContext }).membership;
+    if (!ctx || ctx.role !== "owner") return res.status(403).json({ message: "Owners only" });
     const id = Number(req.params.id);
     const rates = await storage.getFxRates(cid(req));
     if (!rates.find((r) => r.id === id)) return res.status(404).json({ message: "غير موجود" });

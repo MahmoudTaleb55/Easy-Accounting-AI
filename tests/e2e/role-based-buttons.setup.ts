@@ -182,6 +182,37 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
         [companyId],
       );
     }
+
+    // Two accounts (one asset / current asset, one revenue / operating
+    // revenue) so the API-side role spec can post a balanced journal entry
+    // for the owner success path. Uses idempotent codes scoped to this
+    // shared E2E workspace; the global UNIQUE constraint on accounts.code
+    // is satisfied by including the company id in the code itself.
+    const cashCode = `RB-CASH-${companyId}`;
+    const revCode = `RB-REV-${companyId}`;
+    await client.query(
+      `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, is_header, is_active)
+       VALUES ($1, $2, 'صندوق', 'Cash', 'asset', 'current_asset', false, true)
+       ON CONFLICT (code) DO NOTHING`,
+      [companyId, cashCode],
+    );
+    await client.query(
+      `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, is_header, is_active)
+       VALUES ($1, $2, 'إيرادات', 'Revenue', 'revenue', 'operating_revenue', false, true)
+       ON CONFLICT (code) DO NOTHING`,
+      [companyId, revCode],
+    );
+
+    // Salaries & Wages account (code 6010 — see shared/coa-seed.ts /
+    // SALARIES_EXPENSE_CODE). The HR payroll-run handler refuses to post
+    // when this account is missing, so seeding it here is what lets the
+    // owner-success path of POST /api/hr/payroll/run actually run.
+    await client.query(
+      `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, is_header, is_active)
+       VALUES ($1, '6010', 'الرواتب والأجور', 'Salaries & Wages', 'expense', 'operating_expense', false, true)
+       ON CONFLICT (code) DO NOTHING`,
+      [companyId],
+    );
   } finally {
     await client.end();
   }
@@ -247,4 +278,17 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
   } finally {
     await sessionsClient.end();
   }
+
+  // ---- (f) Persist the shared company id so role-based-api can pin it ----
+  // The role-based-api spec calls POST /api/companies as part of the owner
+  // success path, which adds a *second* workspace to the owner. After that
+  // creation, `cid(req)` for subsequent owner calls would resolve to
+  // whichever workspace `attachMembership` picks first — flipping mid-suite
+  // and breaking the GET /api/accounts and GET /api/auth/members lookups
+  // the spec does later. Writing the company id here lets the spec set
+  // `x-company-id` on every call so the active workspace stays pinned to
+  // the shared E2E company regardless of what other tests in the run do
+  // (creating workspaces, deleting accounts, etc.).
+  const fixturePath = path.resolve(".playwright/role-shared-fixture.json");
+  fs.writeFileSync(fixturePath, JSON.stringify({ companyId }, null, 2));
 });

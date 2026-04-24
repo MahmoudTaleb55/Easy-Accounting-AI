@@ -39,6 +39,7 @@ export default defineConfig({
         /dashboard-shell\.spec\.ts/,
         /period-selector\.spec\.ts/,
         /role-based-buttons\.spec\.ts/,
+        /role-based-api\.spec\.ts/,
       ],
     },
     {
@@ -88,6 +89,16 @@ export default defineConfig({
       use: {
         viewport: { width: 1280, height: 800 },
       },
+    },
+    {
+      // API-side companion to `role-based-buttons`. Reuses the same
+      // owner / accountant / viewer storage states (and the shared
+      // workspace seed: employee, fx rate, two accounts) to assert that
+      // the server returns 403 for the wrong role on every endpoint
+      // that backs a UI-gated button — see `role-based-api.spec.ts`.
+      name: "role-based-api",
+      testMatch: /role-based-api\.spec\.ts/,
+      dependencies: ["role-based-buttons-setup"],
     },
   ],
 });
