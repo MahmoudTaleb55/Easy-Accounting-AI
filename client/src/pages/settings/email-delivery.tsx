@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Mail,
   MailCheck,
@@ -84,6 +85,37 @@ interface EventRow {
   type: string;
   error: string | null;
   createdAt: string | null;
+}
+
+type TrendWindow = "1" | "7" | "30";
+
+const TREND_WINDOWS: TrendWindow[] = ["1", "7", "30"];
+const TREND_WINDOW_STORAGE_KEY = "email-delivery:trend-window";
+
+function isTrendWindow(value: string | null): value is TrendWindow {
+  return value === "1" || value === "7" || value === "30";
+}
+
+function trendWindowLabel(window: TrendWindow, ar: boolean): string {
+  switch (window) {
+    case "1":
+      return ar ? "آخر 24 ساعة" : "Last 24 hours";
+    case "7":
+      return ar ? "آخر 7 أيام" : "Last 7 days";
+    case "30":
+      return ar ? "آخر 30 يومًا" : "Last 30 days";
+  }
+}
+
+function trendWindowShort(window: TrendWindow, ar: boolean): string {
+  switch (window) {
+    case "1":
+      return ar ? "٢٤س" : "24h";
+    case "7":
+      return ar ? "٧ أيام" : "7d";
+    case "30":
+      return ar ? "٣٠ يومًا" : "30d";
+  }
 }
 
 const STATUS_FILTERS: DeliveryStatus[] = [
@@ -171,6 +203,16 @@ export default function EmailDeliveryPage() {
   const [emailInput, setEmailInput] = useState("");
   const [emailFilter, setEmailFilter] = useState("");
   const [selected, setSelected] = useState<DeliveryRow | null>(null);
+  const [trendWindow, setTrendWindow] = useState<TrendWindow>(() => {
+    if (typeof window === "undefined") return "7";
+    const stored = window.sessionStorage.getItem(TREND_WINDOW_STORAGE_KEY);
+    return isTrendWindow(stored) ? stored : "7";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.setItem(TREND_WINDOW_STORAGE_KEY, trendWindow);
+  }, [trendWindow]);
 
   // Debounce the email input so each keystroke doesn't slam the API.
   useEffect(() => {
@@ -212,9 +254,9 @@ export default function EmailDeliveryPage() {
   }, [deliveries]);
 
   const { data: trends } = useQuery<FailureTrends>({
-    queryKey: ["/api/auth/email-deliveries/trends", 7],
+    queryKey: ["/api/auth/email-deliveries/trends", trendWindow],
     queryFn: async () => {
-      const r = await fetch(`/api/auth/email-deliveries/trends?days=7`, {
+      const r = await fetch(`/api/auth/email-deliveries/trends?days=${trendWindow}`, {
         credentials: "include",
       });
       if (!r.ok) throw new Error(`${r.status}: ${r.statusText}`);
@@ -288,24 +330,53 @@ export default function EmailDeliveryPage() {
         <TooltipProvider delayDuration={150}>
           <div
             className="rounded-md border bg-card p-4"
-            data-testid="trends-failures-7d"
+            data-testid="trends-failures"
           >
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                  {ar ? "آخر 7 أيام" : "Last 7 days"}
+                <div className="text-xs uppercase tracking-wider text-muted-foreground" data-testid="text-trends-window-label">
+                  {trendWindowLabel(trendWindow, ar)}
                 </div>
                 <div className="mt-0.5 text-sm font-medium">
                   {ar
                     ? "تنبيهات سمعة المُرسِل"
                     : "Sender-reputation signals"}
                 </div>
+                <p className="mt-1 text-xs text-muted-foreground sm:hidden">
+                  {ar
+                    ? "مرّر فوق رقم لرؤية التوزيع اليومي."
+                    : "Hover a chip to see the daily breakdown."}
+                </p>
               </div>
-              <p className="hidden text-xs text-muted-foreground sm:block">
-                {ar
-                  ? "مرّر فوق رقم لرؤية التوزيع اليومي."
-                  : "Hover a chip to see the daily breakdown."}
-              </p>
+              <div className="flex flex-col items-start gap-2 sm:items-end">
+                <ToggleGroup
+                  type="single"
+                  size="sm"
+                  variant="outline"
+                  value={trendWindow}
+                  onValueChange={(value) => {
+                    if (isTrendWindow(value)) setTrendWindow(value);
+                  }}
+                  aria-label={ar ? "اختيار نافذة الاتجاه" : "Select trend window"}
+                  data-testid="toggle-trend-window"
+                >
+                  {TREND_WINDOWS.map((w) => (
+                    <ToggleGroupItem
+                      key={w}
+                      value={w}
+                      aria-label={trendWindowLabel(w, ar)}
+                      data-testid={`toggle-trend-window-${w}`}
+                    >
+                      {trendWindowShort(w, ar)}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+                <p className="hidden text-xs text-muted-foreground sm:block">
+                  {ar
+                    ? "مرّر فوق رقم لرؤية التوزيع اليومي."
+                    : "Hover a chip to see the daily breakdown."}
+                </p>
+              </div>
             </div>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="grid-trends">
               <TrendChip
@@ -314,6 +385,7 @@ export default function EmailDeliveryPage() {
                 series={trends.series.bounced}
                 total={trends.totals.bounced}
                 ar={ar}
+                windowLabel={trendWindowLabel(trendWindow, ar)}
                 testid="chip-trend-bounced"
               />
               <TrendChip
@@ -322,6 +394,7 @@ export default function EmailDeliveryPage() {
                 series={trends.series.complained}
                 total={trends.totals.complained}
                 ar={ar}
+                windowLabel={trendWindowLabel(trendWindow, ar)}
                 testid="chip-trend-complained"
               />
               <TrendChip
@@ -330,6 +403,7 @@ export default function EmailDeliveryPage() {
                 series={trends.series.send_failed}
                 total={trends.totals.send_failed}
                 ar={ar}
+                windowLabel={trendWindowLabel(trendWindow, ar)}
                 testid="chip-trend-send-failed"
               />
             </div>
@@ -562,6 +636,7 @@ function TrendChip({
   series,
   total,
   ar,
+  windowLabel,
   testid,
 }: {
   label: string;
@@ -569,6 +644,7 @@ function TrendChip({
   series: TrendPoint[];
   total: number;
   ar: boolean;
+  windowLabel: string;
   testid: string;
 }) {
   const isQuiet = total === 0;
@@ -592,7 +668,7 @@ function TrendChip({
       </TooltipTrigger>
       <TooltipContent side="bottom" align="end" className="p-2">
         <div className="mb-1.5 text-xs font-medium" data-testid={`${testid}-tooltip-title`}>
-          {label} · {ar ? "آخر 7 أيام" : "Last 7 days"}
+          {label} · {windowLabel}
         </div>
         <div className="mb-2" data-testid={`${testid}-tooltip-sparkline`}>
           <Sparkline points={series} tone={tone} />
