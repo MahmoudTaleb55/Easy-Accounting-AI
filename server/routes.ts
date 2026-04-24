@@ -25,17 +25,28 @@ function getSessionClaims(req: Request): SessionClaims | undefined {
   return principal?.claims;
 }
 
-function userCtx(req: Request): AuditContext {
+function actorName(req: Request): string | null {
   const claims = getSessionClaims(req);
-  let actor: string | null = null;
-  if (claims) {
-    const name = [claims.first_name, claims.last_name]
-      .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-      .join(" ")
-      .trim();
-    actor = name || claims.email || claims.sub || null;
-  }
-  return { source: "user", actor };
+  if (!claims) return null;
+  const name = [claims.first_name, claims.last_name]
+    .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+    .join(" ")
+    .trim();
+  return name || claims.email || claims.sub || null;
+}
+
+function userCtx(req: Request): AuditContext {
+  return { source: "user", actor: actorName(req) };
+}
+
+// Audit context for mutations the AI assistant runs on behalf of a signed-in
+// user (chat tool calls, document-extraction posting). We keep `source: "ai"`
+// so the History drawer can still flag the AI as the channel, but record the
+// human's name so teammates can see who authorised the action. When no human
+// is known (e.g. unauth edge), fall back to "AI assistant" to preserve the
+// existing visual cue.
+function aiCtx(req: Request): AuditContext {
+  return { source: "ai", actor: actorName(req) ?? "AI assistant" };
 }
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -946,7 +957,11 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
         const results = await Promise.all(toolCalls.map(async (tc: any) => {
           let parsed: any = {};
           try { parsed = tc.function?.arguments ? JSON.parse(tc.function.arguments) : {}; } catch {}
-          const result = await executeTool(tc.function.name, parsed, { companyId, currency });
+          const result = await executeTool(tc.function.name, parsed, {
+            companyId,
+            currency,
+            actor: actorName(req),
+          });
           if (result.artifact) artifacts.push(result.artifact);
           return {
             role: "tool" as const,
@@ -1265,7 +1280,10 @@ function registerDocumentRoutes(app: Express) {
               description: l.description,
             })),
           },
-          userCtx(req),
+          // The journal entry is built from an AI-extracted suggestion, so we
+          // record `source: "ai"` while still naming the human who confirmed
+          // the post in the History drawer.
+          aiCtx(req),
         );
         const updated = await storage.markDocumentPosted(companyId, id, je.id);
         res.status(201).json({ document: updated, journalEntry: je });

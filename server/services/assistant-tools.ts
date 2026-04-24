@@ -383,8 +383,13 @@ function slugify(s: string): string {
 export async function executeTool(
   name: string,
   rawArgs: any,
-  ctx: { companyId: number; currency: string }
+  ctx: { companyId: number; currency: string; actor?: string | null }
 ): Promise<ToolExecutionResult> {
+  // The assistant is just a channel — record the human who told it to act so
+  // the History drawer shows "Sara" with an AI source badge instead of an
+  // anonymous "AI assistant" label. Fall back to "AI assistant" when there is
+  // no signed-in user (defensive only — the chat route is auth-gated).
+  const aiAudit = { source: "ai" as const, actor: ctx.actor ?? "AI assistant" };
   try {
     switch (name) {
       case "add_quick_transaction": {
@@ -392,7 +397,7 @@ export async function executeTool(
         await storage.createTransaction(
           ctx.companyId,
           { type: a.type, amount: a.amount, description: a.description, category: a.category },
-          { source: "ai", actor: "AI assistant" }
+          aiAudit
         );
         return {
           toolName: name,
@@ -413,7 +418,7 @@ export async function executeTool(
           source: "ai",
           entryDate: a.entryDate,
           lines: a.lines as any,
-        }, { source: "ai", actor: "AI assistant" });
+        }, aiAudit);
         return {
           toolName: name,
           modelResult: { ok: true, journalEntryId: je.id, totalDebit, totalCredit },
@@ -512,7 +517,7 @@ export async function executeTool(
 
       case "delete_transaction": {
         const a = z.object({ id: z.coerce.number().int().positive() }).parse(rawArgs);
-        await storage.deleteTransaction(ctx.companyId, a.id, { source: "ai", actor: "AI assistant" });
+        await storage.deleteTransaction(ctx.companyId, a.id, aiAudit);
         return {
           toolName: name,
           modelResult: { ok: true, deletedId: a.id },
@@ -546,7 +551,7 @@ export async function executeTool(
           fullName: a.fullName, jobTitle: a.jobTitle, hireDate: a.hireDate,
           baseSalary: a.baseSalary as any, allowances: a.allowances as any,
           isNational: a.isNational, isActive: true,
-        } as any, { source: "ai", actor: "AI assistant" });
+        } as any, aiAudit);
         return {
           toolName: name,
           modelResult: { ok: true, id: emp.id, fullName: emp.fullName },
@@ -564,7 +569,7 @@ export async function executeTool(
         const att = await storage.upsertAttendance(ctx.companyId, {
           employeeId: a.employeeId, date: a.date, status: a.status,
           overtimeHours: a.overtimeHours as any,
-        }, { source: "ai", actor: "AI assistant" });
+        }, aiAudit);
         return {
           toolName: name,
           modelResult: { ok: true, id: att.id },
@@ -585,7 +590,7 @@ export async function executeTool(
           employeeId: a.employeeId, startDate: a.startDate, endDate: a.endDate,
           days: a.days, type: a.type, status: "approved",
           notes: a.notes || "",
-        } as any, { source: "ai", actor: "AI assistant" });
+        } as any, aiAudit);
         return {
           toolName: name,
           modelResult: { ok: true, id: lv.id },
