@@ -41,6 +41,11 @@ function buildLocalSession(user: { id: string; email: string | null; firstName: 
   };
 }
 
+// Hard ceiling on a single CSV export of the email-delivery feed. Surfaced
+// to the client via /count so the UI can warn when the export will be
+// truncated.
+const EMAIL_DELIVERY_EXPORT_CAP = 10000;
+
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1h
   max: 8,
@@ -613,8 +618,8 @@ export function registerLocalAuthRoutes(app: Express) {
     // CSV exports for compliance reviewers can legitimately span weeks or
     // months, so allow them to pull more rows than the on-screen list. The
     // hard ceiling is enforced in the storage layer.
-    const defaultLimit = wantsCsv ? 10000 : 200;
-    const maxLimit = wantsCsv ? 10000 : 500;
+    const defaultLimit = wantsCsv ? EMAIL_DELIVERY_EXPORT_CAP : 200;
+    const maxLimit = wantsCsv ? EMAIL_DELIVERY_EXPORT_CAP : 500;
     const limit = Number.isFinite(Number(req.query.limit))
       ? Number(req.query.limit)
       : defaultLimit;
@@ -664,6 +669,31 @@ export function registerLocalAuthRoutes(app: Express) {
     }
     res.json(rows);
   });
+
+  // Companion count for the delivery-health export. Returns the row count
+  // a CSV pull with the same filters would produce, plus the server's hard
+  // export cap so the client can warn admins when the export will be
+  // truncated. Cheap to compute relative to the list query (no LIMIT, no
+  // joining first/last events).
+  app.get(
+    "/api/auth/email-deliveries/count",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res) => {
+      const ctx = (req as any).membership!;
+      const status = typeof req.query.status === "string" ? req.query.status : null;
+      const email = typeof req.query.email === "string" ? req.query.email : null;
+      const from = typeof req.query.from === "string" ? req.query.from : null;
+      const to = typeof req.query.to === "string" ? req.query.to : null;
+      const count = await authBizStorage.countEmailDeliveriesForCompany(ctx.companyId, {
+        status,
+        email,
+        from,
+        to,
+      });
+      res.json({ count, cap: EMAIL_DELIVERY_EXPORT_CAP });
+    },
+  );
 
   // 7-day (or N-day) failure-class trend for the delivery-health header.
   // Returns densified daily counts for bounced / complained / send_failed

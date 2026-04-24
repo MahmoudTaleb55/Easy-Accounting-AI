@@ -556,6 +556,82 @@ export const authBizStorage = {
   },
 
   /**
+   * Companion count for `listEmailDeliveriesForCompany` — returns how many
+   * rows a CSV export with the same filters would produce. Used by the
+   * delivery-health UI to show the row count next to the Download CSV
+   * button so admins can tell at a glance whether they need to narrow
+   * the window before pulling the file.
+   *
+   * The shape of the underlying query mirrors the list query (same CTEs,
+   * same filters) — the only difference is the outer projection counts
+   * collapsed (transport, dedup_key) groups instead of returning rows.
+   * No `LIMIT` is applied so the caller can compare the true count to
+   * the export cap and warn when the export will be truncated.
+   */
+  async countEmailDeliveriesForCompany(
+    companyId: number,
+    opts: {
+      status?: string | null;
+      email?: string | null;
+      from?: string | null;
+      to?: string | null;
+    } = {},
+  ): Promise<number> {
+    const status = opts.status?.trim() || null;
+    const emailLike = opts.email?.trim() ? `%${opts.email.trim().toLowerCase()}%` : null;
+    const from = normalizeFromBound(opts.from);
+    const to = normalizeToBound(opts.to);
+
+    const rows = await db.execute(sql`
+      WITH all_events AS (
+        SELECT
+          'invitation'::text                                          AS transport,
+          COALESCE(e.message_id, 'attempt:' || e.id)                  AS dedup_key,
+          i.email                                                     AS recipient,
+          e.type                                                      AS type,
+          e.created_at                                                AS created_at
+        FROM invitation_email_events e
+        INNER JOIN invitations i ON i.id = e.invitation_id
+        WHERE i.company_id = ${companyId}
+          AND (${from}::timestamptz IS NULL OR e.created_at >= ${from}::timestamptz)
+          AND (${to}::timestamptz   IS NULL OR e.created_at <  ${to}::timestamptz)
+
+        UNION ALL
+
+        SELECT
+          'password_reset'::text                                      AS transport,
+          COALESCE(e.message_id, 'attempt:' || e.id)                  AS dedup_key,
+          COALESCE(u.email, '')                                       AS recipient,
+          e.type                                                      AS type,
+          e.created_at                                                AS created_at
+        FROM password_reset_email_events e
+        INNER JOIN memberships m ON m.user_id = e.user_id AND m.company_id = ${companyId}
+        LEFT JOIN users u ON u.id = e.user_id
+        WHERE
+          (${from}::timestamptz IS NULL OR e.created_at >= ${from}::timestamptz)
+          AND (${to}::timestamptz IS NULL OR e.created_at <  ${to}::timestamptz)
+      ),
+      latest_per_message AS (
+        SELECT DISTINCT ON (transport, dedup_key)
+          transport,
+          dedup_key,
+          recipient,
+          type AS latest_status
+        FROM all_events
+        ORDER BY transport, dedup_key, created_at DESC
+      )
+      SELECT COUNT(*)::bigint AS n
+      FROM latest_per_message l
+      WHERE
+        (${status}::text IS NULL OR l.latest_status = ${status}::text)
+        AND (${emailLike}::text IS NULL OR LOWER(l.recipient) LIKE ${emailLike}::text)
+    `);
+    const list = (rows as any).rows ?? (rows as any);
+    const n = list?.[0]?.n;
+    return typeof n === "bigint" ? Number(n) : Number(n ?? 0);
+  },
+
+  /**
    * Per-message lifecycle log for the unified delivery feed. Returns
    * every event for a single send attempt (one provider message id, or
    * one local attempt id when the send failed pre-dispatch), scoped to

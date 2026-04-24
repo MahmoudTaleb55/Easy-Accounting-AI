@@ -301,6 +301,35 @@ export default function EmailDeliveryPage() {
     enabled: isAdmin,
   });
 
+  // Server-truth row count for the *export*. The on-screen list is capped
+  // at 200 rows, but the CSV pulls up to `cap` (currently 10,000). Showing
+  // this number next to Download CSV lets admins gauge file size before
+  // they pull, and the cap lets us warn when the export will be truncated.
+  const {
+    data: exportCount,
+    isFetching: exportCountFetching,
+  } = useQuery<{ count: number; cap: number }>({
+    queryKey: [
+      "/api/auth/email-deliveries/count",
+      statusFilter,
+      emailFilter,
+      dateBounds.from,
+      dateBounds.to,
+    ],
+    queryFn: async () => {
+      const r = await fetch(`/api/auth/email-deliveries/count${qs ? `?${qs}` : ""}`, {
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error(`${r.status}: ${r.statusText}`);
+      return r.json();
+    },
+    enabled: isAdmin,
+  });
+  const exportRowCount = exportCount?.count ?? 0;
+  const exportCap = exportCount?.cap ?? 10000;
+  const exportAtCap = exportRowCount >= exportCap;
+  const exportRowsDisplayed = Math.min(exportRowCount, exportCap);
+
   const summary = useMemo(() => {
     const totals = { all: deliveries.length, delivered: 0, failed: 0, pending: 0 };
     for (const d of deliveries) {
@@ -588,7 +617,7 @@ export default function EmailDeliveryPage() {
                 type="button"
                 variant="outline"
                 asChild
-                disabled={deliveries.length === 0}
+                disabled={exportRowCount === 0}
                 data-testid="button-download-csv"
               >
                 <a
@@ -599,6 +628,31 @@ export default function EmailDeliveryPage() {
                   {ar ? "تنزيل CSV" : "Download CSV"}
                 </a>
               </Button>
+              {/* Live row count for the current filters. Shown next to the
+                  Download CSV button so admins can tell at a glance whether
+                  the file will be huge before pulling it. While the count is
+                  refreshing we keep the previous number visible to avoid
+                  the chip flickering on every keystroke. When the matching
+                  set is at the export cap the chip switches to a "cap+"
+                  display and the warning banner below carries the action. */}
+              {exportCount && (
+                <span
+                  className="text-xs text-muted-foreground tabular-nums"
+                  data-testid="text-export-count"
+                  aria-live="polite"
+                >
+                  {exportCountFetching && (
+                    <Loader2 className="me-1 inline h-3 w-3 animate-spin align-[-2px]" />
+                  )}
+                  {exportAtCap
+                    ? ar
+                      ? `+${exportCap.toLocaleString("ar")} صفًا`
+                      : `${exportCap.toLocaleString("en")}+ rows`
+                    : ar
+                      ? `${exportRowCount.toLocaleString("ar")} صفًا للتصدير`
+                      : `${exportRowCount.toLocaleString("en")} ${exportRowCount === 1 ? "row" : "rows"} to export`}
+                </span>
+              )}
               {(dateBounds.from || dateBounds.to) && (
                 <span
                   className="text-xs text-muted-foreground"
@@ -610,6 +664,23 @@ export default function EmailDeliveryPage() {
                 </span>
               )}
             </div>
+            {/* Hard-cap hint. When the matching row count meets the server's
+                export ceiling, the CSV will be truncated to the most recent
+                N rows — admins should narrow the window to get the rest. */}
+            {exportAtCap && (
+              <div
+                className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                data-testid="hint-export-cap"
+                role="status"
+              >
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {ar
+                    ? `يعرض أحدث ${exportRowsDisplayed.toLocaleString("ar")} فقط — ضيّق النطاق للحصول على تصدير كامل.`
+                    : `Showing the most recent ${exportRowsDisplayed.toLocaleString("en")} — narrow the window for a full export.`}
+                </span>
+              </div>
+            )}
           </div>
 
           {isLoading ? (
