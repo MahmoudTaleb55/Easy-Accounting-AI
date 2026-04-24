@@ -283,6 +283,95 @@ export async function assertAllOwnedByCompany(
   return rows.length === cleaned.length;
 }
 
+/**
+ * Thrown by `deletePayrollRun` when the payroll run's auto-posted journal
+ * entry has been picked up by another module (depreciation, document inbox,
+ * fixed-asset events, …) and can no longer be silently reversed. The route
+ * layer catches this and surfaces a 409 Conflict with the human message.
+ */
+export class PayrollRunDeleteConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PayrollRunDeleteConflictError";
+  }
+}
+
+/**
+ * Returns the human-readable list of modules that point at `journalEntryId`
+ * (besides the payroll run itself, which is deletable). Used as the
+ * "locked / reconciled / otherwise referenced" guard for payroll-run delete.
+ *
+ * Each branch is intentionally a separate `select` against a tiny indexed
+ * table — the totals here are bounded by the number of accounting-impact
+ * modules (currently 6), not by row counts, so the cost is fixed.
+ */
+async function detectJournalEntryReferences(
+  journalEntryId: number,
+  opts: { excludePayrollRunId?: number },
+): Promise<string[]> {
+  const conflicts: string[] = [];
+
+  // Other payroll runs pointing at the same JE (defence-in-depth: one JE per
+  // run is the invariant, but a backfill or a manual SQL fix-up could break
+  // it, in which case we should refuse rather than silently reverse).
+  const otherPayroll = await db
+    .select({ id: payrollRuns.id })
+    .from(payrollRuns)
+    .where(
+      and(
+        eq(payrollRuns.journalEntryId, journalEntryId),
+        opts.excludePayrollRunId
+          ? sql`${payrollRuns.id} <> ${opts.excludePayrollRunId}`
+          : sql`true`,
+      ),
+    );
+  if (otherPayroll.length > 0) {
+    conflicts.push(`كشوفات رواتب أخرى (${otherPayroll.length})`);
+  }
+
+  const depRuns = await db
+    .select({ id: depreciationRuns.id })
+    .from(depreciationRuns)
+    .where(eq(depreciationRuns.journalEntryId, journalEntryId));
+  if (depRuns.length > 0) {
+    conflicts.push(`دورة إهلاك (${depRuns.length})`);
+  }
+
+  const impair = await db
+    .select({ id: impairmentEvents.id })
+    .from(impairmentEvents)
+    .where(eq(impairmentEvents.journalEntryId, journalEntryId));
+  if (impair.length > 0) {
+    conflicts.push(`خسارة انخفاض قيمة (${impair.length})`);
+  }
+
+  const reval = await db
+    .select({ id: revaluationEvents.id })
+    .from(revaluationEvents)
+    .where(eq(revaluationEvents.journalEntryId, journalEntryId));
+  if (reval.length > 0) {
+    conflicts.push(`إعادة تقييم (${reval.length})`);
+  }
+
+  const disp = await db
+    .select({ id: disposals.id })
+    .from(disposals)
+    .where(eq(disposals.journalEntryId, journalEntryId));
+  if (disp.length > 0) {
+    conflicts.push(`استبعاد أصل (${disp.length})`);
+  }
+
+  const docs = await db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(eq(documents.journalEntryId, journalEntryId));
+  if (docs.length > 0) {
+    conflicts.push(`مستند مرفوع (${docs.length})`);
+  }
+
+  return conflicts;
+}
+
 async function nextJournalReference(companyId: number): Promise<string> {
   const [{ c }] = await db
     .select({ c: sql<number>`count(*)::int` })
@@ -1065,10 +1154,72 @@ export class DatabaseStorage implements IStorage {
       .from(payrollRuns)
       .where(and(eq(payrollRuns.id, id), eq(payrollRuns.companyId, companyId)));
     if (!before) return;
+
+    // The auto-posted journal entry is the GL twin of the payroll run. To keep
+    // HR history and the GL in sync we either reverse it alongside the run
+    // (preferred) or refuse the delete with a clear conflict error if the JE
+    // has been picked up by another module — i.e. it is "locked / reconciled
+    // / otherwise referenced" from outside the payroll subsystem.
+    let linkedJournal: JournalEntry | undefined;
+    if (before.journalEntryId) {
+      const [je] = await db
+        .select()
+        .from(journalEntries)
+        .where(
+          and(
+            eq(journalEntries.id, before.journalEntryId),
+            eq(journalEntries.companyId, companyId),
+          ),
+        );
+      if (je) {
+        linkedJournal = je;
+        const conflicts = await detectJournalEntryReferences(
+          before.journalEntryId,
+          { excludePayrollRunId: id },
+        );
+        if (conflicts.length > 0) {
+          throw new PayrollRunDeleteConflictError(
+            `لا يمكن حذف كشف الرواتب لأن قيده المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+          );
+        }
+      }
+    }
+
     await db.transaction(async (tx) => {
+      if (linkedJournal) {
+        await tx
+          .delete(journalLines)
+          .where(eq(journalLines.journalEntryId, linkedJournal.id));
+        await tx
+          .delete(journalEntries)
+          .where(
+            and(
+              eq(journalEntries.id, linkedJournal.id),
+              eq(journalEntries.companyId, companyId),
+            ),
+          );
+      }
       await tx.delete(payrollLines).where(eq(payrollLines.payrollRunId, id));
-      await tx.delete(payrollRuns).where(and(eq(payrollRuns.id, id), eq(payrollRuns.companyId, companyId)));
+      await tx
+        .delete(payrollRuns)
+        .where(and(eq(payrollRuns.id, id), eq(payrollRuns.companyId, companyId)));
     });
+
+    if (linkedJournal) {
+      // Stamp the JE delete on its own audit thread so the History drawer for
+      // the journal entry shows the reversal even though it was triggered by
+      // a payroll-run delete.
+      await recordAudit({
+        entityType: "journal_entry",
+        entityId: linkedJournal.id,
+        action: "delete",
+        changes: [
+          ...snapshotChanges(linkedJournal),
+          { field: "reversedBy", to: `payroll_run#${id}` },
+        ],
+        ctx,
+      });
+    }
     await recordAudit({
       entityType: "payroll_run",
       entityId: id,

@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
-import { storage, isAuditEntityType, assertAllOwnedByCompany, type AuditContext } from "./storage";
+import { storage, isAuditEntityType, assertAllOwnedByCompany, PayrollRunDeleteConflictError, type AuditContext } from "./storage";
 import { accounts as accountsTable, employees as employeesTable } from "@shared/schema";
 
 // Build an AuditContext for user-initiated mutations. The `actor` is derived
@@ -668,6 +668,12 @@ export async function registerRoutes(
       await storage.deletePayrollRun(cid(req), id, userCtx(req));
       res.status(204).send();
     } catch (err: any) {
+      // Refuse with 409 (Conflict) when the run's auto-posted journal entry is
+      // referenced from outside the payroll subsystem — silently dropping the
+      // run while leaving the GL twin behind would desynchronise HR & GL.
+      if (err instanceof PayrollRunDeleteConflictError) {
+        return res.status(409).json({ message: err.message });
+      }
       res.status(500).json({ message: err?.message || "تعذر حذف كشف الرواتب" });
     }
   });
