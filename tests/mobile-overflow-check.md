@@ -45,16 +45,17 @@ App shell (authenticated, dense tables):
 
 Public marketing surface (the first thing prospects see on a phone):
 
-| Page            | Path                                    |
-| --------------- | --------------------------------------- |
-| Landing         | `/`                                     |
-| Demo request    | `/demo`                                 |
-| Invite accept   | `/invite/sample-overflow-check-token`   |
+| Page            | Path                                                |
+| --------------- | --------------------------------------------------- |
+| Landing         | `/`                                                 |
+| Demo request    | `/demo`                                             |
+| Invite accept   | `/accept-invitation/sample-overflow-check-token`    |
 
 Each is loaded once with `app.locale` set to `en` (LTR) and once with `ar`
 (RTL) — the second pass also exercises the RTL sticky-shadow direction in
-`.table-sticky-first`. The invite token does not need to be valid: the page
-renders its accept form regardless and only hits the API on submit.
+`.table-sticky-first`. The invite token does not need to be valid: the
+accept-invitation page renders an "expired or missing" state for unknown
+tokens and never tries to submit them.
 
 For every (path × locale) the test asserts:
 

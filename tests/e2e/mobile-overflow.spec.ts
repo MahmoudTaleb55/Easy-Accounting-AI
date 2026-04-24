@@ -27,12 +27,12 @@ const APP_PATHS = [
 
 // Public marketing surface — first thing prospects see on a phone. Keep this
 // list in sync with `tests/mobile-overflow-check.md`. The invite token does
-// not need to be valid: the page renders its accept form regardless and only
-// hits the API on submit.
+// not need to be valid: the accept-invitation page renders an "expired or
+// missing" state for unknown tokens and never tries to submit them.
 const PUBLIC_PATHS = [
   "/",
   "/demo",
-  "/invite/sample-overflow-check-token",
+  "/accept-invitation/sample-overflow-check-token",
 ] as const;
 
 const LOCALES = ["en", "ar"] as const;

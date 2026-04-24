@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocale } from "@/contexts/locale-context";
+import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,45 +20,42 @@ import {
 } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { UserPlus, Users, Copy, Trash2, Check, AlertCircle, ShieldCheck } from "lucide-react";
-import { WORKSPACE_ROLES, type WorkspaceRole } from "@shared/schema";
+import { ROLES, inviteSchema, type Role } from "@shared/schema";
 import { WriteGuard } from "@/components/auth/write-guard";
 
-interface Member {
-  id: number;
-  name: string;
-  email: string;
-  role: WorkspaceRole;
-  status: string;
+// Shape returned by `/api/auth/members` (server/auth/local-routes.ts).
+interface MemberRow {
+  id: string;
+  userId: string;
+  companyId: number;
+  role: Role;
   createdAt: string | null;
+  user: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    profileImageUrl: string | null;
+    provider: string;
+  };
 }
 
-interface Invite {
-  id: number;
+// Shape returned by `/api/auth/invitations`.
+interface InvitationRow {
+  id: string;
+  companyId: number;
   email: string;
-  name: string;
-  role: WorkspaceRole;
+  role: Role;
   token: string;
-  status: "pending" | "accepted" | "revoked";
-  createdAt: string | null;
-  acceptedAt: string | null;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  expiresAt: string;
+  createdAt: string;
 }
 
-interface Me {
-  id: number;
-  name: string;
-  email: string;
-  role: WorkspaceRole;
-}
+type InviteForm = { email: string; role: Role };
 
-const inviteFormSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().email(),
-  role: z.enum(WORKSPACE_ROLES),
-});
-type InviteForm = z.infer<typeof inviteFormSchema>;
-
-function roleLabel(role: WorkspaceRole, locale: string): string {
-  const map: Record<WorkspaceRole, { ar: string; en: string }> = {
+function roleLabel(role: Role, locale: string): string {
+  const map: Record<Role, { ar: string; en: string }> = {
     owner: { ar: "مالك", en: "Owner" },
     accountant: { ar: "محاسب", en: "Accountant" },
     viewer: { ar: "مشاهد", en: "Viewer" },
@@ -66,7 +63,7 @@ function roleLabel(role: WorkspaceRole, locale: string): string {
   return map[role][locale === "ar" ? "ar" : "en"];
 }
 
-function roleDescription(role: WorkspaceRole, locale: string): string {
+function roleDescription(role: Role, locale: string): string {
   if (locale === "ar") {
     return role === "owner"
       ? "كامل الصلاحيات بما فيها الإعدادات والفريق."
@@ -81,41 +78,51 @@ function roleDescription(role: WorkspaceRole, locale: string): string {
     : "Read-only — cannot make changes.";
 }
 
+function memberDisplayName(m: MemberRow): string {
+  return (
+    [m.user.firstName, m.user.lastName].filter(Boolean).join(" ").trim() ||
+    m.user.email ||
+    "—"
+  );
+}
+
 export function TeamPanel() {
   const { locale } = useLocale();
   const { toast } = useToast();
+  const { user, role } = useAuth();
+  const isOwner = role === "owner";
   const [showInvite, setShowInvite] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
-  const { data: me } = useQuery<Me>({ queryKey: ["/api/auth/me"] });
-  const isOwner = me?.role === "owner";
-  const { data: members = [] } = useQuery<Member[]>({
-    queryKey: ["/api/team/members"],
-    enabled: !!me && me.id !== 0,
+  const { data: members = [] } = useQuery<MemberRow[]>({
+    queryKey: ["/api/auth/members"],
+    enabled: isOwner,
   });
-  const { data: invites = [] } = useQuery<Invite[]>({
-    queryKey: ["/api/team/invites"],
+  const { data: invites = [] } = useQuery<InvitationRow[]>({
+    queryKey: ["/api/auth/invitations"],
     enabled: isOwner,
   });
 
   const form = useForm<InviteForm>({
-    resolver: zodResolver(inviteFormSchema),
-    defaultValues: { name: "", email: "", role: "viewer" },
+    resolver: zodResolver(inviteSchema),
+    defaultValues: { email: "", role: "viewer" },
   });
 
   const inviteMutation = useMutation({
     mutationFn: async (vals: InviteForm) => {
-      const res = await apiRequest("POST", "/api/team/invites", vals);
+      const res = await apiRequest("POST", "/api/auth/invitations", vals);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/team/invites"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/invitations"] });
       toast({
-        title: locale === "ar" ? "تم إنشاء الدعوة" : "Invite created",
+        title: locale === "ar" ? "تم إرسال الدعوة" : "Invite sent",
         description:
-          locale === "ar" ? "انسخ الرابط وشاركه مع الزميل." : "Copy the link and share it with your teammate.",
+          locale === "ar"
+            ? "وصل البريد لزميلك. يمكنك أيضاً نسخ الرابط من القائمة أدناه."
+            : "Your teammate will receive an email. You can also copy the link from the list below.",
       });
-      form.reset({ name: "", email: "", role: "viewer" });
+      form.reset({ email: "", role: "viewer" });
       setShowInvite(false);
     },
     onError: (e: any) =>
@@ -127,13 +134,14 @@ export function TeamPanel() {
   });
 
   const roleMutation = useMutation({
-    mutationFn: async ({ id, role }: { id: number; role: WorkspaceRole }) => {
-      const res = await apiRequest("PATCH", `/api/team/members/${id}`, { role });
+    mutationFn: async ({ id, role: nextRole }: { id: string; role: Role }) => {
+      const res = await apiRequest("PATCH", `/api/auth/members/${id}`, { role: nextRole });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/team/members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/members"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/memberships"] });
     },
     onError: (e: any) =>
       toast({
@@ -144,8 +152,8 @@ export function TeamPanel() {
   });
 
   const removeMutation = useMutation({
-    mutationFn: async (id: number) => apiRequest("DELETE", `/api/team/members/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/team/members"] }),
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/auth/members/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/auth/members"] }),
     onError: (e: any) =>
       toast({
         title: locale === "ar" ? "تعذر الحذف" : "Could not remove",
@@ -155,13 +163,13 @@ export function TeamPanel() {
   });
 
   const revokeMutation = useMutation({
-    mutationFn: async (id: number) => apiRequest("DELETE", `/api/team/invites/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/team/invites"] }),
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/auth/invitations/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/auth/invitations"] }),
   });
 
   function inviteLink(token: string): string {
     const base = typeof window !== "undefined" ? window.location.origin : "";
-    return `${base}/invite/${token}`;
+    return `${base}/accept-invitation/${token}`;
   }
 
   function copyInvite(token: string) {
@@ -210,8 +218,8 @@ export function TeamPanel() {
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
               {locale === "ar"
-                ? "إدارة الفريق متاحة للمالك فقط. يظهر هنا الفريق للقراءة فقط."
-                : "Only the workspace owner can manage the team. You're viewing in read-only mode."}
+                ? "إدارة الفريق متاحة للمالك فقط."
+                : "Only the workspace owner can manage the team."}
             </span>
           </div>
         )}
@@ -223,43 +231,24 @@ export function TeamPanel() {
               className="rounded-lg border border-border p-4 space-y-3 bg-muted/20"
               data-testid="form-invite"
             >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{locale === "ar" ? "الاسم" : "Name"}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          placeholder={locale === "ar" ? "مثال: سارة" : "e.g. Sarah"}
-                          data-testid="input-invite-name"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{locale === "ar" ? "البريد الإلكتروني" : "Email"}</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="email"
-                          {...field}
-                          placeholder="name@company.com"
-                          data-testid="input-invite-email"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{locale === "ar" ? "البريد الإلكتروني" : "Email"}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        {...field}
+                        placeholder="name@company.com"
+                        data-testid="input-invite-email"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="role"
@@ -273,7 +262,7 @@ export function TeamPanel() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {WORKSPACE_ROLES.map((r) => (
+                        {ROLES.map((r) => (
                           <SelectItem key={r} value={r}>
                             <div className="flex flex-col items-start">
                               <span>{roleLabel(r, locale)}</span>
@@ -307,11 +296,11 @@ export function TeamPanel() {
                   >
                     {inviteMutation.isPending
                       ? locale === "ar"
-                        ? "جاري الإنشاء..."
-                        : "Creating..."
+                        ? "جاري الإرسال..."
+                        : "Sending..."
                       : locale === "ar"
-                      ? "إنشاء رابط الدعوة"
-                      : "Create invite link"}
+                      ? "إرسال الدعوة"
+                      : "Send invite"}
                   </Button>
                 </WriteGuard>
               </div>
@@ -319,78 +308,84 @@ export function TeamPanel() {
           </Form>
         )}
 
-        <section className="space-y-2" data-testid="section-members">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-foreground">
-              {locale === "ar" ? "الأعضاء" : "Members"}
-            </h3>
-            <span className="text-[11px] text-muted-foreground">
-              {members.length} {locale === "ar" ? "عضو" : "member(s)"}
-            </span>
-          </div>
-          <ul className="divide-y divide-border rounded-md border border-border overflow-hidden">
-            {members.map((m) => (
-              <li
-                key={m.id}
-                className="flex items-center gap-3 p-3"
-                data-testid={`row-member-${m.id}`}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-foreground truncate" data-testid={`text-member-name-${m.id}`}>
-                      {m.name}
-                    </p>
-                    {me?.id === m.id && (
-                      <Badge variant="outline" className="text-[10px]">
-                        {locale === "ar" ? "أنت" : "You"}
+        {isOwner && (
+          <section className="space-y-2" data-testid="section-members">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">
+                {locale === "ar" ? "الأعضاء" : "Members"}
+              </h3>
+              <span className="text-[11px] text-muted-foreground">
+                {members.length} {locale === "ar" ? "عضو" : "member(s)"}
+              </span>
+            </div>
+            <ul className="divide-y divide-border rounded-md border border-border overflow-hidden">
+              {members.map((m) => {
+                const isMe = m.userId === user?.id;
+                const name = memberDisplayName(m);
+                return (
+                  <li
+                    key={m.id}
+                    className="flex items-center gap-3 p-3"
+                    data-testid={`row-member-${m.id}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-foreground truncate" data-testid={`text-member-name-${m.id}`}>
+                          {name}
+                        </p>
+                        {isMe && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {locale === "ar" ? "أنت" : "You"}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground truncate">{m.user.email ?? "—"}</p>
+                    </div>
+                    {!isMe ? (
+                      <Select
+                        value={m.role}
+                        onValueChange={(v) => roleMutation.mutate({ id: m.id, role: v as Role })}
+                      >
+                        <SelectTrigger
+                          className="h-8 w-[120px] text-xs"
+                          data-testid={`select-member-role-${m.id}`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ROLES.map((r) => (
+                            <SelectItem key={r} value={r}>
+                              {roleLabel(r, locale)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge variant="secondary" className="text-[11px]" data-testid={`badge-member-role-${m.id}`}>
+                        <ShieldCheck className="w-3 h-3 me-1" />
+                        {roleLabel(m.role, locale)}
                       </Badge>
                     )}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground truncate">{m.email}</p>
-                </div>
-                {isOwner && me?.id !== m.id ? (
-                  <Select
-                    value={m.role}
-                    onValueChange={(v) => roleMutation.mutate({ id: m.id, role: v as WorkspaceRole })}
-                  >
-                    <SelectTrigger
-                      className="h-8 w-[120px] text-xs"
-                      data-testid={`select-member-role-${m.id}`}
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {WORKSPACE_ROLES.map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {roleLabel(r, locale)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Badge variant="secondary" className="text-[11px]" data-testid={`badge-member-role-${m.id}`}>
-                    <ShieldCheck className="w-3 h-3 me-1" />
-                    {roleLabel(m.role, locale)}
-                  </Badge>
-                )}
-                {isOwner && me?.id !== m.id && (
-                  <WriteGuard>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => removeMutation.mutate(m.id)}
-                      aria-label={locale === "ar" ? "حذف العضو" : "Remove member"}
-                      data-testid={`button-remove-member-${m.id}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </WriteGuard>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
+                    {!isMe && (
+                      <WriteGuard>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => removeMutation.mutate(m.id)}
+                          aria-label={locale === "ar" ? "حذف العضو" : "Remove member"}
+                          data-testid={`button-remove-member-${m.id}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </WriteGuard>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         {isOwner && pendingInvites.length > 0 && (
           <section className="space-y-2" data-testid="section-invites">
@@ -405,8 +400,12 @@ export function TeamPanel() {
                   data-testid={`row-invite-${inv.id}`}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground truncate">{inv.name}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{inv.email}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{inv.email}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {locale === "ar"
+                        ? `تنتهي ${new Date(inv.expiresAt).toLocaleDateString()}`
+                        : `Expires ${new Date(inv.expiresAt).toLocaleDateString()}`}
+                    </p>
                   </div>
                   <Badge variant="outline" className="text-[11px]">
                     {roleLabel(inv.role, locale)}
@@ -424,27 +423,25 @@ export function TeamPanel() {
                     )}
                     {locale === "ar" ? "نسخ الرابط" : "Copy link"}
                   </Button>
-                  {isOwner && (
-                    <WriteGuard>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => revokeMutation.mutate(inv.id)}
-                        aria-label={locale === "ar" ? "إلغاء الدعوة" : "Revoke invite"}
-                        data-testid={`button-revoke-invite-${inv.id}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </WriteGuard>
-                  )}
+                  <WriteGuard>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => revokeMutation.mutate(inv.id)}
+                      aria-label={locale === "ar" ? "إلغاء الدعوة" : "Revoke invite"}
+                      data-testid={`button-revoke-invite-${inv.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </WriteGuard>
                 </li>
               ))}
             </ul>
             <p className="text-[11px] text-muted-foreground">
               {locale === "ar"
-                ? "شارك رابط الدعوة مع زميلك. عند فتحه يصبح عضواً نشطاً بالدور المحدد."
-                : "Share the link with your teammate. Opening it activates the membership with the assigned role."}
+                ? "أرسلنا للزميل بريداً يحوي الرابط. يمكنك أيضاً نسخه ومشاركته يدوياً."
+                : "We emailed your teammate the link. You can also copy and share it manually."}
             </p>
           </section>
         )}
@@ -454,7 +451,7 @@ export function TeamPanel() {
             {locale === "ar" ? "ماذا يستطيع كل دور؟" : "What each role can do"}
           </Label>
           <ul className="mt-2 grid gap-1.5 text-[12px] text-muted-foreground sm:grid-cols-3">
-            {WORKSPACE_ROLES.map((r) => (
+            {ROLES.map((r) => (
               <li key={r} className="rounded border border-border bg-background/40 p-2">
                 <div className="text-foreground text-xs font-medium mb-0.5">
                   {roleLabel(r, locale)}

@@ -530,7 +530,7 @@ export const disposals = pgTable("disposals", {
 export type Disposal = typeof disposals.$inferSelect;
 
 // ============================================================================
-// Workspace members (RBAC) & invites
+// Workspace members (RBAC mirror)
 // ============================================================================
 
 // Re-export the canonical role enum from `shared/models/auth.ts` under the
@@ -541,6 +541,13 @@ import { ROLES as _ROLES, type Role as _Role } from "./models/auth";
 export const WORKSPACE_ROLES = _ROLES;
 export type WorkspaceRole = _Role;
 
+// `workspace_members` is a *read-only mirror* of the canonical `memberships`
+// table (shared/models/auth.ts). The rbac middleware in `server/auth.ts`
+// upserts a row here for the signed-in user on every request so legacy
+// `req.member` consumers (and the `/api/auth/me` identity probe) keep
+// working without doing a second lookup against `memberships`. Member
+// management (invite, role change, removal) lives on `/api/auth/members` and
+// `/api/auth/invitations`; do NOT add new write paths against this table.
 export const workspaceMembers = pgTable("workspace_members", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -551,35 +558,11 @@ export const workspaceMembers = pgTable("workspace_members", {
 });
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
 
-export const inviteMemberSchema = z.object({
-  name: z.string().min(1, "الاسم مطلوب").max(80),
-  email: z.string().email("بريد إلكتروني غير صالح").max(160),
-  role: z.enum(WORKSPACE_ROLES),
-});
-export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
-
-export const updateMemberRoleSchema = z.object({
-  role: z.enum(WORKSPACE_ROLES),
-});
-
-export const workspaceInvites = pgTable("workspace_invites", {
-  id: serial("id").primaryKey(),
-  email: text("email").notNull(),
-  name: text("name").notNull(),
-  role: text("role").notNull(), // owner|accountant|viewer
-  token: text("token").notNull().unique(),
-  status: text("status").notNull().default("pending"), // pending|accepted|revoked
-  invitedByMemberId: integer("invited_by_member_id"),
-  acceptedMemberId: integer("accepted_member_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-  acceptedAt: timestamp("accepted_at"),
-});
-export type WorkspaceInvite = typeof workspaceInvites.$inferSelect;
-
-export const acceptInviteSchema = z.object({
-  token: z.string().min(8),
-  name: z.string().min(1).max(80).optional(),
-});
+// The legacy `workspace_invites` table + its `inviteMemberSchema` /
+// `acceptInviteSchema` validators were retired in 2026-04. Real invitations
+// live in the `invitations` table (shared/models/auth.ts) and are validated by
+// `inviteSchema` from the same module. Migration `0004_drop_workspace_invites.sql`
+// drops the obsolete table.
 
 // ============================================================================
 // Chat

@@ -26,7 +26,6 @@ import HR from "@/pages/hr";
 import FixedAssets from "@/pages/fixed-assets";
 import SettingsPage from "@/pages/settings";
 import Styleguide from "@/pages/styleguide";
-import InviteAccept from "@/pages/invite";
 
 // Auth pages
 import SignInPage from "@/pages/auth/sign-in";
@@ -113,7 +112,13 @@ function Router() {
   // Public routes
   if (location === "/") return <Landing />;
   if (location === "/demo") return <Demo />;
-  if (location.startsWith("/invite/")) return <InviteAccept />;
+  // Legacy invite URL — redirect to the real auth flow. Old invitation
+  // emails or shared links pasted in chat keep working without dragging
+  // the retired /api/team/invites/accept endpoint along with them.
+  if (location.startsWith("/invite/")) {
+    const token = location.slice("/invite/".length);
+    return <Redirect to={`/accept-invitation/${token}`} />;
+  }
   if (location === "/signin") return <SignInPage />;
   if (location === "/signup") return <SignUpPage />;
   if (location === "/forgot-password") return <ForgotPasswordPage />;

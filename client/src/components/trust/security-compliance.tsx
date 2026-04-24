@@ -26,13 +26,12 @@ interface JE {
 }
 
 interface MemberLite {
-  id: number;
+  id: string;
   role: "owner" | "accountant" | "viewer";
-  status: string;
 }
 interface InviteLite {
-  id: number;
-  status: "pending" | "accepted" | "revoked";
+  id: string;
+  status: "pending" | "accepted" | "revoked" | "expired";
 }
 
 interface MarkProps {
@@ -152,12 +151,16 @@ export function SecurityCompliance() {
   const { data: me } = useQuery<{ role: "owner" | "accountant" | "viewer"; id: number }>({
     queryKey: ["/api/auth/me"],
   });
+  // Member + invite counts come from the canonical auth endpoints. Both are
+  // owner-only on the server, so we only enable them for owners — other
+  // roles render the static counts as zero (the badges read "0 owner · …",
+  // which is fine on the trust panel since they can't see the team anyway).
   const { data: members = [] } = useQuery<MemberLite[]>({
-    queryKey: ["/api/team/members"],
-    enabled: !!me && me.id !== 0,
+    queryKey: ["/api/auth/members"],
+    enabled: me?.role === "owner",
   });
   const { data: invites = [] } = useQuery<InviteLite[]>({
-    queryKey: ["/api/team/invites"],
+    queryKey: ["/api/auth/invitations"],
     enabled: me?.role === "owner",
   });
   const recent = (entries || []).slice(0, 5);
