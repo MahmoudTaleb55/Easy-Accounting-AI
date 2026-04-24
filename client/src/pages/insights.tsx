@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useFormatMoney } from "@/lib/format";
+import { useFormatMoney, useSettings } from "@/lib/format";
 import {
   Activity,
   AlertTriangle,
@@ -530,6 +530,7 @@ function SliderField({ label, value, onChange, min, max, suffix, testid }: any) 
 function BudgetTab() {
   const fmtMoney = useFormatMoney();
   const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
+  const settings = useSettings();
   const { period } = usePeriod();
   // Budget rows are stored per (year, month). Derive both from the period's
   // end date so changing the period chip immediately rescopes the table.
@@ -588,7 +589,7 @@ function BudgetTab() {
             </Select>
           </div>
           <div>
-            <Label>المبلغ المخطط (ر.س)</Label>
+            <Label>المبلغ المخطط ({settings.currencySymbol})</Label>
             <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-2" data-testid="input-budget-amount" />
           </div>
           <Button onClick={() => save.mutate()} disabled={!accountId || !amount || save.isPending} data-testid="button-save-budget">
