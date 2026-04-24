@@ -40,6 +40,7 @@ export default defineConfig({
         /period-selector\.spec\.ts/,
         /role-based-buttons\.spec\.ts/,
         /role-based-api\.spec\.ts/,
+        /quick-actions\.spec\.ts/,
       ],
     },
     {
@@ -71,6 +72,19 @@ export default defineConfig({
       use: {
         viewport: { width: 1280, height: 800 },
         storageState: ".playwright/period-selector-state.json",
+      },
+    },
+    {
+      name: "quick-actions-setup",
+      testMatch: /quick-actions\.setup\.ts/,
+    },
+    {
+      name: "quick-actions",
+      testMatch: /quick-actions\.spec\.ts/,
+      dependencies: ["quick-actions-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+        storageState: ".playwright/quick-actions-state.json",
       },
     },
     {
