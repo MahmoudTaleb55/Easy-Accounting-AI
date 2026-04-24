@@ -441,7 +441,12 @@ export default function EmailDeliveryPage() {
 
       {role === "owner" && <AlertSettingsCard ar={ar} />}
 
-      {trends && (
+      {trends && (() => {
+        const isAllQuiet =
+          trends.totals.bounced === 0 &&
+          trends.totals.complained === 0 &&
+          trends.totals.send_failed === 0;
+        return (
         <TooltipProvider delayDuration={150}>
           <div
             className="rounded-md border bg-card p-4"
@@ -522,9 +527,20 @@ export default function EmailDeliveryPage() {
                 testid="chip-trend-send-failed"
               />
             </div>
+            {isAllQuiet && (
+              <p
+                className="mt-3 text-xs text-muted-foreground"
+                data-testid="text-trends-empty"
+              >
+                {ar
+                  ? `لا توجد تنبيهات سمعة المُرسِل خلال ${trendWindowShort(trendWindow, ar)}. ستظهر هنا أعداد الرسائل المرتدّة وبلاغات السبام وإخفاقات الإرسال إن حدثت.`
+                  : `No sender-reputation events in the last ${trendWindowShort(trendWindow, ar)}. Bounces, spam reports, and send failures will show up here when they happen.`}
+              </p>
+            )}
           </div>
         </TooltipProvider>
-      )}
+        );
+      })()}
 
       <Card>
         <CardHeader>
