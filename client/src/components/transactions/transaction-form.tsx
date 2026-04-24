@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { insertTransactionSchema } from "@shared/schema";
 import { useCreateTransaction } from "@/hooks/use-transactions";
+import { useSettings } from "@/lib/format";
 import { Loader2 } from "lucide-react";
 
 // The schema expects amount to be string or number, we'll cast it properly
@@ -34,6 +35,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
   const mutation = useCreateTransaction();
+  const settings = useSettings();
   
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -95,7 +97,7 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
                       className="h-12 rounded-xl bg-background border-2 pl-12 focus:ring-primary/20 transition-all text-lg font-bold" 
                       {...field} 
                     />
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">ر.س</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium" data-testid="text-amount-currency">{settings.currencySymbol}</span>
                   </div>
                 </FormControl>
                 <FormMessage />
