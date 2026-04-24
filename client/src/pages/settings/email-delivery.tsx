@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale } from "@/contexts/locale-context";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { isString, useSessionStorageState } from "@/hooks/use-session-storage-state";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -93,9 +94,14 @@ interface EventRow {
 type TrendWindow = "1" | "7" | "30";
 
 const TREND_WINDOWS: TrendWindow[] = ["1", "7", "30"];
-const TREND_WINDOW_STORAGE_KEY = "email-delivery:trend-window";
 
-function isTrendWindow(value: string | null): value is TrendWindow {
+// Session-storage keys for the three filters that should survive a page
+// reload. Kept side-by-side so the shared prefix and naming stay obvious.
+const TREND_WINDOW_STORAGE_KEY = "email-delivery:trend-window";
+const STATUS_FILTER_STORAGE_KEY = "email-delivery:status-filter";
+const RECIPIENT_FILTER_STORAGE_KEY = "email-delivery:recipient";
+
+function isTrendWindow(value: unknown): value is TrendWindow {
   return value === "1" || value === "7" || value === "30";
 }
 
@@ -168,6 +174,15 @@ const STATUS_FILTERS: DeliveryStatus[] = [
   "not_configured",
 ];
 
+const VALID_STATUS_FILTER_VALUES = new Set<string>([
+  "all",
+  ...STATUS_FILTERS.map((s) => s as string),
+]);
+
+function isStatusFilterValue(value: unknown): value is string {
+  return typeof value === "string" && VALID_STATUS_FILTER_VALUES.has(value);
+}
+
 function statusDescriptor(
   status: DeliveryStatus | string,
   ar: boolean,
@@ -237,20 +252,30 @@ export default function EmailDeliveryPage() {
   const { role } = useAuth();
   const isAdmin = role === "owner";
 
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [emailInput, setEmailInput] = useState("");
-  const [emailFilter, setEmailFilter] = useState("");
+  // Recipient search, status drop-down, and trend-window toggle all
+  // round-trip through sessionStorage via the same shared hook so an
+  // admin's view of this page is preserved across reloads and back/forth
+  // navigation within the tab.
+  const [statusFilter, setStatusFilter] = useSessionStorageState<string>(
+    STATUS_FILTER_STORAGE_KEY,
+    "all",
+    isStatusFilterValue,
+  );
+  const [emailInput, setEmailInput] = useSessionStorageState<string>(
+    RECIPIENT_FILTER_STORAGE_KEY,
+    "",
+    isString,
+  );
+  // Seed `emailFilter` from the hydrated input so the first fetch after a
+  // page reload is already scoped to the restored recipient. Otherwise it
+  // would briefly run unfiltered until the 250ms debounce effect fires.
+  const [emailFilter, setEmailFilter] = useState(() => emailInput.trim());
   const [selected, setSelected] = useState<DeliveryRow | null>(null);
-  const [trendWindow, setTrendWindow] = useState<TrendWindow>(() => {
-    if (typeof window === "undefined") return "7";
-    const stored = window.sessionStorage.getItem(TREND_WINDOW_STORAGE_KEY);
-    return isTrendWindow(stored) ? stored : "7";
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.sessionStorage.setItem(TREND_WINDOW_STORAGE_KEY, trendWindow);
-  }, [trendWindow]);
+  const [trendWindow, setTrendWindow] = useSessionStorageState<TrendWindow>(
+    TREND_WINDOW_STORAGE_KEY,
+    "7",
+    isTrendWindow,
+  );
 
   // Date-range filter for the export window. `range` is a preset key that
   // shortcuts to a from/to in days; `customFrom`/`customTo` are the inputs
