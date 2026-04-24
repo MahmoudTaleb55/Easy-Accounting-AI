@@ -34,7 +34,11 @@ export default defineConfig({
       // from the default `npx playwright test` run.
       name: "default",
       testMatch: /.*\.spec\.ts/,
-      testIgnore: [/mobile-overflow\.spec\.ts/, /dashboard-shell\.spec\.ts/],
+      testIgnore: [
+        /mobile-overflow\.spec\.ts/,
+        /dashboard-shell\.spec\.ts/,
+        /period-selector\.spec\.ts/,
+      ],
     },
     {
       name: "mobile-overflow",
@@ -52,6 +56,19 @@ export default defineConfig({
       use: {
         viewport: { width: 1280, height: 800 },
         storageState: ".playwright/dashboard-state.json",
+      },
+    },
+    {
+      name: "period-selector-setup",
+      testMatch: /period-selector\.setup\.ts/,
+    },
+    {
+      name: "period-selector",
+      testMatch: /period-selector\.spec\.ts/,
+      dependencies: ["period-selector-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+        storageState: ".playwright/period-selector-state.json",
       },
     },
   ],
