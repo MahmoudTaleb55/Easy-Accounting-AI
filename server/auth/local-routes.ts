@@ -605,15 +605,24 @@ export function registerLocalAuthRoutes(app: Express) {
     const ctx = (req as any).membership!;
     const status = typeof req.query.status === "string" ? req.query.status : null;
     const email = typeof req.query.email === "string" ? req.query.email : null;
+    const from = typeof req.query.from === "string" ? req.query.from : null;
+    const to = typeof req.query.to === "string" ? req.query.to : null;
     const wantsCsv = req.query.format === "csv";
-    // CSV export must mirror what the admin sees on screen, so use the same
-    // default limit as the JSON list view. Callers can still override via
-    // `?limit=` (capped server-side in the storage layer).
-    const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 200;
+    // CSV exports for compliance reviewers can legitimately span weeks or
+    // months, so allow them to pull more rows than the on-screen list. The
+    // hard ceiling is enforced in the storage layer.
+    const defaultLimit = wantsCsv ? 10000 : 200;
+    const maxLimit = wantsCsv ? 10000 : 500;
+    const limit = Number.isFinite(Number(req.query.limit))
+      ? Number(req.query.limit)
+      : defaultLimit;
     const rows = await authBizStorage.listEmailDeliveriesForCompany(ctx.companyId, {
       status,
       email,
+      from,
+      to,
       limit,
+      maxLimit,
     });
     if (wantsCsv) {
       const header = [

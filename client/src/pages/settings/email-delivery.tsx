@@ -118,6 +118,41 @@ function trendWindowShort(window: TrendWindow, ar: boolean): string {
   }
 }
 
+type RangePreset = "all" | "7d" | "30d" | "90d" | "custom";
+
+const RANGE_DAYS: Partial<Record<RangePreset, number>> = {
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+};
+
+// Convert the chosen preset (or custom inputs) into the YYYY-MM-DD pair
+// the server understands. The server treats the `to` bound as inclusive
+// of the whole calendar day, so we don't need to bump it here.
+function resolveRangeBounds(
+  range: RangePreset,
+  customFrom: string,
+  customTo: string,
+): { from: string; to: string } {
+  if (range === "custom") {
+    return { from: customFrom.trim(), to: customTo.trim() };
+  }
+  const days = RANGE_DAYS[range];
+  if (!days) return { from: "", to: "" };
+  const now = new Date();
+  const today = toDateOnly(now);
+  const fromDate = new Date(now);
+  fromDate.setDate(fromDate.getDate() - (days - 1));
+  return { from: toDateOnly(fromDate), to: today };
+}
+
+function toDateOnly(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 const STATUS_FILTERS: DeliveryStatus[] = [
   "sent",
   "delivered",
@@ -214,15 +249,30 @@ export default function EmailDeliveryPage() {
     window.sessionStorage.setItem(TREND_WINDOW_STORAGE_KEY, trendWindow);
   }, [trendWindow]);
 
+  // Date-range filter for the export window. `range` is a preset key that
+  // shortcuts to a from/to in days; `customFrom`/`customTo` are the inputs
+  // shown when the admin picks "custom". Stored as YYYY-MM-DD strings so
+  // they round-trip cleanly through query params and `<input type="date">`.
+  const [range, setRange] = useState<RangePreset>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
   // Debounce the email input so each keystroke doesn't slam the API.
   useEffect(() => {
     const t = window.setTimeout(() => setEmailFilter(emailInput.trim()), 250);
     return () => window.clearTimeout(t);
   }, [emailInput]);
 
+  const dateBounds = useMemo(
+    () => resolveRangeBounds(range, customFrom, customTo),
+    [range, customFrom, customTo],
+  );
+
   const queryParams = new URLSearchParams();
   if (statusFilter !== "all") queryParams.set("status", statusFilter);
   if (emailFilter) queryParams.set("email", emailFilter);
+  if (dateBounds.from) queryParams.set("from", dateBounds.from);
+  if (dateBounds.to) queryParams.set("to", dateBounds.to);
   const qs = queryParams.toString();
 
   const {
@@ -231,7 +281,13 @@ export default function EmailDeliveryPage() {
     isFetching,
     refetch,
   } = useQuery<DeliveryRow[]>({
-    queryKey: ["/api/auth/email-deliveries", statusFilter, emailFilter],
+    queryKey: [
+      "/api/auth/email-deliveries",
+      statusFilter,
+      emailFilter,
+      dateBounds.from,
+      dateBounds.to,
+    ],
     queryFn: async () => {
       const r = await fetch(`/api/auth/email-deliveries${qs ? `?${qs}` : ""}`, {
         credentials: "include",
@@ -421,63 +477,134 @@ export default function EmailDeliveryPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end" data-testid="filters">
-            <div className="flex-1 space-y-1.5">
-              <Label htmlFor="filter-email">{ar ? "البريد الإلكتروني" : "Recipient"}</Label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="filter-email"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder={ar ? "ابحث ببريد المستلم…" : "Search by recipient…"}
-                  className="ps-8"
-                  data-testid="input-filter-email"
-                />
+          <div className="space-y-3" data-testid="filters">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-1.5">
+                <Label htmlFor="filter-email">{ar ? "البريد الإلكتروني" : "Recipient"}</Label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="filter-email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    placeholder={ar ? "ابحث ببريد المستلم…" : "Search by recipient…"}
+                    className="ps-8"
+                    data-testid="input-filter-email"
+                  />
+                </div>
+              </div>
+              <div className="w-full sm:w-56 space-y-1.5">
+                <Label>{ar ? "الحالة" : "Status"}</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger data-testid="select-filter-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" data-testid="option-status-all">
+                      {ar ? "كل الحالات" : "All statuses"}
+                    </SelectItem>
+                    {STATUS_FILTERS.map((s) => (
+                      <SelectItem key={s as string} value={s as string} data-testid={`option-status-${s}`}>
+                        {statusDescriptor(s, ar).label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full sm:w-56 space-y-1.5">
+                <Label>{ar ? "الفترة الزمنية" : "Date range"}</Label>
+                <Select
+                  value={range}
+                  onValueChange={(v) => setRange(v as RangePreset)}
+                >
+                  <SelectTrigger data-testid="select-filter-range">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" data-testid="option-range-all">
+                      {ar ? "كل الوقت" : "All time"}
+                    </SelectItem>
+                    <SelectItem value="7d" data-testid="option-range-7d">
+                      {ar ? "آخر 7 أيام" : "Last 7 days"}
+                    </SelectItem>
+                    <SelectItem value="30d" data-testid="option-range-30d">
+                      {ar ? "آخر 30 يومًا" : "Last 30 days"}
+                    </SelectItem>
+                    <SelectItem value="90d" data-testid="option-range-90d">
+                      {ar ? "آخر 90 يومًا" : "Last 90 days"}
+                    </SelectItem>
+                    <SelectItem value="custom" data-testid="option-range-custom">
+                      {ar ? "نطاق مخصّص" : "Custom range"}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-            <div className="w-full sm:w-56 space-y-1.5">
-              <Label>{ar ? "الحالة" : "Status"}</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger data-testid="select-filter-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" data-testid="option-status-all">
-                    {ar ? "كل الحالات" : "All statuses"}
-                  </SelectItem>
-                  {STATUS_FILTERS.map((s) => (
-                    <SelectItem key={s as string} value={s as string} data-testid={`option-status-${s}`}>
-                      {statusDescriptor(s, ar).label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => refetch()}
-              data-testid="button-refresh"
-            >
-              <RefreshCw className={`me-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-              {ar ? "تحديث" : "Refresh"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              asChild
-              disabled={deliveries.length === 0}
-              data-testid="button-download-csv"
-            >
-              <a
-                href={`/api/auth/email-deliveries${qs ? `?${qs}&` : "?"}format=csv`}
-                download
+            {range === "custom" && (
+              <div
+                className="flex flex-col gap-3 sm:flex-row sm:items-end"
+                data-testid="custom-range"
               >
-                <Download className="me-2 h-4 w-4" />
-                {ar ? "تنزيل CSV" : "Download CSV"}
-              </a>
-            </Button>
+                <div className="flex-1 space-y-1.5">
+                  <Label htmlFor="filter-from">{ar ? "من" : "From"}</Label>
+                  <Input
+                    id="filter-from"
+                    type="date"
+                    value={customFrom}
+                    max={customTo || undefined}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    data-testid="input-filter-from"
+                  />
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <Label htmlFor="filter-to">{ar ? "إلى" : "To"}</Label>
+                  <Input
+                    id="filter-to"
+                    type="date"
+                    value={customTo}
+                    min={customFrom || undefined}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    data-testid="input-filter-to"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => refetch()}
+                data-testid="button-refresh"
+              >
+                <RefreshCw className={`me-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+                {ar ? "تحديث" : "Refresh"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                asChild
+                disabled={deliveries.length === 0}
+                data-testid="button-download-csv"
+              >
+                <a
+                  href={`/api/auth/email-deliveries${qs ? `?${qs}&` : "?"}format=csv`}
+                  download
+                >
+                  <Download className="me-2 h-4 w-4" />
+                  {ar ? "تنزيل CSV" : "Download CSV"}
+                </a>
+              </Button>
+              {(dateBounds.from || dateBounds.to) && (
+                <span
+                  className="text-xs text-muted-foreground"
+                  data-testid="text-active-range"
+                >
+                  {ar ? "النطاق:" : "Window:"} {dateBounds.from || (ar ? "—" : "—")}
+                  {" → "}
+                  {dateBounds.to || (ar ? "—" : "—")}
+                </span>
+              )}
+            </div>
           </div>
 
           {isLoading ? (

@@ -21,6 +21,43 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { resolveCurrency } from "@shared/currencies";
 
+// Coerce a date-window query param into a Postgres-friendly ISO timestamp,
+// or null if the caller didn't supply one / it can't be parsed.
+//
+// `from`: lower bound is inclusive — `YYYY-MM-DD` becomes that day at 00:00.
+// `to`: upper bound is exclusive in SQL but inclusive of the calendar day
+// when only a date was supplied, so bump bare dates by one day. Full ISO
+// timestamps with a time component are passed through unchanged.
+function normalizeFromBound(raw: string | null | undefined): string | null {
+  const v = raw?.trim();
+  if (!v) return null;
+  const d = parseDateOnly(v);
+  if (d) return d.toISOString();
+  const ts = new Date(v);
+  return Number.isFinite(ts.getTime()) ? ts.toISOString() : null;
+}
+
+function normalizeToBound(raw: string | null | undefined): string | null {
+  const v = raw?.trim();
+  if (!v) return null;
+  const d = parseDateOnly(v);
+  if (d) {
+    // Bump bare YYYY-MM-DD by 24h so the upper bound covers the whole day.
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString();
+  }
+  const ts = new Date(v);
+  return Number.isFinite(ts.getTime()) ? ts.toISOString() : null;
+}
+
+function parseDateOnly(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const [, y, mo, d] = m;
+  const dt = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+  return Number.isFinite(dt.getTime()) ? dt : null;
+}
+
 export const authBizStorage = {
   // ---------- users ----------
   async getUserByEmail(email: string): Promise<User | undefined> {
@@ -382,7 +419,19 @@ export const authBizStorage = {
    */
   async listEmailDeliveriesForCompany(
     companyId: number,
-    opts: { status?: string | null; email?: string | null; limit?: number } = {},
+    opts: {
+      status?: string | null;
+      email?: string | null;
+      limit?: number;
+      // ISO timestamps (or YYYY-MM-DD). Filter the union by event
+      // `created_at`. `from` is inclusive; `to` is inclusive of the
+      // whole calendar day when only a date is supplied.
+      from?: string | null;
+      to?: string | null;
+      // CSV exports for a date window can legitimately be much larger
+      // than the on-screen list, so callers can opt in to a higher cap.
+      maxLimit?: number;
+    } = {},
   ): Promise<
     Array<{
       transport: "invitation" | "password_reset";
@@ -397,9 +446,15 @@ export const authBizStorage = {
       firstAt: string | null;
     }>
   > {
-    const limit = Math.max(1, Math.min(opts.limit ?? 200, 500));
+    const hardCap = Math.max(1, Math.min(opts.maxLimit ?? 500, 10000));
+    const limit = Math.max(1, Math.min(opts.limit ?? 200, hardCap));
     const status = opts.status?.trim() || null;
     const emailLike = opts.email?.trim() ? `%${opts.email.trim().toLowerCase()}%` : null;
+    // Normalize date bounds. A bare `YYYY-MM-DD` for `to` should cover
+    // the entire day, so bump it to the next midnight and use a `<`
+    // comparison in SQL.
+    const from = normalizeFromBound(opts.from);
+    const to = normalizeToBound(opts.to);
 
     // Inner query: every event projected to a uniform shape, with a
     // `dedup_key` so resends/retries become distinct rows. Outer query
@@ -420,6 +475,8 @@ export const authBizStorage = {
         FROM invitation_email_events e
         INNER JOIN invitations i ON i.id = e.invitation_id
         WHERE i.company_id = ${companyId}
+          AND (${from}::timestamptz IS NULL OR e.created_at >= ${from}::timestamptz)
+          AND (${to}::timestamptz   IS NULL OR e.created_at <  ${to}::timestamptz)
 
         UNION ALL
 
@@ -436,6 +493,9 @@ export const authBizStorage = {
         FROM password_reset_email_events e
         INNER JOIN memberships m ON m.user_id = e.user_id AND m.company_id = ${companyId}
         LEFT JOIN users u ON u.id = e.user_id
+        WHERE
+          (${from}::timestamptz IS NULL OR e.created_at >= ${from}::timestamptz)
+          AND (${to}::timestamptz IS NULL OR e.created_at <  ${to}::timestamptz)
       ),
       latest_per_message AS (
         SELECT DISTINCT ON (transport, dedup_key)
