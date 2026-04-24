@@ -225,6 +225,48 @@ export const emailDeliveryAlerts = pgTable(
 );
 export type EmailDeliveryAlert = typeof emailDeliveryAlerts.$inferSelect;
 
+// Per-address outcome rows for a fired alert. Each row is one *attempt* to
+// deliver an alert email to a single recipient. The evaluator writes one
+// row per address per attempt — including failures — so that:
+//   - the dedupe gate can ask "has this address received the same reason
+//     successfully within the last N hours?" without reading the email
+//     transport's lifecycle log,
+//   - the retry pass can ask "did any address fail the most recent attempt
+//     for this alert and have we never since landed a 'sent' to them?".
+//
+// `companyId` and `reason` are denormalized off the parent alert row so the
+// dedupe lookup is a single index hit on (company_id, reason, email,
+// attempted_at) without a join.
+export const emailDeliveryAlertRecipients = pgTable(
+  "email_delivery_alert_recipients",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    alertId: varchar("alert_id").notNull(),
+    companyId: integer("company_id").notNull(),
+    email: varchar("email").notNull(),
+    // Mirrors emailDeliveryAlerts.reason ('absolute' | 'ratio') so we can
+    // dedupe per-reason without joining back to the parent alert row.
+    reason: text("reason").notNull(),
+    // 'sent' | 'failed'
+    status: text("status").notNull(),
+    error: text("error"),
+    attemptedAt: timestamp("attempted_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("email_delivery_alert_recipients_alert_idx").on(t.alertId),
+    // Dedupe lookup: "did <email> in <company> receive a successful <reason>
+    // within the dedupe window?" — a single covering index hit.
+    index("email_delivery_alert_recipients_dedupe_idx").on(
+      t.companyId,
+      t.reason,
+      t.email,
+      t.attemptedAt,
+    ),
+  ],
+);
+export type EmailDeliveryAlertRecipient =
+  typeof emailDeliveryAlertRecipients.$inferSelect;
+
 export const upsertEmailDeliveryAlertSettingsSchema = z.object({
   enabled: z.boolean(),
   emailEnabled: z.boolean(),

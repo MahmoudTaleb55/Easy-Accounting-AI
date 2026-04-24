@@ -4,12 +4,22 @@
  * crosses each workspace's configured threshold.
  *
  * Runs on a simple in-process interval — one row, one workspace, one
- * roll-up query. Keeps state in two tables:
+ * roll-up query. Keeps state in three tables:
  *   - email_delivery_alert_settings — per-workspace knobs (window, thresholds,
  *     cooldown, whether to also email owners). Defaults applied when missing.
  *   - email_delivery_alerts — append-only history of fired alerts. The most
  *     recent un-dismissed row is what the in-app banner reads. The most
  *     recent row of any kind is what the cooldown gate consults.
+ *   - email_delivery_alert_recipients — append-only per-address attempt log
+ *     for the alert email side-channel. Drives two protections that sit
+ *     *outside* the cooldown gate:
+ *       (a) Dedupe: don't email the same address about the same reason
+ *           more than once per `EMAIL_DELIVERY_ALERT_DEDUPE_HOURS` (12h
+ *           default), so a flapping provider can't spam the same owner.
+ *       (b) Retry: re-attempt addresses whose previous attempt failed
+ *           within `EMAIL_DELIVERY_ALERT_RETRY_MINUTES` (60 default), so a
+ *           transient SMTP error doesn't make an owner miss the alert
+ *           until the next cooldown window expires.
  *
  * Idempotent: if no threshold is crossed, or if we're inside the cooldown
  * window, no row is written and no email is sent. Safe to invoke manually
@@ -17,12 +27,16 @@
  */
 
 import { authBizStorage } from "./storage";
-import { sendEmailDeliveryAlertEmail, normalizeLocale } from "./email";
+import {
+  sendEmailDeliveryAlertEmail,
+  normalizeLocale,
+  type EmailLocale,
+} from "./email";
 import { authStorage } from "../replit_integrations/auth/storage";
 import { withRlsBypass } from "../db";
 
 export type EvaluationOutcome =
-  | { fired: false; reason: "disabled" | "below_threshold" | "in_cooldown"; failures: number; sends: number; windowHours: number }
+  | { fired: false; reason: "disabled" | "below_threshold" | "in_cooldown"; failures: number; sends: number; windowHours: number; retried?: number }
   | {
       fired: true;
       alertId: string;
@@ -32,7 +46,166 @@ export type EvaluationOutcome =
       windowHours: number;
       emailSent: boolean;
       emailRecipients: number;
+      // How many addresses were skipped by the dedupe gate on this fire.
+      emailDeduped: number;
+      // How many *previously failed* addresses got a successful retry on
+      // this sweep (across all alerts, not just this one).
+      retried: number;
     };
+
+/**
+ * Dedupe window: skip an address that already received a successful alert
+ * email for the same reason within this many hours. Configurable so the
+ * env can dial it up/down without a deploy.
+ */
+function getDedupeHours(): number {
+  const raw = Number(process.env.EMAIL_DELIVERY_ALERT_DEDUPE_HOURS);
+  if (!Number.isFinite(raw) || raw < 0) return 12;
+  // Clamp at one week so a misconfigured value can't permanently mute alerts.
+  return Math.min(raw, 168);
+}
+
+/**
+ * Retry window: re-attempt an address whose previous attempt failed within
+ * this many minutes. Kept short (default 60min) because beyond that the
+ * next cooldown is likely to fire anyway and the original alert context
+ * starts going stale.
+ */
+function getRetryMinutes(): number {
+  const raw = Number(process.env.EMAIL_DELIVERY_ALERT_RETRY_MINUTES);
+  if (!Number.isFinite(raw) || raw < 0) return 60;
+  return Math.min(raw, 24 * 60);
+}
+
+/** First owner's locale, used as a heuristic for the email language. */
+async function pickWorkspaceLocale(companyId: number): Promise<EmailLocale> {
+  try {
+    const firstOwnerId = (
+      await authBizStorage.listMembersForCompany(companyId)
+    ).find((m) => m.role === "owner")?.userId;
+    if (firstOwnerId) {
+      const u = await authStorage.getUser(firstOwnerId);
+      return normalizeLocale(u?.preferredLocale);
+    }
+  } catch {
+    /* fall back to default locale */
+  }
+  return "ar";
+}
+
+function buildAlertLink(opts: { alertLink?: string }): string {
+  const baseUrl =
+    opts.alertLink ?? (process.env.PUBLIC_APP_URL?.replace(/\/$/, "") || "");
+  if (!baseUrl) {
+    // A relative link is unusable inside an email client; we still send
+    // the email (the body is informative on its own) but warn so an
+    // operator notices the missing config.
+    console.warn(
+      "[email-delivery-alert] PUBLIC_APP_URL is not set; alert email will contain a relative link.",
+    );
+  }
+  return baseUrl
+    ? `${baseUrl}/app/settings/email-delivery`
+    : "/app/settings/email-delivery";
+}
+
+/**
+ * Re-attempt addresses whose previous attempt failed within the retry
+ * window. Independent of the cooldown gate — the whole point is to recover
+ * from a transient outage without waiting for the next firing.
+ *
+ * Returns the number of addresses that succeeded on retry (used by the
+ * caller to surface activity in the evaluation outcome).
+ */
+async function runRetryPass(
+  companyId: number,
+  opts: { alertLink?: string },
+): Promise<number> {
+  const retryMinutes = getRetryMinutes();
+  if (retryMinutes === 0) return 0;
+  const candidates = await authBizStorage.listEmailDeliveryAlertRetries(
+    companyId,
+    retryMinutes,
+  );
+  if (candidates.length === 0) return 0;
+
+  // Cache per-workspace context — locale and company name don't change
+  // between retries within a single sweep.
+  const company = await authBizStorage
+    .getCompanyById(companyId)
+    .catch(() => undefined);
+  const locale = await pickWorkspaceLocale(companyId);
+  const link = buildAlertLink(opts);
+
+  let succeeded = 0;
+  for (const { alert, emails } of candidates) {
+    if (emails.length === 0) continue;
+    const snapshot = (alert.snapshot ?? {
+      bounced: 0,
+      complained: 0,
+      send_failed: 0,
+    }) as { bounced: number; complained: number; send_failed: number };
+
+    let results: Awaited<ReturnType<typeof sendEmailDeliveryAlertEmail>> = [];
+    try {
+      results = await sendEmailDeliveryAlertEmail({
+        to: emails,
+        workspace: company?.name ?? "Workspace",
+        reason: alert.reason as "absolute" | "ratio",
+        failures: alert.failureCount,
+        sends: alert.sendCount,
+        windowHours: alert.windowHours,
+        bounced: snapshot.bounced,
+        complained: snapshot.complained,
+        sendFailed: snapshot.send_failed,
+        link,
+        locale,
+      });
+    } catch (err) {
+      console.error(
+        `[email-delivery-alert] retry send failed for company ${companyId}, alert ${alert.id}:`,
+        err,
+      );
+      // Mark every retried address as failed so we'll try again next sweep.
+      results = emails.map(() => ({
+        ok: false as const,
+        reason: "send_failed" as const,
+        error: (err as Error).message,
+      }));
+    }
+
+    const outcomes = emails.map((email, i) => {
+      const r = results[i];
+      if (r && r.ok) {
+        return { email, status: "sent" as const };
+      }
+      const error =
+        r && !r.ok
+          ? r.reason === "send_failed"
+            ? r.error ?? "send_failed"
+            : r.reason
+          : "send_failed";
+      return { email, status: "failed" as const, error };
+    });
+
+    await authBizStorage.recordEmailDeliveryAlertRecipientOutcomes({
+      alertId: alert.id,
+      companyId,
+      reason: alert.reason as "absolute" | "ratio",
+      outcomes,
+    });
+
+    const ok = outcomes.filter((o) => o.status === "sent").length;
+    if (ok > 0) {
+      await authBizStorage.incrementEmailDeliveryAlertRecipientCount(
+        alert.id,
+        ok,
+      );
+      succeeded += ok;
+    }
+  }
+  return succeeded;
+}
 
 /**
  * Evaluate the alert rules for a single workspace. Returns whether an alert
@@ -45,7 +218,36 @@ export async function evaluateEmailDeliveryAlertsForCompany(
 ): Promise<EvaluationOutcome> {
   const cfg = await authBizStorage.getEmailDeliveryAlertSettings(companyId);
   if (!cfg.enabled) {
-    return { fired: false, reason: "disabled", failures: 0, sends: 0, windowHours: cfg.windowHours };
+    // Workspace turned alerting off entirely — don't retry either, since
+    // a retry would re-email an owner about an alert from a config they
+    // have since disabled.
+    return {
+      fired: false,
+      reason: "disabled",
+      failures: 0,
+      sends: 0,
+      windowHours: cfg.windowHours,
+      retried: 0,
+    };
+  }
+
+  // Retry pass is independent of the cooldown gate so a transient SMTP
+  // outage doesn't lock an owner out of the alert until the next firing,
+  // but it must still respect the workspace's email-side-channel toggle:
+  // if the operator has disabled alert emails, we shouldn't deliver them
+  // through the back door of a retry. Best-effort — failures are logged
+  // but don't abort the sweep, since the threshold check below is the
+  // more important signal.
+  let retried = 0;
+  if (cfg.emailEnabled) {
+    try {
+      retried = await runRetryPass(companyId, opts);
+    } catch (err) {
+      console.error(
+        `[email-delivery-alert] retry pass failed for company ${companyId}:`,
+        err,
+      );
+    }
   }
 
   const window = await authBizStorage.getEmailDeliveryFailureWindow(
@@ -77,6 +279,7 @@ export async function evaluateEmailDeliveryAlertsForCompany(
       failures: window.failures,
       sends: window.sends,
       windowHours: window.windowHours,
+      retried,
     };
   }
 
@@ -93,69 +296,15 @@ export async function evaluateEmailDeliveryAlertsForCompany(
         failures: window.failures,
         sends: window.sends,
         windowHours: window.windowHours,
+        retried,
       };
     }
   }
 
-  // Time to fire. Try the email side-channel first (when configured) so we
-  // can persist its outcome on the alert row itself.
-  let emailSent = false;
-  let emailRecipients = 0;
-  if (cfg.emailEnabled) {
-    try {
-      const owners = await authBizStorage.listOwnerEmailsForCompany(companyId);
-      if (owners.length > 0) {
-        const company = await authBizStorage.getCompanyById(companyId).catch(() => undefined);
-        const baseUrl =
-          opts.alertLink ?? (process.env.PUBLIC_APP_URL?.replace(/\/$/, "") || "");
-        if (!baseUrl) {
-          // A relative link is unusable inside an email client; we still send
-          // the email (the body is informative on its own) but warn so an
-          // operator notices the missing config.
-          console.warn(
-            "[email-delivery-alert] PUBLIC_APP_URL is not set; alert email will contain a relative link.",
-          );
-        }
-        const link = baseUrl
-          ? `${baseUrl}/app/settings/email-delivery`
-          : "/app/settings/email-delivery";
-        // Use the first owner's locale as a heuristic for the message language.
-        let locale: "ar" | "en" = "ar";
-        try {
-          const firstOwnerId = (
-            await authBizStorage.listMembersForCompany(companyId)
-          ).find((m) => m.role === "owner")?.userId;
-          if (firstOwnerId) {
-            const u = await authStorage.getUser(firstOwnerId);
-            locale = normalizeLocale(u?.preferredLocale);
-          }
-        } catch {
-          /* fall back to default locale */
-        }
-        const results = await sendEmailDeliveryAlertEmail({
-          to: owners,
-          workspace: company?.name ?? "Workspace",
-          reason,
-          failures: window.failures,
-          sends: window.sends,
-          windowHours: window.windowHours,
-          bounced: window.bounced,
-          complained: window.complained,
-          sendFailed: window.sendFailed,
-          link,
-          locale,
-        });
-        emailRecipients = results.filter((r) => r.ok).length;
-        emailSent = emailRecipients > 0;
-      }
-    } catch (err) {
-      console.error(
-        `[email-delivery-alert] email side-channel failed for company ${companyId}:`,
-        err,
-      );
-    }
-  }
-
+  // Time to fire. We persist the alert row first (with zero recipients) so
+  // every per-recipient outcome we record below has a valid parent row to
+  // hang off — and so that even if the email side-channel throws, the
+  // alert itself is still visible in the in-app banner.
   const alert = await authBizStorage.createEmailDeliveryAlert({
     companyId,
     windowHours: window.windowHours,
@@ -167,9 +316,114 @@ export async function evaluateEmailDeliveryAlertsForCompany(
       complained: window.complained,
       send_failed: window.sendFailed,
     },
-    emailSent,
-    emailRecipients,
+    emailSent: false,
+    emailRecipients: 0,
   });
+
+  let emailSent = false;
+  let emailRecipients = 0;
+  let emailDeduped = 0;
+  if (cfg.emailEnabled) {
+    try {
+      const owners = await authBizStorage.listOwnerEmailsForCompany(companyId);
+      // Normalise to lowercase so dedupe (which lowercases on insert) and
+      // membership tests line up regardless of how the address was typed.
+      const normalizedOwners = Array.from(
+        new Set(owners.map((e) => e.trim().toLowerCase())),
+      );
+
+      // Dedupe gate — sits *outside* the cooldown so a flapping provider
+      // can't spam the same owner with multiple near-identical alerts in
+      // a single day. The cooldown gates the *alert*; this gates the
+      // *email* per address.
+      const dedupeHours = getDedupeHours();
+      const recentlyAlerted =
+        dedupeHours > 0
+          ? await authBizStorage.listRecentlyAlertedRecipients(
+              companyId,
+              reason,
+              dedupeHours,
+            )
+          : new Set<string>();
+      const targets = normalizedOwners.filter(
+        (e) => !recentlyAlerted.has(e),
+      );
+      emailDeduped = normalizedOwners.length - targets.length;
+
+      if (targets.length > 0) {
+        const company = await authBizStorage
+          .getCompanyById(companyId)
+          .catch(() => undefined);
+        const link = buildAlertLink(opts);
+        const locale = await pickWorkspaceLocale(companyId);
+
+        let results: Awaited<ReturnType<typeof sendEmailDeliveryAlertEmail>> =
+          [];
+        try {
+          results = await sendEmailDeliveryAlertEmail({
+            to: targets,
+            workspace: company?.name ?? "Workspace",
+            reason,
+            failures: window.failures,
+            sends: window.sends,
+            windowHours: window.windowHours,
+            bounced: window.bounced,
+            complained: window.complained,
+            sendFailed: window.sendFailed,
+            link,
+            locale,
+          });
+        } catch (err) {
+          console.error(
+            `[email-delivery-alert] initial send failed for company ${companyId}:`,
+            err,
+          );
+          // Mark every targeted address as failed so the retry pass on the
+          // next sweep picks them up.
+          results = targets.map(() => ({
+            ok: false as const,
+            reason: "send_failed" as const,
+            error: (err as Error).message,
+          }));
+        }
+
+        const outcomes = targets.map((email, i) => {
+          const r = results[i];
+          if (r && r.ok) {
+            return { email, status: "sent" as const };
+          }
+          const error =
+            r && !r.ok
+              ? r.reason === "send_failed"
+                ? r.error ?? "send_failed"
+                : r.reason
+              : "send_failed";
+          return { email, status: "failed" as const, error };
+        });
+
+        await authBizStorage.recordEmailDeliveryAlertRecipientOutcomes({
+          alertId: alert.id,
+          companyId,
+          reason,
+          outcomes,
+        });
+
+        emailRecipients = outcomes.filter((o) => o.status === "sent").length;
+        emailSent = emailRecipients > 0;
+        if (emailRecipients > 0) {
+          await authBizStorage.incrementEmailDeliveryAlertRecipientCount(
+            alert.id,
+            emailRecipients,
+          );
+        }
+      }
+    } catch (err) {
+      console.error(
+        `[email-delivery-alert] email side-channel failed for company ${companyId}:`,
+        err,
+      );
+    }
+  }
 
   return {
     fired: true,
@@ -180,6 +434,8 @@ export async function evaluateEmailDeliveryAlertsForCompany(
     windowHours: window.windowHours,
     emailSent,
     emailRecipients,
+    emailDeduped,
+    retried,
   };
 }
 

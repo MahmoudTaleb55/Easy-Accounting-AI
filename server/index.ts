@@ -148,6 +148,22 @@ app.use((req, res, next) => {
     console.error("Failed to drop workspace_members mirror:", err);
   }
 
+  // Re-apply migration 0009 on boot so the per-recipient alert outcome
+  // table is in place before the evaluator (and its dedupe / retry passes)
+  // tries to read or write it. Idempotent.
+  try {
+    const { applyEmailDeliveryAlertRecipientsOnStartup } = await import(
+      "./auth/storage"
+    );
+    await applyEmailDeliveryAlertRecipientsOnStartup();
+  } catch (err) {
+    console.error(
+      "Failed to apply email_delivery_alert_recipients migration:",
+      err,
+    );
+  }
+
+
   // Background sweep that turns the failure-class delivery trends into a
   // banner / email when a workspace's threshold trips. Disabled in test runs
   // so e2e specs can call the evaluator deterministically.

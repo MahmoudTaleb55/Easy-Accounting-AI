@@ -11,6 +11,7 @@ import {
   settings,
   emailDeliveryAlertSettings,
   emailDeliveryAlerts,
+  emailDeliveryAlertRecipients,
   type User,
   type Membership,
   type Invitation,
@@ -19,6 +20,7 @@ import {
   type PasswordResetEmailEvent,
   type EmailDeliveryAlertSettings,
   type EmailDeliveryAlert,
+  type EmailDeliveryAlertRecipient,
   type Role,
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
@@ -1057,6 +1059,150 @@ export const authBizStorage = {
     return row;
   },
 
+  /**
+   * Append per-recipient outcome rows for a fired alert. Each call writes
+   * one row per address, including failures, so the dedupe and retry
+   * passes have a complete attempt log to read from.
+   */
+  async recordEmailDeliveryAlertRecipientOutcomes(input: {
+    alertId: string;
+    companyId: number;
+    reason: "absolute" | "ratio";
+    outcomes: Array<{
+      email: string;
+      status: "sent" | "failed";
+      error?: string | null;
+    }>;
+  }): Promise<void> {
+    if (input.outcomes.length === 0) return;
+    await db.insert(emailDeliveryAlertRecipients).values(
+      input.outcomes.map((o) => ({
+        alertId: input.alertId,
+        companyId: input.companyId,
+        email: o.email.trim().toLowerCase(),
+        reason: input.reason,
+        status: o.status,
+        error: o.error ?? null,
+      })),
+    );
+  },
+
+  /**
+   * Set of addresses that successfully received an alert email for the
+   * given workspace + reason within the last `dedupeHours`. The evaluator
+   * skips these addresses on the *next* fire so a flapping provider can't
+   * spam the same owner with near-identical alerts.
+   *
+   * Stored emails are lowercased on insert (see
+   * `recordEmailDeliveryAlertRecipientOutcomes`) so this comparison is
+   * case-stable; callers should normalise their candidate list the same
+   * way before doing membership checks.
+   */
+  async listRecentlyAlertedRecipients(
+    companyId: number,
+    reason: "absolute" | "ratio",
+    dedupeHours: number,
+  ): Promise<Set<string>> {
+    const hours = Math.max(0, dedupeHours);
+    if (hours === 0) return new Set();
+    const result = await db.execute<{ email: string }>(sql`
+      SELECT DISTINCT lower(email) AS email
+      FROM email_delivery_alert_recipients
+      WHERE company_id = ${companyId}
+        AND reason = ${reason}
+        AND status = 'sent'
+        AND attempted_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+    `);
+    return new Set(result.rows.map((r) => r.email));
+  },
+
+  /**
+   * Alerts that have at least one recipient whose most recent attempt
+   * within `retryMinutes` ended in 'failed' (and we never landed a 'sent'
+   * to that address since). Each returned alert carries the list of
+   * addresses to retry. The evaluator re-attempts these addresses on the
+   * next sweep without waiting for the cooldown to expire — that's the
+   * whole point: a transient SMTP error shouldn't make an owner miss the
+   * alert until the next firing.
+   */
+  async listEmailDeliveryAlertRetries(
+    companyId: number,
+    retryMinutes: number,
+  ): Promise<Array<{ alert: EmailDeliveryAlert; emails: string[] }>> {
+    const minutes = Math.max(0, retryMinutes);
+    if (minutes === 0) return [];
+    type Row = {
+      alert_id: string;
+      email: string;
+    };
+    const result = await db.execute<Row>(sql`
+      SELECT DISTINCT r.alert_id, lower(r.email) AS email
+      FROM email_delivery_alert_recipients r
+      WHERE r.company_id = ${companyId}
+        AND r.status = 'failed'
+        AND r.attempted_at >= NOW() - (${minutes}::int * INTERVAL '1 minute')
+        AND NOT EXISTS (
+          SELECT 1 FROM email_delivery_alert_recipients s
+          WHERE s.alert_id = r.alert_id
+            AND lower(s.email) = lower(r.email)
+            AND s.status = 'sent'
+        )
+    `);
+    const rows = result.rows;
+    if (rows.length === 0) return [];
+    const grouped = new Map<string, Set<string>>();
+    for (const r of rows) {
+      let set = grouped.get(r.alert_id);
+      if (!set) {
+        set = new Set();
+        grouped.set(r.alert_id, set);
+      }
+      set.add(r.email);
+    }
+    const alerts = await db
+      .select()
+      .from(emailDeliveryAlerts)
+      .where(eq(emailDeliveryAlerts.companyId, companyId));
+    const byId = new Map(alerts.map((a) => [a.id, a]));
+    const out: Array<{ alert: EmailDeliveryAlert; emails: string[] }> = [];
+    grouped.forEach((emails, alertId) => {
+      const alert = byId.get(alertId);
+      if (!alert) return;
+      out.push({ alert, emails: Array.from(emails) });
+    });
+    return out;
+  },
+
+  /**
+   * Bump an alert's denormalized success counter when a retry lands. We
+   * keep the counter on the alert row (not just in the recipient log) so
+   * the in-app banner's "delivered to N owners" line reflects retries
+   * without a join.
+   */
+  async incrementEmailDeliveryAlertRecipientCount(
+    alertId: string,
+    delta: number,
+  ): Promise<void> {
+    if (delta <= 0) return;
+    await db
+      .update(emailDeliveryAlerts)
+      .set({
+        emailRecipients: sql`${emailDeliveryAlerts.emailRecipients} + ${delta}`,
+        emailSent: true,
+      })
+      .where(eq(emailDeliveryAlerts.id, alertId));
+  },
+
+  async listEmailDeliveryAlertRecipients(
+    alertId: string,
+  ): Promise<EmailDeliveryAlertRecipient[]> {
+    return db
+      .select()
+      .from(emailDeliveryAlertRecipients)
+      .where(eq(emailDeliveryAlertRecipients.alertId, alertId))
+      .orderBy(desc(emailDeliveryAlertRecipients.attemptedAt));
+  },
+
   async dismissEmailDeliveryAlert(
     id: string,
     companyId: number,
@@ -1155,6 +1301,82 @@ export async function unifyRoleEnumOnStartup(): Promise<void> {
  */
 export async function dropWorkspaceMembersMirrorOnStartup(): Promise<void> {
   await db.execute(sql`DROP TABLE IF EXISTS workspace_members`);
+}
+
+/**
+ * Idempotent re-apply of the email-delivery-alert tables — both the parent
+ * `email_delivery_alerts` / `email_delivery_alert_settings` from migration
+ * 0005 and the per-recipient outcome table from migration 0008.
+ *
+ * Same pattern as the other 000X bootstrappers in this file: every statement
+ * is guarded with IF NOT EXISTS so re-runs are a no-op. We re-stage both
+ * migrations together so dev databases and any deploy that boots ahead of
+ * the migration runner end up with the full set of tables the evaluator
+ * (and its dedupe / retry passes) need to read and write.
+ */
+export async function applyEmailDeliveryAlertRecipientsOnStartup(): Promise<void> {
+  // Migration 0005 — parent settings + history tables. Required by the FK
+  // on email_delivery_alert_recipients(alert_id), so we create these first.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS email_delivery_alert_settings (
+      company_id integer PRIMARY KEY,
+      enabled boolean NOT NULL DEFAULT true,
+      email_enabled boolean NOT NULL DEFAULT false,
+      window_hours integer NOT NULL DEFAULT 24,
+      absolute_threshold integer NOT NULL DEFAULT 5,
+      ratio_threshold numeric(5,4) NOT NULL DEFAULT 0.0200,
+      min_samples_for_ratio integer NOT NULL DEFAULT 20,
+      cooldown_minutes integer NOT NULL DEFAULT 360,
+      updated_at timestamp DEFAULT now(),
+      updated_by_user_id varchar
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS email_delivery_alerts (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id integer NOT NULL,
+      fired_at timestamp NOT NULL DEFAULT now(),
+      window_hours integer NOT NULL,
+      failure_count integer NOT NULL,
+      send_count integer NOT NULL,
+      reason text NOT NULL,
+      snapshot jsonb,
+      email_sent boolean NOT NULL DEFAULT false,
+      email_recipients integer NOT NULL DEFAULT 0,
+      dismissed_at timestamp,
+      dismissed_by_user_id varchar
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS email_delivery_alerts_company_idx
+      ON email_delivery_alerts (company_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS email_delivery_alerts_company_fired_idx
+      ON email_delivery_alerts (company_id, fired_at)
+  `);
+
+  // Migration 0008 — per-recipient outcome rows.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS email_delivery_alert_recipients (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      alert_id varchar NOT NULL REFERENCES email_delivery_alerts(id) ON DELETE CASCADE,
+      company_id integer NOT NULL,
+      email varchar NOT NULL,
+      reason text NOT NULL,
+      status text NOT NULL,
+      error text,
+      attempted_at timestamp NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS email_delivery_alert_recipients_alert_idx
+      ON email_delivery_alert_recipients (alert_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS email_delivery_alert_recipients_dedupe_idx
+      ON email_delivery_alert_recipients (company_id, reason, email, attempted_at)
+  `);
 }
 
 export async function hashPassword(plain: string): Promise<string> {
