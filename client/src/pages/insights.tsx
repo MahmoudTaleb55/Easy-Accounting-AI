@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useFormatMoney } from "@/lib/format";
 import {
   Activity,
   AlertTriangle,
@@ -54,9 +55,6 @@ function ErrorState({ onRetry }: { onRetry?: () => void }) {
   );
 }
 
-const fmt = (n: number | undefined | null) =>
-  new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(Number(n || 0));
-const fmtCurrency = (n: number) => `${fmt(n)} ر.س`;
 
 type Health = {
   kpis: any;
@@ -124,6 +122,8 @@ export default function InsightsPage() {
 // 1) Cockpit (overview)
 // ============================================================================
 function CockpitTab() {
+  const fmtMoney = useFormatMoney();
+  const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
   const { data, isLoading, isError, refetch } = useQuery<Health>({ queryKey: ["/api/insights/health"] });
   const { data: taxes } = useQuery<any>({ queryKey: ["/api/insights/taxes"] });
   if (isLoading) return <Skeleton className="h-96 w-full" />;
@@ -293,6 +293,9 @@ function AlertsTab() {
 // 3) Cash forecast
 // ============================================================================
 function CashTab() {
+  const fmtMoney = useFormatMoney();
+  const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
+  const fmt = (n: number | string | null | undefined) => fmtMoney(n, { symbol: false });
   const [days, setDays] = useState(90);
   const { data, isLoading, isError, refetch } = useQuery<any>({
     queryKey: ["/api/insights/cash-forecast", days],
@@ -356,6 +359,9 @@ function CashTab() {
 // 4) What-If Simulator
 // ============================================================================
 function SimulatorTab() {
+  const fmtMoney = useFormatMoney();
+  const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
+  const fmt = (n: number | string | null | undefined) => fmtMoney(n, { symbol: false });
   const [priceChangePct, setPrice] = useState(0);
   const [costChangePct, setCost] = useState(0);
   const [newMonthlyExpense, setExp] = useState(0);
@@ -467,6 +473,8 @@ function SliderField({ label, value, onChange, min, max, suffix, testid }: any) 
 // 5) Budget vs Actual
 // ============================================================================
 function BudgetTab() {
+  const fmtMoney = useFormatMoney();
+  const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);

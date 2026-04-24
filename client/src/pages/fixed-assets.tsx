@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useCompany } from "@/contexts/company-context";
+import { useFormatMoney } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,10 +86,10 @@ interface DepreciationPreview {
 
 interface UsageEntry { assetId: number; componentId: number | null; units: number }
 
-function fmt(n: number | string | null | undefined, currency = ""): string {
-  const v = Number(n || 0);
-  const formatted = new Intl.NumberFormat("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
-  return currency ? `${formatted} ${currency}` : formatted;
+function useAssetMoneyFmt() {
+  const fmtMoney = useFormatMoney();
+  return (n: number | string | null | undefined, withSymbol: unknown = "") =>
+    fmtMoney(n, { decimals: 2, symbol: Boolean(withSymbol) });
 }
 
 export default function FixedAssetsPage() {
@@ -144,6 +145,7 @@ export default function FixedAssetsPage() {
 
 function AssetRegister({ company }: { company: Company }) {
   const { toast } = useToast();
+  const fmt = useAssetMoneyFmt();
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterCategoryId, setFilterCategoryId] = useState<string>("");
   const [filterLocation, setFilterLocation] = useState<string>("");
@@ -552,6 +554,7 @@ function AddAssetDialog({ company, categories, onClose }: { company: Company; ca
 // ============================================================================
 
 function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; company: Company; onClose: () => void }) {
+  const fmt = useAssetMoneyFmt();
   const { data, isLoading } = useQuery<AssetDetail>({
     queryKey: ["/api/fixed-assets", assetId, "detail"],
     queryFn: async () => (await fetch(`/api/fixed-assets/${assetId}`)).json(),
@@ -709,6 +712,7 @@ type OperationPreview = ImpairmentPreview | RevaluationPreview | DisposalPreview
 
 function OperationDialog({ assetId, type, company, onClose }: { assetId: number; type: "impairment" | "revaluation" | "dispose"; company: Company; onClose: () => void }) {
   const { toast } = useToast();
+  const fmt = useAssetMoneyFmt();
   const [form, setForm] = useState<OperationFormState>({
     eventDate: new Date().toISOString().slice(0, 10),
     recoverableAmount: "",
@@ -848,6 +852,7 @@ function OperationDialog({ assetId, type, company, onClose }: { assetId: number;
 
 function DepreciationPanel({ company }: { company: Company }) {
   const { toast } = useToast();
+  const fmt = useAssetMoneyFmt();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1);

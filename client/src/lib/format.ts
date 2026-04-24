@@ -17,15 +17,30 @@ const DEFAULTS: OrgSettings = {
   currencyCode: "USD", currencySymbol: "$", vatRate: 0, zakatEnabled: false, fiscalYearStartMonth: 1,
 };
 
+export interface FormatMoneyOptions {
+  decimals?: number;
+  symbol?: boolean;
+}
+
 export function useSettings() {
   const { data } = useQuery<OrgSettings>({ queryKey: ["/api/settings"] });
   return data || DEFAULTS;
 }
 
-export function formatMoney(n: number | string | null | undefined, settings: OrgSettings): string {
+export function formatMoney(
+  n: number | string | null | undefined,
+  settings: OrgSettings,
+  opts: FormatMoneyOptions = {},
+): string {
+  const decimals = opts.decimals ?? 0;
+  const showSymbol = opts.symbol ?? true;
   const v = Number(n || 0);
   const locale = settings.locale === "ar" ? "ar-SA" : "en-US";
-  const formatted = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(v);
+  const formatted = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(v);
+  if (!showSymbol) return formatted;
   return settings.locale === "ar"
     ? `${formatted} ${settings.currencySymbol}`
     : `${settings.currencySymbol} ${formatted}`;
@@ -33,5 +48,6 @@ export function formatMoney(n: number | string | null | undefined, settings: Org
 
 export function useFormatMoney() {
   const settings = useSettings();
-  return (n: number | string | null | undefined) => formatMoney(n, settings);
+  return (n: number | string | null | undefined, opts?: FormatMoneyOptions) =>
+    formatMoney(n, settings, opts);
 }
