@@ -630,20 +630,31 @@ export async function registerRoutes(
   // ============================================================================
   const insights = await import("./insights");
 
+  function parseRange(req: Request): { start: Date; end: Date } | undefined {
+    const s = req.query.start ? String(req.query.start) : "";
+    const e = req.query.end ? String(req.query.end) : "";
+    if (!s || !e) return undefined;
+    const start = new Date(s);
+    const end = new Date(e);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return undefined;
+    return { start, end };
+  }
+
   app.get("/api/insights/health", async (req, res) => {
-    const k = await insights.computeKPIs(cid(req));
+    const range = parseRange(req);
+    const k = await insights.computeKPIs(cid(req), range);
     const health = insights.computeHealthScore(k);
     res.json({ kpis: k, health });
   });
 
   app.get("/api/insights/alerts", async (req, res) => {
-    const alerts = await insights.generateAlerts(cid(req));
+    const alerts = await insights.generateAlerts(cid(req), parseRange(req));
     res.json({ alerts });
   });
 
   app.get("/api/insights/cash-forecast", async (req, res) => {
     const days = Number(req.query.days || 90);
-    const forecast = await insights.projectCash(cid(req), Math.min(Math.max(days, 7), 365));
+    const forecast = await insights.projectCash(cid(req), Math.min(Math.max(days, 7), 365), parseRange(req));
     res.json(forecast);
   });
 
@@ -658,7 +669,7 @@ export async function registerRoutes(
   app.post("/api/insights/simulate", async (req, res) => {
     try {
       const input = scenarioSchema.parse(req.body);
-      const result = await insights.simulateScenario(cid(req), input);
+      const result = await insights.simulateScenario(cid(req), input, parseRange(req));
       res.json(result);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -669,7 +680,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/insights/taxes", async (req, res) => {
-    const t = await insights.estimateTaxes(cid(req));
+    const t = await insights.estimateTaxes(cid(req), parseRange(req));
     res.json(t);
   });
 

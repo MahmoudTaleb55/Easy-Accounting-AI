@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState as SharedErrorState } from "@/components/feedback/error-state";
 import { PeriodChip } from "@/components/dashboard/period-chip";
+import { usePeriod } from "@/contexts/period-context";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +56,20 @@ function ErrorState({ onRetry }: { onRetry?: () => void }) {
   );
 }
 
+
+function usePeriodQS() {
+  const { period } = usePeriod();
+  const start = period.start.toISOString();
+  const end = period.end.toISOString();
+  return { start, end, qs: `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}` };
+}
+
+function usePrevPeriodQS() {
+  const { previousRange } = usePeriod();
+  const start = previousRange.start.toISOString();
+  const end = previousRange.end.toISOString();
+  return { start, end, qs: `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}` };
+}
 
 type Health = {
   kpis: any;
@@ -124,8 +139,22 @@ export default function InsightsPage() {
 function CockpitTab() {
   const fmtMoney = useFormatMoney();
   const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
-  const { data, isLoading, isError, refetch } = useQuery<Health>({ queryKey: ["/api/insights/health"] });
-  const { data: taxes } = useQuery<any>({ queryKey: ["/api/insights/taxes"] });
+  const { qs, start, end } = usePeriodQS();
+  const prev = usePrevPeriodQS();
+  const { compareToPrevious } = usePeriod();
+  const { data, isLoading, isError, refetch } = useQuery<Health>({
+    queryKey: ["/api/insights/health", start, end],
+    queryFn: async () => fetch(`/api/insights/health?${qs}`).then((r) => r.json()),
+  });
+  const { data: prevHealth } = useQuery<Health>({
+    queryKey: ["/api/insights/health", prev.start, prev.end],
+    queryFn: async () => fetch(`/api/insights/health?${prev.qs}`).then((r) => r.json()),
+    enabled: compareToPrevious,
+  });
+  const { data: taxes } = useQuery<any>({
+    queryKey: ["/api/insights/taxes", start, end],
+    queryFn: async () => fetch(`/api/insights/taxes?${qs}`).then((r) => r.json()),
+  });
   if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
   const k = data.kpis;
@@ -208,10 +237,10 @@ function CockpitTab() {
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="الإيرادات" value={fmtCurrency(k.totalRevenue)} sub="إجمالي" />
-        <KpiCard label="صافي الربح" value={fmtCurrency(k.netProfit)} sub={`هامش ${(k.netMargin * 100).toFixed(1)}%`} positive={k.netProfit >= 0} />
-        <KpiCard label="النقد" value={fmtCurrency(k.cash)} sub="رصيد الصندوق" />
-        <KpiCard label="حقوق الملكية" value={fmtCurrency(k.totalEquity)} sub={`أصول ${fmtCurrency(k.totalAssets)}`} />
+        <KpiCard label="الإيرادات" value={fmtCurrency(k.totalRevenue)} sub="إجمالي" delta={pickDelta(compareToPrevious, k.totalRevenue, prevHealth?.kpis?.totalRevenue, fmtCurrency)} />
+        <KpiCard label="صافي الربح" value={fmtCurrency(k.netProfit)} sub={`هامش ${(k.netMargin * 100).toFixed(1)}%`} positive={k.netProfit >= 0} delta={pickDelta(compareToPrevious, k.netProfit, prevHealth?.kpis?.netProfit, fmtCurrency)} />
+        <KpiCard label="النقد" value={fmtCurrency(k.cash)} sub="رصيد الصندوق" delta={pickDelta(compareToPrevious, k.cash, prevHealth?.kpis?.cash, fmtCurrency)} />
+        <KpiCard label="حقوق الملكية" value={fmtCurrency(k.totalEquity)} sub={`أصول ${fmtCurrency(k.totalAssets)}`} delta={pickDelta(compareToPrevious, k.totalEquity, prevHealth?.kpis?.totalEquity, fmtCurrency)} />
         <KpiCard label="هامش الربح الإجمالي" value={`${(k.grossMargin * 100).toFixed(1)}%`} sub={`الحد الصحي > 30%`} />
         <KpiCard label="هامش الربح الصافي" value={`${(k.netMargin * 100).toFixed(1)}%`} sub="الحد الصحي > 10%" />
         <KpiCard label="نسبة المصروفات" value={`${(k.expenseRatio * 100).toFixed(0)}%`} sub="الحد الصحي < 70%" />
@@ -246,23 +275,47 @@ function CockpitTab() {
   );
 }
 
-function KpiCard({ label, value, sub, positive }: { label: string; value: string; sub?: string; positive?: boolean }) {
+function KpiCard({ label, value, sub, positive, delta }: { label: string; value: string; sub?: string; positive?: boolean; delta?: { text: string; positive: boolean } | null }) {
   return (
     <Card data-testid={`card-kpi-${label}`}>
       <CardContent className="p-4">
         <div className="eyebrow mb-2">{label}</div>
         <div className={`font-display text-2xl font-semibold tabular-nums tracking-tight ${positive === false ? "text-loss" : "text-foreground"}`}>{value}</div>
         {sub && <div className="text-xs text-muted-foreground mt-1.5">{sub}</div>}
+        {delta && (
+          <div
+            className={`text-xs mt-1 tabular-nums ${delta.positive ? "text-green-600 dark:text-green-400" : "text-destructive"}`}
+            data-testid={`text-delta-${label}`}
+          >
+            {delta.text} مقارنة بالفترة السابقة
+          </div>
+        )}
       </CardContent>
     </Card>
   );
+}
+
+function pickDelta(
+  enabled: boolean,
+  current: number,
+  previous: number | undefined,
+  format: (n: number) => string,
+): { text: string; positive: boolean } | null {
+  if (!enabled || previous === undefined || previous === null) return null;
+  const diff = current - previous;
+  const sign = diff >= 0 ? "+" : "−";
+  return { text: `${sign}${format(Math.abs(diff))}`, positive: diff >= 0 };
 }
 
 // ============================================================================
 // 2) Alerts
 // ============================================================================
 function AlertsTab() {
-  const { data, isLoading, isError, refetch } = useQuery<{ alerts: Alert[] }>({ queryKey: ["/api/insights/alerts"] });
+  const { qs, start, end } = usePeriodQS();
+  const { data, isLoading, isError, refetch } = useQuery<{ alerts: Alert[] }>({
+    queryKey: ["/api/insights/alerts", start, end],
+    queryFn: async () => fetch(`/api/insights/alerts?${qs}`).then((r) => r.json()),
+  });
   if (isLoading) return <Skeleton className="h-64 w-full" />;
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
   return (
@@ -297,9 +350,10 @@ function CashTab() {
   const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
   const fmt = (n: number | string | null | undefined) => fmtMoney(n, { symbol: false });
   const [days, setDays] = useState(90);
+  const { qs, start, end } = usePeriodQS();
   const { data, isLoading, isError, refetch } = useQuery<any>({
-    queryKey: ["/api/insights/cash-forecast", days],
-    queryFn: async () => fetch(`/api/insights/cash-forecast?days=${days}`).then((r) => r.json()),
+    queryKey: ["/api/insights/cash-forecast", days, start, end],
+    queryFn: async () => fetch(`/api/insights/cash-forecast?days=${days}&${qs}`).then((r) => r.json()),
   });
   if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (isError || !data) return <ErrorState onRetry={() => refetch()} />;
@@ -370,9 +424,10 @@ function SimulatorTab() {
   const [result, setResult] = useState<any>(null);
   const { toast } = useToast();
 
+  const { qs } = usePeriodQS();
   const sim = useMutation({
     mutationFn: async () =>
-      apiRequest("POST", "/api/insights/simulate", {
+      apiRequest("POST", `/api/insights/simulate?${qs}`, {
         priceChangePct, costChangePct, newMonthlyExpense, expenseReductionPct, monthsAhead,
       }).then((r) => r.json()),
     onSuccess: (data) => setResult(data),
@@ -475,9 +530,11 @@ function SliderField({ label, value, onChange, min, max, suffix, testid }: any) 
 function BudgetTab() {
   const fmtMoney = useFormatMoney();
   const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const { period } = usePeriod();
+  // Budget rows are stored per (year, month). Derive both from the period's
+  // end date so changing the period chip immediately rescopes the table.
+  const year = period.end.getFullYear();
+  const month = period.end.getMonth() + 1;
 
   const { data: bva, isLoading } = useQuery<{ rows: any[] }>({
     queryKey: ["/api/insights/budget-vs-actual", year, month],
@@ -506,24 +563,10 @@ function BudgetTab() {
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Calendar className="w-5 h-5" />الفترة</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-3 items-end">
-          <div>
-            <Label>السنة</Label>
-            <Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-28 mt-2" data-testid="input-year" />
-          </div>
-          <div>
-            <Label>الشهر</Label>
-            <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-              <SelectTrigger className="w-32 mt-2" data-testid="select-month"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {months.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+      <Card className="bg-muted/30">
+        <CardContent className="py-3 flex items-center gap-2 text-sm text-muted-foreground" data-testid="text-budget-period">
+          <Calendar className="w-4 h-4" />
+          الميزانية تتبع الفترة المختارة في الأعلى — حالياً <span className="font-semibold text-foreground">{months[month - 1]} {year}</span>
         </CardContent>
       </Card>
 

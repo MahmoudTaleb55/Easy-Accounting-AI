@@ -20,6 +20,8 @@ import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck,
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { HistoryDrawer } from "@/components/audit/history-drawer";
+import { PeriodChip } from "@/components/dashboard/period-chip";
+import { usePeriod } from "@/contexts/period-context";
 import type { Account, AssetCategory, AssetComponent, Company, FixedAsset, FxRate, DepreciationMethod } from "@shared/schema";
 
 const METHODS: Array<{ value: DepreciationMethod; label: string }> = [
@@ -97,17 +99,20 @@ export default function FixedAssetsPage() {
 
   return (
     <div className="space-y-8" data-testid="page-fixed-assets">
-      <header className="space-y-2">
-        <div className="eyebrow text-muted-foreground/80">الموارد والأصول</div>
-        <h1
-          className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
-          data-testid="text-page-title"
-        >
-          الأصول الثابتة، تُدار بثقة محاسبية.
-        </h1>
-        <p className="text-sm text-muted-foreground max-w-xl">
-          سجل الأصول، الإهلاك، إعادة التقييم والاستبعاد — كاملةً وفق IAS 16 وIAS 36.
-        </p>
+      <header className="flex items-end justify-between gap-6 flex-wrap">
+        <div className="space-y-2 max-w-2xl">
+          <div className="eyebrow text-muted-foreground/80">الموارد والأصول</div>
+          <h1
+            className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
+            data-testid="text-page-title"
+          >
+            الأصول الثابتة، تُدار بثقة محاسبية.
+          </h1>
+          <p className="text-sm text-muted-foreground max-w-xl">
+            سجل الأصول، الإهلاك، إعادة التقييم والاستبعاد — كاملةً وفق IAS 16 وIAS 36.
+          </p>
+        </div>
+        <PeriodChip />
       </header>
 
       <Tabs defaultValue="register" className="w-full">
@@ -146,6 +151,7 @@ export default function FixedAssetsPage() {
 function AssetRegister({ company }: { company: Company }) {
   const { toast } = useToast();
   const fmt = useAssetMoneyFmt();
+  const { period, compareToPrevious, previousRange } = usePeriod();
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterCategoryId, setFilterCategoryId] = useState<string>("");
   const [filterLocation, setFilterLocation] = useState<string>("");
@@ -171,28 +177,43 @@ function AssetRegister({ company }: { company: Company }) {
     return Array.from(set).sort();
   }, [assets]);
 
+  // Period scoping: keep assets that were on the books at any point during
+  // the active period — i.e. acquired on/before period.end and not disposed
+  // before period.start. The visible totals row therefore reflects "what the
+  // register looked like for the chosen window".
+  const inPeriod = (a: FixedAssetWithCarrying, range: { start: Date; end: Date }) => {
+    const acq = new Date(a.acquisitionDate).getTime();
+    if (Number.isFinite(acq) && acq > range.end.getTime()) return false;
+    if (a.status === "disposed") return false;
+    return true;
+  };
+
   const filtered = useMemo(() => {
     return (assets || []).filter((a) => {
+      if (!inPeriod(a, period)) return false;
       if (filterStatus && a.status !== filterStatus) return false;
       if (filterCategoryId && a.categoryId !== Number(filterCategoryId)) return false;
       if (filterLocation && a.location !== filterLocation) return false;
       if (search && !`${a.code} ${a.name} ${a.location || ""}`.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [assets, filterStatus, filterCategoryId, filterLocation, search]);
+  }, [assets, filterStatus, filterCategoryId, filterLocation, search, period]);
 
-  const totals = useMemo(() => {
-    return filtered.reduce(
-      (acc, a) => ({
-        cost: acc.cost + Number(a.cost),
-        accDep: acc.accDep + Number(a.accumDepreciation),
-        accImp: acc.accImp + Number(a.accumImpairment),
-        surplus: acc.surplus + Number(a.revalSurplus),
-        nbv: acc.nbv + a.carryingAmount,
-      }),
-      { cost: 0, accDep: 0, accImp: 0, surplus: 0, nbv: 0 }
-    );
-  }, [filtered]);
+  const sumTotals = (rows: FixedAssetWithCarrying[]) => rows.reduce(
+    (acc, a) => ({
+      cost: acc.cost + Number(a.cost),
+      accDep: acc.accDep + Number(a.accumDepreciation),
+      accImp: acc.accImp + Number(a.accumImpairment),
+      surplus: acc.surplus + Number(a.revalSurplus),
+      nbv: acc.nbv + a.carryingAmount,
+    }),
+    { cost: 0, accDep: 0, accImp: 0, surplus: 0, nbv: 0 }
+  );
+  const totals = useMemo(() => sumTotals(filtered), [filtered]);
+  const prevTotals = useMemo(() => {
+    if (!compareToPrevious) return null;
+    return sumTotals((assets || []).filter((a) => inPeriod(a, previousRange)));
+  }, [assets, compareToPrevious, previousRange]);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/fixed-assets/${id}`),
@@ -328,14 +349,33 @@ function AssetRegister({ company }: { company: Company }) {
                 </tbody>
                 <tfoot>
                   <tr className="font-bold border-t-2">
-                    <td colSpan={4} className="py-2 px-2">الإجمالي ({filtered.length})</td>
-                    <td className="py-2 px-2 tabular-nums">{fmt(totals.cost)}</td>
-                    <td className="py-2 px-2 tabular-nums text-rose-600">{fmt(totals.accDep)}</td>
-                    <td className="py-2 px-2 tabular-nums text-rose-600">{fmt(totals.accImp)}</td>
-                    <td className="py-2 px-2 tabular-nums text-emerald-600">{fmt(totals.surplus)}</td>
-                    <td className="py-2 px-2 tabular-nums">{fmt(totals.nbv, company.currencySymbol)}</td>
+                    <td colSpan={4} className="py-2 px-2" data-testid="text-totals-count">الإجمالي ({filtered.length})</td>
+                    <td className="py-2 px-2 tabular-nums" data-testid="text-totals-cost">{fmt(totals.cost)}</td>
+                    <td className="py-2 px-2 tabular-nums text-rose-600" data-testid="text-totals-accdep">{fmt(totals.accDep)}</td>
+                    <td className="py-2 px-2 tabular-nums text-rose-600" data-testid="text-totals-accimp">{fmt(totals.accImp)}</td>
+                    <td className="py-2 px-2 tabular-nums text-emerald-600" data-testid="text-totals-surplus">{fmt(totals.surplus)}</td>
+                    <td className="py-2 px-2 tabular-nums" data-testid="text-totals-nbv">{fmt(totals.nbv, company.currencySymbol)}</td>
                     <td colSpan={2} />
                   </tr>
+                  {prevTotals && (() => {
+                    const delta = (cur: number, prev: number) => {
+                      const d = cur - prev;
+                      const cls = d >= 0 ? "text-emerald-600" : "text-rose-600";
+                      const sign = d >= 0 ? "+" : "−";
+                      return <span className={`text-xs ${cls}`}>{sign}{fmt(Math.abs(d))}</span>;
+                    };
+                    return (
+                      <tr className="text-xs text-muted-foreground border-t">
+                        <td colSpan={4} className="py-1 px-2">مقارنة بالفترة السابقة</td>
+                        <td className="py-1 px-2 tabular-nums" data-testid="text-delta-cost">{delta(totals.cost, prevTotals.cost)}</td>
+                        <td className="py-1 px-2 tabular-nums" data-testid="text-delta-accdep">{delta(totals.accDep, prevTotals.accDep)}</td>
+                        <td className="py-1 px-2 tabular-nums" data-testid="text-delta-accimp">{delta(totals.accImp, prevTotals.accImp)}</td>
+                        <td className="py-1 px-2 tabular-nums" data-testid="text-delta-surplus">{delta(totals.surplus, prevTotals.surplus)}</td>
+                        <td className="py-1 px-2 tabular-nums" data-testid="text-delta-nbv">{delta(totals.nbv, prevTotals.nbv)}</td>
+                        <td colSpan={2} />
+                      </tr>
+                    );
+                  })()}
                 </tfoot>
               </table>
             </div>

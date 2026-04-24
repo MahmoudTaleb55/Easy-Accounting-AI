@@ -14,15 +14,50 @@ export interface AccountBalance {
   balance: number;
 }
 
-export async function computeBalances(companyId: number): Promise<AccountBalance[]> {
+export interface DateRange { start: Date; end: Date }
+
+export async function computeBalances(companyId: number, range?: DateRange): Promise<AccountBalance[]> {
   const allAccounts = await db.select().from(accounts).where(eq(accounts.companyId, companyId));
   const accountIds = allAccounts.map((a) => a.id);
-  const lines = accountIds.length
+  const allLines = accountIds.length
     ? await db.select().from(journalLines).where(inArray(journalLines.accountId, accountIds))
     : [];
+
+  // For period scoping: P&L (revenue/expense) sums lines posted within [start, end].
+  // Balance-sheet (asset/liability/equity) accounts are cumulative as of `end`,
+  // so the figures still represent a real position on the period's last day.
+  let plLineIds: Set<number> | null = null;
+  let bsLineIds: Set<number> | null = null;
+  if (range) {
+    const entries = await db.select().from(journalEntries).where(eq(journalEntries.companyId, companyId));
+    const startMs = range.start.getTime();
+    const endMs = range.end.getTime();
+    plLineIds = new Set();
+    bsLineIds = new Set();
+    const inWindow = new Set<number>();
+    const upToEnd = new Set<number>();
+    for (const e of entries) {
+      const t = new Date(e.entryDate).getTime();
+      if (Number.isNaN(t)) continue;
+      if (t <= endMs) upToEnd.add(e.id);
+      if (t >= startMs && t <= endMs) inWindow.add(e.id);
+    }
+    for (const l of allLines) {
+      if (inWindow.has(l.journalEntryId)) plLineIds.add(l.id);
+      if (upToEnd.has(l.journalEntryId)) bsLineIds.add(l.id);
+    }
+  }
+
   const debit = new Map<number, number>();
   const credit = new Map<number, number>();
-  for (const l of lines) {
+  const accountById = new Map(allAccounts.map((a) => [a.id, a]));
+  for (const l of allLines) {
+    if (range) {
+      const acc = accountById.get(l.accountId);
+      const isPL = acc && (acc.type === "revenue" || acc.type === "expense");
+      const allowed = isPL ? plLineIds!.has(l.id) : bsLineIds!.has(l.id);
+      if (!allowed) continue;
+    }
     debit.set(l.accountId, (debit.get(l.accountId) || 0) + Number(l.debit || 0));
     credit.set(l.accountId, (credit.get(l.accountId) || 0) + Number(l.credit || 0));
   }
@@ -65,8 +100,8 @@ export interface KPIs {
   debtToEquity: number;
 }
 
-export async function computeKPIs(companyId: number): Promise<KPIs> {
-  const balances = await computeBalances(companyId);
+export async function computeKPIs(companyId: number, range?: DateRange): Promise<KPIs> {
+  const balances = await computeBalances(companyId, range);
   const sumWhere = (pred: (b: AccountBalance) => boolean) =>
     balances.filter(pred).reduce((s, b) => s + b.balance, 0);
 
@@ -144,26 +179,37 @@ export function computeHealthScore(k: KPIs): {
 // ============================================================================
 // Cash Runway & Forecast
 // ============================================================================
-export async function computeCashFlow(companyId: number, daysBack = 90) {
+export async function computeCashFlow(companyId: number, daysBack = 90, range?: DateRange) {
   const txs = await db.select().from(transactions).where(eq(transactions.companyId, companyId));
-  const cutoff = Date.now() - daysBack * 86400000;
-  const recent = txs.filter((t) => new Date(t.date || 0).getTime() >= cutoff);
+  let recent;
+  let days = Math.max(daysBack, 1);
+  if (range) {
+    const startMs = range.start.getTime();
+    const endMs = range.end.getTime();
+    recent = txs.filter((t) => {
+      const ts = new Date(t.date || 0).getTime();
+      return ts >= startMs && ts <= endMs;
+    });
+    days = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
+  } else {
+    const cutoff = Date.now() - daysBack * 86400000;
+    recent = txs.filter((t) => new Date(t.date || 0).getTime() >= cutoff);
+  }
   const inflow = recent.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
   const outflow = recent.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
-  const days = Math.max(daysBack, 1);
   return {
     avgDailyIn: inflow / days,
     avgDailyOut: outflow / days,
     avgDailyNet: (inflow - outflow) / days,
     totalIn: inflow,
     totalOut: outflow,
-    daysAnalyzed: daysBack,
+    daysAnalyzed: days,
   };
 }
 
-export async function projectCash(companyId: number, daysAhead = 90) {
-  const k = await computeKPIs(companyId);
-  const flow = await computeCashFlow(companyId, 90);
+export async function projectCash(companyId: number, daysAhead = 90, range?: DateRange) {
+  const k = await computeKPIs(companyId, range);
+  const flow = await computeCashFlow(companyId, 90, range);
   const cash = k.cash;
   const series: { day: number; date: string; balance: number }[] = [];
   for (let d = 0; d <= daysAhead; d += 1) {
@@ -200,10 +246,10 @@ export interface Alert {
   category?: string;
 }
 
-export async function generateAlerts(companyId: number): Promise<Alert[]> {
+export async function generateAlerts(companyId: number, range?: DateRange): Promise<Alert[]> {
   const alerts: Alert[] = [];
-  const k = await computeKPIs(companyId);
-  const cash = await projectCash(companyId, 90);
+  const k = await computeKPIs(companyId, range);
+  const cash = await projectCash(companyId, 90, range);
   const txs = await db.select().from(transactions).where(eq(transactions.companyId, companyId));
 
   if (cash.runwayDays !== null) {
@@ -337,9 +383,9 @@ export interface ScenarioInput {
   monthsAhead: number;
 }
 
-export async function simulateScenario(companyId: number, input: ScenarioInput) {
-  const k = await computeKPIs(companyId);
-  const flow = await computeCashFlow(companyId, 90);
+export async function simulateScenario(companyId: number, input: ScenarioInput, range?: DateRange) {
+  const k = await computeKPIs(companyId, range);
+  const flow = await computeCashFlow(companyId, 90, range);
   const monthlyRevenue = flow.avgDailyIn * 30;
   const monthlyExpense = flow.avgDailyOut * 30;
   const cogsRatio = k.totalExpenses > 0 ? k.totalCogs / k.totalExpenses : 0;
@@ -390,13 +436,13 @@ export async function simulateScenario(companyId: number, input: ScenarioInput) 
 // ============================================================================
 // Tax & Zakat Estimates (simplified — Saudi context)
 // ============================================================================
-export async function estimateTaxes(companyId: number) {
+export async function estimateTaxes(companyId: number, range?: DateRange) {
   const { storage } = await import("./storage");
   const settings = await storage.getSettings(companyId);
   const vatRate = Number(settings.vatRate);
   const zakatEnabled = settings.zakatEnabled;
 
-  const k = await computeKPIs(companyId);
+  const k = await computeKPIs(companyId, range);
   const vatBase = Math.max(0, k.totalRevenue - k.totalCogs);
   const vatPayable = vatBase * vatRate;
 

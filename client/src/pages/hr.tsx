@@ -22,6 +22,8 @@ import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { ErrorState } from "@/components/feedback/error-state";
 import { HistoryDrawer } from "@/components/audit/history-drawer";
+import { PeriodChip } from "@/components/dashboard/period-chip";
+import { usePeriod } from "@/contexts/period-context";
 import type { Employee, Leave, Attendance } from "@shared/schema";
 
 // ====================================================================
@@ -31,17 +33,20 @@ import type { Employee, Leave, Attendance } from "@shared/schema";
 export default function HRPage() {
   return (
     <div className="space-y-8" data-testid="hr-page">
-      <header className="space-y-2">
-        <div className="eyebrow text-muted-foreground/80">الموارد والأصول</div>
-        <h1
-          className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
-          data-testid="text-page-title"
-        >
-          فريقك ورواتبه — في مكان واحد.
-        </h1>
-        <p className="text-sm text-muted-foreground max-w-xl">
-          الموظفون، الحضور، الإجازات وكشوف الرواتب — مع تسجيل تلقائي للقيود وفق IFRS / IAS 19.
-        </p>
+      <header className="flex items-end justify-between gap-6 flex-wrap">
+        <div className="space-y-2 max-w-2xl">
+          <div className="eyebrow text-muted-foreground/80">الموارد والأصول</div>
+          <h1
+            className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
+            data-testid="text-page-title"
+          >
+            فريقك ورواتبه — في مكان واحد.
+          </h1>
+          <p className="text-sm text-muted-foreground max-w-xl">
+            الموظفون، الحضور، الإجازات وكشوف الرواتب — مع تسجيل تلقائي للقيود وفق IFRS / IAS 19.
+          </p>
+        </div>
+        <PeriodChip />
       </header>
 
       <Tabs defaultValue="employees" className="space-y-4">
@@ -494,6 +499,17 @@ function LeavesTab() {
 // Payroll Run tab
 // ====================================================================
 
+function DeltaLine({ d, testId }: { d: { text: string; positive: boolean }; testId: string }) {
+  return (
+    <p
+      className={`text-xs mt-1 tabular-nums ${d.positive ? "text-green-600 dark:text-green-400" : "text-destructive"}`}
+      data-testid={testId}
+    >
+      {d.text} مقارنة بالشهر السابق
+    </p>
+  );
+}
+
 interface PreviewLine {
   employeeId: number; fullName: string; absentDays: number; baseSalary: number;
   allowances: number; overtime: number; absenceDeduction: number; socialInsuranceEmployee: number;
@@ -504,9 +520,13 @@ function PayrollTab() {
   const { toast } = useToast();
   const fmt = useFormatMoney();
   const settings = useSettings();
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const { period, compareToPrevious, previousRange } = usePeriod();
+  // The payroll engine works per (year, month). Derive both from the period's
+  // end date so the page-level period chip drives which run is previewed.
+  const year = period.end.getFullYear();
+  const month = period.end.getMonth() + 1;
+  const prevYear = previousRange.end.getFullYear();
+  const prevMonth = previousRange.end.getMonth() + 1;
 
   const { data, isLoading, error, refetch } = useQuery<{ year: number; month: number; lines: PreviewLine[] }>({
     queryKey: ["/api/hr/payroll/preview", { year, month }],
@@ -515,6 +535,16 @@ function PayrollTab() {
       if (!res.ok) throw new Error("تعذر التحميل");
       return res.json();
     },
+  });
+
+  const { data: prevData } = useQuery<{ year: number; month: number; lines: PreviewLine[] }>({
+    queryKey: ["/api/hr/payroll/preview", { year: prevYear, month: prevMonth }],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/payroll/preview?year=${prevYear}&month=${prevMonth}`);
+      if (!res.ok) throw new Error("تعذر التحميل");
+      return res.json();
+    },
+    enabled: compareToPrevious,
   });
 
   const run = useMutation({
@@ -528,7 +558,7 @@ function PayrollTab() {
   });
 
   const lines = data?.lines || [];
-  const totals = lines.reduce(
+  const sumTotals = (rows: PreviewLine[]) => rows.reduce(
     (acc, l) => ({
       gross: acc.gross + l.gross,
       net: acc.net + l.netPay,
@@ -539,6 +569,14 @@ function PayrollTab() {
     }),
     { gross: 0, net: 0, siEmp: 0, siEr: 0, eos: 0, leave: 0 },
   );
+  const totals = sumTotals(lines);
+  const prevTotals = compareToPrevious && prevData ? sumTotals(prevData.lines) : null;
+  const monthsAr = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const fmtDelta = (cur: number, prev: number) => {
+    const diff = cur - prev;
+    const sign = diff >= 0 ? "+" : "−";
+    return { text: `${sign}${fmt(Math.abs(diff))}`, positive: diff >= 0 };
+  };
 
   return (
     <div className="space-y-4">
@@ -552,14 +590,11 @@ function PayrollTab() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-end gap-3 mb-4">
-            <div>
-              <label className="text-sm font-medium">السنة</label>
-              <Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24" data-testid="input-year" />
+            <div className="text-sm text-muted-foreground" data-testid="text-payroll-period">
+              الفترة المعروضة: <span className="font-semibold text-foreground">{monthsAr[month - 1]} {year}</span>
+              <span className="text-xs block mt-0.5">يتغيّر تلقائياً مع تغيّر الفترة في الأعلى.</span>
             </div>
-            <div>
-              <label className="text-sm font-medium">الشهر</label>
-              <Input type="number" min="1" max="12" value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-24" data-testid="input-month" />
-            </div>
+            <div className="flex-1" />
             <WriteGuard forceDisabled={lines.length === 0 || run.isPending}>
               <Button
                 size="lg"
@@ -626,10 +661,26 @@ function PayrollTab() {
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-                <Card className="bg-primary/5"><CardContent className="p-4"><p className="text-xs text-muted-foreground">إجمالي قبل الخصم</p><p className="text-xl font-bold" data-testid="text-total-gross">{fmt(totals.gross)}</p></CardContent></Card>
-                <Card className="bg-primary/10"><CardContent className="p-4"><p className="text-xs text-muted-foreground">صافي للصرف</p><p className="text-xl font-bold text-primary" data-testid="text-total-net">{fmt(totals.net)}</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">مخصص نهاية الخدمة (شهرياً)</p><p className="text-lg font-semibold" data-testid="text-total-eos">{fmt(totals.eos)}</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">مخصص الإجازات (شهرياً)</p><p className="text-lg font-semibold" data-testid="text-total-leave">{fmt(totals.leave)}</p></CardContent></Card>
+                <Card className="bg-primary/5"><CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">إجمالي قبل الخصم</p>
+                  <p className="text-xl font-bold" data-testid="text-total-gross">{fmt(totals.gross)}</p>
+                  {prevTotals && <DeltaLine d={fmtDelta(totals.gross, prevTotals.gross)} testId="text-delta-gross" />}
+                </CardContent></Card>
+                <Card className="bg-primary/10"><CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">صافي للصرف</p>
+                  <p className="text-xl font-bold text-primary" data-testid="text-total-net">{fmt(totals.net)}</p>
+                  {prevTotals && <DeltaLine d={fmtDelta(totals.net, prevTotals.net)} testId="text-delta-net" />}
+                </CardContent></Card>
+                <Card><CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">مخصص نهاية الخدمة (شهرياً)</p>
+                  <p className="text-lg font-semibold" data-testid="text-total-eos">{fmt(totals.eos)}</p>
+                  {prevTotals && <DeltaLine d={fmtDelta(totals.eos, prevTotals.eos)} testId="text-delta-eos" />}
+                </CardContent></Card>
+                <Card><CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">مخصص الإجازات (شهرياً)</p>
+                  <p className="text-lg font-semibold" data-testid="text-total-leave">{fmt(totals.leave)}</p>
+                  {prevTotals && <DeltaLine d={fmtDelta(totals.leave, prevTotals.leave)} testId="text-delta-leave" />}
+                </CardContent></Card>
               </div>
 
               <div className="mt-4 p-3 bg-muted/30 rounded-md text-xs text-muted-foreground flex items-start gap-2">
