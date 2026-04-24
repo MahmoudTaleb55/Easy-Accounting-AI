@@ -32,6 +32,8 @@ import {
   Search,
   RefreshCw,
   Download,
+  ShieldOff,
+  History,
 } from "lucide-react";
 
 type Transport = "invitation" | "password_reset";
@@ -440,6 +442,7 @@ export default function EmailDeliveryPage() {
       </div>
 
       {role === "owner" && <AlertSettingsCard ar={ar} />}
+      {role === "owner" && <RecentAlertsCard ar={ar} />}
 
       {trends && (() => {
         const isAllQuiet =
@@ -1119,6 +1122,9 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
       // the admin sees the outcome of the manual evaluation everywhere it
       // matters without a page reload.
       queryClient.invalidateQueries({ queryKey: ["/api/auth/email-delivery-alerts/active"] });
+      // The "Recent alerts" audit log gains a row whenever the evaluator
+      // fires, so invalidate it alongside the active-alert banner query.
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/email-delivery-alerts/history"] });
       // Use the array-prefix form so every (window-scoped) variant of the
       // trends query and every (transport+key-scoped) events query refetches.
       queryClient.invalidateQueries({ queryKey: ["/api/auth/email-deliveries/trends"] });
@@ -1334,6 +1340,263 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
               : "Save settings"}
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface RecentAlertRow {
+  id: string;
+  firedAt: string | null;
+  windowHours: number;
+  failureCount: number;
+  sendCount: number;
+  reason: "absolute" | "ratio" | string;
+  snapshot: { bounced: number; complained: number; send_failed: number } | null;
+  emailSent: boolean;
+  emailRecipients: number;
+  dismissedAt: string | null;
+  dismissedByUserId: string | null;
+  dismissedByName: string | null;
+  dismissedByEmail: string | null;
+}
+
+/**
+ * Read-only audit log of recent alert firings, with attribution for who
+ * silenced each one. The "Reset cooldown" action above the table re-arms
+ * the evaluator so the next pass can fire even if we're still inside the
+ * cooldown window — useful right after tightening a threshold or rotating
+ * ownership. Only the most-recent row gates the cooldown so the per-row
+ * "Re-arm" button is enabled only on that row; older rows show a tooltip
+ * explaining why the action is disabled.
+ */
+function RecentAlertsCard({ ar }: { ar: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery<RecentAlertRow[]>({
+    queryKey: ["/api/auth/email-delivery-alerts/history"],
+  });
+
+  const rearm = useMutation<{ ok: boolean; cleared: boolean }, Error, string>({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/auth/email-delivery-alerts/${encodeURIComponent(id)}/rearm`,
+      );
+      return (await res.json()) as { ok: boolean; cleared: boolean };
+    },
+    onSuccess: (result) => {
+      // Invalidate every view that reads alert state so the admin sees the
+      // re-arm reflected immediately: history (for the future firedAt sort)
+      // and the active-banner endpoint (in case the next sweep flips it).
+      qc.invalidateQueries({
+        queryKey: ["/api/auth/email-delivery-alerts/history"],
+      });
+      qc.invalidateQueries({
+        queryKey: ["/api/auth/email-delivery-alerts/active"],
+      });
+      toast({
+        title: result.cleared
+          ? ar ? "تم إعادة التسليح" : "Cooldown reset"
+          : ar ? "لا يوجد تنبيه حديث" : "Nothing to re-arm",
+        description: result.cleared
+          ? ar
+            ? "سيقوم المُقيِّم بإعادة الفحص في الجولة التالية."
+            : "The evaluator will re-check on the next pass."
+          : ar
+            ? "لا يوجد تنبيه حديث يحجب التقييم."
+            : "There is no recent alert blocking evaluation.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        variant: "destructive",
+        title: ar ? "تعذّر إعادة التسليح" : "Re-arm failed",
+        description: err.message ?? "",
+      });
+    },
+  });
+
+  const rows = data ?? [];
+  const mostRecentId = rows[0]?.id;
+  const cooldownGated = !!rows[0] && !!rows[0].firedAt;
+
+  return (
+    <Card data-testid="card-recent-alerts">
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              {ar ? "آخر التنبيهات" : "Recent alerts"}
+            </CardTitle>
+            <CardDescription>
+              {ar
+                ? "سجل لمن أسكت كل تنبيه ومتى. أعِد التسليح لتجاوز فترة التهدئة في الجولة التالية."
+                : "Audit log of who silenced each alert and when. Re-arm to bypass the cooldown on the next evaluator pass."}
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => mostRecentId && rearm.mutate(mostRecentId)}
+            disabled={!cooldownGated || rearm.isPending || isLoading}
+            data-testid="button-reset-cooldown"
+          >
+            <ShieldOff className="me-2 h-4 w-4" />
+            {rearm.isPending
+              ? ar ? "جارٍ..." : "Working..."
+              : ar ? "إعادة تسليح التهدئة" : "Reset cooldown"}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {ar ? "جارٍ التحميل..." : "Loading..."}
+          </div>
+        ) : rows.length === 0 ? (
+          <div
+            className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground"
+            data-testid="empty-recent-alerts"
+          >
+            {ar
+              ? "لا توجد تنبيهات سابقة. سيظهر التنبيه هنا فور إطلاقه."
+              : "No alerts have fired yet. They will appear here as soon as one does."}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="table-recent-alerts">
+              <thead className="text-xs uppercase tracking-wider text-muted-foreground">
+                <tr className="border-b">
+                  <th className="px-2 py-2 text-start font-medium">
+                    {ar ? "أُطلق في" : "Fired"}
+                  </th>
+                  <th className="px-2 py-2 text-start font-medium">
+                    {ar ? "السبب" : "Reason"}
+                  </th>
+                  <th className="px-2 py-2 text-start font-medium">
+                    {ar ? "إخفاقات / إرسالات" : "Failures / sends"}
+                  </th>
+                  <th className="px-2 py-2 text-start font-medium">
+                    {ar ? "البريد" : "Email"}
+                  </th>
+                  <th className="px-2 py-2 text-start font-medium">
+                    {ar ? "أُسكت بواسطة" : "Dismissed by"}
+                  </th>
+                  <th className="px-2 py-2 text-end font-medium">
+                    {ar ? "إجراء" : "Action"}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => {
+                  const isMostRecent = index === 0;
+                  const dismissed = !!row.dismissedAt;
+                  const dismissedDisplay = dismissed
+                    ? row.dismissedByName ||
+                      row.dismissedByEmail ||
+                      (ar ? "مستخدم محذوف" : "Removed user")
+                    : null;
+                  return (
+                    <tr
+                      key={row.id}
+                      className="border-b last:border-0"
+                      data-testid={`row-recent-alert-${row.id}`}
+                    >
+                      <td className="px-2 py-2 align-top whitespace-nowrap" data-testid={`text-fired-at-${row.id}`}>
+                        {formatDate(row.firedAt, ar)}
+                        <div className="text-xs text-muted-foreground">
+                          {ar
+                            ? `نافذة ${row.windowHours} ساعة`
+                            : `${row.windowHours}h window`}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 align-top" data-testid={`text-reason-${row.id}`}>
+                        <Badge variant={row.reason === "ratio" ? "secondary" : "destructive"}>
+                          {row.reason === "ratio"
+                            ? ar ? "نسبة" : "Ratio"
+                            : ar ? "مطلق" : "Absolute"}
+                        </Badge>
+                      </td>
+                      <td className="px-2 py-2 align-top" data-testid={`text-counts-${row.id}`}>
+                        <div className="font-medium">
+                          {row.failureCount} / {row.sendCount}
+                        </div>
+                        {row.snapshot && (
+                          <div className="text-xs text-muted-foreground">
+                            {ar
+                              ? `مرتد ${row.snapshot.bounced} · شكوى ${row.snapshot.complained} · فشل إرسال ${row.snapshot.send_failed}`
+                              : `${row.snapshot.bounced} bounced · ${row.snapshot.complained} complained · ${row.snapshot.send_failed} send-failed`}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 align-top" data-testid={`text-email-${row.id}`}>
+                        {row.emailSent ? (
+                          <Badge variant="outline">
+                            {ar
+                              ? `أُرسل (${row.emailRecipients})`
+                              : `Sent (${row.emailRecipients})`}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {ar ? "لا يوجد" : "—"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 align-top" data-testid={`text-dismissed-${row.id}`}>
+                        {dismissed ? (
+                          <div>
+                            <div className="font-medium" data-testid={`text-dismissed-by-${row.id}`}>
+                              {dismissedDisplay}
+                            </div>
+                            <div className="text-xs text-muted-foreground" data-testid={`text-dismissed-at-${row.id}`}>
+                              {formatDate(row.dismissedAt, ar)}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {ar ? "نشط" : "Active"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 align-top text-end">
+                        <TooltipProvider delayDuration={150}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span tabIndex={0} className="inline-block">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => rearm.mutate(row.id)}
+                                  disabled={!isMostRecent || rearm.isPending}
+                                  data-testid={`button-rearm-${row.id}`}
+                                >
+                                  {ar ? "إعادة تسليح" : "Re-arm"}
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              {isMostRecent
+                                ? ar
+                                  ? "يلغي فترة التهدئة لهذه الجولة."
+                                  : "Clears the cooldown for the next pass."
+                                : ar
+                                  ? "فقط أحدث تنبيه يحجب فترة التهدئة."
+                                  : "Only the most recent alert gates the cooldown."}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

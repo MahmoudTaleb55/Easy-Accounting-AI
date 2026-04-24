@@ -876,6 +876,7 @@ export const authBizStorage = {
       ratioThreshold: "0.0200",
       minSamplesForRatio: 20,
       cooldownMinutes: 360,
+      cooldownClearedAt: null,
       updatedAt: null,
       updatedByUserId: null,
     };
@@ -1203,6 +1204,29 @@ export const authBizStorage = {
       .orderBy(desc(emailDeliveryAlertRecipients.attemptedAt));
   },
 
+  /**
+   * Workspace-scoped existence check by id. Used by the per-row Re-arm
+   * route to validate a UUID belongs to the caller's workspace without
+   * scanning a bounded `listRecent` window (which would false-404 older
+   * rows once a workspace has > N firings).
+   */
+  async getEmailDeliveryAlertById(
+    id: string,
+    companyId: number,
+  ): Promise<EmailDeliveryAlert | undefined> {
+    const [row] = await db
+      .select()
+      .from(emailDeliveryAlerts)
+      .where(
+        and(
+          eq(emailDeliveryAlerts.id, id),
+          eq(emailDeliveryAlerts.companyId, companyId),
+        ),
+      )
+      .limit(1);
+    return row;
+  },
+
   async dismissEmailDeliveryAlert(
     id: string,
     companyId: number,
@@ -1219,6 +1243,77 @@ export const authBizStorage = {
       )
       .returning();
     return row;
+  },
+
+  /**
+   * Recent alert firings for a workspace, joined with the dismissing user's
+   * display name so the audit log on /app/settings/email-delivery can show
+   * "dismissed by Alice 5m ago" without a second round-trip. Bounded by
+   * `limit` so the response stays small even after years of evaluator runs.
+   */
+  async listRecentEmailDeliveryAlerts(
+    companyId: number,
+    limit = 20,
+  ): Promise<
+    Array<
+      EmailDeliveryAlert & {
+        dismissedByName: string | null;
+        dismissedByEmail: string | null;
+      }
+    >
+  > {
+    const cap = Math.max(1, Math.min(limit, 100));
+    const rows = await db
+      .select({
+        alert: emailDeliveryAlerts,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      })
+      .from(emailDeliveryAlerts)
+      .leftJoin(users, eq(users.id, emailDeliveryAlerts.dismissedByUserId))
+      .where(eq(emailDeliveryAlerts.companyId, companyId))
+      .orderBy(desc(emailDeliveryAlerts.firedAt))
+      .limit(cap);
+    return rows.map((r) => {
+      const name =
+        [r.firstName, r.lastName].filter((p) => p && p.trim().length > 0).join(" ").trim() ||
+        null;
+      return {
+        ...r.alert,
+        dismissedByName: name,
+        dismissedByEmail: r.email ?? null,
+      };
+    });
+  },
+
+  /**
+   * Force the next evaluator pass for this workspace to ignore the cooldown
+   * window. Non-destructive — sets a one-shot `cooldownClearedAt` timestamp
+   * on the per-workspace settings row instead of mutating any historical
+   * `firedAt` (which would corrupt the audit log). The evaluator consults
+   * this timestamp in addition to the firedAt-vs-cooldown comparison; once
+   * the next alert fires (newer firedAt), the bypass naturally becomes
+   * inert until set again. Returns `false` when there's nothing to re-arm
+   * (no recent alert, so the evaluator wasn't gated to begin with).
+   */
+  async clearEmailDeliveryAlertCooldown(companyId: number): Promise<boolean> {
+    const last = await this.getMostRecentEmailDeliveryAlert(companyId);
+    if (!last) return false;
+    const now = new Date();
+    // Upsert: workspaces that haven't customised settings yet still need
+    // a row created so the cooldownClearedAt timestamp survives.
+    await db
+      .insert(emailDeliveryAlertSettings)
+      .values({
+        companyId,
+        cooldownClearedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: emailDeliveryAlertSettings.companyId,
+        set: { cooldownClearedAt: now },
+      });
+    return true;
   },
 
   /** Owner emails for a workspace. Used as the email-alert recipient list. */

@@ -214,7 +214,7 @@ async function runRetryPass(
  */
 export async function evaluateEmailDeliveryAlertsForCompany(
   companyId: number,
-  opts: { now?: Date; alertLink?: string } = {},
+  opts: { now?: Date; alertLink?: string; skipCooldown?: boolean } = {},
 ): Promise<EvaluationOutcome> {
   const cfg = await authBizStorage.getEmailDeliveryAlertSettings(companyId);
   if (!cfg.enabled) {
@@ -285,9 +285,22 @@ export async function evaluateEmailDeliveryAlertsForCompany(
 
   // Cooldown gate. We use the most recent alert (regardless of dismissal)
   // so dismissing the banner doesn't immediately re-fire on the next sweep.
+  //
+  // Two non-destructive bypasses:
+  //   - `opts.skipCooldown` — in-memory bypass for tests / one-shot
+  //     evaluator calls.
+  //   - `cfg.cooldownClearedAt` — persisted "Re-arm" timestamp set by the
+  //     owner-facing /rearm route. Considered active only while it is
+  //     newer than the most-recent firedAt; once a fresh alert fires,
+  //     the bypass naturally becomes inert again.
   const last = await authBizStorage.getMostRecentEmailDeliveryAlert(companyId);
   const now = opts.now ?? new Date();
-  if (last && last.firedAt) {
+  const persistentBypass =
+    !!cfg.cooldownClearedAt &&
+    !!last?.firedAt &&
+    new Date(cfg.cooldownClearedAt).getTime() >
+      new Date(last.firedAt).getTime();
+  if (!opts.skipCooldown && !persistentBypass && last && last.firedAt) {
     const ageMs = now.getTime() - new Date(last.firedAt).getTime();
     if (ageMs < cfg.cooldownMinutes * 60 * 1000) {
       return {

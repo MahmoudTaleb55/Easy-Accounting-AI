@@ -825,6 +825,105 @@ export function registerLocalAuthRoutes(app: Express) {
     },
   );
 
+  // Audit log of recent firings, joined with the dismissing user's display
+  // name. Drives the "Recent alerts" table on /app/settings/email-delivery
+  // so owners can see *who* silenced *what* and *when*. Bounded server-side
+  // (default 20, hard cap 100) so the response stays small.
+  app.get(
+    "/api/auth/email-delivery-alerts/history",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res) => {
+      const ctx = (req as any).membership!;
+      const limitRaw = Number(req.query.limit);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0
+        ? Math.min(limitRaw, 100)
+        : 20;
+      const rows = await authBizStorage.listRecentEmailDeliveryAlerts(
+        ctx.companyId,
+        limit,
+      );
+      res.json(
+        rows.map((r) => ({
+          id: r.id,
+          firedAt: r.firedAt,
+          windowHours: r.windowHours,
+          failureCount: r.failureCount,
+          sendCount: r.sendCount,
+          reason: r.reason,
+          snapshot: r.snapshot,
+          emailSent: r.emailSent,
+          emailRecipients: r.emailRecipients,
+          dismissedAt: r.dismissedAt,
+          dismissedByUserId: r.dismissedByUserId,
+          dismissedByName: r.dismissedByName,
+          dismissedByEmail: r.dismissedByEmail,
+        })),
+      );
+    },
+  );
+
+  // Re-arm the alert evaluator for this workspace by clearing the cooldown
+  // gate for the *next* pass. The action is intentionally workspace-level
+  // (one cooldown per workspace) — see the per-id alias below for the
+  // ergonomic "Re-arm this row" UI shape.
+  //
+  // Implementation is non-destructive: it sets a one-shot
+  // `cooldownClearedAt` timestamp on the per-workspace settings row and
+  // leaves every historical `firedAt` untouched, so the audit log keeps
+  // showing real firing times. Returns `cleared:false` (with HTTP 200)
+  // when there is no recent alert to re-arm — the UI surfaces that as a
+  // distinct toast instead of a misleading "success".
+  app.post(
+    "/api/auth/email-delivery-alerts/rearm",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res, next) => {
+      try {
+        const ctx = (req as any).membership!;
+        const cleared = await authBizStorage.clearEmailDeliveryAlertCooldown(
+          ctx.companyId,
+        );
+        res.json({ ok: true, cleared });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Per-id alias used by the "Recent alerts" table's per-row Re-arm button.
+  // It validates that `:id` belongs to the calling workspace (404 otherwise
+  // — keeps the response from leaking the existence of foreign alert ids)
+  // and then performs the same workspace-level re-arm as POST /rearm. The
+  // id is used for scoping/traceability only; cooldown is a workspace
+  // property, not a per-row property. The validation uses an indexed
+  // (id, company_id) lookup so it stays correct even for older rows that
+  // fall outside any bounded "recent" window.
+  app.post(
+    "/api/auth/email-delivery-alerts/:id/rearm",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res, next) => {
+      try {
+        const ctx = (req as any).membership!;
+        const id = String(req.params.id);
+        const target = await authBizStorage.getEmailDeliveryAlertById(
+          id,
+          ctx.companyId,
+        );
+        if (!target) {
+          return res.status(404).json({ message: "Alert not found" });
+        }
+        const cleared = await authBizStorage.clearEmailDeliveryAlertCooldown(
+          ctx.companyId,
+        );
+        res.json({ ok: true, cleared });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   // Run the evaluator on demand. Useful when an admin tightens a threshold
   // and wants to see whether the new value would already be tripping. Also
   // used by tests to drive the cron without waiting for the interval.

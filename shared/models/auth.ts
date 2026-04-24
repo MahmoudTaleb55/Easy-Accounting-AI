@@ -189,6 +189,12 @@ export const emailDeliveryAlertSettings = pgTable(
     minSamplesForRatio: integer("min_samples_for_ratio").notNull().default(20),
     // Suppress repeat alerts for this many minutes after the last fire.
     cooldownMinutes: integer("cooldown_minutes").notNull().default(360),
+    // Timestamp at which an owner explicitly re-armed the alert evaluator.
+    // The cooldown gate is bypassed on the next pass when this is newer than
+    // the most recent alert's firedAt. Stored as a one-shot timestamp (not a
+    // boolean) so we can audit when the bypass was requested without keeping
+    // a separate audit table.
+    cooldownClearedAt: timestamp("cooldown_cleared_at"),
     updatedAt: timestamp("updated_at").defaultNow(),
     updatedByUserId: varchar("updated_by_user_id"),
   }

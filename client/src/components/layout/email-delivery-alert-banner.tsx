@@ -48,6 +48,10 @@ export function EmailDeliveryAlertBanner() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/auth/email-delivery-alerts/active"] });
+      // Keep the audit log on /app/settings/email-delivery in sync so the
+      // dismissal attribution shows up immediately after the banner is
+      // closed from the shell, without waiting for a manual refetch.
+      qc.invalidateQueries({ queryKey: ["/api/auth/email-delivery-alerts/history"] });
     },
   });
 
