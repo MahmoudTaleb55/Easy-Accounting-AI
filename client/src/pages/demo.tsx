@@ -42,11 +42,43 @@ const COPY = {
     successBody: "A specialist will reach out within one business day to confirm the session.",
     back: "Back to home",
   },
-};
+  de: {
+    eyebrow: "Live-Demo buchen",
+    title: "Zeigen Sie die Plattform Ihrem Finanzteam in Aktion.",
+    sub: "30 Minuten. Wir zeigen, wie Buchungen automatisch verbucht werden, wie der Monat sich selbst abschließt und wie eine ZATCA-fertige Datei aussieht.",
+    name: "Vollständiger Name",
+    email: "Geschäftliche E-Mail",
+    company: "Unternehmen",
+    employees: "Teamgröße",
+    notes: "Welche Themen möchten Sie behandeln?",
+    submit: "Termin anfragen",
+    fallback: "Lieber per E-Mail?",
+    fallbackEmail: "Schreiben Sie uns an sales@accounting.app",
+    success: "Ihre Anfrage wurde empfangen",
+    successBody: "Ein Spezialist meldet sich innerhalb eines Werktags, um den Termin zu bestätigen.",
+    back: "Zurück zur Startseite",
+  },
+  fr: {
+    eyebrow: "Réserver une démo en direct",
+    title: "Présentez la plateforme à votre équipe financière.",
+    sub: "30 minutes. Nous montrons comment les écritures se passent toutes seules, comment le mois se clôture automatiquement et à quoi ressemble un fichier prêt pour ZATCA.",
+    name: "Nom complet",
+    email: "E-mail professionnel",
+    company: "Entreprise",
+    employees: "Taille de l'équipe",
+    notes: "Quels sujets souhaitez-vous aborder ?",
+    submit: "Demander une session",
+    fallback: "Préférez-vous l'e-mail ?",
+    fallbackEmail: "Écrivez-nous à sales@accounting.app",
+    success: "Votre demande a bien été reçue",
+    successBody: "Un spécialiste vous contactera dans un jour ouvré pour confirmer la session.",
+    back: "Retour à l'accueil",
+  },
+} as const;
 
 export default function DemoPage() {
   const { locale, dir } = useLocale();
-  const t = COPY[locale];
+  const t = COPY[locale] ?? COPY.en;
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState({
     name: "",
