@@ -183,7 +183,10 @@ app.use((req, res, next) => {
     const { ensureEmailDeliveryAlertTablesOnStartup } = await import(
       "./auth/storage"
     );
-    await ensureEmailDeliveryAlertTablesOnStartup();
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:email-delivery-alert-tables", () =>
+      ensureEmailDeliveryAlertTablesOnStartup(),
+    );
   } catch (err) {
     console.error(
       "Failed to apply email_delivery_alerts (migration 0005) tables:",
@@ -294,7 +297,10 @@ app.use((req, res, next) => {
     const { applyEmailDeliveryAlertRecipientsOnStartup } = await import(
       "./auth/storage"
     );
-    await applyEmailDeliveryAlertRecipientsOnStartup();
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:email-delivery-alert-recipients", () =>
+      applyEmailDeliveryAlertRecipientsOnStartup(),
+    );
   } catch (err) {
     console.error(
       "Failed to apply email_delivery_alert_recipients migration:",
@@ -310,7 +316,10 @@ app.use((req, res, next) => {
     const { applyEmailDeliveryEventCountIndexesOnStartup } = await import(
       "./auth/storage"
     );
-    await applyEmailDeliveryEventCountIndexesOnStartup();
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:email-delivery-event-count-indexes", () =>
+      applyEmailDeliveryEventCountIndexesOnStartup(),
+    );
   } catch (err) {
     console.error(
       "Failed to apply email-delivery event count indexes migration:",

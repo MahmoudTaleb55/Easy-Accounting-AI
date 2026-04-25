@@ -415,7 +415,21 @@ on completion. Audited bypass call sites (with `reason` strings):
   canonical role-enum data fix on the `memberships` / `invitations` tables.
 - `bootstrap:drop-workspace-members-mirror` — re-runs migration 0006.
 - `bootstrap:composite-fks` — re-runs migrations 0005 / 0007.
+- `bootstrap:accounts-code-uq` — re-runs migration 0010.
+- `bootstrap:companyid-defaults` — re-runs migration 0014.
 - `bootstrap:rls` — re-runs migration 0008 itself.
+- `bootstrap:email-delivery-alert-tables` —
+  `ensureEmailDeliveryAlertTablesOnStartup` re-stages the parent
+  `email_delivery_alert_settings` / `email_delivery_alerts` tables (auth
+  surface, not RLS-protected, but wrapped for uniformity so the audit
+  list below stays exhaustive).
+- `bootstrap:email-delivery-alert-recipients` —
+  `applyEmailDeliveryAlertRecipientsOnStartup` re-stages the per-recipient
+  outcome table for the alert evaluator.
+- `bootstrap:email-delivery-event-count-indexes` —
+  `applyEmailDeliveryEventCountIndexesOnStartup` re-stages the
+  `(message_id, created_at)` indexes the `/api/auth/email-deliveries/count`
+  endpoint depends on.
 - `cron:email-delivery-alert-sweep` — the periodic alert evaluator that
   iterates every workspace.
 - `workspace:create` — `DatabaseStorage.createCompany` and
@@ -430,6 +444,45 @@ on completion. Audited bypass call sites (with `reason` strings):
 
 If a future code path needs bypass it is expected to wrap itself in
 `withRlsBypass` with a fresh `reason` so the audit list stays grep-able.
+
+### Lint: every `db` import is on the audited allowlist (task #138)
+
+The bypass list above is only protective if every `db.X(...)` call in
+`server/` actually flows through `withCompanyScope` or `withRlsBypass`.
+Anything that imports `db` and runs outside the `/api/*` request middleware
+(future cron jobs, ad-hoc maintenance scripts, additional boot helpers,
+etc.) silently falls back to the connecting role and bypasses RLS.
+
+`tests/e2e/db-isolation-allowlist.spec.ts` closes that hole with four
+static assertions:
+
+1. The set of files in `server/` that import `db` from `./db` (or
+   `../db`) is pinned to a hand-curated allowlist with a per-file rationale
+   explaining how its `db` calls are reached only from inside a wrapper.
+   Adding a new file requires editing the allowlist, which forces a code
+   review.
+2. The set of files in `server/` that import a *storage value* (`storage`,
+   `authStorage`, `authBizStorage`, `chatStorage`) from any storage module
+   — `./storage`, `./auth/storage`, `./replit_integrations/auth/storage`,
+   `./replit_integrations/chat/storage` — is pinned to a similar
+   allowlist. Storage modules wrap `db` internally, so a fresh
+   `import { storage } from "./storage"` in a non-request context is just
+   as much an RLS bypass as a direct `db.` call. The check covers static
+   imports, barrel `export { ... } from` re-exports, and the dynamic
+   `const { storage } = await import("./storage")` form. Type-only imports
+   (`import type { Foo }`) are deliberately exempt — they evaporate at
+   compile time and have no runtime db reach.
+3. Every `await *OnStartup(` invocation in `server/index.ts` must be
+   wrapped in `withRlsBypass(...)` (or `withCompanyScope(...)`) on the
+   same block, except for a small SELF_WRAPPING list of helpers that wrap
+   their own body internally.
+4. `pool.connect()` is only allowed in `server/db.ts` (where the wrappers
+   themselves check out clients) and `server/migrate.ts` (which has to
+   bootstrap the migration ledger before any migration has ever run).
+
+Together these four checks make the property "every `db.` and storage
+call site goes through the workspace-isolation layer" enforceable in CI
+rather than by human grep.
 
 ### What this still does not cover
 
