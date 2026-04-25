@@ -143,4 +143,69 @@ test.describe("payroll → journal-entry deep link", () => {
       "the jump button must re-pulse the highlight ring on the resolved card",
     ).toHaveAttribute("data-highlighted", "true");
   });
+
+  test("source-link badge: JE row + detail dialog both surface the back-link to the payroll run", async ({
+    page,
+  }) => {
+    const fx = loadFixtures();
+
+    // Land directly on /app/journal — the seeded JE sits inside the
+    // default `month` period so we should be able to find both the row
+    // card and the source-link badge without any deep link / period
+    // gymnastics.
+    await page.goto("/app/journal");
+
+    const card = page.locator(`[data-testid="card-entry-${fx.journalEntryId}"]`);
+    await expect(card, "the seeded JE card must render in the list").toBeVisible();
+
+    // (1) The JE row in the main list must surface the source-link badge
+    // with the canonical (no-surface) test id, pointing back to the
+    // seeded payroll run on /app/hr#pr-<runId>.
+    const rowBadge = card.locator(
+      `[data-testid="link-je-source-payroll_run-${fx.runId}"]`,
+    );
+    await expect(
+      rowBadge,
+      "the JE row must surface the From: Payroll back-link",
+    ).toBeVisible();
+    await expect(rowBadge).toHaveAttribute("href", `/app/hr#pr-${fx.runId}`);
+
+    // (2) Open the JE detail dialog and assert the same badge appears in
+    // its header — this is the surface the task added so users can
+    // follow the back-link from the drawer too. The `surface=detail`
+    // suffix in the test id is what keeps the row + dialog badges from
+    // colliding while both are mounted.
+    await card.locator(`[data-testid="link-entry-${fx.journalEntryId}"]`).click();
+    const dialog = page.locator('[data-testid="dialog-entry-detail"]');
+    await expect(dialog, "the JE detail dialog must open").toBeVisible();
+    const dialogBadge = dialog.locator(
+      `[data-testid="link-je-source-detail-payroll_run-${fx.runId}"]`,
+    );
+    await expect(
+      dialogBadge,
+      "the JE detail dialog must surface the same back-link badge as the row",
+    ).toBeVisible();
+    await expect(dialogBadge).toHaveAttribute("href", `/app/hr#pr-${fx.runId}`);
+
+    // (3) The Recent admin-activity feed on /app/settings reuses JE rows
+    // through `SecurityCompliance`. After the same setup, that feed
+    // should also surface the badge for the seeded payroll-linked JE,
+    // proving the extracted component reaches the second JE-row surface.
+    await page.goto("/app/settings");
+    const adminRow = page.locator(
+      `[data-testid="row-admin-activity-${fx.journalEntryId}"]`,
+    );
+    await expect(
+      adminRow,
+      "the seeded JE must appear in the Recent admin activity feed",
+    ).toBeVisible();
+    const adminBadge = adminRow.locator(
+      `[data-testid="link-je-source-admin-activity-payroll_run-${fx.runId}"]`,
+    );
+    await expect(
+      adminBadge,
+      "the admin-activity row must surface the same back-link badge",
+    ).toBeVisible();
+    await expect(adminBadge).toHaveAttribute("href", `/app/hr#pr-${fx.runId}`);
+  });
 });

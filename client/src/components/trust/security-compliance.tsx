@@ -15,6 +15,8 @@ import {
 import { useLocale } from "@/contexts/locale-context";
 import { formatDistanceToNow } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
+import { SourceLinkBadge } from "@/components/journal/source-link-badge";
+import type { JournalEntrySourceLink } from "@shared/schema";
 
 interface JE {
   id: number;
@@ -23,6 +25,7 @@ interface JE {
   source: string;
   entryDate: string;
   createdAt?: string;
+  sourceLink?: JournalEntrySourceLink;
 }
 
 interface MemberLite {
@@ -281,12 +284,18 @@ export function SecurityCompliance() {
                   >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-foreground truncate">{je.description}</p>
-                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
                         <span className="font-numeric tabular-nums">{je.reference}</span>
                         <span className="text-muted-foreground/40">·</span>
                         <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 font-normal">
                           {sourceLabel}
                         </Badge>
+                        {je.sourceLink && (
+                          <>
+                            <span className="text-muted-foreground/40">·</span>
+                            <SourceLinkBadge link={je.sourceLink} surface="admin-activity" />
+                          </>
+                        )}
                       </div>
                     </div>
                     <span className="text-[11px] text-muted-foreground shrink-0 font-numeric tabular-nums">
