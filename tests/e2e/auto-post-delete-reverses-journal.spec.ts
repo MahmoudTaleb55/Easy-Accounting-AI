@@ -405,10 +405,18 @@ test.describe("DELETE /api/impairment-events/:id keeps impairments and GL in syn
       const ins = await client.query<{ id: number }>(
         `INSERT INTO impairment_events
            (company_id, asset_id, event_date, recoverable_amount,
-            loss_amount, journal_entry_id)
-         VALUES ($1, $2, '2099-06-30', '5000.00', '500.00', $3)
+            loss_amount, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-06-30', '5000.00', '500.00', $3, $4)
          RETURNING id`,
-        [user.companyId, assetId, seeded.journalEntryId],
+        [
+          user.companyId,
+          assetId,
+          seeded.journalEntryId,
+          // Non-null delta so the legacy-row guard (task #208) is bypassed:
+          // we are exercising the JE-reversal path here, not the legacy
+          // refusal path.
+          JSON.stringify({ asset: { accumImpairment: 0 } }),
+        ],
       );
       const eventId = ins.rows[0].id;
 
@@ -449,10 +457,16 @@ test.describe("DELETE /api/impairment-events/:id keeps impairments and GL in syn
       const ins = await client.query<{ id: number }>(
         `INSERT INTO impairment_events
            (company_id, asset_id, event_date, recoverable_amount,
-            loss_amount, journal_entry_id)
-         VALUES ($1, $2, '2099-06-30', '5000.00', '500.00', $3)
+            loss_amount, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-06-30', '5000.00', '500.00', $3, $4)
          RETURNING id`,
-        [user.companyId, assetId, seeded.journalEntryId],
+        [
+          user.companyId,
+          assetId,
+          seeded.journalEntryId,
+          // See note in the reverse-path test above.
+          JSON.stringify({ asset: { accumImpairment: 0 } }),
+        ],
       );
       const eventId = ins.rows[0].id;
       const pinId = await pinForeignReference(client, user.companyId, seeded.journalEntryId);
@@ -488,11 +502,19 @@ test.describe("DELETE /api/revaluation-events/:id keeps revaluations and GL in s
       const ins = await client.query<{ id: number }>(
         `INSERT INTO revaluation_events
            (company_id, asset_id, event_date, fair_value, method,
-            surplus_delta, pl_impact, journal_entry_id)
+            surplus_delta, pl_impact, journal_entry_id, asset_balance_delta)
          VALUES ($1, $2, '2099-12-31', '12000.00', 'elimination',
-                 '2000.00', '0.00', $3)
+                 '2000.00', '0.00', $3, $4)
          RETURNING id`,
-        [user.companyId, assetId, seeded.journalEntryId],
+        [
+          user.companyId,
+          assetId,
+          seeded.journalEntryId,
+          // Non-null delta so the legacy-row guard (task #208) is bypassed:
+          // we are exercising the JE-reversal path here, not the legacy
+          // refusal path. An empty `asset` object is a valid no-op delta.
+          JSON.stringify({ asset: {} }),
+        ],
       );
       const eventId = ins.rows[0].id;
 
@@ -533,11 +555,17 @@ test.describe("DELETE /api/revaluation-events/:id keeps revaluations and GL in s
       const ins = await client.query<{ id: number }>(
         `INSERT INTO revaluation_events
            (company_id, asset_id, event_date, fair_value, method,
-            surplus_delta, pl_impact, journal_entry_id)
+            surplus_delta, pl_impact, journal_entry_id, asset_balance_delta)
          VALUES ($1, $2, '2099-12-31', '12000.00', 'elimination',
-                 '2000.00', '0.00', $3)
+                 '2000.00', '0.00', $3, $4)
          RETURNING id`,
-        [user.companyId, assetId, seeded.journalEntryId],
+        [
+          user.companyId,
+          assetId,
+          seeded.journalEntryId,
+          // See note in the reverse-path test above.
+          JSON.stringify({ asset: {} }),
+        ],
       );
       const eventId = ins.rows[0].id;
       const pinId = await pinForeignReference(client, user.companyId, seeded.journalEntryId);
@@ -573,11 +601,20 @@ test.describe("DELETE /api/disposals/:id keeps disposals and GL in sync @api", (
       const ins = await client.query<{ id: number }>(
         `INSERT INTO disposals
            (company_id, asset_id, event_date, proceeds, method,
-            gain_loss, surplus_transferred, journal_entry_id)
+            gain_loss, surplus_transferred, journal_entry_id,
+            asset_balance_delta)
          VALUES ($1, $2, '2099-12-31', '8000.00', 'sale',
-                 '-2000.00', '0.00', $3)
+                 '-2000.00', '0.00', $3, $4)
          RETURNING id`,
-        [user.companyId, assetId, seeded.journalEntryId],
+        [
+          user.companyId,
+          assetId,
+          seeded.journalEntryId,
+          // Non-null delta so the legacy-row guard (task #208) is bypassed:
+          // we are exercising the JE-reversal path here, not the legacy
+          // refusal path. An empty `asset` object is a valid no-op delta.
+          JSON.stringify({ asset: {} }),
+        ],
       );
       const eventId = ins.rows[0].id;
 
@@ -618,11 +655,18 @@ test.describe("DELETE /api/disposals/:id keeps disposals and GL in sync @api", (
       const ins = await client.query<{ id: number }>(
         `INSERT INTO disposals
            (company_id, asset_id, event_date, proceeds, method,
-            gain_loss, surplus_transferred, journal_entry_id)
+            gain_loss, surplus_transferred, journal_entry_id,
+            asset_balance_delta)
          VALUES ($1, $2, '2099-12-31', '8000.00', 'sale',
-                 '-2000.00', '0.00', $3)
+                 '-2000.00', '0.00', $3, $4)
          RETURNING id`,
-        [user.companyId, assetId, seeded.journalEntryId],
+        [
+          user.companyId,
+          assetId,
+          seeded.journalEntryId,
+          // See note in the reverse-path test above.
+          JSON.stringify({ asset: {} }),
+        ],
       );
       const eventId = ins.rows[0].id;
       const pinId = await pinForeignReference(client, user.companyId, seeded.journalEntryId);
@@ -1122,6 +1166,134 @@ test.describe("DELETE /api/disposals/:id restores asset balances @api", () => {
 
       const after = await snapshotAsset(client, assetId);
       expect(after).toEqual(before);
+    } finally {
+      await client.end();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task #208 — refuse to delete legacy rows whose `asset_balance_delta` is
+// NULL (because they were posted before migration 0015 added the snapshot
+// column). Without the snapshot the delete path can't roll the per-asset
+// balances back precisely, so silently reversing only the JE would leave
+// `accumImpairment`, `revalSurplus`, `accumRevalLoss`, and `status` stale on
+// the asset row. The fix surfaces a 409 + a clear message on each module
+// (impairment / revaluation / disposal) and leaves both the source row and
+// the JE in place so the user can repair the asset row by hand.
+// ---------------------------------------------------------------------------
+
+test.describe("DELETE legacy fixed-asset events refuses with 409 @api", () => {
+  test("impairment_events: NULL asset_balance_delta is refused, JE + row + balances untouched", async () => {
+    const user = await bootstrapUser("imp-leg");
+    const seeded = await seedAccountsAndJournalEntry(user, `imp-leg-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `imp-leg-${user.companyId}`);
+      // Mimic the on-disk shape of a row created before migration 0015:
+      // every field present except `asset_balance_delta`, which is NULL.
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO impairment_events
+           (company_id, asset_id, event_date, recoverable_amount,
+            loss_amount, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-06-30', '5000.00', '500.00', $3, NULL)
+         RETURNING id`,
+        [user.companyId, assetId, seeded.journalEntryId],
+      );
+      const eventId = ins.rows[0].id;
+      const before = await snapshotAsset(client, assetId);
+
+      const del = await call(
+        "DELETE",
+        `/api/impairment-events/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `expected 409, got ${del.status}: ${del.text}`).toBe(409);
+      const body = asObject(del.body);
+      expect(typeof body.message).toBe("string");
+      expect(String(body.message).length).toBeGreaterThan(10);
+
+      // Row + JE + asset balances must all be intact — the request was
+      // refused before any side-effect ran.
+      expect(await rowExists(client, "impairment_events", eventId, user.companyId)).toBe(true);
+      expect(await journalEntryExists(user, seeded.journalEntryId)).toBe(true);
+      expect(await snapshotAsset(client, assetId)).toEqual(before);
+    } finally {
+      await client.end();
+    }
+  });
+
+  test("revaluation_events: NULL asset_balance_delta is refused, JE + row + balances untouched", async () => {
+    const user = await bootstrapUser("rev-leg");
+    const seeded = await seedAccountsAndJournalEntry(user, `rev-leg-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `rev-leg-${user.companyId}`);
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO revaluation_events
+           (company_id, asset_id, event_date, fair_value, method,
+            surplus_delta, pl_impact, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-12-31', '12000.00', 'elimination',
+                 '2000.00', '0.00', $3, NULL)
+         RETURNING id`,
+        [user.companyId, assetId, seeded.journalEntryId],
+      );
+      const eventId = ins.rows[0].id;
+      const before = await snapshotAsset(client, assetId);
+
+      const del = await call(
+        "DELETE",
+        `/api/revaluation-events/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `expected 409, got ${del.status}: ${del.text}`).toBe(409);
+      const body = asObject(del.body);
+      expect(typeof body.message).toBe("string");
+      expect(String(body.message).length).toBeGreaterThan(10);
+
+      expect(await rowExists(client, "revaluation_events", eventId, user.companyId)).toBe(true);
+      expect(await journalEntryExists(user, seeded.journalEntryId)).toBe(true);
+      expect(await snapshotAsset(client, assetId)).toEqual(before);
+    } finally {
+      await client.end();
+    }
+  });
+
+  test("disposals: NULL asset_balance_delta is refused, JE + row + balances untouched", async () => {
+    const user = await bootstrapUser("dis-leg");
+    const seeded = await seedAccountsAndJournalEntry(user, `dis-leg-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `dis-leg-${user.companyId}`);
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO disposals
+           (company_id, asset_id, event_date, proceeds, method,
+            gain_loss, surplus_transferred, journal_entry_id,
+            asset_balance_delta)
+         VALUES ($1, $2, '2099-12-31', '8000.00', 'sale',
+                 '-2000.00', '0.00', $3, NULL)
+         RETURNING id`,
+        [user.companyId, assetId, seeded.journalEntryId],
+      );
+      const eventId = ins.rows[0].id;
+      const before = await snapshotAsset(client, assetId);
+
+      const del = await call(
+        "DELETE",
+        `/api/disposals/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `expected 409, got ${del.status}: ${del.text}`).toBe(409);
+      const body = asObject(del.body);
+      expect(typeof body.message).toBe("string");
+      expect(String(body.message).length).toBeGreaterThan(10);
+
+      expect(await rowExists(client, "disposals", eventId, user.companyId)).toBe(true);
+      expect(await journalEntryExists(user, seeded.journalEntryId)).toBe(true);
+      expect(await snapshotAsset(client, assetId)).toEqual(before);
     } finally {
       await client.end();
     }

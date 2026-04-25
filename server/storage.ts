@@ -378,6 +378,24 @@ export class JournalEntryReferenceConflictError extends Error {
 export const PayrollRunDeleteConflictError = JournalEntryReferenceConflictError;
 
 /**
+ * Thrown by the impairment / revaluation / disposal delete paths when the
+ * row was created before migration 0015 added the `asset_balance_delta`
+ * snapshot column (task #157). Without that snapshot the delete path cannot
+ * compute exactly which per-asset balances to roll back, so rather than
+ * silently reverse the JE while leaving `accumImpairment`, `revalSurplus`,
+ * `accumRevalLoss`, or `status` stale on `fixed_assets`, we refuse with a
+ * 409 Conflict and ask the user to adjust the asset row by hand.
+ *
+ * See task #208.
+ */
+export class LegacyAssetEventBalanceMissingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LegacyAssetEventBalanceMissingError";
+  }
+}
+
+/**
  * Per-event snapshot of the per-asset balance changes applied by an
  * impairment / revaluation / disposal posting. The matching DELETE route
  * (see `deleteImpairmentEvent` / `deleteRevaluationEvent` / `deleteDisposal`)
@@ -1975,10 +1993,16 @@ export class DatabaseStorage implements IStorage {
   // They ALSO undo the per-asset balance changes the original posting handler
   // stamped on `fixed_assets` (and on `asset_components` for impairments) by
   // subtracting the deltas the create handler captured in
-  // `assetBalanceDelta` (task #157). Rows created before that column was
-  // added carry a `null` snapshot — the delete path skips the balance roll-
-  // back for those, matching the historical conservative behaviour, but the
-  // JE reversal still goes through.
+  // `assetBalanceDelta` (task #157).
+  //
+  // Rows created BEFORE migration 0015 added that column carry a `null`
+  // snapshot. Earlier the delete path simply skipped the balance roll-back
+  // for those, but that left `accumImpairment`, `revalSurplus`,
+  // `accumRevalLoss`, and `status` stale on the asset row while still
+  // reversing the JE — silently desynchronising the GL from the asset
+  // sub-ledger. To close the gap the delete now refuses any legacy row with
+  // a `LegacyAssetEventBalanceMissingError` (surfaced as 409) so the user
+  // can repair the asset row by hand instead. See task #208.
 
   async deleteImpairmentEvent(
     companyId: number,
@@ -1990,6 +2014,11 @@ export class DatabaseStorage implements IStorage {
       .from(impairmentEvents)
       .where(and(eq(impairmentEvents.id, eventId), eq(impairmentEvents.companyId, companyId)));
     if (!before) return;
+    if (before.assetBalanceDelta == null) {
+      throw new LegacyAssetEventBalanceMissingError(
+        "لا يمكن حذف خسارة الانخفاض لأنها مُسجَّلة قبل تحديث تتبّع الأرصدة (task #157). يرجى تعديل أرصدة الأصل يدوياً.",
+      );
+    }
 
     await reverseAutoPostedJournalEntry({
       companyId,
@@ -2026,6 +2055,11 @@ export class DatabaseStorage implements IStorage {
       .from(revaluationEvents)
       .where(and(eq(revaluationEvents.id, eventId), eq(revaluationEvents.companyId, companyId)));
     if (!before) return;
+    if (before.assetBalanceDelta == null) {
+      throw new LegacyAssetEventBalanceMissingError(
+        "لا يمكن حذف إعادة التقييم لأنها مُسجَّلة قبل تحديث تتبّع الأرصدة (task #157). يرجى تعديل أرصدة الأصل يدوياً.",
+      );
+    }
 
     await reverseAutoPostedJournalEntry({
       companyId,
@@ -2062,6 +2096,11 @@ export class DatabaseStorage implements IStorage {
       .from(disposals)
       .where(and(eq(disposals.id, eventId), eq(disposals.companyId, companyId)));
     if (!before) return;
+    if (before.assetBalanceDelta == null) {
+      throw new LegacyAssetEventBalanceMissingError(
+        "لا يمكن حذف الاستبعاد لأنه مُسجَّل قبل تحديث تتبّع الأرصدة (task #157). يرجى تعديل حالة الأصل وأرصدته يدوياً.",
+      );
+    }
 
     await reverseAutoPostedJournalEntry({
       companyId,

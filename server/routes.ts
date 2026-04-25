@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
-import { storage, isAuditEntityType, assertAllOwnedByCompany, JournalEntryReferenceConflictError, type AuditContext } from "./storage";
+import { storage, isAuditEntityType, assertAllOwnedByCompany, JournalEntryReferenceConflictError, LegacyAssetEventBalanceMissingError, type AuditContext } from "./storage";
 import { accounts as accountsTable, employees as employeesTable } from "@shared/schema";
 
 // Build an AuditContext for user-initiated mutations. The `actor` is derived
@@ -1993,6 +1993,14 @@ async function registerFixedAssetRoutes(app: Express) {
       res.status(204).send();
     } catch (err: any) {
       if (err instanceof JournalEntryReferenceConflictError) {
+        res.status(409).json({ message: err.message });
+        return;
+      }
+      // Task #208: legacy rows posted before migration 0015 don't carry an
+      // `asset_balance_delta` snapshot, so a delete would silently leave the
+      // asset row's balances stale. Refuse with 409 so the user repairs the
+      // asset row by hand instead.
+      if (err instanceof LegacyAssetEventBalanceMissingError) {
         res.status(409).json({ message: err.message });
         return;
       }
