@@ -207,68 +207,80 @@ export async function runPayroll(
     })),
   }, ctx);
 
-  // Create the run + lines
-  const [run] = await db
-    .insert(payrollRuns)
-    .values({
+  // Create the run + per-employee lines + both audit events in a single
+  // transaction (task #222). Either we end up with a fully posted run that
+  // has its complete audit history (`create` + `post`) or nothing commits.
+  // The journal entry is created above through `storage.createJournalEntry`
+  // which is its own atomic unit — by the time we get here it has already
+  // committed; the JE is linked into the run via `journalEntryId`, and the
+  // `delete` path for orphaned JEs is handled by `deletePayrollRun` /
+  // `reverseAutoPostedJournalEntry`.
+  const run = await db.transaction(async (tx) => {
+    const [r] = await tx
+      .insert(payrollRuns)
+      .values({
+        companyId,
+        year,
+        month,
+        status: "posted",
+        totalGross: totalGross.toFixed(2),
+        totalNet: totalNet.toFixed(2),
+        journalEntryId: je.id,
+      })
+      .returning();
+
+    for (const l of lines) {
+      // companyId on every payroll_lines row must equal the parent run's
+      // companyId — composite FKs to payroll_runs(id, companyId) and
+      // employees(id, companyId) enforce this at the DB layer.
+      await tx.insert(payrollLines).values({
+        companyId: r.companyId,
+        payrollRunId: r.id,
+        employeeId: l.employeeId,
+        baseSalary: l.baseSalary.toFixed(2),
+        allowances: l.allowances.toFixed(2),
+        overtime: l.overtime.toFixed(2),
+        bonuses: "0",
+        absenceDeduction: l.absenceDeduction.toFixed(2),
+        advances: "0",
+        socialInsuranceEmployee: l.socialInsuranceEmployee.toFixed(2),
+        socialInsuranceEmployer: l.socialInsuranceEmployer.toFixed(2),
+        netPay: l.netPay.toFixed(2),
+        endOfServiceAccrual: l.endOfServiceAccrual.toFixed(2),
+        leaveAccrual: l.leaveAccrual.toFixed(2),
+      });
+    }
+
+    // Emit audit events for the payroll run lifecycle. We record both
+    // "create" (the run row was inserted) and "post" (status transitioned
+    // to posted + linked to a journal entry) so the History drawer can
+    // show the full story. Both are written through the same `tx`
+    // (task #222) so a failed audit insert rolls back the run + lines.
+    await storage.recordPayrollRunAudit(tx, {
       companyId,
-      year,
-      month,
-      status: "posted",
-      totalGross: totalGross.toFixed(2),
-      totalNet: totalNet.toFixed(2),
-      journalEntryId: je.id,
-    })
-    .returning();
-
-  for (const l of lines) {
-    // companyId on every payroll_lines row must equal the parent run's
-    // companyId — composite FKs to payroll_runs(id, companyId) and
-    // employees(id, companyId) enforce this at the DB layer.
-    await db.insert(payrollLines).values({
-      companyId: run.companyId,
-      payrollRunId: run.id,
-      employeeId: l.employeeId,
-      baseSalary: l.baseSalary.toFixed(2),
-      allowances: l.allowances.toFixed(2),
-      overtime: l.overtime.toFixed(2),
-      bonuses: "0",
-      absenceDeduction: l.absenceDeduction.toFixed(2),
-      advances: "0",
-      socialInsuranceEmployee: l.socialInsuranceEmployee.toFixed(2),
-      socialInsuranceEmployer: l.socialInsuranceEmployer.toFixed(2),
-      netPay: l.netPay.toFixed(2),
-      endOfServiceAccrual: l.endOfServiceAccrual.toFixed(2),
-      leaveAccrual: l.leaveAccrual.toFixed(2),
+      payrollRunId: r.id,
+      action: "create",
+      changes: [
+        { field: "year", to: year },
+        { field: "month", to: month },
+        { field: "totalGross", to: totalGross.toFixed(2) },
+        { field: "totalNet", to: totalNet.toFixed(2) },
+        { field: "employees", to: lines.length },
+      ],
+      ctx,
     });
-  }
+    await storage.recordPayrollRunAudit(tx, {
+      companyId,
+      payrollRunId: r.id,
+      action: "post",
+      changes: [
+        { field: "status", to: "posted" },
+        { field: "journalEntryId", to: je.id },
+      ],
+      ctx,
+    });
 
-  // Emit audit events for the payroll run lifecycle. We record both
-  // "create" (the run row was inserted) and "post" (status transitioned to
-  // posted + linked to a journal entry) so the History drawer can show the
-  // full story even though they happen in the same transaction today.
-  await storage.recordPayrollRunAudit({
-    companyId,
-    payrollRunId: run.id,
-    action: "create",
-    changes: [
-      { field: "year", to: year },
-      { field: "month", to: month },
-      { field: "totalGross", to: totalGross.toFixed(2) },
-      { field: "totalNet", to: totalNet.toFixed(2) },
-      { field: "employees", to: lines.length },
-    ],
-    ctx,
-  });
-  await storage.recordPayrollRunAudit({
-    companyId,
-    payrollRunId: run.id,
-    action: "post",
-    changes: [
-      { field: "status", to: "posted" },
-      { field: "journalEntryId", to: je.id },
-    ],
-    ctx,
+    return r;
   });
 
   return { runId: run.id, journalEntryId: je.id, lines };

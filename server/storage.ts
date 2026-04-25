@@ -175,17 +175,27 @@ export interface IStorage {
   // preview. Workspace-scoped via the run's `companyId`.
   getPayrollRunLines(companyId: number, runId: number): Promise<PayrollLineWithEmployee[]>;
   deletePayrollRun(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
-  recordPayrollRunAudit(input: {
-    /**
-     * Workspace owning the payroll run. Required since task #169 brought
-     * `audit_log` under workspace_isolation RLS.
-     */
-    companyId: number;
-    payrollRunId: number;
-    action: "create" | "update" | "delete" | "post";
-    changes?: AuditChange[];
-    ctx?: AuditContext;
-  }): Promise<void>;
+  /**
+   * Append a payroll-run audit row inside the caller's existing
+   * `db.transaction(async (tx) => …)` block. Task #222: callers must
+   * pass the transaction handle so the audit row commits atomically with
+   * the payroll-run mutation it describes; a failure on either side rolls
+   * the whole unit back, keeping payroll history and audit trail in sync.
+   */
+  recordPayrollRunAudit(
+    tx: AuditWriter,
+    input: {
+      /**
+       * Workspace owning the payroll run. Required since task #169 brought
+       * `audit_log` under workspace_isolation RLS.
+       */
+      companyId: number;
+      payrollRunId: number;
+      action: "create" | "update" | "delete" | "post";
+      changes?: AuditChange[];
+      ctx?: AuditContext;
+    },
+  ): Promise<void>;
 
   // Audit log — scoped: only returns history when the underlying entity
   // belongs to the caller's active workspace. Cross-workspace lookups return
@@ -298,26 +308,52 @@ function diffChanges(before: Record<string, any>, after: Record<string, any>): A
   return changes;
 }
 
-async function recordAudit(input: {
-  /**
-   * The workspace the audited entity belongs to. Required since task #169
-   * brought `audit_log` under the same workspace_isolation RLS policy as
-   * every other workspace-scoped table — an INSERT with the wrong
-   * `companyId` would now be rejected by the policy instead of silently
-   * leaking. Every call site already has the workspace in scope (it's the
-   * same value the caller used to filter the entity row).
-   */
-  companyId: number;
-  entityType: AuditEntityType;
-  entityId: number;
-  action: "create" | "update" | "delete" | "post";
-  changes?: AuditChange[];
-  ctx?: AuditContext;
-}): Promise<void> {
-  // Intentionally not wrapped in try/catch: a failed audit write must surface
-  // so the calling mutation rolls back / errors out. Auditability is a
-  // first-class success criterion, not best-effort.
-  await db.insert(auditLog).values({
+/**
+ * Structural type of "anything you can call `.insert(table)` on" — both the
+ * top-level Drizzle handle (`db`) and the per-transaction handle yielded by
+ * `db.transaction(async (tx) => …)` satisfy it. The audit writer accepts
+ * either, but in practice every call site is required to pass a transaction
+ * handle so the audit row commits atomically with the entity write that
+ * justifies it (task #222).
+ */
+export type AuditWriter = Pick<typeof db, "insert">;
+
+/**
+ * Append a row to `audit_log`. Task #222: every caller must pass the
+ * transaction handle (`tx`) from the same `db.transaction(async (tx) => …)`
+ * block that performed the entity write being audited. Splitting the audit
+ * insert across its own implicit transaction (the previous behaviour) meant
+ * a failed audit write — for any reason: workspace_isolation RLS rejection
+ * (task #169 made the policy cover this table too), CHECK constraint
+ * violation, or a network blip between two pool checkouts — would leave the
+ * underlying mutation already committed and the audit history missing a
+ * row. Threading both writes through the same transaction closes that gap:
+ * either both rows commit, or neither does.
+ *
+ * Intentionally not wrapped in try/catch — a failed audit write must
+ * propagate so the surrounding `db.transaction` rolls back. Auditability
+ * is a first-class success criterion, not best-effort.
+ */
+async function recordAudit(
+  tx: AuditWriter,
+  input: {
+    /**
+     * The workspace the audited entity belongs to. Required since task #169
+     * brought `audit_log` under the same workspace_isolation RLS policy as
+     * every other workspace-scoped table — an INSERT with the wrong
+     * `companyId` would now be rejected by the policy instead of silently
+     * leaking. Every call site already has the workspace in scope (it's the
+     * same value the caller used to filter the entity row).
+     */
+    companyId: number;
+    entityType: AuditEntityType;
+    entityId: number;
+    action: "create" | "update" | "delete" | "post";
+    changes?: AuditChange[];
+    ctx?: AuditContext;
+  },
+): Promise<void> {
+  await tx.insert(auditLog).values({
     companyId: input.companyId,
     entityType: input.entityType,
     entityId: input.entityId,
@@ -642,33 +678,34 @@ async function reverseAutoPostedJournalEntry(opts: {
             eq(journalEntries.companyId, opts.companyId),
           ),
         );
+      // Stamp the JE delete on its own audit thread so the History drawer
+      // for the journal entry shows the reversal even though it was
+      // triggered by a source-row delete. The audit row commits inside the
+      // *same* transaction as the JE/line deletes (task #222) so a failed
+      // audit insert — including a workspace_isolation RLS rejection on
+      // `audit_log` itself (task #169) — rolls back the JE delete instead
+      // of silently leaving the JE gone with no record of what removed it.
+      //
+      // Since task #169 the audit row carries `companyId` as a first-class
+      // column under workspace_isolation RLS, so the reversal lookup can
+      // be a single workspace-filtered SELECT. The `companyId` field is
+      // also kept in the change set as a self-documenting trail of who
+      // reversed what (and to remain compatible with audit rows that
+      // pre-date the column).
+      await recordAudit(tx, {
+        companyId: opts.companyId,
+        entityType: "journal_entry",
+        entityId: linkedJournal.id,
+        action: "delete",
+        changes: [
+          ...snapshotChanges(linkedJournal),
+          { field: "reversedBy", to: `${opts.source.kind}#${opts.source.id}` },
+          { field: "companyId", to: opts.companyId },
+        ],
+        ctx: opts.ctx,
+      });
     }
   });
-
-  if (linkedJournal) {
-    // Stamp the JE delete on its own audit thread so the History drawer for
-    // the journal entry shows the reversal even though it was triggered by
-    // a source-row delete.
-    //
-    // Since task #169 the audit row carries `companyId` as a first-class
-    // column under workspace_isolation RLS, so the reversal lookup can be
-    // a single workspace-filtered SELECT. The `companyId` field is also
-    // kept in the change set as a self-documenting trail of who reversed
-    // what (and to remain compatible with audit rows that pre-date the
-    // column).
-    await recordAudit({
-      companyId: opts.companyId,
-      entityType: "journal_entry",
-      entityId: linkedJournal.id,
-      action: "delete",
-      changes: [
-        ...snapshotChanges(linkedJournal),
-        { field: "reversedBy", to: `${opts.source.kind}#${opts.source.id}` },
-        { field: "companyId", to: opts.companyId },
-      ],
-      ctx: opts.ctx,
-    });
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1083,21 +1120,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTransaction(companyId: number, tx: InsertTransaction, ctx?: AuditContext): Promise<Transaction> {
-    const [transaction] = await db
-      .insert(transactions)
-      .values({ ...tx, companyId, amount: tx.amount.toString() })
-      .returning();
+    // Insert + audit share a transaction (task #222) so a failed audit
+    // write — most realistically a workspace_isolation RLS rejection on
+    // `audit_log` after task #169 brought it under the policy — rolls the
+    // legacy quick-entry transaction back instead of leaving it on the
+    // books with no history row.
+    const transaction = await db.transaction(async (txn) => {
+      const [created] = await txn
+        .insert(transactions)
+        .values({ ...tx, companyId, amount: tx.amount.toString() })
+        .returning();
 
-    await recordAudit({
-      companyId,
-      entityType: "transaction",
-      entityId: transaction.id,
-      action: "create",
-      changes: snapshotChanges(transaction),
-      ctx,
+      await recordAudit(txn, {
+        companyId,
+        entityType: "transaction",
+        entityId: created.id,
+        action: "create",
+        changes: snapshotChanges(created),
+        ctx,
+      });
+
+      return created;
     });
 
-    // Auto-post double-entry journal entry
+    // Auto-post double-entry journal entry. Runs in its own transaction
+    // (see autoPostFromTransaction) so an auto-post failure does not undo
+    // the user-visible transaction; the catch below preserves the prior
+    // best-effort behaviour for the JE leg.
     try {
       await this.autoPostFromTransaction(companyId, transaction, ctx);
     } catch (e) {
@@ -1108,40 +1157,40 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTransaction(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
     const [before] = await db.select().from(transactions).where(and(eq(transactions.id, id), eq(transactions.companyId, companyId)));
-    // Cascade-delete the auto-posted journal lines + entry atomically
-    const linkedIds: number[] = [];
+    // Cascade-delete the auto-posted journal lines + entry atomically.
+    // Audit rows for both the transaction delete and each cascaded JE
+    // delete commit inside the same transaction (task #222) — a failed
+    // audit insert rolls the cascade back so the audit history can never
+    // be missing rows for a delete that already happened.
     await db.transaction(async (tx) => {
       const linkedJEs = await tx
         .select({ id: journalEntries.id })
         .from(journalEntries)
         .where(and(eq(journalEntries.sourceTransactionId, id), eq(journalEntries.companyId, companyId)));
       for (const je of linkedJEs) {
-        linkedIds.push(je.id);
         await tx.delete(journalLines).where(eq(journalLines.journalEntryId, je.id));
         await tx.delete(journalEntries).where(eq(journalEntries.id, je.id));
+        await recordAudit(tx, {
+          companyId,
+          entityType: "journal_entry",
+          entityId: je.id,
+          action: "delete",
+          changes: [{ field: "reason", to: `cascade from transaction #${id}` }],
+          ctx: { source: "system", actor: ctx?.actor ?? null },
+        });
       }
       await tx.delete(transactions).where(and(eq(transactions.id, id), eq(transactions.companyId, companyId)));
+      if (before) {
+        await recordAudit(tx, {
+          companyId,
+          entityType: "transaction",
+          entityId: id,
+          action: "delete",
+          changes: snapshotChanges(before),
+          ctx,
+        });
+      }
     });
-    if (before) {
-      await recordAudit({
-        companyId,
-        entityType: "transaction",
-        entityId: id,
-        action: "delete",
-        changes: snapshotChanges(before),
-        ctx,
-      });
-    }
-    for (const jeId of linkedIds) {
-      await recordAudit({
-        companyId,
-        entityType: "journal_entry",
-        entityId: jeId,
-        action: "delete",
-        changes: [{ field: "reason", to: `cascade from transaction #${id}` }],
-        ctx: { source: "system", actor: ctx?.actor ?? null },
-      });
-    }
   }
 
   private async autoPostFromTransaction(companyId: number, tx: Transaction, ctx?: AuditContext): Promise<void> {
@@ -1202,41 +1251,47 @@ export class DatabaseStorage implements IStorage {
       crId = cash.id;
     }
     const reference = await nextJournalReference(companyId);
-    const [je] = await db
-      .insert(journalEntries)
-      .values({
+    // JE header + lines + audit row commit as one atomic unit (task #222) —
+    // a failed audit insert (eg `audit_log` workspace_isolation rejection)
+    // rolls back the JE rather than leaving the GL posted with no audit
+    // history of who/what posted it.
+    await db.transaction(async (txn) => {
+      const [je] = await txn
+        .insert(journalEntries)
+        .values({
+          companyId,
+          reference,
+          entryDate: tx.date ?? new Date(),
+          description: tx.description,
+          source: "transaction",
+          sourceTransactionId: tx.id,
+        })
+        .returning();
+      await txn.insert(journalLines).values([
+        { companyId, journalEntryId: je.id, accountId: drId, debit: amt.toFixed(2), credit: "0", description: tx.description },
+        { companyId, journalEntryId: je.id, accountId: crId, debit: "0", credit: amt.toFixed(2), description: tx.description },
+      ]);
+      await recordAudit(txn, {
         companyId,
-        reference,
-        entryDate: tx.date ?? new Date(),
-        description: tx.description,
-        source: "transaction",
-        sourceTransactionId: tx.id,
-      })
-      .returning();
-    await db.insert(journalLines).values([
-      { companyId, journalEntryId: je.id, accountId: drId, debit: amt.toFixed(2), credit: "0", description: tx.description },
-      { companyId, journalEntryId: je.id, accountId: crId, debit: "0", credit: amt.toFixed(2), description: tx.description },
-    ]);
-    await recordAudit({
-      companyId,
-      entityType: "journal_entry",
-      entityId: je.id,
-      action: "create",
-      changes: [
-        { field: "reference", to: je.reference },
-        { field: "description", to: je.description },
-        { field: "source", to: "transaction" },
-        { field: "sourceTransactionId", to: tx.id },
-        { field: "Dr accountId", to: drId },
-        { field: "Cr accountId", to: crId },
-        { field: "amount", to: amt.toFixed(2) },
-      ],
-      // Inherit the calling context's source/actor so that an AI-triggered
-      // quick transaction (which calls createTransaction with source="ai")
-      // produces an AI-attributed JE audit row, not an anonymous "system"
-      // row. Falling back to "system" preserves the previous behaviour for
-      // direct-storage callers that don't pass a ctx (e.g. seed scripts).
-      ctx: ctx ?? { source: "system", actor: null },
+        entityType: "journal_entry",
+        entityId: je.id,
+        action: "create",
+        changes: [
+          { field: "reference", to: je.reference },
+          { field: "description", to: je.description },
+          { field: "source", to: "transaction" },
+          { field: "sourceTransactionId", to: tx.id },
+          { field: "Dr accountId", to: drId },
+          { field: "Cr accountId", to: crId },
+          { field: "amount", to: amt.toFixed(2) },
+        ],
+        // Inherit the calling context's source/actor so that an AI-triggered
+        // quick transaction (which calls createTransaction with source="ai")
+        // produces an AI-attributed JE audit row, not an anonymous "system"
+        // row. Falling back to "system" preserves the previous behaviour for
+        // direct-storage callers that don't pass a ctx (e.g. seed scripts).
+        ctx: ctx ?? { source: "system", actor: null },
+      });
     });
   }
 
@@ -1264,9 +1319,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAccount(companyId: number, input: InsertAccount, ctx?: AuditContext): Promise<Account> {
-    const [created] = await db.insert(accounts).values({ ...input, companyId }).returning();
-    await recordAudit({ companyId, entityType: "account", entityId: created.id, action: "create", changes: snapshotChanges(created), ctx });
-    return created;
+    // Account row + audit row commit together (task #222) so the chart of
+    // accounts cannot grow a row that is missing from the audit history.
+    return await db.transaction(async (tx) => {
+      const [created] = await tx.insert(accounts).values({ ...input, companyId }).returning();
+      await recordAudit(tx, { companyId, entityType: "account", entityId: created.id, action: "create", changes: snapshotChanges(created), ctx });
+      return created;
+    });
   }
 
   async getAccountByCode(companyId: number, code: string): Promise<Account | undefined> {
@@ -1307,63 +1366,73 @@ export class DatabaseStorage implements IStorage {
 
   async createJournalEntry(companyId: number, input: CreateJournalEntryInput, ctx?: AuditContext): Promise<JournalEntryWithLines> {
     const reference = await nextJournalReference(companyId);
-    const [je] = await db
-      .insert(journalEntries)
-      .values({
-        companyId,
-        reference,
-        entryDate: input.entryDate ? new Date(input.entryDate as any) : new Date(),
-        description: input.description,
-        source: input.source,
-      })
-      .returning();
-    const linesToInsert = input.lines.map((l) => ({
-      companyId,
-      journalEntryId: je.id,
-      accountId: l.accountId,
-      debit: Number(l.debit || 0).toFixed(2),
-      credit: Number(l.credit || 0).toFixed(2),
-      description: l.description,
-    }));
-    const insertedLines = await db.insert(journalLines).values(linesToInsert).returning();
+    // Account name lookup is read-only and stable across the transaction
+    // window — fetched outside so the transaction body is the smallest
+    // possible window of writes.
     const allAccounts = await this.getAccounts(companyId);
     const accountById = new Map(allAccounts.map((a) => [a.id, a]));
+    // JE header + lines + audit commit atomically (task #222). A failed
+    // audit row rolls the whole posting back, keeping books and history in
+    // lockstep.
+    return await db.transaction(async (tx) => {
+      const [je] = await tx
+        .insert(journalEntries)
+        .values({
+          companyId,
+          reference,
+          entryDate: input.entryDate ? new Date(input.entryDate as any) : new Date(),
+          description: input.description,
+          source: input.source,
+        })
+        .returning();
+      const linesToInsert = input.lines.map((l) => ({
+        companyId,
+        journalEntryId: je.id,
+        accountId: l.accountId,
+        debit: Number(l.debit || 0).toFixed(2),
+        credit: Number(l.credit || 0).toFixed(2),
+        description: l.description,
+      }));
+      const insertedLines = await tx.insert(journalLines).values(linesToInsert).returning();
 
-    const lineSummary: AuditChange[] = insertedLines.map((l) => {
-      const acc = accountById.get(l.accountId);
-      const label = acc ? `${acc.code} ${acc.nameAr}` : `account#${l.accountId}`;
-      const debit = Number(l.debit);
-      const credit = Number(l.credit);
-      const value = debit > 0 ? `Dr ${debit.toFixed(2)}` : `Cr ${credit.toFixed(2)}`;
-      return { field: label, to: value };
-    });
-    await recordAudit({
-      companyId,
-      entityType: "journal_entry",
-      entityId: je.id,
-      action: "create",
-      changes: [
-        { field: "reference", to: je.reference },
-        { field: "description", to: je.description },
-        { field: "source", to: je.source },
-        ...lineSummary,
-      ],
-      ctx: ctx ?? (input.source === "ai" ? { source: "ai" } : input.source === "transaction" ? { source: "system" } : undefined),
-    });
+      const lineSummary: AuditChange[] = insertedLines.map((l) => {
+        const acc = accountById.get(l.accountId);
+        const label = acc ? `${acc.code} ${acc.nameAr}` : `account#${l.accountId}`;
+        const debit = Number(l.debit);
+        const credit = Number(l.credit);
+        const value = debit > 0 ? `Dr ${debit.toFixed(2)}` : `Cr ${credit.toFixed(2)}`;
+        return { field: label, to: value };
+      });
+      await recordAudit(tx, {
+        companyId,
+        entityType: "journal_entry",
+        entityId: je.id,
+        action: "create",
+        changes: [
+          { field: "reference", to: je.reference },
+          { field: "description", to: je.description },
+          { field: "source", to: je.source },
+          ...lineSummary,
+        ],
+        ctx: ctx ?? (input.source === "ai" ? { source: "ai" } : input.source === "transaction" ? { source: "system" } : undefined),
+      });
 
-    return {
-      ...je,
-      lines: insertedLines.map((l) => ({ ...l, account: accountById.get(l.accountId) })),
-    };
+      return {
+        ...je,
+        lines: insertedLines.map((l) => ({ ...l, account: accountById.get(l.accountId) })),
+      };
+    });
   }
 
   async deleteJournalEntry(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
     const [before] = await db.select().from(journalEntries).where(and(eq(journalEntries.id, id), eq(journalEntries.companyId, companyId)));
     if (!before) return;
-    await db.delete(journalLines).where(eq(journalLines.journalEntryId, id));
-    await db.delete(journalEntries).where(eq(journalEntries.id, id));
-    if (before) {
-      await recordAudit({
+    // JE delete + audit row in one transaction (task #222) so a failed
+    // audit insert doesn't strand a deleted JE without history.
+    await db.transaction(async (tx) => {
+      await tx.delete(journalLines).where(eq(journalLines.journalEntryId, id));
+      await tx.delete(journalEntries).where(eq(journalEntries.id, id));
+      await recordAudit(tx, {
         companyId,
         entityType: "journal_entry",
         entityId: id,
@@ -1371,7 +1440,7 @@ export class DatabaseStorage implements IStorage {
         changes: snapshotChanges(before),
         ctx,
       });
-    }
+    });
   }
 
   // Aggregate posted debits/credits per account for the active workspace,
@@ -1493,47 +1562,60 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createEmployee(companyId: number, input: InsertEmployee, ctx?: AuditContext): Promise<Employee> {
-    const [created] = await db
-      .insert(employees)
-      .values({
-        ...input,
+    // Insert + audit in one transaction (task #222) so HR cannot grow an
+    // employee row that is missing from the audit history.
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(employees)
+        .values({
+          ...input,
+          companyId,
+          baseSalary: String(input.baseSalary),
+          allowances: String(input.allowances ?? 0),
+        })
+        .returning();
+      await recordAudit(tx, {
         companyId,
-        baseSalary: String(input.baseSalary),
-        allowances: String(input.allowances ?? 0),
-      })
-      .returning();
-    await recordAudit({
-      companyId,
-      entityType: "employee",
-      entityId: created.id,
-      action: "create",
-      changes: snapshotChanges(created),
-      ctx,
+        entityType: "employee",
+        entityId: created.id,
+        action: "create",
+        changes: snapshotChanges(created),
+        ctx,
+      });
+      return created;
     });
-    return created;
   }
 
   async updateEmployee(companyId: number, id: number, input: Partial<InsertEmployee>, ctx?: AuditContext): Promise<Employee> {
-    const [before] = await db.select().from(employees).where(and(eq(employees.id, id), eq(employees.companyId, companyId)));
     const patch: any = { ...input };
     if (input.baseSalary !== undefined) patch.baseSalary = String(input.baseSalary);
     if (input.allowances !== undefined) patch.allowances = String(input.allowances);
-    const [updated] = await db.update(employees).set(patch).where(and(eq(employees.id, id), eq(employees.companyId, companyId))).returning();
-    if (before && updated) {
-      const changes = diffChanges(before, updated);
-      if (changes.length > 0) {
-        await recordAudit({ companyId, entityType: "employee", entityId: id, action: "update", changes, ctx });
+    // Update + diff-audit commit atomically (task #222). The before-row
+    // SELECT moves inside the transaction so the diff is computed against
+    // a snapshot the transaction itself observes (and the diff reflects
+    // exactly what the transaction is about to commit).
+    return await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(employees).where(and(eq(employees.id, id), eq(employees.companyId, companyId)));
+      const [updated] = await tx.update(employees).set(patch).where(and(eq(employees.id, id), eq(employees.companyId, companyId))).returning();
+      if (before && updated) {
+        const changes = diffChanges(before, updated);
+        if (changes.length > 0) {
+          await recordAudit(tx, { companyId, entityType: "employee", entityId: id, action: "update", changes, ctx });
+        }
       }
-    }
-    return updated;
+      return updated;
+    });
   }
 
   async deleteEmployee(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
-    const [before] = await db.select().from(employees).where(and(eq(employees.id, id), eq(employees.companyId, companyId)));
-    await db.delete(employees).where(and(eq(employees.id, id), eq(employees.companyId, companyId)));
-    if (before) {
-      await recordAudit({ companyId, entityType: "employee", entityId: id, action: "delete", changes: snapshotChanges(before), ctx });
-    }
+    // Delete + audit row in one transaction (task #222).
+    await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(employees).where(and(eq(employees.id, id), eq(employees.companyId, companyId)));
+      await tx.delete(employees).where(and(eq(employees.id, id), eq(employees.companyId, companyId)));
+      if (before) {
+        await recordAudit(tx, { companyId, entityType: "employee", entityId: id, action: "delete", changes: snapshotChanges(before), ctx });
+      }
+    });
   }
 
   async getAttendance(companyId: number, employeeId?: number, yearMonth?: string): Promise<Attendance[]> {
@@ -1549,42 +1631,47 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertAttendance(companyId: number, input: InsertAttendance, ctx?: AuditContext): Promise<Attendance> {
-    const existing = await db
-      .select()
-      .from(attendance)
-      .where(
-        and(
-          eq(attendance.companyId, companyId),
-          eq(attendance.employeeId, input.employeeId),
-          eq(attendance.date, input.date),
-        ),
-      );
-    if (existing[0]) {
-      const before = existing[0];
-      const [u] = await db
-        .update(attendance)
-        .set({ status: input.status, overtimeHours: String(input.overtimeHours ?? 0) })
-        .where(eq(attendance.id, existing[0].id))
-        .returning();
-      const changes = diffChanges(before, u);
-      if (changes.length > 0) {
-        await recordAudit({ companyId, entityType: "attendance", entityId: u.id, action: "update", changes, ctx });
+    // Read existing row + the upsert + the audit row commit together
+    // (task #222) — both branches (update vs insert) keep the entity write
+    // and its audit atomic.
+    return await db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(attendance)
+        .where(
+          and(
+            eq(attendance.companyId, companyId),
+            eq(attendance.employeeId, input.employeeId),
+            eq(attendance.date, input.date),
+          ),
+        );
+      if (existing[0]) {
+        const before = existing[0];
+        const [u] = await tx
+          .update(attendance)
+          .set({ status: input.status, overtimeHours: String(input.overtimeHours ?? 0) })
+          .where(eq(attendance.id, existing[0].id))
+          .returning();
+        const changes = diffChanges(before, u);
+        if (changes.length > 0) {
+          await recordAudit(tx, { companyId, entityType: "attendance", entityId: u.id, action: "update", changes, ctx });
+        }
+        return u;
       }
-      return u;
-    }
-    const [c] = await db
-      .insert(attendance)
-      .values({ ...input, companyId, overtimeHours: String(input.overtimeHours ?? 0) })
-      .returning();
-    await recordAudit({
-      companyId,
-      entityType: "attendance",
-      entityId: c.id,
-      action: "create",
-      changes: snapshotChanges(c),
-      ctx,
+      const [c] = await tx
+        .insert(attendance)
+        .values({ ...input, companyId, overtimeHours: String(input.overtimeHours ?? 0) })
+        .returning();
+      await recordAudit(tx, {
+        companyId,
+        entityType: "attendance",
+        entityId: c.id,
+        action: "create",
+        changes: snapshotChanges(c),
+        ctx,
+      });
+      return c;
     });
-    return c;
   }
 
   async getLeaves(companyId: number, employeeId?: number): Promise<Leave[]> {
@@ -1597,17 +1684,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLeave(companyId: number, input: InsertLeave, ctx?: AuditContext): Promise<Leave> {
-    const [c] = await db.insert(leaves).values({ ...input, companyId }).returning();
-    await recordAudit({ companyId, entityType: "leave", entityId: c.id, action: "create", changes: snapshotChanges(c), ctx });
-    return c;
+    // Insert + audit in one transaction (task #222) so a leave row cannot
+    // commit without its corresponding audit history entry.
+    return await db.transaction(async (tx) => {
+      const [c] = await tx.insert(leaves).values({ ...input, companyId }).returning();
+      await recordAudit(tx, { companyId, entityType: "leave", entityId: c.id, action: "create", changes: snapshotChanges(c), ctx });
+      return c;
+    });
   }
 
   async deleteLeave(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
-    const [before] = await db.select().from(leaves).where(and(eq(leaves.id, id), eq(leaves.companyId, companyId)));
-    await db.delete(leaves).where(and(eq(leaves.id, id), eq(leaves.companyId, companyId)));
-    if (before) {
-      await recordAudit({ companyId, entityType: "leave", entityId: id, action: "delete", changes: snapshotChanges(before), ctx });
-    }
+    // Delete + audit row in one transaction (task #222). The before-row
+    // SELECT moves inside the transaction so the snapshot we audit matches
+    // exactly what the transaction is about to delete.
+    await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(leaves).where(and(eq(leaves.id, id), eq(leaves.companyId, companyId)));
+      await tx.delete(leaves).where(and(eq(leaves.id, id), eq(leaves.companyId, companyId)));
+      if (before) {
+        await recordAudit(tx, { companyId, entityType: "leave", entityId: id, action: "delete", changes: snapshotChanges(before), ctx });
+      }
+    });
   }
 
   // ----- Companies -----
@@ -1696,27 +1792,31 @@ export class DatabaseStorage implements IStorage {
     return a;
   }
   async createFixedAsset(input: Omit<InsertFixedAsset, "customSchedule"> & { cost: number; companyId: number; customSchedule?: string | null }, ctx?: AuditContext): Promise<FixedAsset> {
-    const [c] = await db
-      .insert(fixedAssets)
-      .values({
-        ...input,
-        txCost: String(input.txCost),
-        fxRate: String(input.fxRate ?? 1),
-        residual: String(input.residual ?? 0),
-        cost: String(input.cost),
-        unitsTotal: input.unitsTotal != null ? String(input.unitsTotal) : null,
-        customSchedule: input.customSchedule ?? null,
-      })
-      .returning();
-    await recordAudit({
-      companyId: c.companyId,
-      entityType: "fixed_asset",
-      entityId: c.id,
-      action: "create",
-      changes: snapshotChanges(c),
-      ctx,
+    // Insert + audit in one transaction (task #222) so a fixed-asset row
+    // cannot exist in the books without a "create" entry in its history.
+    return await db.transaction(async (tx) => {
+      const [c] = await tx
+        .insert(fixedAssets)
+        .values({
+          ...input,
+          txCost: String(input.txCost),
+          fxRate: String(input.fxRate ?? 1),
+          residual: String(input.residual ?? 0),
+          cost: String(input.cost),
+          unitsTotal: input.unitsTotal != null ? String(input.unitsTotal) : null,
+          customSchedule: input.customSchedule ?? null,
+        })
+        .returning();
+      await recordAudit(tx, {
+        companyId: c.companyId,
+        entityType: "fixed_asset",
+        entityId: c.id,
+        action: "create",
+        changes: snapshotChanges(c),
+        ctx,
+      });
+      return c;
     });
-    return c;
   }
   async updateFixedAssetBalances(
     id: number,
@@ -1741,35 +1841,46 @@ export class DatabaseStorage implements IStorage {
     if (patch.accumRevalLoss !== undefined) set.accumRevalLoss = String(patch.accumRevalLoss);
     if (patch.lastDepreciatedPeriod !== undefined) set.lastDepreciatedPeriod = patch.lastDepreciatedPeriod;
     if (patch.status !== undefined) set.status = patch.status;
-    const [before] = await db.select().from(fixedAssets).where(eq(fixedAssets.id, id));
-    const [u] = await db.update(fixedAssets).set(set).where(eq(fixedAssets.id, id)).returning();
-    if (before && u) {
-      const changes = diffChanges(before, u).filter((c) => set[c.field as string] !== undefined);
-      if (changes.length > 0) {
-        await recordAudit({ companyId: before.companyId, entityType: "fixed_asset", entityId: id, action: "update", changes, ctx });
+    // Read before-row + balance update + diff-audit in one transaction
+    // (task #222) so the snapshot we audit matches the row the transaction
+    // writes — no chance of an audit row pointing at a balance that
+    // never committed.
+    return await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(fixedAssets).where(eq(fixedAssets.id, id));
+      const [u] = await tx.update(fixedAssets).set(set).where(eq(fixedAssets.id, id)).returning();
+      if (before && u) {
+        const changes = diffChanges(before, u).filter((c) => set[c.field as string] !== undefined);
+        if (changes.length > 0) {
+          await recordAudit(tx, { companyId: before.companyId, entityType: "fixed_asset", entityId: id, action: "update", changes, ctx });
+        }
       }
-    }
-    return u;
+      return u;
+    });
   }
   async deleteFixedAsset(id: number, ctx?: AuditContext): Promise<void> {
-    const [before] = await db.select().from(fixedAssets).where(eq(fixedAssets.id, id));
-    await db.delete(assetComponents).where(eq(assetComponents.assetId, id));
-    await db.delete(depreciationSchedule).where(eq(depreciationSchedule.assetId, id));
-    await db.delete(depreciationPostings).where(eq(depreciationPostings.assetId, id));
-    await db.delete(impairmentEvents).where(eq(impairmentEvents.assetId, id));
-    await db.delete(revaluationEvents).where(eq(revaluationEvents.assetId, id));
-    await db.delete(disposals).where(eq(disposals.assetId, id));
-    await db.delete(fixedAssets).where(eq(fixedAssets.id, id));
-    if (before) {
-      await recordAudit({
-        companyId: before.companyId,
-        entityType: "fixed_asset",
-        entityId: id,
-        action: "delete",
-        changes: snapshotChanges(before),
-        ctx,
-      });
-    }
+    // Cascade delete + audit row commit together (task #222) so the audit
+    // row cannot exist for an asset that was never deleted, nor can the
+    // asset+children disappear silently with no "delete" entry.
+    await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(fixedAssets).where(eq(fixedAssets.id, id));
+      await tx.delete(assetComponents).where(eq(assetComponents.assetId, id));
+      await tx.delete(depreciationSchedule).where(eq(depreciationSchedule.assetId, id));
+      await tx.delete(depreciationPostings).where(eq(depreciationPostings.assetId, id));
+      await tx.delete(impairmentEvents).where(eq(impairmentEvents.assetId, id));
+      await tx.delete(revaluationEvents).where(eq(revaluationEvents.assetId, id));
+      await tx.delete(disposals).where(eq(disposals.assetId, id));
+      await tx.delete(fixedAssets).where(eq(fixedAssets.id, id));
+      if (before) {
+        await recordAudit(tx, {
+          companyId: before.companyId,
+          entityType: "fixed_asset",
+          entityId: id,
+          action: "delete",
+          changes: snapshotChanges(before),
+          ctx,
+        });
+      }
+    });
   }
 
   // ----- Asset Components -----
@@ -2337,33 +2448,43 @@ export class DatabaseStorage implements IStorage {
         await tx
           .delete(payrollRuns)
           .where(and(eq(payrollRuns.id, id), eq(payrollRuns.companyId, companyId)));
+        // Audit row commits inside the same transaction as the
+        // payroll-run + lines + JE deletes (task #222) so a failed audit
+        // insert rolls back the whole reversal — rather than leaving HR
+        // history with a deleted run that has no record of being deleted.
+        await recordAudit(tx, {
+          companyId,
+          entityType: "payroll_run",
+          entityId: id,
+          action: "delete",
+          changes: snapshotChanges(before),
+          ctx,
+        });
       },
-      ctx,
-    });
-
-    await recordAudit({
-      companyId,
-      entityType: "payroll_run",
-      entityId: id,
-      action: "delete",
-      changes: snapshotChanges(before),
       ctx,
     });
   }
 
-  async recordPayrollRunAudit(input: {
-    /**
-     * Workspace owning the payroll run. Required since task #169 brought
-     * `audit_log` under workspace_isolation RLS — see the `recordAudit`
-     * doc-comment for the full rationale.
-     */
-    companyId: number;
-    payrollRunId: number;
-    action: "create" | "update" | "delete" | "post";
-    changes?: AuditChange[];
-    ctx?: AuditContext;
-  }): Promise<void> {
-    await recordAudit({
+  async recordPayrollRunAudit(
+    tx: AuditWriter,
+    input: {
+      /**
+       * Workspace owning the payroll run. Required since task #169 brought
+       * `audit_log` under workspace_isolation RLS — see the `recordAudit`
+       * doc-comment for the full rationale.
+       */
+      companyId: number;
+      payrollRunId: number;
+      action: "create" | "update" | "delete" | "post";
+      changes?: AuditChange[];
+      ctx?: AuditContext;
+    },
+  ): Promise<void> {
+    // Task #222: caller passes the open transaction handle so the audit
+    // row commits atomically with the payroll-run insert/update it
+    // describes. Forwarding `tx` straight into `recordAudit` keeps the
+    // single-transaction guarantee end-to-end.
+    await recordAudit(tx, {
       companyId: input.companyId,
       entityType: "payroll_run",
       entityId: input.payrollRunId,
