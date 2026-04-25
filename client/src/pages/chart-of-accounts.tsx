@@ -38,6 +38,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { BookOpen, ChevronDown, ChevronLeft, ChevronRight, Plus, Search, Sparkles } from "lucide-react"
 import type { Account } from "@shared/schema"
+import { computeBalanceByAccountId } from "@/pages/chart-of-accounts-rollup"
 import { useLocale } from "@/contexts/locale-context"
 import { useAuth } from "@/hooks/use-auth"
 import { useFormatMoney } from "@/lib/format"
@@ -299,36 +300,15 @@ export default function ChartOfAccountsPage() {
   /* Roll up balances onto header rows. The `/api/accounts/balances`     */
   /* endpoint returns one row per posting account; header rows aren't    */
   /* posted to directly, so their displayed balance is the sum of every  */
-  /* descendant leaf in their subtree (computed once per balances/data   */
-  /* change).                                                             */
+  /* descendant leaf in their subtree. The actual rollup lives in        */
+  /* `chart-of-accounts-rollup.ts` so the unit suite can pin the         */
+  /* multi-level descendant-sum contract without spinning up the page    */
+  /* — see `__tests__/chart-of-accounts-rollup.test.ts`.                  */
   /* ------------------------------------------------------------------ */
-  const balanceByAccountId = useMemo(() => {
-    const map = new Map<number, number>()
-    if (!accounts || !balances) return map
-    const byId = new Map<number, Account>(accounts.map((a) => [a.id, a]))
-    const childrenByParent = new Map<number, Account[]>()
-    for (const a of accounts) {
-      if (a.parentId == null) continue
-      const arr = childrenByParent.get(a.parentId) ?? []
-      arr.push(a)
-      childrenByParent.set(a.parentId, arr)
-    }
-    const leafBalance = new Map<number, number>(
-      balances.rows.map((r) => [r.accountId, r.balance])
-    )
-    function compute(a: Account): number {
-      const direct = leafBalance.get(a.id) ?? 0
-      const kids = childrenByParent.get(a.id) ?? []
-      let sum = direct
-      for (const k of kids) sum += compute(k)
-      map.set(a.id, sum)
-      return sum
-    }
-    for (const a of accounts) {
-      if (a.parentId == null || !byId.has(a.parentId)) compute(a)
-    }
-    return map
-  }, [accounts, balances])
+  const balanceByAccountId = useMemo(
+    () => computeBalanceByAccountId(accounts, balances?.rows),
+    [accounts, balances],
+  )
 
   const createMutation = useMutation({
     mutationFn: async () => {
