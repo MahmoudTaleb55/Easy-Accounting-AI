@@ -1173,3 +1173,148 @@ test.describe("delivery-alert dedupe + retry @alerts", () => {
     },
   );
 });
+
+// ===========================================================================
+// 4) Recent-alerts cursor pagination — drives the `useInfiniteQuery` flow on
+//    /app/settings/email-delivery (RecentAlertsCard). Seeds enough rows in
+//    the dedicated workspace to force two pages, then asserts the first page
+//    is exactly `RECENT_ALERTS_PAGE_SIZE`, that "Load older" advances to the
+//    second page, that the row count grows past one page, and that the
+//    button is replaced by the `text-no-more-alerts` terminator once the
+//    cursor returns null. Locks the contract that a future refactor of
+//    `listRecentEmailDeliveryAlerts` (cursor column, response shape, or the
+//    `nextCursor === null` end-of-stream signal) cannot silently break the
+//    "Load older" flow that owners rely on to audit alert history.
+// ===========================================================================
+
+// Mirrors `RECENT_ALERTS_PAGE_SIZE` in client/src/pages/settings/email-delivery.tsx.
+// Keep in sync if the page-size constant ever changes there.
+const RECENT_ALERTS_PAGE_SIZE = 20;
+
+/**
+ * Seed `count` alert rows for the dedicated workspace with strictly
+ * decreasing `firedAt` timestamps. Distinct timestamps are required so the
+ * keyset cursor (`lt(firedAt, before)`) produces deterministic page
+ * boundaries — equal timestamps on the page edge could let a row leak onto
+ * both pages or get skipped, which would make the row-count assertions
+ * flaky.
+ */
+async function seedRecentAlerts(count: number): Promise<void> {
+  if (count <= 0) return;
+  const { companyId } = await getShared();
+  const client = new pg.Client({ connectionString: requiredDbUrl() });
+  await client.connect();
+  try {
+    const values: string[] = [];
+    const params: unknown[] = [];
+    for (let i = 0; i < count; i++) {
+      const off = i * 3;
+      values.push(
+        `($${off + 1}, $${off + 2}, NOW() - ($${off + 3}::int * INTERVAL '1 minute'), 24, 3, 5, 'absolute', '{"bounced":3,"complained":0,"send_failed":0}'::jsonb, false, 0)`,
+      );
+      params.push(crypto.randomUUID(), companyId, i + 1);
+    }
+    await client.query(
+      `INSERT INTO email_delivery_alerts
+         (id, company_id, fired_at, window_hours, failure_count, send_count, reason, snapshot, email_sent, email_recipients)
+       VALUES ${values.join(",")}`,
+      params,
+    );
+  } finally {
+    await client.end();
+  }
+}
+
+test.describe("recent-alerts pagination @alerts", () => {
+  test.use({
+    storageState: ROLE_FILES.owner,
+    // The Recent alerts table lives on the desktop settings page; pin a
+    // desktop viewport so the layout (and the load-older button) is the
+    // same shape an owner sees in production.
+    viewport: { width: 1280, height: 800 },
+  });
+
+  test.beforeEach(async () => {
+    await resetAlertState();
+  });
+
+  test("Load older fetches the next page and the no-more-alerts terminator appears at the end", async ({
+    page,
+  }) => {
+    // Seed exactly one full page + a remainder so the second fetch comes
+    // back short — that's what flips `nextCursor` to null and unmounts the
+    // "Load older" button in favour of the terminator copy.
+    const remainder = 5;
+    const totalSeeded = RECENT_ALERTS_PAGE_SIZE + remainder;
+    await seedRecentAlerts(totalSeeded);
+
+    // Pin English via the URL override (the same trick the banner test
+    // uses) so the page mounts in a known locale even though our
+    // assertions only target locale-agnostic testids — it keeps the
+    // headlines/buttons readable in failure screenshots.
+    await page.addInitScript(() => {
+      window.localStorage.setItem("app.theme", "light");
+    });
+    await page.goto("/app/settings/email-delivery?lang=en", {
+      waitUntil: "domcontentloaded",
+    });
+
+    // The page is owner-only; if the role guard fired we'd land on
+    // `email-delivery-forbidden` instead of `page-email-delivery`.
+    // Asserting up front turns auth misconfiguration into a clear
+    // failure rather than a confusing "table never appeared".
+    await expect(
+      page.getByTestId("page-email-delivery"),
+      "owner should land on the email-delivery page (not the forbidden message)",
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Wait for the table to mount — the card is rendered conditionally
+    // on `role === "owner"` after the auth query resolves.
+    await expect(page.getByTestId("table-recent-alerts")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const rowLocator = page.locator('[data-testid^="row-recent-alert-"]');
+
+    // First page must contain *exactly* one full page worth of rows. A
+    // regression that drops the limit (e.g. server starts paginating by
+    // 10) or that silently merges pages (e.g. an OFFSET refactor) would
+    // break this exact-count assertion.
+    await expect(
+      rowLocator,
+      `first page should render exactly ${RECENT_ALERTS_PAGE_SIZE} rows`,
+    ).toHaveCount(RECENT_ALERTS_PAGE_SIZE);
+
+    // With more rows on the server, the "Load older" affordance must be
+    // visible and the terminator copy must NOT yet be on the page.
+    const loadOlder = page.getByTestId("button-load-older-alerts");
+    await expect(loadOlder, "Load older should be visible while more pages exist").toBeVisible();
+    await expect(
+      page.getByTestId("text-no-more-alerts"),
+      "terminator copy should not appear until pagination is exhausted",
+    ).toHaveCount(0);
+
+    // Click through to the second page. The mutation invalidates nothing —
+    // useInfiniteQuery just appends the next page in place — so we can
+    // assert the row count grows past `pageSize`.
+    await loadOlder.click();
+
+    await expect(
+      rowLocator,
+      `after loading the next page the table should show all ${totalSeeded} seeded rows`,
+    ).toHaveCount(totalSeeded);
+
+    // Once the second page returns a short result the server emits
+    // `nextCursor: null`, `hasNextPage` flips to false, and the page
+    // swaps the button for the terminator copy. Both halves of that
+    // swap must hold.
+    await expect(
+      page.getByTestId("button-load-older-alerts"),
+      "Load older button should disappear once the cursor is exhausted",
+    ).toHaveCount(0);
+    await expect(
+      page.getByTestId("text-no-more-alerts"),
+      "terminator copy should appear once there are no older alerts",
+    ).toBeVisible();
+  });
+});
