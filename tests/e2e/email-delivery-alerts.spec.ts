@@ -791,3 +791,377 @@ test.describe("delivery-alert banner @alerts", () => {
     }
   });
 });
+
+// ===========================================================================
+// 4) Dedupe + retry — locks down the per-recipient outcome contract that
+//    the in-app banner and the email side-channel both depend on. Drives
+//    the in-process Resend transport via a NODE_ENV-gated test stub so we
+//    can simulate one address succeeding and another failing on the same
+//    fire, then re-fire and assert that the dedupe gate skips the
+//    already-emailed owner while the retry pass eventually clears the
+//    transient failure for the other (and bumps the alert's
+//    `emailRecipients` denormalized counter).
+//
+//    Anchored on the same dedicated workspace as block (1) so the
+//    evaluator's window query stays deterministic — but provisions a
+//    *second* owner-role membership at runtime (idempotently) so the
+//    side-channel has two distinct addresses to drive a sent vs. failed
+//    outcome on a single fire. Without that second owner the dedupe gate
+//    has nothing to skip on the re-fire.
+// ===========================================================================
+const OWNER_A_EMAIL = "e2e-edap-owner@example.test";
+const OWNER_B_EMAIL = "e2e-edap-owner-b@example.test";
+
+interface AlertRow {
+  id: string;
+  emailSent: boolean;
+  emailRecipients: number;
+}
+
+interface RecipientRow {
+  alertId: string;
+  email: string;
+  status: string;
+  error: string | null;
+  attemptedAt: string;
+}
+
+/**
+ * Provision a second owner-role membership in the dedicated workspace.
+ *
+ * The existing `email-delivery-alerts.setup.ts` only seats the dedicated
+ * `e2e-edap-owner@...` user as the workspace's sole owner — which is
+ * exactly what blocks (1)/(2)/(3) want. The dedupe + retry block here
+ * needs *two* owner-role addresses so we can simulate one Resend success
+ * and one failure on the same fire, so we plant a second owner-role
+ * membership for `e2e-edap-owner-b@...` on first use. Idempotent: we run
+ * once per spec invocation but tolerate prior runs (the user + membership
+ * may already exist from a previous Playwright run that didn't reach the
+ * cleanup step).
+ *
+ * Returns the user id so the dedicated workspace's recipient/event log
+ * can be cleaned up in `beforeEach` without scanning by email.
+ */
+async function ensureSecondOwner(): Promise<string> {
+  const { companyId } = await getShared();
+  const client = new pg.Client({ connectionString: requiredDbUrl() });
+  await client.connect();
+  try {
+    const existing = (
+      await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [
+        OWNER_B_EMAIL,
+      ])
+    ).rows[0];
+    let uid: string;
+    if (existing) {
+      uid = existing.id;
+    } else {
+      uid = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO users (id, email, first_name, last_name, preferred_locale)
+         VALUES ($1, $2, 'E2E', 'Edap-owner-b', 'en')`,
+        [uid, OWNER_B_EMAIL],
+      );
+    }
+    const member = (
+      await client.query(
+        `SELECT id FROM memberships WHERE user_id = $1 AND company_id = $2 LIMIT 1`,
+        [uid, companyId],
+      )
+    ).rows[0];
+    if (member) {
+      await client.query(`UPDATE memberships SET role = 'owner' WHERE id = $1`, [
+        member.id,
+      ]);
+    } else {
+      await client.query(
+        `INSERT INTO memberships (id, user_id, company_id, role)
+         VALUES ($1, $2, $3, 'owner')`,
+        [crypto.randomUUID(), uid, companyId],
+      );
+    }
+    return uid;
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * Wipe every recipient row for the dedicated workspace. Required because
+ * the production schema doesn't actually carry the alert→recipient FK
+ * (the 0011 migration declared ON DELETE CASCADE but the constraint is
+ * missing from the deployed DB), so `resetAlertState`'s
+ * `DELETE FROM email_delivery_alerts` doesn't take recipients with it.
+ * Without this wipe, an `OWNER_A: status='sent'` row from a prior run
+ * lingers and the dedupe gate skips owner-a on fire #1, breaking the
+ * "first fire records sent+failed" precondition this spec depends on.
+ */
+async function wipeRecipientsForSharedCompany(): Promise<void> {
+  const { companyId } = await getShared();
+  const client = new pg.Client({ connectionString: requiredDbUrl() });
+  await client.connect();
+  try {
+    await client.query(
+      `DELETE FROM email_delivery_alert_recipients WHERE company_id = $1`,
+      [companyId],
+    );
+  } finally {
+    await client.end();
+  }
+}
+
+/** Tell the running server to stub the Resend transport. */
+async function installEmailStub(
+  request: APIRequestContext,
+  failAddresses: string[],
+): Promise<void> {
+  const r = await request.fetch("/api/dev/email-stub", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    data: { failAddresses },
+  });
+  expect(
+    r.status(),
+    `installing email stub should return 200 (route is NODE_ENV-gated; failure here usually means NODE_ENV=production); got ${r.status()}`,
+  ).toBe(200);
+}
+
+/** Clear any previously installed stub so the real transport takes over. */
+async function clearEmailStub(request: APIRequestContext): Promise<void> {
+  const r = await request.fetch("/api/dev/email-stub", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    data: { clear: true },
+  });
+  expect(r.status()).toBe(200);
+}
+
+/** Re-fire the evaluator with the dev cooldown bypass so a second / third
+ *  fire in the same test doesn't have to wait six hours of wall-clock. */
+async function evaluateSkippingCooldown(
+  request: APIRequestContext,
+): Promise<EvaluateOutcome & { emailDeduped?: number; retried?: number }> {
+  const r = await call(
+    request,
+    "POST",
+    "/api/auth/email-delivery-alerts/evaluate?skipCooldown=1",
+  );
+  expect(r.status, `POST evaluate?skipCooldown=1 should return 200, got ${r.status}: ${JSON.stringify(r.body)}`).toBe(
+    200,
+  );
+  return r.body as EvaluateOutcome & { emailDeduped?: number; retried?: number };
+}
+
+/** Fetch the alert row directly so we can assert on the denormalized
+ *  `email_recipients` counter the in-app banner reads. */
+async function readAlert(alertId: string): Promise<AlertRow> {
+  const client = new pg.Client({ connectionString: requiredDbUrl() });
+  await client.connect();
+  try {
+    const row = (
+      await client.query(
+        `SELECT id, email_sent AS "emailSent", email_recipients AS "emailRecipients"
+         FROM email_delivery_alerts WHERE id = $1`,
+        [alertId],
+      )
+    ).rows[0];
+    if (!row) throw new Error(`alert ${alertId} not found`);
+    return {
+      id: row.id,
+      emailSent: row.emailSent,
+      emailRecipients: row.emailRecipients,
+    };
+  } finally {
+    await client.end();
+  }
+}
+
+/** Read the per-recipient attempt log for an alert in attempt order so
+ *  the test can reason about retries appended to the same alert id. */
+async function readRecipients(alertId: string): Promise<RecipientRow[]> {
+  const client = new pg.Client({ connectionString: requiredDbUrl() });
+  await client.connect();
+  try {
+    const result = await client.query(
+      `SELECT alert_id AS "alertId", email, status, error,
+              attempted_at AS "attemptedAt"
+       FROM email_delivery_alert_recipients
+       WHERE alert_id = $1
+       ORDER BY attempted_at ASC, id ASC`,
+      [alertId],
+    );
+    return result.rows as RecipientRow[];
+  } finally {
+    await client.end();
+  }
+}
+
+test.describe("delivery-alert dedupe + retry @alerts", () => {
+  test.use({ storageState: ROLE_FILES.owner });
+
+  test.beforeAll(async () => {
+    await ensureSecondOwner();
+  });
+
+  test.beforeEach(async ({ request }) => {
+    // Reset evaluator state, then guarantee the stub starts cleared so a
+    // failed previous run can't leak in-process state into this case.
+    await resetAlertState();
+    // Defense-in-depth: the recipients table is supposed to cascade-delete
+    // via the alert FK, but the running schema doesn't actually carry the
+    // FK constraint (the migration declares ON DELETE CASCADE but the
+    // constraint is absent in the deployed DB), so prior runs of this
+    // describe block — and the seeded inserts in the existing
+    // "GET /:id/recipients" / "recipient retry guardrail" tests — can leave
+    // orphaned recipient rows behind that the dedupe gate then trips on.
+    // Wipe them explicitly for our workspace so fire #1 sees a clean slate.
+    await wipeRecipientsForSharedCompany();
+    await clearEmailStub(request);
+  });
+
+  test.afterAll(async ({ request }) => {
+    // Don't let the stub linger past the spec — a subsequent block (or
+    // the next `npx playwright test` run that reuses the dev server) must
+    // see the real transport again. Best-effort: if the dev server has
+    // already gone away the request just throws and we move on.
+    try {
+      await clearEmailStub(request);
+    } catch {
+      /* server gone — nothing to clear */
+    }
+  });
+
+  test(
+    "first fire records sent+failed; re-fire dedupes the sent owner; retry pass clears the transient failure",
+    async ({ request }) => {
+      // (1) Install a stub that fails owner-b on every send while letting
+      //     owner-a through. This is the simulated transient outage on a
+      //     single address. The stub also short-circuits the Resend HTTP
+      //     call entirely so the test doesn't depend on a real provider.
+      await installEmailStub(request, [OWNER_B_EMAIL]);
+
+      // Threshold low enough for three bounces to fire absolute; cooldown
+      // generous so only the explicit `?skipCooldown=1` bypass can re-fire
+      // (no chance of a wall-clock race between the two evaluator calls).
+      // Email side-channel ON so the recipient log + counters get written.
+      await writeSettings(request, {
+        absoluteThreshold: 3,
+        cooldownMinutes: 360,
+        emailEnabled: true,
+      });
+      await seedEvents("bounced", 3);
+
+      // ---------------------------------------------------------------
+      // Fire #1 — both owners attempted; one sent, one failed; alert row
+      // reflects the single successful delivery.
+      // ---------------------------------------------------------------
+      const fire1 = (await evaluate(request)) as EvaluateOutcome & {
+        emailDeduped?: number;
+        retried?: number;
+      };
+      expect(fire1.fired, `fire #1 should trip absolute threshold — got ${JSON.stringify(fire1)}`).toBe(
+        true,
+      );
+      expect(fire1.reason).toBe("absolute");
+      expect(fire1.alertId).toBeTruthy();
+      expect(fire1.emailSent, "owner-a's send should land").toBe(true);
+      expect(fire1.emailRecipients, "exactly one of two owners should be counted").toBe(1);
+      expect(fire1.emailDeduped, "no prior fires → nothing to dedupe").toBe(0);
+      const alertId1 = fire1.alertId!;
+
+      const recipients1 = await readRecipients(alertId1);
+      expect(recipients1, "exactly one row per attempted address").toHaveLength(2);
+      const a1 = recipients1.find((r) => r.email === OWNER_A_EMAIL);
+      const b1 = recipients1.find((r) => r.email === OWNER_B_EMAIL);
+      expect(a1, "owner-a should appear in the per-recipient log").toBeDefined();
+      expect(b1, "owner-b should appear in the per-recipient log").toBeDefined();
+      expect(a1!.status).toBe("sent");
+      expect(a1!.error).toBeNull();
+      expect(b1!.status).toBe("failed");
+      expect(b1!.error, "stub error string should propagate to the row").toBe("stub_failed");
+
+      const alert1Initial = await readAlert(alertId1);
+      expect(alert1Initial.emailSent).toBe(true);
+      expect(alert1Initial.emailRecipients, "alert counter mirrors per-fire success count").toBe(1);
+
+      // ---------------------------------------------------------------
+      // Fire #2 — same stub (owner-b still failing). Cooldown bypassed
+      // via the dev-only query param. The dedupe gate must skip owner-a
+      // (recently sent, same reason, within the 12h dedupe window) and
+      // the retry pass + re-fire of owner-b must both still fail.
+      // ---------------------------------------------------------------
+      const fire2 = await evaluateSkippingCooldown(request);
+      expect(fire2.fired, "skipCooldown bypass must allow a second fire").toBe(true);
+      expect(fire2.reason).toBe("absolute");
+      expect(
+        fire2.emailDeduped,
+        "owner-a should be skipped by the per-recipient dedupe gate",
+      ).toBe(1);
+      expect(
+        fire2.emailRecipients,
+        "owner-b is still in the failing stub set so no new successes",
+      ).toBe(0);
+      expect(fire2.emailSent).toBe(false);
+      expect(
+        fire2.retried,
+        "retry pass tried owner-b but the stub still fails them, so 0 successes",
+      ).toBe(0);
+
+      // Critical contract: owner-a got NO new send on fire #2. The whole
+      // point of the dedupe gate is to keep the second alert from emailing
+      // them again during a flap.
+      const recipientsAfterFire2 = await readRecipients(alertId1);
+      const ownerASentRows = recipientsAfterFire2.filter(
+        (r) => r.email === OWNER_A_EMAIL && r.status === "sent",
+      );
+      expect(
+        ownerASentRows,
+        "owner-a should still have only the one 'sent' row from fire #1",
+      ).toHaveLength(1);
+      // Alert #1's denormalized counter must NOT move on a re-fire — only
+      // the new alert (fire #2) and any successful retries should bump it.
+      const alert1AfterFire2 = await readAlert(alertId1);
+      expect(alert1AfterFire2.emailRecipients).toBe(1);
+
+      // ---------------------------------------------------------------
+      // Fire #3 — clear the stub (owner-b's "transient outage" is over)
+      // and re-evaluate. The retry pass should pick up the failed owner-b
+      // attempts on every prior alert, succeed on each, and bump those
+      // alerts' denormalized `emailRecipients` counter on success.
+      // ---------------------------------------------------------------
+      await installEmailStub(request, []); // empty failure list = stub but always succeed
+      const fire3 = await evaluateSkippingCooldown(request);
+      expect(fire3.fired, "third fire still trips because seeded events remain").toBe(true);
+      // The retry pass groups by alert id; owner-b had failed rows on
+      // both alert #1 and the alert that fire #2 created. With the stub
+      // now succeeding for everyone, both retries land — so retried >= 2.
+      expect(
+        fire3.retried,
+        `retry pass should re-attempt owner-b on every alert with a stuck failure (>= 2) — got ${fire3.retried}`,
+      ).toBeGreaterThanOrEqual(2);
+
+      // The original alert's counter must reflect the successful retry —
+      // the in-app banner reads this denormalized field as
+      // "delivered to N owners", so a retry that doesn't bump the field
+      // would silently under-report deliveries.
+      const alert1Final = await readAlert(alertId1);
+      expect(
+        alert1Final.emailRecipients,
+        "alert #1's emailRecipients should now include owner-b's successful retry",
+      ).toBe(2);
+      expect(alert1Final.emailSent).toBe(true);
+
+      // And the per-recipient log for alert #1 must contain a fresh
+      // 'sent' row for owner-b appended after the failures — that's the
+      // append-only contract the recipient roll-up reads.
+      const recipientsFinal = await readRecipients(alertId1);
+      const ownerBSentOnAlert1 = recipientsFinal.filter(
+        (r) => r.email === OWNER_B_EMAIL && r.status === "sent",
+      );
+      expect(
+        ownerBSentOnAlert1,
+        "owner-b should now have at least one 'sent' row on alert #1 after the retry",
+      ).not.toHaveLength(0);
+    },
+  );
+});

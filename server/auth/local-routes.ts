@@ -23,7 +23,12 @@ import {
 } from "@shared/schema";
 import { authBizStorage, hashPassword, verifyPassword } from "./storage";
 import { authStorage } from "../replit_integrations/auth/storage";
-import { sendInvitationEmail, sendPasswordResetEmail, normalizeLocale } from "./email";
+import {
+  sendInvitationEmail,
+  sendPasswordResetEmail,
+  normalizeLocale,
+  setEmailTestStub,
+} from "./email";
 import {
   evaluateEmailDeliveryAlertsForCompany,
   retryEmailDeliveryAlertRecipient,
@@ -1042,6 +1047,12 @@ export function registerLocalAuthRoutes(app: Express) {
   // Run the evaluator on demand. Useful when an admin tightens a threshold
   // and wants to see whether the new value would already be tripping. Also
   // used by tests to drive the cron without waiting for the interval.
+  //
+  // Accepts an optional `?skipCooldown=1` query parameter (NODE_ENV-gated)
+  // so the dedupe + retry e2e spec can re-fire the evaluator a second time
+  // in the same case without having to age the previous alert's `firedAt`
+  // out of the cooldown window via direct SQL. The bypass is silently
+  // ignored in production so no real workspace can use it to spam owners.
   app.post(
     "/api/auth/email-delivery-alerts/evaluate",
     requireAuth,
@@ -1049,13 +1060,48 @@ export function registerLocalAuthRoutes(app: Express) {
     async (req, res, next) => {
       try {
         const ctx = (req as any).membership!;
-        const result = await evaluateEmailDeliveryAlertsForCompany(ctx.companyId);
+        const skipCooldown =
+          process.env.NODE_ENV !== "production" &&
+          (req.query.skipCooldown === "1" || req.query.skipCooldown === "true");
+        const result = await evaluateEmailDeliveryAlertsForCompany(
+          ctx.companyId,
+          { skipCooldown },
+        );
         res.json(result);
       } catch (err) {
         next(err);
       }
     },
   );
+
+  // Test-only stub installer for the email transport. Lets the dedupe +
+  // retry spec drive `sendEmail` to a deterministic per-address outcome
+  // (success or `send_failed`) without hitting Resend. The route is
+  // hard-gated to non-production NODE_ENV — production builds return 404
+  // exactly as if the route didn't exist, so even an authenticated owner
+  // can't poison the live transport.
+  //
+  // Body shape:
+  //   { failAddresses: string[] }   install — listed addresses fail, others succeed
+  //   { clear: true }               clear — falls back to the real Resend transport
+  app.post("/api/dev/email-stub", (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).end();
+    }
+    const body = (req.body ?? {}) as {
+      failAddresses?: unknown;
+      clear?: unknown;
+    };
+    if (body.clear === true) {
+      setEmailTestStub(null);
+      return res.json({ ok: true, cleared: true });
+    }
+    const failAddresses = Array.isArray(body.failAddresses)
+      ? body.failAddresses.filter((x): x is string => typeof x === "string")
+      : [];
+    setEmailTestStub({ failAddresses });
+    res.json({ ok: true, failAddresses });
+  });
 
   // Per-recipient outcome log for one alert. Surfaces *which* owners
   // received the alert email and which didn't, so an owner who suspects

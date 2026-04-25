@@ -32,12 +32,65 @@ export function isEmailConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY);
 }
 
+/**
+ * Test-only in-memory stub for the email transport.
+ *
+ * Lets the delivery-alert dedupe + retry e2e spec drive `sendEmail` to a
+ * deterministic per-address outcome (success or `send_failed`) without
+ * standing up a real Resend account or talking to the network. The state
+ * is mutated through a NODE_ENV-gated route (`POST /api/dev/email-stub`)
+ * so a Playwright test running in a separate process can install / clear
+ * it between cases.
+ *
+ * When non-null, *every* `sendEmail` call short-circuits — the real
+ * provider is never invoked. Cleared by passing `null` (or an explicit
+ * `{ failAddresses: [], successOnly: true }` no-op). Production builds
+ * should never reach the route that sets this; the stub state is also
+ * ignored implicitly because production callers never POST the route.
+ */
+type EmailTestStub = {
+  failAddresses: Set<string>;
+};
+let emailTestStub: EmailTestStub | null = null;
+
+export function setEmailTestStub(
+  opts: { failAddresses: string[] } | null,
+): void {
+  if (opts === null) {
+    emailTestStub = null;
+    return;
+  }
+  emailTestStub = {
+    failAddresses: new Set(
+      opts.failAddresses.map((e) => e.trim().toLowerCase()),
+    ),
+  };
+}
+
+export function getEmailTestStub(): EmailTestStub | null {
+  return emailTestStub;
+}
+
 /** Coerce any string into a supported locale, defaulting to Arabic. */
 export function normalizeLocale(value: unknown): EmailLocale {
   return value === "en" ? "en" : "ar";
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
+  // Test stub short-circuit: when installed, every send is resolved against
+  // an in-memory map so the delivery-alert dedupe + retry e2e spec can drive
+  // per-address success / failure deterministically without a real provider.
+  // Only the route that sets the stub is NODE_ENV-gated; production never
+  // installs it, so this branch is inert there.
+  const stub = emailTestStub;
+  if (stub) {
+    const addr = input.to.trim().toLowerCase();
+    if (stub.failAddresses.has(addr)) {
+      return { ok: false, reason: "send_failed", error: "stub_failed" };
+    }
+    return { ok: true, id: `stub-${addr}` };
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     return { ok: false, reason: "not_configured" };
