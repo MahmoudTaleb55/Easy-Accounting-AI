@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Webcam from "react-webcam";
 import imageCompression from "browser-image-compression";
 import {
@@ -10,7 +10,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Camera, RefreshCcw, SwitchCamera, Check, Loader2 } from "lucide-react";
+import {
+  Camera,
+  RefreshCcw,
+  SwitchCamera,
+  Check,
+  Loader2,
+  ExternalLink,
+} from "lucide-react";
 import type { Locale } from "@/contexts/locale-context";
 
 type Strings = {
@@ -27,6 +34,9 @@ type Strings = {
   hint: string;
   previewAlt: string;
   processingFailed: string;
+  iframeBlocked: string;
+  openInNewTab: string;
+  insecureContext: string;
 };
 
 const I18N: Record<Locale, Strings> = {
@@ -46,6 +56,11 @@ const I18N: Record<Locale, Strings> = {
     hint: "نصيحة: حاذِ حواف الفاتورة داخل الإطار.",
     previewAlt: "معاينة الفاتورة الملتقطة",
     processingFailed: "تعذرت معالجة الصورة. حاول إعادة التصوير.",
+    iframeBlocked:
+      "الكاميرا محظورة داخل النافذة المضمّنة (iframe) في بيئة المعاينة. افتح التطبيق في علامة تبويب جديدة للسماح بالكاميرا.",
+    openInNewTab: "فتح في علامة تبويب جديدة",
+    insecureContext:
+      "تتطلب الكاميرا اتصالاً آمناً (HTTPS) أو localhost.",
   },
   en: {
     title: "Capture invoice with camera",
@@ -63,6 +78,10 @@ const I18N: Record<Locale, Strings> = {
     hint: "Tip: align the edges of the invoice within the frame.",
     previewAlt: "Preview of the captured invoice",
     processingFailed: "Could not process the image. Please retake the photo.",
+    iframeBlocked:
+      "Camera is blocked inside the embedded preview frame. Open the app in a new browser tab to allow the camera.",
+    openInNewTab: "Open in a new tab",
+    insecureContext: "Camera requires a secure connection (HTTPS) or localhost.",
   },
   de: {
     title: "Rechnung mit Kamera erfassen",
@@ -81,6 +100,11 @@ const I18N: Record<Locale, Strings> = {
     previewAlt: "Vorschau der erfassten Rechnung",
     processingFailed:
       "Das Bild konnte nicht verarbeitet werden. Bitte erneut aufnehmen.",
+    iframeBlocked:
+      "Die Kamera ist im eingebetteten Vorschau-Frame blockiert. Öffnen Sie die App in einem neuen Browser-Tab, um die Kamera zu erlauben.",
+    openInNewTab: "In neuem Tab öffnen",
+    insecureContext:
+      "Die Kamera erfordert eine sichere Verbindung (HTTPS) oder localhost.",
   },
   fr: {
     title: "Capturer la facture avec la caméra",
@@ -99,6 +123,11 @@ const I18N: Record<Locale, Strings> = {
     previewAlt: "Aperçu de la facture capturée",
     processingFailed:
       "Impossible de traiter l'image. Veuillez reprendre la photo.",
+    iframeBlocked:
+      "La caméra est bloquée dans le cadre d'aperçu intégré. Ouvrez l'application dans un nouvel onglet du navigateur pour autoriser la caméra.",
+    openInNewTab: "Ouvrir dans un nouvel onglet",
+    insecureContext:
+      "La caméra nécessite une connexion sécurisée (HTTPS) ou localhost.",
   },
 };
 
@@ -196,6 +225,40 @@ function canvasToBlob(
   });
 }
 
+type EnvBlock =
+  | { kind: "ok" }
+  | { kind: "iframe"; topUrl: string }
+  | { kind: "insecure" };
+
+function detectCameraEnvironment(): EnvBlock {
+  if (typeof window === "undefined") return { kind: "ok" };
+  // Embedded inside another browsing context (e.g. the Replit workspace iframe).
+  // The wrapper iframe must include `allow="camera"` in its Permissions-Policy
+  // for getUserMedia to even prompt; without it the browser denies the request
+  // silently with NotAllowedError, never showing the permission UI.
+  const inIframe = window.self !== window.top;
+  // Best-effort: feature-policy / permissions-policy check. Some browsers don't
+  // expose this, so we treat `undefined` as "unknown — try anyway" and only
+  // short-circuit when we can prove the camera feature is disallowed.
+  const fp = (document as unknown as {
+    featurePolicy?: { allowsFeature?: (name: string) => boolean };
+    permissionsPolicy?: { allowsFeature?: (name: string) => boolean };
+  });
+  const policy = fp.featurePolicy ?? fp.permissionsPolicy;
+  const cameraExplicitlyBlocked =
+    typeof policy?.allowsFeature === "function"
+      ? policy.allowsFeature("camera") === false
+      : false;
+  if (inIframe && cameraExplicitlyBlocked) {
+    return { kind: "iframe", topUrl: window.location.href };
+  }
+  // Browsers require a secure context (HTTPS or localhost) for getUserMedia.
+  if (!window.isSecureContext) {
+    return { kind: "insecure" };
+  }
+  return { kind: "ok" };
+}
+
 export function CameraCaptureDialog({
   open,
   onOpenChange,
@@ -210,7 +273,23 @@ export function CameraCaptureDialog({
     "environment",
   );
   const [error, setError] = useState<string | null>(null);
+  const [blockReason, setBlockReason] = useState<EnvBlock["kind"] | null>(null);
   const [processing, setProcessing] = useState(false);
+
+  // Re-detect each time the dialog is opened so the user can fix permissions
+  // and try again without a full reload.
+  useEffect(() => {
+    if (!open) return;
+    const env = detectCameraEnvironment();
+    if (env.kind === "ok") {
+      setBlockReason(null);
+      setError(null);
+      return;
+    }
+    setBlockReason(env.kind);
+    if (env.kind === "iframe") setError(t.iframeBlocked);
+    else if (env.kind === "insecure") setError(t.insecureContext);
+  }, [open, t.iframeBlocked, t.insecureContext]);
 
   const videoConstraints = useMemo(
     () => ({
@@ -277,17 +356,28 @@ export function CameraCaptureDialog({
   const handleUserMediaError = useCallback(
     (err: string | DOMException) => {
       const name = typeof err === "string" ? err : err.name;
+      const inIframe =
+        typeof window !== "undefined" && window.self !== window.top;
       if (
         name === "NotAllowedError" ||
         name === "PermissionDeniedError" ||
         name === "SecurityError"
       ) {
-        setError(t.permissionDenied);
+        // Inside an iframe whose Permissions-Policy doesn't allow `camera`, the
+        // browser denies the request without ever prompting — that is the
+        // single most common cause for our preview environment, so surface
+        // the "open in a new tab" recovery instead of the generic message.
+        if (inIframe) {
+          setBlockReason("iframe");
+          setError(t.iframeBlocked);
+        } else {
+          setError(t.permissionDenied);
+        }
       } else {
         setError(t.unavailable);
       }
     },
-    [t.permissionDenied, t.unavailable],
+    [t.permissionDenied, t.unavailable, t.iframeBlocked],
   );
 
   return (
@@ -368,6 +458,18 @@ export function CameraCaptureDialog({
           >
             {t.cancel}
           </Button>
+          {error && blockReason === "iframe" && (
+            <Button
+              type="button"
+              onClick={() =>
+                window.open(window.location.href, "_blank", "noopener")
+              }
+              data-testid="button-camera-open-new-tab"
+            >
+              <ExternalLink className="me-2 h-4 w-4" />
+              {t.openInNewTab}
+            </Button>
+          )}
           {!error && !snapshot && (
             <Button
               type="button"
