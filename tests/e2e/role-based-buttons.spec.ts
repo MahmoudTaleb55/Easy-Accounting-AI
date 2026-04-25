@@ -236,6 +236,19 @@ test.describe("role-based button gating @rbac", () => {
       const fxDelete = page.locator('[data-testid^="button-delete-fx-"]').first();
       await expect(fxDelete).toBeVisible();
       await expect(fxDelete).toBeEnabled();
+
+      // Data tools card: the owner-only "Re-pair missing journal entries"
+      // recovery action lives inside <OwnerOnly>, so the card + button
+      // must render unwrapped and enabled for the owner role. The
+      // accountant + viewer counterparts of this describe block assert
+      // the inverse (card hidden, button absent).
+      await expect(
+        page.locator('[data-testid="card-settings-data-tools"]'),
+      ).toBeVisible();
+      await expectUnguarded(page, "button-repair-journal-entries");
+      await expect(
+        page.locator('[data-testid="button-repair-journal-entries"]').first(),
+      ).toBeEnabled();
     });
 
     test("fixed-assets: companies + fx tabs are visible and gated buttons are enabled", async ({ page }) => {
@@ -559,6 +572,14 @@ test.describe("role-based button gating @rbac", () => {
       await expect(page.locator('[data-testid="button-add-company"]')).toHaveCount(0);
       await expect(page.locator('[data-testid="button-save-fx"]')).toHaveCount(0);
       await expect(page.locator('[data-testid^="button-delete-fx-"]')).toHaveCount(0);
+
+      // The owner-only Data tools card (Re-pair missing journal entries
+      // recovery action) is wrapped in <OwnerOnly> and must therefore not
+      // render at all for accountants — neither the card nor the button.
+      await expect(page.locator('[data-testid="card-settings-data-tools"]')).toHaveCount(0);
+      await expect(
+        page.locator('[data-testid="button-repair-journal-entries"]'),
+      ).toHaveCount(0);
     });
 
     test("fixed-assets: companies + fx tabs are hidden, gated buttons absent", async ({ page }) => {
@@ -768,6 +789,14 @@ test.describe("role-based button gating @rbac", () => {
       await expect(page.locator('[data-testid="button-add-company"]')).toHaveCount(0);
       await expect(page.locator('[data-testid="button-save-fx"]')).toHaveCount(0);
       await expect(page.locator('[data-testid^="button-delete-fx-"]')).toHaveCount(0);
+
+      // The owner-only Data tools card is wrapped in <OwnerOnly>, so the
+      // recovery action and its surrounding card are absent for viewers
+      // — same contract as accountants on this page.
+      await expect(page.locator('[data-testid="card-settings-data-tools"]')).toHaveCount(0);
+      await expect(
+        page.locator('[data-testid="button-repair-journal-entries"]'),
+      ).toHaveCount(0);
     });
 
     test("fixed-assets: companies + fx tabs are hidden, gated buttons absent", async ({ page }) => {

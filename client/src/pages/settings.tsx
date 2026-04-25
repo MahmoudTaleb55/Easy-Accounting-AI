@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ApiError, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,19 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight, MailCheck } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight, MailCheck, Wrench } from "lucide-react";
+import { api } from "@shared/routes";
 import type { OrgSettings } from "@/lib/format";
 import { savePublicCurrency } from "@/lib/public-currency";
 import { CompaniesPanel, FxPanel } from "@/pages/fixed-assets";
@@ -110,6 +122,139 @@ function SettingsSubpagesNav() {
         </Link>
       ))}
     </div>
+  );
+}
+
+function DataToolsCard() {
+  const { toast } = useToast();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
+  const [lastResult, setLastResult] = useState<{ created: number; skipped: number } | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        api.admin.backfillJournalEntries.method,
+        api.admin.backfillJournalEntries.path,
+        {},
+      );
+      return (await res.json()) as { created: number; skipped: number };
+    },
+    onSuccess: (data) => {
+      setLastResult(data);
+      // The journal entries page caches its list; invalidate so any newly
+      // posted entries from the backfill show up immediately if the user
+      // navigates there.
+      queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      toast({
+        title: ar ? "تمّ الإصلاح" : "Done",
+        description: ar
+          ? `أُنشئ ${data.created} قيد يومية، وتُخطّي ${data.skipped}.`
+          : `Created ${data.created} journal entries, skipped ${data.skipped}.`,
+      });
+    },
+    onError: (e: unknown) => {
+      // The endpoint can fail with a 403 (role drift between page load and
+      // click), a 500 (e.g. cash account missing), or a generic network
+      // error. ApiError preserves the parsed JSON `{ message }` body the
+      // server returns; fall back to the Error message for non-HTTP failures.
+      const fromApi =
+        e instanceof ApiError && typeof (e.body as { message?: unknown })?.message === "string"
+          ? ((e.body as { message: string }).message)
+          : undefined;
+      const fromError = e instanceof Error ? e.message : undefined;
+      toast({
+        title: ar ? "خطأ" : "Error",
+        description:
+          fromApi || fromError || (ar ? "تعذّر استكمال قيود اليومية" : "Backfill failed"),
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Card data-testid="card-settings-data-tools">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Wrench className="w-5 h-5" />
+          {ar ? "أدوات البيانات (للمالك فقط)" : "Data tools (owner only)"}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {ar
+            ? "إجراءات استرجاع نادرة. استخدمها فقط إذا لاحظت قيوداً مفقودة."
+            : "Rare recovery actions. Only use these if you notice missing journal entries."}
+        </p>
+        <div className="rounded-md border p-4 space-y-3">
+          <div className="space-y-1">
+            <div className="text-sm font-medium" data-testid="text-repair-journal-entries-title">
+              {ar
+                ? "إعادة ربط قيود اليومية المفقودة"
+                : "Re-pair missing journal entries"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {ar
+                ? "تفحّص جميع المعاملات في مساحة العمل وتُنشئ قيد يومية متوازن لكل معاملة لا قيد لها. تكرار التشغيل آمن."
+                : "Walks every transaction in this workspace and posts a balanced double-entry for any one missing its journal entry. Safe to re-run."}
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={mutation.isPending}
+                  data-testid="button-repair-journal-entries"
+                >
+                  {mutation.isPending
+                    ? ar
+                      ? "جارٍ التشغيل..."
+                      : "Running..."
+                    : ar
+                      ? "إعادة الربط الآن"
+                      : "Re-pair now"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {ar ? "تأكيد إعادة ربط القيود" : "Confirm re-pair"}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {ar
+                      ? "ستُنشأ قيود يومية لأي معاملة في مساحة العمل لا قيد لها. تكرار التشغيل لا يُكرّر القيود."
+                      : "Journal entries will be created for any transaction in this workspace that is missing one. Running again does not duplicate entries."}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-cancel-repair-journal-entries">
+                    {ar ? "إلغاء" : "Cancel"}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => mutation.mutate()}
+                    data-testid="button-confirm-repair-journal-entries"
+                  >
+                    {ar ? "متابعة" : "Continue"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            {lastResult && (
+              <div
+                className="text-sm text-foreground"
+                data-testid="text-repair-journal-entries-result"
+              >
+                {ar
+                  ? `أُنشئ ${lastResult.created} قيد يومية، وتُخطّي ${lastResult.skipped}.`
+                  : `Created ${lastResult.created} journal entries, skipped ${lastResult.skipped}.`}
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -332,6 +477,10 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+      </OwnerOnly>
+
+      <OwnerOnly>
+        <DataToolsCard />
       </OwnerOnly>
     </div>
   );
