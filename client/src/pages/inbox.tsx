@@ -31,7 +31,9 @@ import {
   CornerDownLeft,
   ChevronsUpDown,
   ShieldCheck,
+  Camera,
 } from "lucide-react";
+import { CameraCaptureDialog } from "@/components/inbox/camera-capture-dialog";
 import type {
   DocumentRow,
   ExtractedDocument,
@@ -208,6 +210,7 @@ export default function InboxPage() {
   const [query, setQuery] = useState("");
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const { data: docs = [], isLoading } = useQuery<DocumentRow[]>({
     queryKey: ["/api/documents"],
@@ -374,12 +377,37 @@ export default function InboxPage() {
             U
           </kbd>
           <Button
+            variant="outline"
+            onClick={() => setCameraOpen(true)}
+            disabled={uploadMut.isPending}
+            data-testid="button-camera"
+          >
+            <Camera className="me-2 h-4 w-4" />
+            {(() => {
+              const labels: Record<typeof locale, string> = {
+                ar: "تصوير بالكاميرا",
+                en: "Capture with camera",
+                de: "Mit Kamera erfassen",
+                fr: "Capturer avec la caméra",
+              };
+              return labels[locale];
+            })()}
+          </Button>
+          <Button
             onClick={() => fileInput.current?.click()}
             disabled={uploadMut.isPending}
             data-testid="button-upload"
           >
             <Upload className="me-2 h-4 w-4" />
-            {ar ? "رفع مستند" : "Upload document"}
+            {(() => {
+              const labels: Record<typeof locale, string> = {
+                ar: "رفع مستند",
+                en: "Upload document",
+                de: "Dokument hochladen",
+                fr: "Téléverser un document",
+              };
+              return labels[locale];
+            })()}
           </Button>
           <input
             ref={fileInput}
@@ -391,6 +419,12 @@ export default function InboxPage() {
             data-testid="input-file"
           />
         </div>
+        <CameraCaptureDialog
+          open={cameraOpen}
+          onOpenChange={setCameraOpen}
+          onCapture={(file) => uploadMut.mutate(file)}
+          locale={locale}
+        />
       </header>
 
       {/* ─── KPI strip — disciplined, mono numerics ───────────────── */}
