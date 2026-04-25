@@ -52,8 +52,19 @@ const FULL_NAME = `${TEST_FIRST} ${TEST_LAST}`;
  * longer mint that companion cookie. The modern auth layer reads
  * identity straight off the passport session row that `forgeSession`
  * writes below.
+ *
+ * The caller passes the locale they're about to render under so we can
+ * pin `users.preferred_locale` to the same value. Without this, the SPA's
+ * `LocaleSync` (in `client/src/components/layout/main-layout.tsx`) would
+ * read the user's stored `preferredLocale` from `/api/auth/user` and call
+ * `setLocale()` with it, overriding whatever the test seeded into
+ * `localStorage["app.locale"]`. The user-row preference always wins for
+ * authenticated views, so the test must mirror its choice into the row.
  */
-async function injectFreshSession(page: Page): Promise<{ userId: string }> {
+async function injectFreshSession(
+  page: Page,
+  preferredLocale: "en" | "ar",
+): Promise<{ userId: string }> {
   const dbUrl = requireDbUrl("the topbar profile test");
   requireCookieSecret("the topbar profile test");
 
@@ -67,6 +78,13 @@ async function injectFreshSession(page: Page): Promise<{ userId: string }> {
       firstName: TEST_FIRST,
       lastName: TEST_LAST,
     });
+    // Pin the user's stored preferred locale to the variant under test
+    // so `LocaleSync` doesn't override the localStorage-seeded value
+    // (see the doc comment above for the full rationale).
+    await client.query(`UPDATE users SET preferred_locale = $1 WHERE id = $2`, [
+      preferredLocale,
+      userId,
+    ]);
     // The topbar reads `useCompany`, which falls back gracefully to no
     // companies, so we deliberately skip seeding a workspace here — the
     // profile dropdown renders independently of memberships and we want
@@ -110,7 +128,7 @@ for (const { locale, dir } of LOCALES) {
     test.use({ viewport: { width: 1280, height: 800 } });
 
     test.beforeEach(async ({ page }) => {
-      await injectFreshSession(page);
+      await injectFreshSession(page, locale);
       await page.addInitScript((loc) => {
         window.localStorage.setItem("app.locale", loc);
         window.localStorage.setItem("app.theme", "light");
