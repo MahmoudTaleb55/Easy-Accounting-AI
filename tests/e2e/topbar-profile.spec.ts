@@ -211,16 +211,16 @@ for (const { locale, dir } of LOCALES) {
       const htmlDir = await page.evaluate(() => document.documentElement.dir);
       expect(htmlDir).toBe(dir);
 
-      // Open the profile dropdown. The radix portal renders the menu under
-      // a `role="menu"` element, which we use to scope our identity assertions
-      // — the sidebar also reuses the `text-user-name` testid (see follow-up
-      // task) so a bare locator would be ambiguous.
+      // Open the profile dropdown. The topbar owns the canonical
+      // `text-user-name` / `text-user-email` testids — the sidebar uses its
+      // own `text-sidebar-user-*` namespace — so we can locate them at the
+      // page level without scoping to the menu portal.
       await page.locator('[data-testid="button-profile"]').click();
       const menu = page.locator('[role="menu"]').first();
       await expect(menu).toBeVisible();
 
-      const userName = menu.locator('[data-testid="text-user-name"]');
-      const userEmail = menu.locator('[data-testid="text-user-email"]');
+      const userName = page.locator('[data-testid="text-user-name"]');
+      const userEmail = page.locator('[data-testid="text-user-email"]');
       await expect(userName).toBeVisible();
       await expect(userEmail).toBeVisible();
       await expect(userName).toHaveText(FULL_NAME);

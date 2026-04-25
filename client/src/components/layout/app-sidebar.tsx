@@ -172,8 +172,8 @@ function UserBadge({ collapsed }: { collapsed: boolean }) {
           </Avatar>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <div className="truncate text-small font-medium" data-testid="text-user-name">{fullName}</div>
-              {role && <div className="truncate eyebrow text-muted-foreground" data-testid="text-user-role">{role}</div>}
+              <div className="truncate text-small font-medium" data-testid="text-sidebar-user-name">{fullName}</div>
+              {role && <div className="truncate eyebrow text-muted-foreground" data-testid="text-sidebar-user-role">{role}</div>}
             </div>
           )}
         </button>
