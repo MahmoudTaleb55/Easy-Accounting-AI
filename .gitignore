@@ -10,4 +10,6 @@ playwright-report
 # Playwright local artifacts
 .playwright/
 test-results/
+# Local on-disk upload artifacts produced by document-storage at runtime
+uploads/
 
