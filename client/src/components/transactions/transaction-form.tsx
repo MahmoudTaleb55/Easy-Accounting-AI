@@ -68,13 +68,16 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
                 <FormLabel className="text-base font-semibold">نوع المعاملة</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value} dir="rtl">
                   <FormControl>
-                    <SelectTrigger className="h-12 rounded-xl bg-background border-2 focus:ring-primary/20 transition-all">
+                    <SelectTrigger
+                      className="h-12 rounded-xl bg-background border-2 focus:ring-primary/20 transition-all"
+                      data-testid="select-transaction-type"
+                    >
                       <SelectValue placeholder="اختر النوع" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="income" className="font-medium text-emerald-600 focus:text-emerald-700">إيراد (+)</SelectItem>
-                    <SelectItem value="expense" className="font-medium text-rose-600 focus:text-rose-700">مصروف (-)</SelectItem>
+                    <SelectItem value="income" className="font-medium text-emerald-600 focus:text-emerald-700" data-testid="option-transaction-type-income">إيراد (+)</SelectItem>
+                    <SelectItem value="expense" className="font-medium text-rose-600 focus:text-rose-700" data-testid="option-transaction-type-expense">مصروف (-)</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -95,6 +98,7 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
                       type="number" 
                       step="0.01" 
                       className="h-12 rounded-xl bg-background border-2 pl-12 focus:ring-primary/20 transition-all text-lg font-bold" 
+                      data-testid="input-transaction-amount"
                       {...field} 
                     />
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium" data-testid="text-amount-currency">{settings.currencySymbol}</span>
@@ -116,6 +120,7 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
                 <Input 
                   placeholder="مثال: رواتب، إيجار، طعام..." 
                   className="h-12 rounded-xl bg-background border-2 focus:ring-primary/20 transition-all" 
+                  data-testid="input-transaction-category"
                   {...field} 
                 />
               </FormControl>
@@ -134,6 +139,7 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
                 <Input 
                   placeholder="وصف تفصيلي للمعاملة" 
                   className="h-12 rounded-xl bg-background border-2 focus:ring-primary/20 transition-all" 
+                  data-testid="input-transaction-description"
                   {...field} 
                 />
               </FormControl>
@@ -146,6 +152,7 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
           type="submit" 
           disabled={mutation.isPending}
           className="w-full h-14 text-lg font-bold rounded-xl bg-gradient-to-l from-primary to-primary/80 hover:shadow-lg hover:shadow-primary/25 hover:-translate-y-0.5 active:translate-y-0 transition-all"
+          data-testid="button-submit-transaction"
         >
           {mutation.isPending ? (
             <><Loader2 className="w-5 h-5 ml-2 animate-spin" /> جاري الحفظ...</>

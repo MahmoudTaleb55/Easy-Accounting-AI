@@ -93,20 +93,17 @@ test.describe("topbar quick-create actions", () => {
       "page-transactions",
     );
 
-    // Open the page's add-transaction dialog. The transaction-form ships
-    // without per-input data-testids, so we target inputs by their RHF
-    // `name` attribute (Controller's spread propagates `name` down to the
-    // native <input>). Type defaults to "expense" so we don't need to
-    // touch the Select.
+    // Open the page's add-transaction dialog. Type defaults to "expense"
+    // so we don't need to touch the Select.
     await page.getByTestId("button-add-transaction").click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
 
     const description = `QA tx ${Date.now()}`;
-    await dialog.locator('input[name="amount"]').fill("123.45");
-    await dialog.locator('input[name="category"]').fill("QA");
-    await dialog.locator('input[name="description"]').fill(description);
-    await dialog.locator('button[type="submit"]').click();
+    await page.getByTestId("input-transaction-amount").fill("123.45");
+    await page.getByTestId("input-transaction-category").fill("QA");
+    await page.getByTestId("input-transaction-description").fill(description);
+    await page.getByTestId("button-submit-transaction").click();
 
     // Dialog closes on success and the new row appears in the list. The
     // testid id is unknown ahead of time, so we match by the description
