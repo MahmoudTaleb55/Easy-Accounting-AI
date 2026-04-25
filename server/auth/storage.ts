@@ -1655,18 +1655,31 @@ export const authBizStorage = {
 };
 
 /**
- * Idempotent re-apply of migrations/0005_email_delivery_alerts.sql — the
- * parent `email_delivery_alert_settings` + `email_delivery_alerts` tables
- * (and their two indexes) the alert evaluator and the
- * `tests/e2e/email-delivery-alerts.spec.ts` suite both depend on.
+ * Idempotent re-apply of the alert-pipeline DDL — the parent
+ * `email_delivery_alert_settings` + `email_delivery_alerts` tables (and
+ * their two indexes) from migration 0009, the per-recipient
+ * `email_delivery_alert_recipients` table (and its two indexes) from
+ * migration 0011, and the `cooldown_cleared_at` re-arm column on
+ * `email_delivery_alert_settings` from migration 0013. Together these
+ * back the evaluator, the in-app banner, the per-address dedupe gate,
+ * and the owner-facing "Re-arm" action.
  *
- * Same belt-and-suspenders pattern as the other 000X bootstrappers: every
- * statement is guarded with IF NOT EXISTS so re-runs are a no-op. Without
- * this helper a fresh dev DB (or any deploy that boots ahead of the
- * migration runner) blows up on the first read with `relation
- * "email_delivery_alerts" does not exist`.
+ * Same belt-and-suspenders pattern as the other 000X bootstrappers:
+ * every statement is guarded with IF NOT EXISTS so re-runs are a no-op.
+ * Without this helper a fresh dev DB (or any deploy that boots ahead of
+ * the migration runner) blows up on the first read with `relation
+ * "email_delivery_alerts" does not exist`, on the first dedupe lookup
+ * with `relation "email_delivery_alert_recipients" does not exist`, or
+ * on the first "Re-arm" click with `column "cooldown_cleared_at" does
+ * not exist`.
+ *
+ * The defense-in-depth contract is pinned by
+ * `tests/e2e/email-delivery-alert-bootstrap.spec.ts`, which drops the
+ * column and the recipients table and re-invokes this helper to verify
+ * each fragment is restored.
  */
 export async function ensureEmailDeliveryAlertTablesOnStartup(): Promise<void> {
+  // Migration 0009 — settings + alerts tables.
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS email_delivery_alert_settings (
       company_id integer PRIMARY KEY,
@@ -1704,6 +1717,42 @@ export async function ensureEmailDeliveryAlertTablesOnStartup(): Promise<void> {
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS email_delivery_alerts_company_fired_idx
       ON email_delivery_alerts (company_id, fired_at)
+  `);
+  // Migration 0011 — per-recipient attempt log, plus its lookup indexes.
+  // The inline FK to email_delivery_alerts(id) ON DELETE CASCADE is
+  // re-asserted by migration 0017's pg_constraint-guarded ALTER, so
+  // re-creating the table without the inline REFERENCES here would still
+  // be made whole by the next runner pass; we still spell the FK out so a
+  // boot-only path that never reaches the runner ends up with the
+  // constraint in place.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS email_delivery_alert_recipients (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      alert_id varchar NOT NULL REFERENCES email_delivery_alerts(id) ON DELETE CASCADE,
+      company_id integer NOT NULL,
+      email varchar NOT NULL,
+      reason text NOT NULL,
+      status text NOT NULL,
+      error text,
+      attempted_at timestamp NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS email_delivery_alert_recipients_alert_idx
+      ON email_delivery_alert_recipients (alert_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS email_delivery_alert_recipients_dedupe_idx
+      ON email_delivery_alert_recipients (company_id, reason, email, attempted_at)
+  `);
+  // Migration 0013 — re-arm bypass timestamp on the settings table.
+  // Nullable on purpose: the evaluator treats the cooldown gate as
+  // cleared only when this is newer than the most recent alert's
+  // fired_at, so a freshly-added column simply leaves the cooldown
+  // behaviour unchanged on first boot.
+  await db.execute(sql`
+    ALTER TABLE email_delivery_alert_settings
+      ADD COLUMN IF NOT EXISTS cooldown_cleared_at timestamp
   `);
 }
 

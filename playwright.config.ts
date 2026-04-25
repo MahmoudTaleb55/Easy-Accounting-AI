@@ -43,6 +43,7 @@ export default defineConfig({
         /quick-actions\.spec\.ts/,
         /email-delivery-alerts\.spec\.ts/,
         /email-delivery-alerts-side-channel\.spec\.ts/,
+        /email-delivery-alert-bootstrap\.spec\.ts/,
         /email-delivery-csv-export\.spec\.ts/,
         /email-delivery-list-parity\.spec\.ts/,
         /email-delivery-filters-persist\.spec\.ts/,
@@ -254,6 +255,34 @@ export default defineConfig({
       // its setup project.
       name: "email-delivery-alerts-side-channel",
       testMatch: /email-delivery-alerts-side-channel\.spec\.ts/,
+    },
+    {
+      // Defense-in-depth coverage for `ensureEmailDeliveryAlertTablesOnStartup`
+      // (server/auth/storage.ts). The spec drops the `cooldown_cleared_at`
+      // column from `email_delivery_alert_settings` and the
+      // `email_delivery_alert_recipients` table, then re-invokes the
+      // helper via `withRlsBypass` and asserts each fragment is restored
+      // — pinning the contract that the helper re-stages migrations 0009,
+      // 0011, and 0013 on every boot. See
+      // `tests/e2e/email-delivery-alert-bootstrap.spec.ts`.
+      //
+      // Listed as a dependent of every other alert-pipeline project so
+      // its drop + restore window can never race a sibling spec that
+      // queries the same tables. The drop runs against the live DB
+      // because the helper resolves `db` via `server/db.ts`'s pool at
+      // module-load time, which can't be redirected to a scratch DB
+      // post-import without an unrelated refactor.
+      name: "email-delivery-alert-bootstrap",
+      testMatch: /email-delivery-alert-bootstrap\.spec\.ts/,
+      dependencies: [
+        "email-delivery-alerts",
+        "email-delivery-alerts-side-channel",
+        "email-delivery-csv-export",
+        "email-delivery-list-parity",
+        "email-delivery-filters-persist",
+        "email-delivery-count-cache",
+        "delivery-alert-audit",
+      ],
     },
     {
       // Locks the test-only `POST /api/dev/email-stub` route and the

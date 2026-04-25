@@ -160,13 +160,19 @@ app.use((req, res, next) => {
     process.exit(1);
   }
 
-  // Re-apply migration 0005 on boot so the email-delivery-alert tables
-  // (`email_delivery_alert_settings`, `email_delivery_alerts`, and the two
-  // per-company indexes) materialise on dev databases and on any deploy
-  // that boots ahead of the migration runner. Without this a fresh dev DB
-  // — and the e2e suite at `tests/e2e/email-delivery-alerts.spec.ts` —
-  // blows up on the first read with `relation "email_delivery_alerts"
-  // does not exist`. Idempotent.
+  // Re-apply the alert-pipeline DDL on boot so the
+  // email-delivery-alert tables materialise on dev databases and on any
+  // deploy that boots ahead of the migration runner. Covers
+  // `email_delivery_alert_settings` + `email_delivery_alerts` (+ their
+  // two indexes) from migration 0009, the per-recipient
+  // `email_delivery_alert_recipients` table (+ its two indexes) from
+  // migration 0011, and the `cooldown_cleared_at` re-arm column from
+  // migration 0013. Without this a fresh dev DB blows up on the first
+  // read with `relation "email_delivery_alerts" does not exist`, on the
+  // first dedupe lookup with `relation "email_delivery_alert_recipients"
+  // does not exist`, or on the first "Re-arm" click with `column
+  // "cooldown_cleared_at" does not exist`. Idempotent — the contract is
+  // pinned by `tests/e2e/email-delivery-alert-bootstrap.spec.ts`.
   try {
     const { ensureEmailDeliveryAlertTablesOnStartup } = await import(
       "./auth/storage"
@@ -177,7 +183,7 @@ app.use((req, res, next) => {
     );
   } catch (err) {
     console.error(
-      "Failed to apply email_delivery_alerts (migration 0005) tables:",
+      "Failed to apply email-delivery-alert (0009/0011/0013) tables:",
       err,
     );
   }
