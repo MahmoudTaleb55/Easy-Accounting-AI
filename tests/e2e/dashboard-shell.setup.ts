@@ -45,11 +45,22 @@ setup("authenticate + seed dashboard fixtures", async ({ page }) => {
   let userId: string;
   try {
     // ---- (a) Ensure the test user exists with a known password ----
+    // Pin `preferred_locale='en'` explicitly so this setup behaves
+    // identically on a fresh database and on a re-run after a previous
+    // session left the row pinned to a different value (e.g. a sibling
+    // spec's PATCH that didn't get reset). The dashboard-shell visual
+    // snapshots seed `localStorage["app.locale"]` per variant via
+    // `addInitScript` and rely on `LocaleSync`'s preloaded-localStorage
+    // guard not to clobber it; that guard only kicks in cleanly when
+    // the server-reported preference is a known value, so anchoring
+    // it to 'en' here keeps the EN snapshots from quietly rendering
+    // RTL because the user row carried 'ar' from a previous run.
     userId = await ensureUser(client, {
       email: TEST_EMAIL,
       password: TEST_PASSWORD,
       firstName: "E2E",
       lastName: "Dashboard",
+      preferredLocale: "en",
     });
 
     // ---- (b) Ensure the user has at least one workspace they own ----

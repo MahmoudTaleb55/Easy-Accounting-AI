@@ -54,10 +54,11 @@ const FULL_NAME = `${TEST_FIRST} ${TEST_LAST}`;
  * writes below.
  *
  * The caller passes the locale they're about to render under so we can
- * pin `users.preferred_locale` to the same value. Without this, the SPA's
- * `LocaleSync` (in `client/src/components/layout/main-layout.tsx`) would
- * read the user's stored `preferredLocale` from `/api/auth/user` and call
- * `setLocale()` with it, overriding whatever the test seeded into
+ * pin `users.preferred_locale` to the same value via `ensureUser`'s
+ * `preferredLocale` option. Without this, the SPA's `LocaleSync` (in
+ * `client/src/components/layout/main-layout.tsx`) would read the user's
+ * stored `preferredLocale` from `/api/auth/user` and call `setLocale()`
+ * with it, overriding whatever the test seeded into
  * `localStorage["app.locale"]`. The user-row preference always wins for
  * authenticated views, so the test must mirror its choice into the row.
  */
@@ -77,14 +78,14 @@ async function injectFreshSession(
       password: TEST_PASSWORD,
       firstName: TEST_FIRST,
       lastName: TEST_LAST,
-    });
-    // Pin the user's stored preferred locale to the variant under test
-    // so `LocaleSync` doesn't override the localStorage-seeded value
-    // (see the doc comment above for the full rationale).
-    await client.query(`UPDATE users SET preferred_locale = $1 WHERE id = $2`, [
+      // Pin the user's stored preferred locale to the variant under test
+      // so `LocaleSync` doesn't override the localStorage-seeded value
+      // (see the doc comment above for the full rationale). The helper
+      // refreshes this column on both the fresh-insert and refresh
+      // paths, so a previous run that left the row pinned to 'ar' won't
+      // bleed into the next run's English assertions.
       preferredLocale,
-      userId,
-    ]);
+    });
     // The topbar reads `useCompany`, which falls back gracefully to no
     // companies, so we deliberately skip seeding a workspace here — the
     // profile dropdown renders independently of memberships and we want

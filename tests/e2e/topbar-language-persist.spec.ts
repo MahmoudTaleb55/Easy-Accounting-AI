@@ -71,15 +71,14 @@ async function injectFreshSession(page: Page): Promise<{ userId: string }> {
       password: TEST_PASSWORD,
       firstName: TEST_FIRST,
       lastName: TEST_LAST,
+      // Reset `preferred_locale` to 'en' on every run so the test is
+      // independent of prior runs that may have flipped it to German.
+      // The helper now writes this column on both fresh-insert and
+      // refresh paths when an explicit `preferredLocale` is passed, so
+      // a re-run after a successful test (which leaves the row at 'de')
+      // still starts from a known English baseline.
+      preferredLocale: "en",
     });
-    // Reset `preferred_locale` to 'en' on every run so the test is
-    // independent of prior runs that may have flipped it to German.
-    // The shared `ensureUser` helper doesn't touch this column for an
-    // already-existing user, so we have to pin it here.
-    await client.query(
-      `UPDATE users SET preferred_locale = 'en' WHERE id = $1`,
-      [userId],
-    );
 
     // The topbar's `changeLanguage` only PATCHes the profile when the
     // signed-in user has an active workspace role — `useAuth` derives

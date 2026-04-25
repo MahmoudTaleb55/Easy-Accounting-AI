@@ -45,11 +45,47 @@ export function requireCookieSecret(context: string): string {
   return COOKIE_SECRET;
 }
 
+/**
+ * Locales the SPA recognises end-to-end. Mirrors `SUPPORTED_LOCALES` in
+ * `client/src/components/layout/main-layout.tsx` so a typo at the helper
+ * boundary fails loudly instead of silently writing an unsupported value
+ * that `LocaleSync` would then ignore. Kept inline (not imported from
+ * the client) so this helper stays self-contained for Playwright's
+ * loader and pulls in zero browser-only modules.
+ */
+const ENSURE_USER_LOCALES = ["ar", "en", "de", "fr"] as const;
+export type EnsureUserLocale = (typeof ENSURE_USER_LOCALES)[number];
+
 export interface EnsureUserOptions {
   email: string;
   password: string;
   firstName: string;
   lastName: string;
+  /**
+   * Stored language preference for the seeded user, written to
+   * `users.preferred_locale` on both the fresh-insert and refresh paths
+   * so the row is identical regardless of whether the suite has run
+   * before.
+   *
+   * Why this exists, even though `localStorage["app.locale"]` *also*
+   * controls the rendered UI: the SPA's `LocaleSync` (in
+   * `client/src/components/layout/main-layout.tsx`) reads
+   * `preferredLocale` off `/api/auth/user` once the auth query resolves
+   * and reconciles the in-memory locale against it. Several specs
+   * (topbar-profile, topbar-language-persist, dashboard-shell visual
+   * snapshots, email-delivery-alerts banner) used to UPDATE this column
+   * inline as a workaround so the reconciler wouldn't clobber the
+   * locale they had pre-seeded into `localStorage`. Routing the choice
+   * through this option makes the language preference *the* obvious
+   * lever in the helper signature so a new spec can't fall into the
+   * same trap.
+   *
+   * Defaults to `'en'` for fresh inserts (matching the historical
+   * behaviour of this helper). Existing rows are *not* touched when
+   * this is omitted, so callers that don't care about the locale don't
+   * accidentally clobber a sibling spec's pinned preference.
+   */
+  preferredLocale?: EnsureUserLocale;
 }
 
 /**
@@ -60,6 +96,18 @@ export async function ensureUser(
   client: pg.Client,
   opts: EnsureUserOptions,
 ): Promise<string> {
+  if (
+    opts.preferredLocale !== undefined &&
+    !(ENSURE_USER_LOCALES as readonly string[]).includes(opts.preferredLocale)
+  ) {
+    throw new Error(
+      `ensureUser: preferredLocale '${opts.preferredLocale}' is not one of ` +
+        `the SPA's supported locales (${ENSURE_USER_LOCALES.join(" | ")}). ` +
+        `See SUPPORTED_LOCALES in client/src/components/layout/main-layout.tsx — ` +
+        `LocaleSync ignores unknown values, which would silently leave the ` +
+        `test rendering in whatever locale localStorage happened to hold.`,
+    );
+  }
   const passwordHash = await bcrypt.hash(opts.password, 10);
   const existing = (
     await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [
@@ -67,17 +115,38 @@ export async function ensureUser(
     ])
   ).rows[0];
   if (existing) {
-    await client.query(
-      `UPDATE users SET password_hash=$1, first_name=$2, last_name=$3 WHERE id=$4`,
-      [passwordHash, opts.firstName, opts.lastName, existing.id],
-    );
+    if (opts.preferredLocale !== undefined) {
+      await client.query(
+        `UPDATE users SET password_hash=$1, first_name=$2, last_name=$3, preferred_locale=$4 WHERE id=$5`,
+        [
+          passwordHash,
+          opts.firstName,
+          opts.lastName,
+          opts.preferredLocale,
+          existing.id,
+        ],
+      );
+    } else {
+      await client.query(
+        `UPDATE users SET password_hash=$1, first_name=$2, last_name=$3 WHERE id=$4`,
+        [passwordHash, opts.firstName, opts.lastName, existing.id],
+      );
+    }
     return existing.id as string;
   }
   const userId = crypto.randomUUID();
+  const insertLocale: EnsureUserLocale = opts.preferredLocale ?? "en";
   await client.query(
     `INSERT INTO users (id, email, password_hash, first_name, last_name, preferred_locale)
-     VALUES ($1, $2, $3, $4, $5, 'en')`,
-    [userId, opts.email, passwordHash, opts.firstName, opts.lastName],
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      userId,
+      opts.email,
+      passwordHash,
+      opts.firstName,
+      opts.lastName,
+      insertLocale,
+    ],
   );
   return userId;
 }

@@ -34,24 +34,21 @@ const COMBOS: { locale: Locale; theme: Theme }[] = [
 ];
 
 async function gotoDashboard(page: Page, locale: Locale, theme: Theme) {
-  // Pin the signed-in user's stored preferred locale to the variant under
-  // test. Without this, `LocaleSync` (in
-  // `client/src/components/layout/main-layout.tsx`) would read the user's
-  // stored `preferredLocale` from `/api/auth/user` and call `setLocale()`
-  // with it, overriding whatever we seed into `localStorage["app.locale"]`
-  // below. Same workaround as `tests/e2e/topbar-profile.spec.ts` — see
-  // task #152 for the full rationale.
-  const profileRes = await page.request.patch("/api/auth/profile", {
-    data: { preferredLocale: locale },
-  });
-  if (profileRes.status() !== 200) {
-    throw new Error(
-      `Failed to pin preferredLocale=${locale} on the dashboard test user: ` +
-        `${profileRes.status()} ${await profileRes.text()}`,
-    );
-  }
-
-  // Set locale + theme before the SPA mounts so the very first paint is correct.
+  // Set locale + theme before the SPA mounts so the very first paint is
+  // correct. The seeded user's `preferred_locale` is pinned to 'en' once,
+  // in `dashboard-shell.setup.ts` via `ensureUser({ preferredLocale })`,
+  // so we don't need a per-test PATCH to keep `LocaleSync` from
+  // clobbering the localStorage-seeded value:
+  //   • For EN variants the server preference matches what we seed, so
+  //     `LocaleSync` is a no-op either way.
+  //   • For AR variants `LocaleSync` sees the user's stored 'en', but
+  //     its preloaded-localStorage guard (HAD_PRELOADED_LOCALE) means
+  //     it just records what the server said and *doesn't* call
+  //     `setLocale`, leaving the in-memory locale at the AR value the
+  //     `addInitScript` wrote before React booted.
+  // Removing the per-test PATCH is the whole point of task #195: the
+  // language preference is now expressed once in the setup helper
+  // signature instead of being silently re-PATCHed before every goto.
   await page.addInitScript(
     ({ locale, theme }) => {
       window.localStorage.setItem("app.locale", locale);
