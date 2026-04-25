@@ -81,6 +81,21 @@ setup("authenticate + seed email-delivery-alerts fixtures", async ({ page }) => 
     // (a) Ensure each user exists with a known password hash. The shared
     //     `ensureUser` refreshes the bcrypt hash on every run so a rotated
     //     SESSION_SECRET won't strand the suite.
+    //
+    //     Preferred locale is then forced to 'ar' on every run for these
+    //     dedicated users — never 'en'. The banner-renders test pins the
+    //     locale to English via the `?lang=en` URL override (see
+    //     `gotoOwnerShell` in the spec) and asserts on the English
+    //     headline. If the stored `preferred_locale` were 'en', the
+    //     assertion would still pass even when the URL-override mechanism
+    //     is broken (LocaleSync would cheerfully adopt 'en' from the
+    //     user's profile and nobody would notice). Forcing 'ar' here
+    //     makes the URL override the load-bearing piece, so a future
+    //     regression in `getUrlLocaleOverride()` / `LocaleSync` actually
+    //     fails the test. The shared `ensureUser` helper doesn't take a
+    //     locale argument (it defaults new rows to 'en'), so we apply
+    //     the override as a follow-up UPDATE that runs on both the
+    //     fresh-insert and refresh paths.
     for (const spec of ROLE_SPECS) {
       const uid = await ensureUser(client, {
         email: spec.email,
@@ -88,6 +103,10 @@ setup("authenticate + seed email-delivery-alerts fixtures", async ({ page }) => 
         firstName: "E2E",
         lastName: `Edap-${spec.role}`,
       });
+      await client.query(
+        `UPDATE users SET preferred_locale='ar' WHERE id=$1`,
+        [uid],
+      );
       userIds.set(spec.role, uid);
     }
 

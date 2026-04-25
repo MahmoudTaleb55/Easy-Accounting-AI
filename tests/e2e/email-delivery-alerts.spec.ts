@@ -675,6 +675,11 @@ test.describe("delivery-alert banner @alerts", () => {
     // AND `LocaleSync`'s early-return guard, so the locale stays English
     // for the lifetime of the page. Theme is still safe to seed via
     // localStorage because nothing reconciles it from the server.
+    //
+    // The dedicated owner's stored `preferred_locale` is forced to 'ar' by
+    // `email-delivery-alerts.setup.ts` precisely so this URL override is
+    // the load-bearing piece for the English headline assertion. Don't
+    // change either side in isolation — they're paired guardrails.
     await page.addInitScript(() => {
       window.localStorage.setItem("app.theme", "light");
     });
