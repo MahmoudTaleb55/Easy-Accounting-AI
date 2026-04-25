@@ -53,6 +53,7 @@ export default defineConfig({
         /payroll-journal-link\.spec\.ts/,
         /journal-entry-deeplinks\.spec\.ts/,
         /dev-only-routes-production-gate\.spec\.ts/,
+        /avatar-crop\.spec\.ts/,
       ],
     },
     {
@@ -307,6 +308,27 @@ export default defineConfig({
       use: {
         viewport: { width: 1280, height: 800 },
         storageState: ".playwright/je-deeplinks-state.json",
+      },
+    },
+    {
+      // One-time setup that provisions a dedicated test user + workspace
+      // and clears their stored avatar so the spec always begins from
+      // the "no Remove-photo button" starting state. See
+      // `avatar-crop.setup.ts`.
+      name: "avatar-crop-setup",
+      testMatch: /avatar-crop\.setup\.ts/,
+    },
+    {
+      // Locks in the avatar cropper modal contract — Cancel must NOT
+      // POST to /api/auth/profile/avatar, Use photo must POST a
+      // multipart upload and surface the "Remove photo" button. See
+      // `avatar-crop.spec.ts`.
+      name: "avatar-crop",
+      testMatch: /avatar-crop\.spec\.ts/,
+      dependencies: ["avatar-crop-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+        storageState: ".playwright/avatar-crop-state.json",
       },
     },
   ],
