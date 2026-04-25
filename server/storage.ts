@@ -76,7 +76,7 @@ import {
   pickExpenseAccountCode,
   pickRevenueAccountCode,
 } from "@shared/coa-seed";
-import { eq, sql, desc, and, inArray, gte, lte } from "drizzle-orm";
+import { eq, sql, desc, and, inArray, gte, lte, gt, or, ne } from "drizzle-orm";
 import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
 
 export interface JournalEntryWithLines extends JournalEntry {
@@ -401,6 +401,24 @@ export class LegacyAssetEventBalanceMissingError extends Error {
 }
 
 /**
+ * Thrown by the impairment / revaluation / disposal delete paths (task #209)
+ * when the asset has at least one *later* event of any kind. The delta
+ * rollback in task #157 only knows how to subtract this event's own snapshot;
+ * a later event's posting math used the post-this-event balances, so undoing
+ * this row in isolation would leave the later event's snapshot inconsistent
+ * (e.g. an impairment posted on top of a revaluation has computed its loss
+ * against the revalued cost — undoing the revaluation invalidates that loss).
+ *
+ * The route layer surfaces this as a 409 Conflict.
+ */
+export class AssetEventLaterDependencyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AssetEventLaterDependencyError";
+  }
+}
+
+/**
  * Per-event snapshot of the per-asset balance changes applied by an
  * impairment / revaluation / disposal posting. The matching DELETE route
  * (see `deleteImpairmentEvent` / `deleteRevaluationEvent` / `deleteDisposal`)
@@ -650,6 +668,100 @@ async function reverseAutoPostedJournalEntry(opts: {
       ],
       ctx: opts.ctx,
     });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Later-event guard for fixed-asset events (task #209)
+//
+// The delta-rollback in task #157 is a pure subtraction of the snapshot a
+// single event captured at posting time. If a later event of any kind has
+// since been posted on the same asset, that later event's posting math used
+// the post-this-event balances — undoing this event in isolation would
+// invalidate the later event's snapshot (e.g. an impairment posted on top of
+// a revaluation has computed its loss against the revalued cost).
+//
+// `assertNoLaterEventsForAsset` runs *before* the JE/delta rollback so a
+// 409 short-circuits the whole delete. Ordering uses `created_at` (the
+// posting timestamp) — anything strictly after the row being deleted is a
+// later event; ties are also treated as later (conservative & rare since
+// `defaultNow()` has microsecond resolution). Rows with a null `createdAt`
+// (legacy / pre-default rows) cannot be ordered against and are ignored.
+// ---------------------------------------------------------------------------
+type AssetEventKind = "impairment_event" | "revaluation_event" | "disposal";
+
+function assetEventLabel(kind: AssetEventKind, count: number): string {
+  switch (kind) {
+    case "impairment_event":
+      return `خسارة انخفاض قيمة (${count})`;
+    case "revaluation_event":
+      return `إعادة تقييم (${count})`;
+    case "disposal":
+      return `استبعاد أصل (${count})`;
+  }
+}
+
+async function countLaterEventsInTable(
+  table: typeof impairmentEvents | typeof revaluationEvents | typeof disposals,
+  companyId: number,
+  assetId: number,
+  cutoff: Date,
+  excludeId: number | null,
+): Promise<number> {
+  const conds = [
+    eq(table.companyId, companyId),
+    eq(table.assetId, assetId),
+    gte(table.createdAt, cutoff),
+  ];
+  if (excludeId !== null) {
+    conds.push(ne(table.id, excludeId));
+  }
+  const rows = await db
+    .select({ id: table.id })
+    .from(table)
+    .where(and(...conds));
+  return rows.length;
+}
+
+async function assertNoLaterEventsForAsset(
+  companyId: number,
+  assetId: number,
+  current: { kind: AssetEventKind; id: number; createdAt: Date | null },
+  buildMessage: (conflicts: string[]) => string,
+): Promise<void> {
+  if (!current.createdAt) return;
+  const cutoff = current.createdAt;
+
+  const [impCount, revCount, dispCount] = await Promise.all([
+    countLaterEventsInTable(
+      impairmentEvents,
+      companyId,
+      assetId,
+      cutoff,
+      current.kind === "impairment_event" ? current.id : null,
+    ),
+    countLaterEventsInTable(
+      revaluationEvents,
+      companyId,
+      assetId,
+      cutoff,
+      current.kind === "revaluation_event" ? current.id : null,
+    ),
+    countLaterEventsInTable(
+      disposals,
+      companyId,
+      assetId,
+      cutoff,
+      current.kind === "disposal" ? current.id : null,
+    ),
+  ]);
+
+  const conflicts: string[] = [];
+  if (impCount > 0) conflicts.push(assetEventLabel("impairment_event", impCount));
+  if (revCount > 0) conflicts.push(assetEventLabel("revaluation_event", revCount));
+  if (dispCount > 0) conflicts.push(assetEventLabel("disposal", dispCount));
+  if (conflicts.length > 0) {
+    throw new AssetEventLaterDependencyError(buildMessage(conflicts));
   }
 }
 
@@ -2025,6 +2137,14 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
+    await assertNoLaterEventsForAsset(
+      companyId,
+      before.assetId,
+      { kind: "impairment_event", id: eventId, createdAt: before.createdAt },
+      (conflicts) =>
+        `لا يمكن حذف خسارة الانخفاض لأن الأصل لديه أحداث لاحقة تعتمد عليها: ${conflicts.join("، ")}`,
+    );
+
     await reverseAutoPostedJournalEntry({
       companyId,
       source: { kind: "impairment_event", id: eventId },
@@ -2066,6 +2186,14 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
+    await assertNoLaterEventsForAsset(
+      companyId,
+      before.assetId,
+      { kind: "revaluation_event", id: eventId, createdAt: before.createdAt },
+      (conflicts) =>
+        `لا يمكن حذف إعادة التقييم لأن الأصل لديه أحداث لاحقة تعتمد عليها: ${conflicts.join("، ")}`,
+    );
+
     await reverseAutoPostedJournalEntry({
       companyId,
       source: { kind: "revaluation_event", id: eventId },
@@ -2106,6 +2234,14 @@ export class DatabaseStorage implements IStorage {
         "لا يمكن حذف الاستبعاد لأنه مُسجَّل قبل تحديث تتبّع الأرصدة (task #157). يرجى تعديل حالة الأصل وأرصدته يدوياً.",
       );
     }
+
+    await assertNoLaterEventsForAsset(
+      companyId,
+      before.assetId,
+      { kind: "disposal", id: eventId, createdAt: before.createdAt },
+      (conflicts) =>
+        `لا يمكن حذف الاستبعاد لأن الأصل لديه أحداث لاحقة تعتمد عليه: ${conflicts.join("، ")}`,
+    );
 
     await reverseAutoPostedJournalEntry({
       companyId,

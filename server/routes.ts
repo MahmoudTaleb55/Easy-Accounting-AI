@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
-import { storage, isAuditEntityType, assertAllOwnedByCompany, JournalEntryReferenceConflictError, LegacyAssetEventBalanceMissingError, type AuditContext } from "./storage";
+import { storage, isAuditEntityType, assertAllOwnedByCompany, JournalEntryReferenceConflictError, LegacyAssetEventBalanceMissingError, AssetEventLaterDependencyError, type AuditContext } from "./storage";
 import { accounts as accountsTable, employees as employeesTable } from "@shared/schema";
 
 // Build an AuditContext for user-initiated mutations. The `actor` is derived
@@ -2018,6 +2018,13 @@ async function registerFixedAssetRoutes(app: Express) {
       // asset row's balances stale. Refuse with 409 so the user repairs the
       // asset row by hand instead.
       if (err instanceof LegacyAssetEventBalanceMissingError) {
+        res.status(409).json({ message: err.message });
+        return;
+      }
+      // Task #209: refuse deletes when a later event of any kind exists on
+      // the same asset, since the delta-rollback would invalidate that later
+      // event's snapshot.
+      if (err instanceof AssetEventLaterDependencyError) {
         res.status(409).json({ message: err.message });
         return;
       }
