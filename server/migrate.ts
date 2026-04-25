@@ -34,7 +34,8 @@
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { pool } from "./db";
+import type { Pool } from "pg";
+import { pool as defaultPool } from "./db";
 
 // `migrations/` always sits at the project root, and both `npm run dev`
 // (`tsx server/index.ts`) and `npm start` (`node dist/index.cjs`) launch
@@ -44,7 +45,7 @@ import { pool } from "./db";
 // `__dirname` would point inside `dist/`, not the repo root.
 const MIGRATIONS_DIR = path.resolve(process.cwd(), "migrations");
 
-export async function runPendingMigrations(): Promise<void> {
+export async function runPendingMigrations(pool: Pool = defaultPool): Promise<void> {
   const client = await pool.connect();
   try {
     // Bypass workspace RLS for the lifetime of this client. Most migrations
