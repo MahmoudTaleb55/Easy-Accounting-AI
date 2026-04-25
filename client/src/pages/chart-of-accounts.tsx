@@ -42,6 +42,8 @@ import { useAuth } from "@/hooks/use-auth"
 import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { PeriodChip } from "@/components/dashboard/period-chip"
+import { usePeriod } from "@/contexts/period-context"
 
 /* ------------------------------------------------------------------ */
 /* Account ledger drawer types                                         */
@@ -200,6 +202,14 @@ export default function ChartOfAccountsPage() {
         locale === "ar"
           ? "ستظهر هنا أسطر القيود فور ترحيل أول قيد يستخدم الحساب."
           : "Lines will appear here as soon as a journal entry posts to this account.",
+      ledgerEmptyPeriod:
+        locale === "ar"
+          ? "لا حركة على هذا الحساب في هذه الفترة"
+          : "No postings to this account in this period",
+      ledgerEmptyPeriodHint:
+        locale === "ar"
+          ? "جرّب توسيع نطاق الفترة من الأعلى لاستعراض المزيد من الحركات."
+          : "Try widening the period range above to see more postings.",
       ledgerOpenAria: locale === "ar" ? "فتح حركة الحساب" : "Open account ledger",
       ledgerJEAria:
         locale === "ar" ? "فتح قيد اليومية" : "Open journal entry",
@@ -722,6 +732,8 @@ export default function ChartOfAccountsPage() {
           je: t.ledgerJE,
           empty: t.ledgerEmpty,
           emptyHint: t.ledgerEmptyHint,
+          emptyPeriod: t.ledgerEmptyPeriod,
+          emptyPeriodHint: t.ledgerEmptyPeriodHint,
           jeAria: t.ledgerJEAria,
           totalDebit: t.ledgerTotalDebit,
           totalCredit: t.ledgerTotalCredit,
@@ -939,6 +951,8 @@ interface AccountLedgerSheetLabels {
   je: string
   empty: string
   emptyHint: string
+  emptyPeriod: string
+  emptyPeriodHint: string
   jeAria: string
   totalDebit: string
   totalCredit: string
@@ -973,6 +987,7 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
   const { locale } = useLocale()
   const fmt = useFormatMoney()
   const dfLocale = locale === "ar" ? ar : enUS
+  const { period } = usePeriod()
 
   // Reuse the journal-entries cache so flipping between this drawer and the
   // /app/journal page is instantaneous. Only fetch when the drawer opens to
@@ -990,7 +1005,15 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
   const isDebitNormal =
     account?.type === "asset" || account?.type === "expense"
 
-  const postings = useMemo<LedgerPosting[]>(() => {
+  // Full history for the account, regardless of period. Two reasons to keep
+  // it around:
+  //   1. The "no postings ever" vs "no postings in this period" empty
+  //      states need to know whether the account has any history at all.
+  //   2. The running balance is accumulated chronologically from t=0, so a
+  //      period-filtered row still shows the same balance it would on the
+  //      full ledger — and the opening balance for the filtered window can
+  //      be read off the postings immediately before period.start.
+  const allPostings = useMemo<LedgerPosting[]>(() => {
     if (!account || !entries) return []
     const rows: LedgerPosting[] = []
     for (const je of entries) {
@@ -1046,20 +1069,45 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
     return rows
   }, [account, entries, isDebitNormal])
 
+  // Apply the global period filter. Compare on millisecond timestamps so a
+  // posting on the very last day of the range (e.g. end-of-month) is included.
+  const postings = useMemo<LedgerPosting[]>(() => {
+    const startMs = period.start.getTime()
+    const endMs = period.end.getTime()
+    return allPostings.filter((p) => {
+      const ms = new Date(p.entryDate).getTime()
+      return ms >= startMs && ms <= endMs
+    })
+  }, [allPostings, period.start, period.end])
+
   const totalDebit = postings.reduce((s, r) => s + r.debit, 0)
   const totalCredit = postings.reduce((s, r) => s + r.credit, 0)
-  // Closing balance is the running balance after the most recent posting.
-  // Equivalent to (total debits − total credits) signed by normal side, but
-  // we read it off the last accumulated row to keep the two views provably
-  // in sync rather than computing the same thing two different ways.
+  // Opening balance for the active period — sum of signed contributions of
+  // every posting in the full history that occurred *before* period.start.
+  // For an unbounded view this collapses to 0; for a narrow window it
+  // reflects "where the account stood before any of the displayed rows."
+  const openingBalance = useMemo(() => {
+    const startMs = period.start.getTime()
+    let bal = 0
+    for (const p of allPostings) {
+      const ms = new Date(p.entryDate).getTime()
+      if (ms < startMs) {
+        bal += isDebitNormal ? p.debit - p.credit : p.credit - p.debit
+      }
+    }
+    return bal
+  }, [allPostings, period.start, isDebitNormal])
+  // Closing balance is the running balance after the most recent posting in
+  // the filtered window. Each row's `balance` was accumulated chronologically
+  // from t=0, so postings[0] (newest in the window) already includes all
+  // history up to and including itself — exactly the closing balance we want.
   const closingBalance =
     postings.length > 0
       ? postings[0].balance
-      : 0
-  // Opening balance — for an "all postings" view this is always zero, but
-  // surfacing it explicitly makes the math obvious to anyone reading the
-  // drawer (and prepares the row for a future date-filtered ledger).
-  const openingBalance = 0
+      : openingBalance
+  // When the account has history but none of it falls inside the active
+  // period, we want a different message than "no postings ever".
+  const hasAnyHistory = allPostings.length > 0
 
   return (
     <Sheet open={!!account} onOpenChange={(o) => !o && onClose()}>
@@ -1069,11 +1117,18 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
         data-testid="sheet-account-ledger"
       >
         <SheetHeader className="text-start">
-          <SheetTitle className="flex items-center gap-2.5">
-            <BookOpen className="w-4 h-4 text-muted-foreground" aria-hidden />
-            <span>{labels.title}</span>
-          </SheetTitle>
-          <SheetDescription>{labels.description}</SheetDescription>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <SheetTitle className="flex items-center gap-2.5">
+                <BookOpen className="w-4 h-4 text-muted-foreground" aria-hidden />
+                <span>{labels.title}</span>
+              </SheetTitle>
+              <SheetDescription>{labels.description}</SheetDescription>
+            </div>
+            {/* Mirrors other surfaces (reports, insights) — keeping the chip
+                inline lets users re-scope the ledger without leaving the drawer. */}
+            <PeriodChip showCompare={false} className="shrink-0" />
+          </div>
         </SheetHeader>
 
         {account && (
@@ -1100,10 +1155,14 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
           ) : postings.length === 0 ? (
             <div
               className="rounded-md border border-dashed border-border px-4 py-8 text-center"
-              data-testid="empty-account-ledger"
+              data-testid={hasAnyHistory ? "empty-account-ledger-period" : "empty-account-ledger"}
             >
-              <p className="text-sm font-medium text-foreground">{labels.empty}</p>
-              <p className="text-xs text-muted-foreground mt-1">{labels.emptyHint}</p>
+              <p className="text-sm font-medium text-foreground">
+                {hasAnyHistory ? labels.emptyPeriod : labels.empty}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {hasAnyHistory ? labels.emptyPeriodHint : labels.emptyHint}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto table-sticky-first">
