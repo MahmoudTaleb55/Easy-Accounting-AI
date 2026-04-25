@@ -208,6 +208,105 @@ async function runRetryPass(
 }
 
 /**
+ * Re-attempt a single recipient address for a single alert on demand.
+ *
+ * Powers the per-row "Retry now" button on the owner-facing recipient list.
+ * Mirrors the bookkeeping of `runRetryPass` (one address sent, one outcome
+ * row appended, denormalized counter bumped on success) so the in-app
+ * banner's "delivered to N owners" line stays accurate when an admin
+ * unsticks a transient SMTP failure manually instead of waiting for the
+ * next sweep.
+ *
+ * Returns `{ ok: true }` on a successful send, or `{ ok: false, error }`
+ * when the provider rejected the message — the caller surfaces the error
+ * in a toast. Throws when the alert doesn't belong to the workspace
+ * (caller is expected to have already validated that, but we double-check
+ * for defense in depth).
+ */
+export async function retryEmailDeliveryAlertRecipient(opts: {
+  alertId: string;
+  companyId: number;
+  email: string;
+  alertLink?: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const email = opts.email.trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    return { ok: false, error: "invalid_email" };
+  }
+  const alert = await authBizStorage.getEmailDeliveryAlertById(
+    opts.alertId,
+    opts.companyId,
+  );
+  if (!alert) {
+    throw new Error("alert_not_found");
+  }
+  const company = await authBizStorage
+    .getCompanyById(opts.companyId)
+    .catch(() => undefined);
+  const locale = await pickWorkspaceLocale(opts.companyId);
+  const link = buildAlertLink(opts);
+  const snapshot = (alert.snapshot ?? {
+    bounced: 0,
+    complained: 0,
+    send_failed: 0,
+  }) as { bounced: number; complained: number; send_failed: number };
+
+  let result: Awaited<ReturnType<typeof sendEmailDeliveryAlertEmail>>[number];
+  try {
+    const results = await sendEmailDeliveryAlertEmail({
+      to: [email],
+      workspace: company?.name ?? "Workspace",
+      reason: alert.reason as "absolute" | "ratio",
+      failures: alert.failureCount,
+      sends: alert.sendCount,
+      windowHours: alert.windowHours,
+      bounced: snapshot.bounced,
+      complained: snapshot.complained,
+      sendFailed: snapshot.send_failed,
+      link,
+      locale,
+    });
+    result = results[0] ?? {
+      ok: false,
+      reason: "send_failed",
+      error: "no_result",
+    };
+  } catch (err) {
+    result = {
+      ok: false,
+      reason: "send_failed",
+      error: (err as Error).message,
+    };
+  }
+
+  if (result.ok) {
+    await authBizStorage.recordEmailDeliveryAlertRecipientOutcomes({
+      alertId: alert.id,
+      companyId: opts.companyId,
+      reason: alert.reason as "absolute" | "ratio",
+      outcomes: [{ email, status: "sent" }],
+    });
+    await authBizStorage.incrementEmailDeliveryAlertRecipientCount(
+      alert.id,
+      1,
+    );
+    return { ok: true };
+  }
+
+  const error =
+    result.reason === "send_failed"
+      ? result.error ?? "send_failed"
+      : result.reason;
+  await authBizStorage.recordEmailDeliveryAlertRecipientOutcomes({
+    alertId: alert.id,
+    companyId: opts.companyId,
+    reason: alert.reason as "absolute" | "ratio",
+    outcomes: [{ email, status: "failed", error }],
+  });
+  return { ok: false, error };
+}
+
+/**
  * Evaluate the alert rules for a single workspace. Returns whether an alert
  * was raised and (when so) how it was delivered. Owner emails are only
  * fetched when emailEnabled is true to keep the no-op path cheap.

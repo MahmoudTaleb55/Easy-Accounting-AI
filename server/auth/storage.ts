@@ -1324,6 +1324,78 @@ export const authBizStorage = {
   },
 
   /**
+   * Per-recipient roll-up for one alert: collapse the append-only attempt
+   * log to one row per address with its latest status, the timestamp of
+   * the most recent attempt, and the total attempt count. Used by the
+   * owner-facing "who got the alert" surfaces (in-app banner expansion +
+   * settings → Email Delivery → Recent alerts).
+   *
+   * The append-only log contains every attempt — including retries — so
+   * we use DISTINCT ON to project the freshest row per (lower(email)).
+   * Lower-casing matches the storage convention in
+   * `recordEmailDeliveryAlertRecipientOutcomes`, which lowercases on
+   * insert; without it, mixed-case duplicates could appear as separate
+   * "addresses" in the UI.
+   */
+  async listEmailDeliveryAlertRecipientsLatest(
+    alertId: string,
+  ): Promise<
+    Array<{
+      email: string;
+      status: "sent" | "failed" | string;
+      error: string | null;
+      attemptedAt: string | null;
+      attempts: number;
+    }>
+  > {
+    type Row = {
+      email: string;
+      status: string;
+      error: string | null;
+      attempted_at: string | null;
+      attempts: number;
+    };
+    const result = await db.execute<Row>(sql`
+      WITH normalized AS (
+        SELECT
+          lower(email) AS email,
+          status,
+          error,
+          attempted_at
+        FROM email_delivery_alert_recipients
+        WHERE alert_id = ${alertId}
+      ),
+      counts AS (
+        SELECT email, COUNT(*)::int AS attempts
+        FROM normalized
+        GROUP BY email
+      ),
+      latest AS (
+        SELECT DISTINCT ON (email)
+          email,
+          status,
+          error,
+          attempted_at
+        FROM normalized
+        ORDER BY email, attempted_at DESC
+      )
+      SELECT l.email, l.status, l.error, l.attempted_at, c.attempts
+      FROM latest l
+      JOIN counts c ON c.email = l.email
+      ORDER BY
+        CASE WHEN l.status = 'failed' THEN 0 ELSE 1 END,
+        l.email
+    `);
+    return result.rows.map((r) => ({
+      email: r.email,
+      status: r.status,
+      error: r.error,
+      attemptedAt: r.attempted_at,
+      attempts: Number(r.attempts) || 0,
+    }));
+  },
+
+  /**
    * Workspace-scoped existence check by id. Used by the per-row Re-arm
    * route to validate a UUID belongs to the caller's workspace without
    * scanning a bounded `listRecent` window (which would false-404 older

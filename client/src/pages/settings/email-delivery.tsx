@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale } from "@/contexts/locale-context";
 import { useAuth } from "@/hooks/use-auth";
@@ -34,7 +34,10 @@ import {
   Download,
   ShieldOff,
   History,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
+import { RecipientsPanel } from "@/components/layout/email-delivery-alert-banner";
 
 type Transport = "invitation" | "password_reset";
 
@@ -1463,6 +1466,10 @@ interface RecentAlertRow {
 function RecentAlertsCard({ ar }: { ar: boolean }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  // Track which alert rows are expanded so the recipients sub-row only
+  // pays its query cost (and the SQL DISTINCT-ON roll-up) the first time
+  // an admin asks to see the address list for that alert.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const { data, isLoading } = useQuery<RecentAlertRow[]>({
     queryKey: ["/api/auth/email-delivery-alerts/history"],
@@ -1561,6 +1568,7 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
             <table className="w-full text-sm" data-testid="table-recent-alerts">
               <thead className="text-xs uppercase tracking-wider text-muted-foreground">
                 <tr className="border-b">
+                  <th className="w-8 px-2 py-2" aria-hidden="true" />
                   <th className="px-2 py-2 text-start font-medium">
                     {ar ? "أُطلق في" : "Fired"}
                   </th>
@@ -1590,12 +1598,36 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                       row.dismissedByEmail ||
                       (ar ? "مستخدم محذوف" : "Removed user")
                     : null;
+                  const isExpanded = !!expanded[row.id];
                   return (
+                    <Fragment key={row.id}>
                     <tr
-                      key={row.id}
                       className="border-b last:border-0"
                       data-testid={`row-recent-alert-${row.id}`}
                     >
+                      <td className="px-2 py-2 align-top">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpanded((prev) => ({
+                              ...prev,
+                              [row.id]: !prev[row.id],
+                            }))
+                          }
+                          aria-expanded={isExpanded}
+                          aria-label={
+                            ar ? "إظهار المستلمين" : "Show recipients"
+                          }
+                          data-testid={`button-toggle-recipients-${row.id}`}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
+                      </td>
                       <td className="px-2 py-2 align-top whitespace-nowrap" data-testid={`text-fired-at-${row.id}`}>
                         {formatDate(row.firedAt, ar)}
                         <div className="text-xs text-muted-foreground">
@@ -1681,6 +1713,21 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                         </TooltipProvider>
                       </td>
                     </tr>
+                    {isExpanded && (
+                      <tr
+                        className="border-b last:border-0 bg-muted/30"
+                        data-testid={`row-recipients-${row.id}`}
+                      >
+                        <td colSpan={7} className="px-2 pb-3 pt-0">
+                          <RecipientsPanel
+                            alertId={row.id}
+                            ar={ar}
+                            variant="card"
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>

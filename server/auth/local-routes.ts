@@ -24,7 +24,10 @@ import {
 import { authBizStorage, hashPassword, verifyPassword } from "./storage";
 import { authStorage } from "../replit_integrations/auth/storage";
 import { sendInvitationEmail, sendPasswordResetEmail, normalizeLocale } from "./email";
-import { evaluateEmailDeliveryAlertsForCompany } from "./email-delivery-alerts";
+import {
+  evaluateEmailDeliveryAlertsForCompany,
+  retryEmailDeliveryAlertRecipient,
+} from "./email-delivery-alerts";
 import {
   requireAuth,
   loadMembership,
@@ -1026,6 +1029,109 @@ export function registerLocalAuthRoutes(app: Express) {
         const ctx = (req as any).membership!;
         const result = await evaluateEmailDeliveryAlertsForCompany(ctx.companyId);
         res.json(result);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Per-recipient outcome log for one alert. Surfaces *which* owners
+  // received the alert email and which didn't, so an owner who suspects
+  // they missed a fire can confirm it (and tell whether the workspace's
+  // address book needs cleaning). Validates that `:id` belongs to the
+  // caller's workspace before reading the recipient table — without
+  // that gate an owner could enumerate other workspaces' alert ids.
+  // The latest-per-address roll-up is computed in SQL so a long retry
+  // history doesn't bloat the response.
+  app.get(
+    "/api/auth/email-delivery-alerts/:id/recipients",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res, next) => {
+      try {
+        const ctx = (req as any).membership!;
+        const id = String(req.params.id);
+        const target = await authBizStorage.getEmailDeliveryAlertById(
+          id,
+          ctx.companyId,
+        );
+        if (!target) {
+          return res.status(404).json({ message: "Alert not found" });
+        }
+        const recipients =
+          await authBizStorage.listEmailDeliveryAlertRecipientsLatest(id);
+        res.json({
+          alertId: id,
+          emailSent: target.emailSent,
+          emailRecipients: target.emailRecipients,
+          recipients,
+        });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Per-recipient retry. Sends the alert email to one address right now
+  // (mirroring the bookkeeping of the background retry pass) so an owner
+  // can unstick a transient SMTP failure without waiting for the next
+  // sweep. Returns the new outcome row so the UI can flip the badge in
+  // place. Workspace-scoped via the same id check as the recipients GET.
+  app.post(
+    "/api/auth/email-delivery-alerts/:id/recipients/retry",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res, next) => {
+      try {
+        const ctx = (req as any).membership!;
+        const id = String(req.params.id);
+        const target = await authBizStorage.getEmailDeliveryAlertById(
+          id,
+          ctx.companyId,
+        );
+        if (!target) {
+          return res.status(404).json({ message: "Alert not found" });
+        }
+        const email =
+          typeof req.body?.email === "string" ? req.body.email.trim() : "";
+        if (!email || !email.includes("@")) {
+          return res.status(400).json({ message: "email is required" });
+        }
+        // Guardrail: only allow retrying an address that was actually
+        // attempted on this alert AND whose latest attempt failed.
+        // Without this an owner could call the route with any email,
+        // sending out-of-band alert emails and inflating
+        // `emailRecipients`. The list is workspace-scoped via the
+        // `getEmailDeliveryAlertById` check above.
+        const recipients =
+          await authBizStorage.listEmailDeliveryAlertRecipientsLatest(id);
+        const lower = email.toLowerCase();
+        const match = recipients.find((r) => r.email.toLowerCase() === lower);
+        if (!match) {
+          return res
+            .status(404)
+            .json({ message: "Recipient not found on this alert" });
+        }
+        if (match.status !== "failed") {
+          return res.status(409).json({
+            message: "Recipient is not in a failed state",
+            status: match.status,
+          });
+        }
+        const outcome = await retryEmailDeliveryAlertRecipient({
+          alertId: id,
+          companyId: ctx.companyId,
+          email,
+        });
+        if (outcome.ok) {
+          res.json({ ok: true });
+        } else {
+          // 200 with `ok:false` (not 5xx) so the UI can surface the
+          // provider error in a toast without React Query's retry kicking
+          // in — a transient send failure is the *expected* failure mode
+          // here, not a bug in our route.
+          res.json({ ok: false, error: outcome.error });
+        }
       } catch (err) {
         next(err);
       }

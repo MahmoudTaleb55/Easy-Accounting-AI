@@ -432,6 +432,25 @@ for (const { label, storageFile } of NON_OWNER_ROLES) {
       );
       expect(r.status).toBe(403);
     });
+
+    test("GET /:id/recipients → 403", async ({ request }) => {
+      const r = await call(
+        request,
+        "GET",
+        `/api/auth/email-delivery-alerts/${crypto.randomUUID()}/recipients`,
+      );
+      expect(r.status).toBe(403);
+    });
+
+    test("POST /:id/recipients/retry → 403", async ({ request }) => {
+      const r = await call(
+        request,
+        "POST",
+        `/api/auth/email-delivery-alerts/${crypto.randomUUID()}/recipients/retry`,
+        { email: "x@example.com" },
+      );
+      expect(r.status).toBe(403);
+    });
   });
 }
 
@@ -455,6 +474,154 @@ test.describe("delivery-alert routes accept the owner @alerts", () => {
       200,
     );
     expect((await call(request, "GET", "/api/auth/email-delivery-alerts/active")).status).toBe(200);
+  });
+
+  test("GET /:id/recipients — latest-status roll-up + attempt counts", async ({ request }) => {
+    // Seed an alert with a multi-attempt history for one address (two
+    // failures then a success — latest must be `sent`, attempts=3) and a
+    // single-attempt failure for another address. The roll-up must
+    // collapse the multi-row history to one row per email and report
+    // the most recent status + total attempt count.
+    const { companyId } = await getShared();
+    const alertId = crypto.randomUUID();
+    const client = new pg.Client({ connectionString: requiredDbUrl() });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO email_delivery_alerts
+           (id, company_id, window_hours, failure_count, send_count, reason, snapshot, email_sent, email_recipients)
+         VALUES ($1, $2, 24, 7, 50, 'absolute', '{}'::jsonb, true, 2)`,
+        [alertId, companyId],
+      );
+      // Three attempts for one address — fail, fail, succeed. The
+      // explicit attempted_at offsets force a deterministic ordering so
+      // we can assert which attempt the DISTINCT ON keeps.
+      await client.query(
+        `INSERT INTO email_delivery_alert_recipients
+           (alert_id, company_id, email, reason, status, error, attempted_at)
+         VALUES
+           ($1, $2, 'multi@example.com', 'absolute', 'failed', 'first try',  NOW() - INTERVAL '3 minutes'),
+           ($1, $2, 'multi@example.com', 'absolute', 'failed', 'second try', NOW() - INTERVAL '2 minutes'),
+           ($1, $2, 'multi@example.com', 'absolute', 'sent',   NULL,         NOW() - INTERVAL '1 minute'),
+           ($1, $2, 'lone@example.com',  'absolute', 'failed', 'smtp 421',   NOW())`,
+        [alertId, companyId],
+      );
+    } finally {
+      await client.end();
+    }
+
+    const r = await call(
+      request,
+      "GET",
+      `/api/auth/email-delivery-alerts/${alertId}/recipients`,
+    );
+    expect(r.status).toBe(200);
+    const body = r.body as {
+      alertId: string;
+      emailSent: boolean;
+      emailRecipients: number;
+      recipients: Array<{
+        email: string;
+        status: string;
+        error: string | null;
+        attempts: number;
+        attemptedAt: string;
+      }>;
+    };
+    expect(body.alertId).toBe(alertId);
+    expect(body.emailSent).toBe(true);
+    expect(body.emailRecipients).toBe(2);
+    // Two distinct email rows (the three multi@ rows collapse to one).
+    expect(body.recipients).toHaveLength(2);
+
+    const multi = body.recipients.find((x) => x.email === "multi@example.com");
+    expect(multi, "multi@ should appear in the roll-up").toBeDefined();
+    expect(multi!.status).toBe("sent");
+    expect(multi!.attempts).toBe(3);
+    expect(multi!.error).toBeNull();
+
+    const lone = body.recipients.find((x) => x.email === "lone@example.com");
+    expect(lone, "lone@ should appear in the roll-up").toBeDefined();
+    expect(lone!.status).toBe("failed");
+    expect(lone!.attempts).toBe(1);
+    expect(lone!.error).toBe("smtp 421");
+  });
+
+  test("recipient retry guardrail — only failed addresses on this alert", async ({ request }) => {
+    // Seed an alert with two recipient rows: one sent, one failed.
+    const { companyId } = await getShared();
+    const alertId = crypto.randomUUID();
+    const client = new pg.Client({ connectionString: requiredDbUrl() });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO email_delivery_alerts
+           (id, company_id, window_hours, failure_count, send_count, reason, snapshot, email_sent, email_recipients)
+         VALUES ($1, $2, 24, 7, 50, 'absolute', '{}'::jsonb, true, 2)`,
+        [alertId, companyId],
+      );
+      await client.query(
+        `INSERT INTO email_delivery_alert_recipients
+           (alert_id, company_id, email, reason, status, error)
+         VALUES
+           ($1, $2, 'guardrail-sent@example.com', 'absolute', 'sent', NULL),
+           ($1, $2, 'guardrail-failed@example.com', 'absolute', 'failed', 'smtp 421')`,
+        [alertId, companyId],
+      );
+    } finally {
+      await client.end();
+    }
+
+    // 1. Unknown recipient → 404 (route refuses to send to addresses
+    //    that were never on this alert's roster).
+    const unknown = await call(
+      request,
+      "POST",
+      `/api/auth/email-delivery-alerts/${alertId}/recipients/retry`,
+      { email: "stranger@example.com" },
+    );
+    expect(unknown.status).toBe(404);
+
+    // 2. Known recipient whose latest status is `sent` → 409 (no need
+    //    to retry; sending again would bump emailRecipients without a
+    //    failure to recover from).
+    const alreadySent = await call(
+      request,
+      "POST",
+      `/api/auth/email-delivery-alerts/${alertId}/recipients/retry`,
+      { email: "guardrail-sent@example.com" },
+    );
+    expect(alreadySent.status).toBe(409);
+
+    // 3. Missing/empty email → 400.
+    const empty = await call(
+      request,
+      "POST",
+      `/api/auth/email-delivery-alerts/${alertId}/recipients/retry`,
+      {},
+    );
+    expect(empty.status).toBe(400);
+
+    // 4. Cross-workspace alert id → 404 from the alert lookup, before
+    //    we even hit the recipient table.
+    const wrongAlert = await call(
+      request,
+      "POST",
+      `/api/auth/email-delivery-alerts/${crypto.randomUUID()}/recipients/retry`,
+      { email: "guardrail-failed@example.com" },
+    );
+    expect(wrongAlert.status).toBe(404);
+
+    // 5. Failed recipient → 200 (route is reachable; the actual send
+    //    may succeed or return ok:false depending on transport, both
+    //    are 200 by design — we're asserting the gate passes here).
+    const ok = await call(
+      request,
+      "POST",
+      `/api/auth/email-delivery-alerts/${alertId}/recipients/retry`,
+      { email: "guardrail-failed@example.com" },
+    );
+    expect(ok.status).toBe(200);
   });
 });
 
@@ -535,6 +702,63 @@ test.describe("delivery-alert banner @alerts", () => {
     });
     expect(after.status()).toBe(200);
     expect(await after.json()).toBeNull();
+  });
+
+  test("expanding the banner reveals the per-recipient delivery list", async ({ page }) => {
+    const seeded = await seedAlert();
+
+    // Seed a few per-recipient outcomes for the freshly-fired alert so the
+    // expansion has something concrete to render. One sent, one failed —
+    // the failed row must surface a Retry button.
+    const { companyId } = await getShared();
+    const client = new pg.Client({ connectionString: requiredDbUrl() });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO email_delivery_alert_recipients
+           (alert_id, company_id, email, reason, status, error)
+         VALUES
+           ($1, $2, 'sent-recipient@example.com', 'absolute', 'sent', NULL),
+           ($1, $2, 'failed-recipient@example.com', 'absolute', 'failed', 'smtp 421')`,
+        [seeded.id, companyId],
+      );
+    } finally {
+      await client.end();
+    }
+
+    await gotoOwnerShell(page);
+    const banner = page.locator('[data-testid="banner-email-delivery-alert"]');
+    await expect(banner).toBeVisible({ timeout: 15_000 });
+
+    // The toggle is rendered eagerly (the recipient query is lazy though).
+    const toggle = page.locator('[data-testid="button-toggle-recipients"]');
+    await toggle.click();
+
+    // Both seeded addresses must appear. We assert on the row's testid
+    // rather than the localized status label so the test is locale-
+    // agnostic (the rest of the surface is tested in the en/ar i18n suite).
+    await expect(
+      page.locator(
+        '[data-testid="row-recipient-sent-recipient@example.com"]',
+      ),
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '[data-testid="row-recipient-failed-recipient@example.com"]',
+      ),
+    ).toBeVisible();
+    // The failed address must surface a Retry button; the successful one
+    // must not (no need to retry a delivery that landed).
+    await expect(
+      page.locator(
+        '[data-testid="button-retry-recipient-failed-recipient@example.com"]',
+      ),
+    ).toBeVisible();
+    await expect(
+      page.locator(
+        '[data-testid="button-retry-recipient-sent-recipient@example.com"]',
+      ),
+    ).toHaveCount(0);
   });
 
   test("banner does NOT render for non-owners", async ({ browser }) => {
