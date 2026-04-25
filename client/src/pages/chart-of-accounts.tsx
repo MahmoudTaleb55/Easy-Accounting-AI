@@ -206,6 +206,8 @@ export default function ChartOfAccountsPage() {
       ledgerTotalDebit: locale === "ar" ? "إجمالي المدين" : "Total debit",
       ledgerTotalCredit: locale === "ar" ? "إجمالي الدائن" : "Total credit",
       ledgerBalance: locale === "ar" ? "الرصيد" : "Balance",
+      ledgerOpening: locale === "ar" ? "الرصيد الافتتاحي" : "Opening balance",
+      ledgerClosing: locale === "ar" ? "الرصيد الختامي" : "Closing balance",
       periodLabel: locale === "ar" ? "نطاق الأرصدة" : "Balances scope",
       periodMonth: locale === "ar" ? "هذا الشهر" : "This month",
       periodYear: locale === "ar" ? "هذه السنة" : "This year",
@@ -724,6 +726,8 @@ export default function ChartOfAccountsPage() {
           totalDebit: t.ledgerTotalDebit,
           totalCredit: t.ledgerTotalCredit,
           balance: t.ledgerBalance,
+          opening: t.ledgerOpening,
+          closing: t.ledgerClosing,
         }}
       />
     </div>
@@ -939,6 +943,8 @@ interface AccountLedgerSheetLabels {
   totalDebit: string
   totalCredit: string
   balance: string
+  opening: string
+  closing: string
 }
 
 interface AccountLedgerSheetProps {
@@ -955,6 +961,12 @@ interface LedgerPosting {
   lineMemo: string | null
   debit: number
   credit: number
+  // Stable position of the line within its JE — used as the chronological
+  // tie-breaker when several lines on the same entry post to this account.
+  lineIndex: number
+  // Running balance after this posting, signed per the account's normal side
+  // (asset/expense → debit-normal; liability/equity/revenue → credit-normal).
+  balance: number
 }
 
 function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProps) {
@@ -970,15 +982,30 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
     enabled: !!account,
   })
 
+  // The running-balance column needs to know which side of the ledger this
+  // account "lives" on. Mirrors the trial-balance endpoint in
+  // server/routes.ts (~line 480 / 606): asset/expense are debit-normal, the
+  // rest are credit-normal. Keeping the rule colocated with the only other
+  // place we sign a balance avoids the two ever drifting apart.
+  const isDebitNormal =
+    account?.type === "asset" || account?.type === "expense"
+
   const postings = useMemo<LedgerPosting[]>(() => {
     if (!account || !entries) return []
     const rows: LedgerPosting[] = []
     for (const je of entries) {
+      let lineIndex = 0
       for (const l of je.lines) {
-        if (l.accountId !== account.id) continue
+        if (l.accountId !== account.id) {
+          lineIndex++
+          continue
+        }
         const debit = Number(l.debit ?? 0)
         const credit = Number(l.credit ?? 0)
-        if (debit === 0 && credit === 0) continue
+        if (debit === 0 && credit === 0) {
+          lineIndex++
+          continue
+        }
         rows.push({
           jeId: je.id,
           reference: je.reference,
@@ -987,19 +1014,52 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
           lineMemo: l.description ?? null,
           debit,
           credit,
+          lineIndex,
+          balance: 0,
         })
+        lineIndex++
       }
     }
-    // Newest postings first — matches how users scan a ledger most of the time.
-    rows.sort((a, b) => (a.entryDate < b.entryDate ? 1 : a.entryDate > b.entryDate ? -1 : b.jeId - a.jeId))
+    // Compute running balance oldest-first so each row sees every prior
+    // posting accumulated against it. Tie-break by jeId then lineIndex so
+    // the order is deterministic when several entries share an entryDate.
+    rows.sort((a, b) =>
+      a.entryDate < b.entryDate ? -1 :
+      a.entryDate > b.entryDate ? 1 :
+      a.jeId !== b.jeId ? a.jeId - b.jeId :
+      a.lineIndex - b.lineIndex,
+    )
+    let running = 0
+    for (const r of rows) {
+      running += isDebitNormal ? r.debit - r.credit : r.credit - r.debit
+      r.balance = running
+    }
+    // Display newest postings first — matches how users scan a ledger most
+    // of the time. The running balance was already baked in above, so the
+    // resort doesn't recompute anything.
+    rows.sort((a, b) =>
+      a.entryDate < b.entryDate ? 1 :
+      a.entryDate > b.entryDate ? -1 :
+      a.jeId !== b.jeId ? b.jeId - a.jeId :
+      b.lineIndex - a.lineIndex,
+    )
     return rows
-  }, [account, entries])
+  }, [account, entries, isDebitNormal])
 
   const totalDebit = postings.reduce((s, r) => s + r.debit, 0)
   const totalCredit = postings.reduce((s, r) => s + r.credit, 0)
-  const isDebitNormal =
-    account?.type === "asset" || account?.type === "expense"
-  const balance = isDebitNormal ? totalDebit - totalCredit : totalCredit - totalDebit
+  // Closing balance is the running balance after the most recent posting.
+  // Equivalent to (total debits − total credits) signed by normal side, but
+  // we read it off the last accumulated row to keep the two views provably
+  // in sync rather than computing the same thing two different ways.
+  const closingBalance =
+    postings.length > 0
+      ? postings[0].balance
+      : 0
+  // Opening balance — for an "all postings" view this is always zero, but
+  // surfacing it explicitly makes the math obvious to anyone reading the
+  // drawer (and prepares the row for a future date-filtered ledger).
+  const openingBalance = 0
 
   return (
     <Sheet open={!!account} onOpenChange={(o) => !o && onClose()}>
@@ -1054,12 +1114,18 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
                     <th className="text-start px-3 py-2 font-medium">{labels.memo}</th>
                     <th className="text-end px-3 py-2 font-medium w-24">{labels.debit}</th>
                     <th className="text-end px-3 py-2 font-medium w-24">{labels.credit}</th>
+                    {/* Running balance hides on narrow viewports — the drawer
+                        gets cramped on phones and the per-row balance is the
+                        most expendable column there. */}
+                    <th className="hidden md:table-cell text-end px-3 py-2 font-medium w-28">
+                      {labels.balance}
+                    </th>
                     <th className="text-end px-3 py-2 font-medium w-20">{labels.je}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {postings.map((p, i) => (
-                    <tr key={`${p.jeId}-${i}`} data-testid={`row-ledger-${p.jeId}-${i}`}>
+                    <tr key={`${p.jeId}-${p.lineIndex}-${i}`} data-testid={`row-ledger-${p.jeId}-${i}`}>
                       <td className="px-3 py-2 text-foreground font-numeric tabular-nums whitespace-nowrap">
                         {format(new Date(p.entryDate), "d MMM yyyy", { locale: dfLocale })}
                       </td>
@@ -1073,6 +1139,12 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
                       </td>
                       <td className="px-3 py-2 text-end font-numeric tabular-nums text-foreground">
                         {p.credit > 0 ? fmt(p.credit) : ""}
+                      </td>
+                      <td
+                        className="hidden md:table-cell px-3 py-2 text-end font-numeric tabular-nums text-foreground whitespace-nowrap"
+                        data-testid={`text-ledger-running-balance-${p.jeId}-${i}`}
+                      >
+                        {fmt(p.balance)}
                       </td>
                       <td className="px-3 py-2 text-end">
                         <Link
@@ -1089,19 +1161,52 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
                     </tr>
                   ))}
                 </tbody>
+                {/*
+                  Subtotal block. Two narrow rows make the math at a glance:
+                    • Opening balance — what the account stood at before any
+                      of the displayed postings (always 0 for the all-time
+                      view; surfaced explicitly so the column reads cleanly).
+                    • Closing balance — the running balance after the most
+                      recent posting, plus the column totals on the side.
+                */}
                 <tfoot className="bg-muted/40 text-xs">
-                  <tr>
-                    <td className="px-3 py-2 text-muted-foreground" colSpan={2}>
-                      <span className="font-medium text-foreground">{labels.balance}: </span>
-                      <span className="font-numeric tabular-nums text-foreground" data-testid="text-ledger-balance">
-                        {fmt(balance)}
-                      </span>
+                  <tr data-testid="row-ledger-opening">
+                    <td
+                      className="px-3 py-2 text-muted-foreground font-medium"
+                      colSpan={4}
+                    >
+                      {labels.opening}
                     </td>
-                    <td className="px-3 py-2 text-end font-numeric tabular-nums text-foreground" data-testid="text-ledger-total-debit">
+                    <td
+                      className="hidden md:table-cell px-3 py-2 text-end font-numeric tabular-nums text-foreground"
+                      data-testid="text-ledger-opening-balance"
+                    >
+                      {fmt(openingBalance)}
+                    </td>
+                    <td />
+                  </tr>
+                  <tr data-testid="row-ledger-closing">
+                    <td className="px-3 py-2 text-muted-foreground font-medium">
+                      {labels.closing}
+                    </td>
+                    <td className="px-3 py-2" />
+                    <td
+                      className="px-3 py-2 text-end font-numeric tabular-nums text-foreground"
+                      data-testid="text-ledger-total-debit"
+                    >
                       {fmt(totalDebit)}
                     </td>
-                    <td className="px-3 py-2 text-end font-numeric tabular-nums text-foreground" data-testid="text-ledger-total-credit">
+                    <td
+                      className="px-3 py-2 text-end font-numeric tabular-nums text-foreground"
+                      data-testid="text-ledger-total-credit"
+                    >
                       {fmt(totalCredit)}
+                    </td>
+                    <td
+                      className="hidden md:table-cell px-3 py-2 text-end font-numeric tabular-nums font-medium text-foreground"
+                      data-testid="text-ledger-balance"
+                    >
+                      {fmt(closingBalance)}
                     </td>
                     <td />
                   </tr>
