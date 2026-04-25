@@ -97,6 +97,18 @@ function useAssetMoneyFmt() {
 export default function FixedAssetsPage() {
   const { activeCompany } = useCompany();
   const canManage = useCanManageWorkspace();
+  // Controlled tabs so JE source-link badges can deep-link to a specific
+  // sub-section of this page: `#dr-<id>` opens the depreciation runs tab,
+  // `#asset-<id>` opens the register so AssetRegister can pop the detail
+  // dialog for the originating asset.
+  const [tab, setTab] = useState<string>(() => initialFaTabFromHash());
+
+  useEffect(() => {
+    const sync = () => setTab((cur) => mapHashToFaTab(window.location.hash, cur));
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
 
   return (
     <div className="space-y-8" data-testid="page-fixed-assets">
@@ -116,7 +128,7 @@ export default function FixedAssetsPage() {
         <PeriodChip />
       </header>
 
-      <Tabs defaultValue="register" className="w-full">
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className={`grid ${canManage ? "grid-cols-5" : "grid-cols-3"} w-full`}>
           <TabsTrigger value="register" data-testid="tab-register">سجل الأصول</TabsTrigger>
           <TabsTrigger value="depreciation" data-testid="tab-depreciation">الإهلاك</TabsTrigger>
@@ -158,6 +170,20 @@ export default function FixedAssetsPage() {
   );
 }
 
+function initialFaTabFromHash(): string {
+  if (typeof window === "undefined") return "register";
+  return mapHashToFaTab(window.location.hash, "register");
+}
+
+function mapHashToFaTab(hash: string, fallback: string): string {
+  // Deep-link from JE source-link badges:
+  //   `#dr-<id>`     → Depreciation tab (highlight matching run row)
+  //   `#asset-<id>`  → Register tab (open AssetDetailDialog)
+  if (/^#dr-\d+$/.test(hash)) return "depreciation";
+  if (/^#asset-\d+$/.test(hash)) return "register";
+  return fallback;
+}
+
 // ============================================================================
 // Asset Register
 // ============================================================================
@@ -180,6 +206,22 @@ function AssetRegister({ company }: { company: Company }) {
     queryKey: ["/api/fixed-assets", company.id],
     queryFn: async () => (await fetch(`/api/fixed-assets?companyId=${company.id}`)).json(),
   });
+
+  // When a JE source-link badge for an impairment / revaluation / disposal
+  // points here with `#asset-<id>`, open the asset detail dialog so the user
+  // lands directly on the originating asset's history.
+  useEffect(() => {
+    const apply = () => {
+      const m = window.location.hash.match(/^#asset-(\d+)$/);
+      if (!m) return;
+      const id = Number(m[1]);
+      if (!(assets || []).some((a) => a.id === id)) return;
+      setDetailId(id);
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, [assets]);
   const { data: cats } = useQuery<AssetCategory[]>({
     queryKey: ["/api/asset-categories", company.id],
     queryFn: async () => (await fetch(`/api/asset-categories?companyId=${company.id}`)).json(),
@@ -928,6 +970,30 @@ function DepreciationPanel({ company }: { company: Company }) {
     queryFn: async () => (await fetch(`/api/depreciation-runs?companyId=${company.id}`)).json(),
   });
 
+  // Deep-link from JE source-link badge: `#dr-<id>` scrolls and pulses the
+  // matching depreciation run row so the user can connect the journal entry
+  // back to the originating run at a glance.
+  const [highlightRunId, setHighlightRunId] = useState<number | null>(null);
+  useEffect(() => {
+    const apply = () => {
+      const m = window.location.hash.match(/^#dr-(\d+)$/);
+      if (!m) return;
+      const id = Number(m[1]);
+      if (!(runs || []).some((r) => r.id === id)) return;
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`dr-${id}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          setHighlightRunId(id);
+          window.setTimeout(() => setHighlightRunId(null), 2400);
+        }
+      });
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, [runs]);
+
   function setUsageUnits(assetId: number, componentId: number | null, units: number) {
     setUsage((prev) => {
       const next = prev.filter((u) => !(u.assetId === assetId && u.componentId === componentId));
@@ -1018,7 +1084,18 @@ function DepreciationPanel({ company }: { company: Company }) {
             <div className="table-sticky-first"><table className="w-full text-sm">
               <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">الفترة</th><th className="text-right py-2">الإجمالي</th><th className="text-right py-2">الحالة</th><th className="text-right py-2">القيد</th></tr></thead>
               <tbody>{runs.map((r) => (
-                <tr key={r.id} className="border-b" data-testid={`row-run-${r.id}`}>
+                <tr
+                  key={r.id}
+                  id={`dr-${r.id}`}
+                  className={
+                    "border-b scroll-mt-24 transition-shadow duration-500 " +
+                    (highlightRunId === r.id
+                      ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                      : "")
+                  }
+                  data-testid={`row-run-${r.id}`}
+                  data-highlighted={highlightRunId === r.id ? "true" : undefined}
+                >
                   <td className="py-2">{r.year}-{String(r.month).padStart(2, "0")}</td>
                   <td className="py-2 tabular-nums">{fmt(r.totalAmount, company.currencySymbol)}</td>
                   <td className="py-2"><Badge variant={r.status === "posted" ? "default" : "secondary"}>{r.status}</Badge></td>

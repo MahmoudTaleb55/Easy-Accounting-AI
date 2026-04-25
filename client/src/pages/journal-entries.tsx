@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useLocation } from "wouter"
+import { Link, useLocation } from "wouter"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { apiRequest, queryClient } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
@@ -33,7 +33,7 @@ import { HistoryDrawer, HistoryTimeline } from "@/components/audit/history-drawe
 import { EmptyState } from "@/components/feedback/empty-state"
 import { ErrorState } from "@/components/feedback/error-state"
 import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
-import type { Account } from "@shared/schema"
+import type { Account, JournalEntrySourceLink } from "@shared/schema"
 import { useLocale } from "@/contexts/locale-context"
 import { usePeriod } from "@/contexts/period-context"
 import { PeriodChip } from "@/components/dashboard/period-chip"
@@ -54,6 +54,7 @@ interface JE {
   source: string
   createdAt?: string
   lines: (JELine & { account?: Account })[]
+  sourceLink?: JournalEntrySourceLink
 }
 
 export default function JournalEntriesPage() {
@@ -70,6 +71,13 @@ export default function JournalEntriesPage() {
 
   const t = useMemo(
     () => ({
+      sourceFromPrefix: locale === "ar" ? "من:" : "From:",
+      sourceKindPayroll: locale === "ar" ? "كشف رواتب" : "Payroll",
+      sourceKindDepreciation: locale === "ar" ? "إهلاك" : "Depreciation",
+      sourceKindImpairment: locale === "ar" ? "انخفاض قيمة" : "Impairment",
+      sourceKindRevaluation: locale === "ar" ? "إعادة تقييم" : "Revaluation",
+      sourceKindDisposal: locale === "ar" ? "استبعاد" : "Disposal",
+      sourceLinkAria: locale === "ar" ? "فتح المصدر" : "Open source",
       eyebrow: locale === "ar" ? "قيود اليومية" : "Journal entries",
       title:
         locale === "ar"
@@ -518,7 +526,7 @@ export default function JournalEntriesPage() {
                         {je.description}
                       </h3>
                     </button>
-                    <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
                       <span className="font-numeric tabular-nums">
                         {format(new Date(je.entryDate), "d MMM yyyy", { locale: dfLocale })}
                       </span>
@@ -530,6 +538,23 @@ export default function JournalEntriesPage() {
                       <span className="font-numeric tabular-nums font-semibold text-foreground">
                         {fmt(td)}
                       </span>
+                      {je.sourceLink && (
+                        <>
+                          <span className="text-muted-foreground/50">·</span>
+                          <SourceLinkBadge
+                            link={je.sourceLink}
+                            labels={{
+                              fromPrefix: t.sourceFromPrefix,
+                              payroll: t.sourceKindPayroll,
+                              depreciation: t.sourceKindDepreciation,
+                              impairment: t.sourceKindImpairment,
+                              revaluation: t.sourceKindRevaluation,
+                              disposal: t.sourceKindDisposal,
+                              aria: t.sourceLinkAria,
+                            }}
+                          />
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -746,5 +771,69 @@ function JournalEntryDetailDialog({ entry, onClose, labels, dfLocale, fmt }: Jou
         </Tabs>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// Localised month name (Arabic + English) used in the JE source-link badge so
+// "From: Payroll 11/2025" reads naturally in both locales.
+const MONTH_NAMES_AR = [
+  "يناير","فبراير","مارس","أبريل","مايو","يونيو",
+  "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر",
+]
+const MONTH_NAMES_EN = [
+  "Jan","Feb","Mar","Apr","May","Jun",
+  "Jul","Aug","Sep","Oct","Nov","Dec",
+]
+
+interface SourceLinkBadgeLabels {
+  fromPrefix: string
+  payroll: string
+  depreciation: string
+  impairment: string
+  revaluation: string
+  disposal: string
+  aria: string
+}
+
+// Renders a small "From: Payroll 11/2025" badge that deep-links back to the
+// originating row (payroll run, depreciation run, or fixed-asset event).
+// The parent component is responsible for hiding this when `link` is absent
+// — i.e. when the source row no longer exists.
+function SourceLinkBadge({
+  link,
+  labels,
+}: {
+  link: JournalEntrySourceLink
+  labels: SourceLinkBadgeLabels
+}) {
+  const { locale } = useLocale()
+  const months = locale === "ar" ? MONTH_NAMES_AR : MONTH_NAMES_EN
+
+  const labelBody = (() => {
+    if (link.kind === "payroll_run" && link.period) {
+      return `${labels.payroll} ${months[link.period.month - 1]} ${link.period.year}`
+    }
+    if (link.kind === "depreciation_run" && link.period) {
+      return `${labels.depreciation} ${months[link.period.month - 1]} ${link.period.year}`
+    }
+    const kindLabel =
+      link.kind === "impairment" ? labels.impairment
+      : link.kind === "revaluation" ? labels.revaluation
+      : labels.disposal
+    const assetTag = link.assetCode || link.assetName
+    return assetTag ? `${kindLabel} — ${assetTag}` : kindLabel
+  })()
+
+  return (
+    <Link
+      href={link.href}
+      className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-muted hover:border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      title={`${labels.fromPrefix} ${labelBody}`}
+      aria-label={labels.aria}
+      data-testid={`link-je-source-${link.kind}-${link.id}`}
+    >
+      <span className="text-muted-foreground">{labels.fromPrefix}</span>
+      <span>{labelBody}</span>
+    </Link>
   )
 }

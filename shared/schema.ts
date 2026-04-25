@@ -127,6 +127,30 @@ export const insertJournalLineSchema = createInsertSchema(journalLines).omit({
 export type JournalLine = typeof journalLines.$inferSelect;
 export type InsertJournalLine = z.infer<typeof insertJournalLineSchema>;
 
+// `JournalEntrySourceLink` is computed at read time by joining the JE id
+// against the modules that auto-post to it (payroll runs, depreciation runs,
+// fixed-asset events). The link is omitted when no such row exists, which
+// naturally hides the badge if the source row was later deleted.
+export type JournalEntrySourceKind =
+  | "payroll_run"
+  | "depreciation_run"
+  | "impairment"
+  | "revaluation"
+  | "disposal";
+
+export interface JournalEntrySourceLink {
+  kind: JournalEntrySourceKind;
+  id: number;
+  href: string;
+  // Period for runs (payroll/depreciation):
+  period?: { year: number; month: number };
+  // Asset context for fixed-asset events:
+  assetId?: number;
+  assetCode?: string;
+  assetName?: string;
+  eventDate?: string;
+}
+
 // Composite create schema used by /api/journal-entries POST
 export const createJournalEntrySchema = z.object({
   entryDate: z.string().or(z.date()).optional(),

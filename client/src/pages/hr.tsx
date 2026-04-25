@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "wouter";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -32,6 +32,20 @@ import type { Employee, Leave, Attendance, PayrollRun } from "@shared/schema";
 // ====================================================================
 
 export default function HRPage() {
+  // The active tab is controlled so deep-links can land on a specific tab.
+  // In particular, the "From: Payroll …" badge on the Journal Entries page
+  // navigates here with `#pr-<id>`, which must open the Payroll tab so the
+  // PayrollTab can scroll/highlight the originating row.
+  const [location] = useLocation();
+  const [tab, setTab] = useState<string>(() => initialTabFromHash());
+
+  useEffect(() => {
+    const sync = () => setTab((cur) => mapHashToTab(window.location.hash, cur));
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, [location]);
+
   return (
     <div className="space-y-8" data-testid="hr-page">
       <header className="flex items-end justify-between gap-6 flex-wrap">
@@ -50,7 +64,7 @@ export default function HRPage() {
         <PeriodChip />
       </header>
 
-      <Tabs defaultValue="employees" className="space-y-4">
+      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="employees" data-testid="tab-employees">الموظفون</TabsTrigger>
           <TabsTrigger value="attendance" data-testid="tab-attendance">الحضور</TabsTrigger>
@@ -65,6 +79,17 @@ export default function HRPage() {
       </Tabs>
     </div>
   );
+}
+
+function initialTabFromHash(): string {
+  if (typeof window === "undefined") return "employees";
+  return mapHashToTab(window.location.hash, "employees");
+}
+
+function mapHashToTab(hash: string, fallback: string): string {
+  // Deep-link from the Journal Entries page: `#pr-<id>` opens Payroll tab.
+  if (/^#pr-\d+$/.test(hash)) return "payroll";
+  return fallback;
 }
 
 // ====================================================================
@@ -586,6 +611,10 @@ function PayrollTab() {
   const prevYear = previousRange.end.getFullYear();
   const prevMonth = previousRange.end.getMonth() + 1;
   const [historyRun, setHistoryRun] = useState<PayrollRun | null>(null);
+  // Deep-link support: when a JE-source-link badge points here with `#pr-<id>`
+  // we scroll the matching row into view and pulse a highlight ring so the
+  // user can spot it among many runs.
+  const [highlightRunId, setHighlightRunId] = useState<number | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery<{ year: number; month: number; lines: PreviewLine[] }>({
     queryKey: ["/api/hr/payroll/preview", { year, month }],
@@ -609,6 +638,30 @@ function PayrollTab() {
   const { data: pastRuns = [] } = useQuery<PayrollRun[]>({
     queryKey: ["/api/hr/payroll/runs"],
   });
+
+  // Read `#pr-<id>` from the URL and, once the row is rendered, scroll to it
+  // and pulse a highlight ring for ~2.4s. Re-runs whenever the hash changes
+  // (so jumping between two badges in the same session "rings" again).
+  useEffect(() => {
+    const apply = () => {
+      const m = window.location.hash.match(/^#pr-(\d+)$/);
+      if (!m) return;
+      const id = Number(m[1]);
+      if (!pastRuns.some((r) => r.id === id)) return;
+      // Defer one frame so the row exists in the DOM after a tab switch.
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`pr-${id}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          setHighlightRunId(id);
+          window.setTimeout(() => setHighlightRunId(null), 2400);
+        }
+      });
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, [pastRuns]);
 
   const run = useMutation({
     mutationFn: async () => await apiRequest("POST", "/api/hr/payroll/run", { year, month }),
@@ -796,7 +849,18 @@ function PayrollTab() {
               </TableHeader>
               <TableBody>
                 {pastRuns.map((r) => (
-                  <TableRow key={r.id} data-testid={`row-payroll-run-${r.id}`}>
+                  <TableRow
+                    key={r.id}
+                    id={`pr-${r.id}`}
+                    data-testid={`row-payroll-run-${r.id}`}
+                    data-highlighted={highlightRunId === r.id ? "true" : undefined}
+                    className={
+                      "scroll-mt-24 transition-shadow duration-500 " +
+                      (highlightRunId === r.id
+                        ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                        : "")
+                    }
+                  >
                     <TableCell className="font-medium font-numeric tabular-nums">
                       {String(r.month).padStart(2, "0")}/{r.year}
                     </TableCell>

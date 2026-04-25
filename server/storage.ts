@@ -67,6 +67,7 @@ import {
   type Leave,
   type InsertLeave,
   type PayrollRun,
+  type JournalEntrySourceLink,
 } from "@shared/schema";
 import {
   CASH_ACCOUNT_CODE,
@@ -78,6 +79,10 @@ import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
 
 export interface JournalEntryWithLines extends JournalEntry {
   lines: (JournalLine & { account?: Account })[];
+  // When present, indicates the JE was auto-posted by another module (payroll
+  // run, depreciation run, or a fixed-asset event). Computed at read time so
+  // the badge naturally disappears if the source row is later deleted.
+  sourceLink?: JournalEntrySourceLink;
 }
 
 // ============================================================================
@@ -372,6 +377,175 @@ async function detectJournalEntryReferences(
   return conflicts;
 }
 
+/**
+ * Builds a `journal_entry_id -> JournalEntrySourceLink` map for the given JE
+ * ids in a single workspace. Each branch issues a tiny indexed lookup against
+ * a different module's table (payroll runs, depreciation runs, fixed-asset
+ * events). The result is consumed by `getJournalEntries` so the journal
+ * entries page can render a "From: Payroll 11/2025" badge that deep-links
+ * back to the originating row.
+ *
+ * If a source row is later deleted but the JE remains, no entry will be put
+ * in the map for that id and the badge naturally disappears in the UI — this
+ * is exactly the behaviour the task spec calls for.
+ */
+async function buildJournalSourceLinkMap(
+  companyId: number,
+  jeIds: number[],
+): Promise<Map<number, JournalEntrySourceLink>> {
+  const out = new Map<number, JournalEntrySourceLink>();
+  if (jeIds.length === 0) return out;
+
+  // Payroll runs
+  const prRows = await db
+    .select({
+      id: payrollRuns.id,
+      year: payrollRuns.year,
+      month: payrollRuns.month,
+      journalEntryId: payrollRuns.journalEntryId,
+    })
+    .from(payrollRuns)
+    .where(
+      and(
+        eq(payrollRuns.companyId, companyId),
+        inArray(payrollRuns.journalEntryId, jeIds),
+      ),
+    );
+  for (const r of prRows) {
+    if (r.journalEntryId == null) continue;
+    out.set(r.journalEntryId, {
+      kind: "payroll_run",
+      id: r.id,
+      href: `/app/hr#pr-${r.id}`,
+      period: { year: r.year, month: r.month },
+    });
+  }
+
+  // Depreciation runs
+  const drRows = await db
+    .select({
+      id: depreciationRuns.id,
+      year: depreciationRuns.year,
+      month: depreciationRuns.month,
+      journalEntryId: depreciationRuns.journalEntryId,
+    })
+    .from(depreciationRuns)
+    .where(
+      and(
+        eq(depreciationRuns.companyId, companyId),
+        inArray(depreciationRuns.journalEntryId, jeIds),
+      ),
+    );
+  for (const r of drRows) {
+    if (r.journalEntryId == null) continue;
+    out.set(r.journalEntryId, {
+      kind: "depreciation_run",
+      id: r.id,
+      href: `/app/fixed-assets#dr-${r.id}`,
+      period: { year: r.year, month: r.month },
+    });
+  }
+
+  // Fixed-asset events: impairment, revaluation, disposal. We join the asset
+  // row in memory so we can include code/name in the badge label without a
+  // second round-trip per event.
+  const evtAssetIds = new Set<number>();
+  const impRows = await db
+    .select({
+      id: impairmentEvents.id,
+      assetId: impairmentEvents.assetId,
+      eventDate: impairmentEvents.eventDate,
+      journalEntryId: impairmentEvents.journalEntryId,
+    })
+    .from(impairmentEvents)
+    .where(
+      and(
+        eq(impairmentEvents.companyId, companyId),
+        inArray(impairmentEvents.journalEntryId, jeIds),
+      ),
+    );
+  impRows.forEach((r) => evtAssetIds.add(r.assetId));
+
+  const revRows = await db
+    .select({
+      id: revaluationEvents.id,
+      assetId: revaluationEvents.assetId,
+      eventDate: revaluationEvents.eventDate,
+      journalEntryId: revaluationEvents.journalEntryId,
+    })
+    .from(revaluationEvents)
+    .where(
+      and(
+        eq(revaluationEvents.companyId, companyId),
+        inArray(revaluationEvents.journalEntryId, jeIds),
+      ),
+    );
+  revRows.forEach((r) => evtAssetIds.add(r.assetId));
+
+  const dispRows = await db
+    .select({
+      id: disposals.id,
+      assetId: disposals.assetId,
+      eventDate: disposals.eventDate,
+      journalEntryId: disposals.journalEntryId,
+    })
+    .from(disposals)
+    .where(
+      and(
+        eq(disposals.companyId, companyId),
+        inArray(disposals.journalEntryId, jeIds),
+      ),
+    );
+  dispRows.forEach((r) => evtAssetIds.add(r.assetId));
+
+  let assetById = new Map<number, { code: string; name: string }>();
+  if (evtAssetIds.size > 0) {
+    const assetRows = await db
+      .select({ id: fixedAssets.id, code: fixedAssets.code, name: fixedAssets.name })
+      .from(fixedAssets)
+      .where(
+        and(
+          eq(fixedAssets.companyId, companyId),
+          inArray(fixedAssets.id, Array.from(evtAssetIds)),
+        ),
+      );
+    assetById = new Map(assetRows.map((a) => [a.id, { code: a.code, name: a.name }]));
+  }
+
+  const buildAssetLink = (
+    kind: "impairment" | "revaluation" | "disposal",
+    eventId: number,
+    assetId: number,
+    eventDate: string,
+  ): JournalEntrySourceLink => {
+    const asset = assetById.get(assetId);
+    return {
+      kind,
+      id: eventId,
+      href: `/app/fixed-assets#asset-${assetId}`,
+      assetId,
+      assetCode: asset?.code,
+      assetName: asset?.name,
+      eventDate,
+    };
+  };
+
+  for (const r of impRows) {
+    if (r.journalEntryId == null) continue;
+    out.set(r.journalEntryId, buildAssetLink("impairment", r.id, r.assetId, r.eventDate));
+  }
+  for (const r of revRows) {
+    if (r.journalEntryId == null) continue;
+    out.set(r.journalEntryId, buildAssetLink("revaluation", r.id, r.assetId, r.eventDate));
+  }
+  for (const r of dispRows) {
+    if (r.journalEntryId == null) continue;
+    out.set(r.journalEntryId, buildAssetLink("disposal", r.id, r.assetId, r.eventDate));
+  }
+
+  return out;
+}
+
 async function nextJournalReference(companyId: number): Promise<string> {
   const [{ c }] = await db
     .select({ c: sql<number>`count(*)::int` })
@@ -562,11 +736,14 @@ export class DatabaseStorage implements IStorage {
     const allAccounts = await this.getAccounts(companyId);
     const accountById = new Map(allAccounts.map((a) => [a.id, a]));
 
+    const sourceLinkByJeId = await buildJournalSourceLinkMap(companyId, ids);
+
     return entries.map((e) => ({
       ...e,
       lines: allLines
         .filter((l) => l.journalEntryId === e.id)
         .map((l) => ({ ...l, account: accountById.get(l.accountId) })),
+      sourceLink: sourceLinkByJeId.get(e.id),
     }));
   }
 
