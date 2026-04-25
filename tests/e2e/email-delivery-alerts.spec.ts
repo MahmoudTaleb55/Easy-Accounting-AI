@@ -906,30 +906,6 @@ async function ensureSecondOwner(): Promise<string> {
   }
 }
 
-/**
- * Wipe every recipient row for the dedicated workspace. Required because
- * the production schema doesn't actually carry the alert→recipient FK
- * (the 0011 migration declared ON DELETE CASCADE but the constraint is
- * missing from the deployed DB), so `resetAlertState`'s
- * `DELETE FROM email_delivery_alerts` doesn't take recipients with it.
- * Without this wipe, an `OWNER_A: status='sent'` row from a prior run
- * lingers and the dedupe gate skips owner-a on fire #1, breaking the
- * "first fire records sent+failed" precondition this spec depends on.
- */
-async function wipeRecipientsForSharedCompany(): Promise<void> {
-  const { companyId } = await getShared();
-  const client = new pg.Client({ connectionString: requiredDbUrl() });
-  await client.connect();
-  try {
-    await client.query(
-      `DELETE FROM email_delivery_alert_recipients WHERE company_id = $1`,
-      [companyId],
-    );
-  } finally {
-    await client.end();
-  }
-}
-
 /** Tell the running server to stub the Resend transport. */
 async function installEmailStub(
   request: APIRequestContext,
@@ -1026,16 +1002,10 @@ test.describe("delivery-alert dedupe + retry @alerts", () => {
   test.beforeEach(async ({ request }) => {
     // Reset evaluator state, then guarantee the stub starts cleared so a
     // failed previous run can't leak in-process state into this case.
+    // `resetAlertState`'s `DELETE FROM email_delivery_alerts` cascades into
+    // `email_delivery_alert_recipients` via the FK restored by migration
+    // 0017, so we don't need a separate wipe of the recipients table here.
     await resetAlertState();
-    // Defense-in-depth: the recipients table is supposed to cascade-delete
-    // via the alert FK, but the running schema doesn't actually carry the
-    // FK constraint (the migration declares ON DELETE CASCADE but the
-    // constraint is absent in the deployed DB), so prior runs of this
-    // describe block — and the seeded inserts in the existing
-    // "GET /:id/recipients" / "recipient retry guardrail" tests — can leave
-    // orphaned recipient rows behind that the dedupe gate then trips on.
-    // Wipe them explicitly for our workspace so fire #1 sees a clean slate.
-    await wipeRecipientsForSharedCompany();
     await clearEmailStub(request);
   });
 

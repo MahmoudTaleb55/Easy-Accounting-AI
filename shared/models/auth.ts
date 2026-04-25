@@ -271,7 +271,9 @@ export const emailDeliveryAlertRecipients = pgTable(
   "email_delivery_alert_recipients",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    alertId: varchar("alert_id").notNull(),
+    alertId: varchar("alert_id")
+      .notNull()
+      .references(() => emailDeliveryAlerts.id, { onDelete: "cascade" }),
     companyId: integer("company_id").notNull(),
     email: varchar("email").notNull(),
     // Mirrors emailDeliveryAlerts.reason ('absolute' | 'ratio') so we can
