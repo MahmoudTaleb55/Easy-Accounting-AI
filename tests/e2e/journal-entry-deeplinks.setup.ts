@@ -23,13 +23,18 @@ import {
  * spec needs to assert each link in turn:
  *
  *   (a) A workspace owned by a fresh test user.
- *   (b) Two JEs:
- *         • JE-A backs a `documents` row in status='posted' (inbox).
+ *   (b) Five JEs (one per JE-bearing surface the spec covers):
+ *         • JE-A backs a `documents` row in status='posted' (inbox
+ *           detail strip + inbox "Recently posted" panel).
  *         • JE-B backs a posted `depreciation_runs` row + its
  *           `depreciation_postings` row (fixed-assets depreciation tab
  *           + asset-detail history tab).
  *         • JE-C backs an `impairment_events` row (asset-detail
  *           impairments tab + history tab).
+ *         • JE-D backs a `revaluation_events` row (asset-detail
+ *           revaluations tab + history tab).
+ *         • JE-E backs a `disposals` row (asset-detail disposals tab
+ *           + history tab).
  *   (c) The single asset_category + 7 GL accounts the FK chain on
  *       fixed_assets requires, plus a single fixed_assets row.
  *   (d) A passport session forged + planted in the browser context
@@ -63,10 +68,14 @@ setup("authenticate + seed JE deep-link fixtures", async ({ page }) => {
   let runId: number;
   let postingId: number;
   let impairmentEventId: number;
+  let revaluationEventId: number;
+  let disposalEventId: number;
   let documentId: number;
   let postedJeId: number; // JE-A
   let depreciationJeId: number; // JE-B
   let impairmentJeId: number; // JE-C
+  let revaluationJeId: number; // JE-D
+  let disposalJeId: number; // JE-E
   try {
     // ---- (a) Ensure the test user + workspace exist ----
     userId = await ensureUser(client, {
@@ -265,6 +274,14 @@ setup("authenticate + seed JE deep-link fixtures", async ({ page }) => {
       `JE-IMP-${companyId}-${Date.now() + 2}`,
       "Impairment event JE",
     );
+    revaluationJeId = await insertJe(
+      `JE-REV-${companyId}-${Date.now() + 3}`,
+      "Revaluation event JE",
+    );
+    disposalJeId = await insertJe(
+      `JE-DIS-${companyId}-${Date.now() + 4}`,
+      "Disposal event JE",
+    );
 
     // ---- Posted depreciation_run + posting linked to JE-B ----------
     // year=2099, month=6 → asset detail history tab will render this
@@ -309,6 +326,42 @@ setup("authenticate + seed JE deep-link fixtures", async ({ page }) => {
       )
     ).rows[0];
     impairmentEventId = Number(impEvent.id);
+
+    // ---- revaluation_events linked to JE-D --------------------------
+    // event_date = '2099-07-15' so it sorts AFTER the impairment row
+    // in the unified history feed → existing history-0 (depreciation
+    // 2099-06-28) and history-1 (impairment 2099-06-30) indices stay
+    // stable for the original assertions.
+    const revEvent = (
+      await client.query<{ id: number }>(
+        `INSERT INTO revaluation_events
+           (company_id, asset_id, event_date, fair_value, method,
+            surplus_delta, pl_impact, journal_entry_id)
+         VALUES ($1, $2, '2099-07-15', '13000.00', 'elimination',
+                 '1000.00', '0', $3)
+         RETURNING id`,
+        [companyId, assetId, revaluationJeId],
+      )
+    ).rows[0];
+    revaluationEventId = Number(revEvent.id);
+
+    // ---- disposals linked to JE-E ----------------------------------
+    // event_date = '2099-07-20' (latest in the seeded asset history).
+    // We insert the row directly — we do NOT flip fixed_assets.status
+    // to 'disposed' so the asset stays visible / openable in the
+    // register and its detail dialog still surfaces every tab.
+    const dispEvent = (
+      await client.query<{ id: number }>(
+        `INSERT INTO disposals
+           (company_id, asset_id, event_date, proceeds, method,
+            gain_loss, journal_entry_id)
+         VALUES ($1, $2, '2099-07-20', '8000.00', 'sale',
+                 '500.00', $3)
+         RETURNING id`,
+        [companyId, assetId, disposalJeId],
+      )
+    ).rows[0];
+    disposalEventId = Number(dispEvent.id);
 
     // ---- Posted document linked to JE-A ----------------------------
     // The inbox auto-selects the first row, so a single posted document
@@ -383,10 +436,14 @@ setup("authenticate + seed JE deep-link fixtures", async ({ page }) => {
         runId,
         postingId,
         impairmentEventId,
+        revaluationEventId,
+        disposalEventId,
         documentId,
         postedJeId,
         depreciationJeId,
         impairmentJeId,
+        revaluationJeId,
+        disposalJeId,
       },
       null,
       2,
