@@ -34,7 +34,7 @@ import { ErrorState } from "@/components/feedback/error-state";
 import { HistoryTimeline } from "@/components/audit/history-drawer";
 import { PeriodChip } from "@/components/dashboard/period-chip";
 import { usePeriod } from "@/contexts/period-context";
-import type { Employee, Leave, Attendance, PayrollRun } from "@shared/schema";
+import type { Employee, Leave, Attendance, PayrollRun, PayrollLineWithEmployee } from "@shared/schema";
 
 // ====================================================================
 // Page wrapper
@@ -1167,8 +1167,9 @@ function PayrollRunDetailDialog({
           <DialogDescription>تفاصيل كشف الرواتب وسجل التغييرات.</DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="summary">
-          <TabsList className="grid grid-cols-2 w-full">
+          <TabsList className="grid grid-cols-3 w-full">
             <TabsTrigger value="summary" data-testid="tab-payroll-run-summary">ملخص</TabsTrigger>
+            <TabsTrigger value="lines" data-testid="tab-payroll-run-lines">السطور</TabsTrigger>
             <TabsTrigger value="changes" data-testid="tab-payroll-run-changes">التغييرات</TabsTrigger>
           </TabsList>
           <TabsContent value="summary" className="mt-4">
@@ -1207,6 +1208,9 @@ function PayrollRunDetailDialog({
               )}
             </dl>
           </TabsContent>
+          <TabsContent value="lines" className="mt-4" data-testid="tab-content-payroll-run-lines">
+            <PayrollRunLinesPanel runId={run.id} fmt={fmt} />
+          </TabsContent>
           <TabsContent value="changes" className="mt-4" data-testid="tab-content-payroll-run-changes">
             <div className="rounded-md border border-border max-h-96 overflow-hidden flex flex-col">
               <HistoryTimeline
@@ -1219,5 +1223,108 @@ function PayrollRunDetailDialog({
         </Tabs>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Per-employee breakdown for a posted run. Lives in its own component so the
+// query only fires when the user opens the Lines tab (TabsContent does not
+// render inactive tabs in shadcn's underlying Radix primitive). Uses the
+// numeric strings returned by the API as-is — `useFormatMoney` accepts both
+// strings and numbers.
+function PayrollRunLinesPanel({
+  runId,
+  fmt,
+}: {
+  runId: number;
+  fmt: ReturnType<typeof useFormatMoney>;
+}) {
+  const { data, isLoading, error, refetch } = useQuery<PayrollLineWithEmployee[]>({
+    queryKey: ["/api/hr/payroll/runs", runId, "lines"],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/payroll/runs/${runId}/lines`);
+      if (!res.ok) throw new Error("تعذر تحميل تفاصيل كشف الرواتب");
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return <ListSkeleton rows={4} testId="loading-payroll-run-lines" />;
+  }
+  if (error) {
+    return (
+      <ErrorState
+        title="تعذّر تحميل تفاصيل كشف الرواتب"
+        cause="حدث خلل أثناء جلب سطور الكشف. حاول مرة أخرى."
+        onRetry={() => refetch()}
+        testId="error-payroll-run-lines"
+      />
+    );
+  }
+  const lines = data ?? [];
+  if (lines.length === 0) {
+    return (
+      <EmptyState
+        icon={<Users className="w-5 h-5" />}
+        title="لا توجد سطور لهذا الكشف"
+        description="لم يتم تسجيل أي سطور موظفين لهذا الكشف."
+        testId="empty-payroll-run-lines"
+      />
+    );
+  }
+  return (
+    <div className="overflow-x-auto table-sticky-first" data-testid="table-payroll-run-lines">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>الموظف</TableHead>
+            <TableHead>أساسي</TableHead>
+            <TableHead>بدلات</TableHead>
+            <TableHead>إضافي</TableHead>
+            <TableHead>غياب</TableHead>
+            <TableHead>تأمينات (موظف)</TableHead>
+            <TableHead>إجمالي</TableHead>
+            <TableHead className="font-bold">صافي</TableHead>
+            <TableHead>EoS</TableHead>
+            <TableHead>إجازات</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {lines.map((l) => {
+            const base = Number(l.baseSalary);
+            const allow = Number(l.allowances);
+            const ot = Number(l.overtime);
+            const bonus = Number(l.bonuses);
+            const absence = Number(l.absenceDeduction);
+            const siEmp = Number(l.socialInsuranceEmployee);
+            const gross = base + allow + ot + bonus - absence;
+            return (
+              <TableRow key={l.id} data-testid={`row-payroll-line-${l.employeeId}`}>
+                <TableCell className="font-medium" data-testid={`text-line-employee-${l.employeeId}`}>
+                  {l.employeeName ?? `#${l.employeeId}`}
+                </TableCell>
+                <TableCell className="font-numeric tabular-nums">{fmt(base)}</TableCell>
+                <TableCell className="font-numeric tabular-nums">{fmt(allow)}</TableCell>
+                <TableCell className="font-numeric tabular-nums">{fmt(ot)}</TableCell>
+                <TableCell className="font-numeric tabular-nums text-destructive">-{fmt(absence)}</TableCell>
+                <TableCell className="font-numeric tabular-nums text-destructive">-{fmt(siEmp)}</TableCell>
+                <TableCell className="font-numeric tabular-nums">{fmt(gross)}</TableCell>
+                <TableCell
+                  className="font-numeric tabular-nums font-bold text-primary"
+                  data-testid={`text-line-net-${l.employeeId}`}
+                >
+                  {fmt(l.netPay)}
+                </TableCell>
+                <TableCell className="font-numeric tabular-nums text-muted-foreground text-xs">
+                  {fmt(l.endOfServiceAccrual)}
+                </TableCell>
+                <TableCell className="font-numeric tabular-nums text-muted-foreground text-xs">
+                  {fmt(l.leaveAccrual)}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

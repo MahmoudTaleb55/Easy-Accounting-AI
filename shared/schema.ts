@@ -436,6 +436,16 @@ export const payrollLines = pgTable(
 );
 export type PayrollLine = typeof payrollLines.$inferSelect;
 
+// Returned by GET /api/hr/payroll/runs/:id/lines — every payroll line is
+// enriched with the employee's full name (joined server-side) so the Lines
+// tab in the payroll-run detail dialog can render a per-employee breakdown
+// without firing a second request per row. `employeeName` is nullable to
+// account for the (currently impossible, but defensive) case of a payroll
+// line whose employee row has been hard-deleted out from under it.
+export type PayrollLineWithEmployee = PayrollLine & {
+  employeeName: string | null;
+};
+
 // ============================================================================
 // Multi-company & FX (used by Fixed Assets module)
 // ============================================================================

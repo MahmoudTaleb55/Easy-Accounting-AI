@@ -67,6 +67,7 @@ import {
   type Leave,
   type InsertLeave,
   type PayrollRun,
+  type PayrollLineWithEmployee,
   type JournalEntrySourceLink,
 } from "@shared/schema";
 import {
@@ -160,6 +161,10 @@ export interface IStorage {
 
   // Payroll runs (history list + delete + audit hook used by payroll engine)
   listPayrollRuns(companyId: number): Promise<PayrollRun[]>;
+  // Per-employee breakdown for a posted run, joined with employee names so
+  // the detail dialog can audit a past run end-to-end without re-running the
+  // preview. Workspace-scoped via the run's `companyId`.
+  getPayrollRunLines(companyId: number, runId: number): Promise<PayrollLineWithEmployee[]>;
   deletePayrollRun(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
   recordPayrollRunAudit(input: {
     payrollRunId: number;
@@ -1722,6 +1727,46 @@ export class DatabaseStorage implements IStorage {
       .from(payrollRuns)
       .where(eq(payrollRuns.companyId, companyId))
       .orderBy(desc(payrollRuns.year), desc(payrollRuns.month), desc(payrollRuns.id));
+  }
+
+  async getPayrollRunLines(
+    companyId: number,
+    runId: number,
+  ): Promise<PayrollLineWithEmployee[]> {
+    // Filter on payroll_lines.companyId (denormalised from the parent run, see
+    // schema notes) so the query is satisfiable directly from the index even
+    // before the join. Left-join employees so a hard-deleted employee row
+    // (currently impossible thanks to FK constraints, but guarded for safety)
+    // doesn't make the line vanish from the audit view.
+    const rows = await db
+      .select({
+        id: payrollLines.id,
+        companyId: payrollLines.companyId,
+        payrollRunId: payrollLines.payrollRunId,
+        employeeId: payrollLines.employeeId,
+        baseSalary: payrollLines.baseSalary,
+        allowances: payrollLines.allowances,
+        overtime: payrollLines.overtime,
+        bonuses: payrollLines.bonuses,
+        absenceDeduction: payrollLines.absenceDeduction,
+        advances: payrollLines.advances,
+        socialInsuranceEmployee: payrollLines.socialInsuranceEmployee,
+        socialInsuranceEmployer: payrollLines.socialInsuranceEmployer,
+        netPay: payrollLines.netPay,
+        endOfServiceAccrual: payrollLines.endOfServiceAccrual,
+        leaveAccrual: payrollLines.leaveAccrual,
+        employeeName: employees.fullName,
+      })
+      .from(payrollLines)
+      .leftJoin(employees, eq(employees.id, payrollLines.employeeId))
+      .where(
+        and(
+          eq(payrollLines.companyId, companyId),
+          eq(payrollLines.payrollRunId, runId),
+        ),
+      )
+      .orderBy(payrollLines.id);
+    return rows;
   }
 
   async deletePayrollRun(companyId: number, id: number, ctx?: AuditContext): Promise<void> {

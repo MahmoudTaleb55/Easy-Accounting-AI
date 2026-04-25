@@ -812,6 +812,24 @@ export async function registerRoutes(
     res.json(await storage.listPayrollRuns(cid(req)));
   });
 
+  // Per-employee breakdown for a single posted run — feeds the "Lines" tab
+  // inside the payroll-run detail dialog so users can audit any past run
+  // end-to-end without re-running the preview. Workspace-scoped via the
+  // ownership check + companyId filter inside storage.
+  app.get("/api/hr/payroll/runs/:id/lines", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid id" });
+      }
+      const owned = await storage.entityBelongsToCompany("payroll_run", id, cid(req));
+      if (!owned) return res.status(404).json({ message: "غير موجود" });
+      res.json(await storage.getPayrollRunLines(cid(req), id));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تحميل تفاصيل كشف الرواتب" });
+    }
+  });
+
   app.delete("/api/hr/payroll/runs/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
