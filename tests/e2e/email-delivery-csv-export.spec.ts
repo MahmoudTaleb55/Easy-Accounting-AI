@@ -119,6 +119,75 @@ test.describe("email-delivery CSV export filename @csv-export", () => {
     ]).toContain(cd);
   });
 
+  test("partial window filename: only `from` is a valid YYYY-MM-DD", async ({
+    request,
+  }) => {
+    // Reviewers commonly pull "everything since <date>" — this exercises
+    // the `from_<date>` filename branch in isolation. Without this case
+    // a regression that swapped the partial-window branches for the
+    // today-stamped fallback would slip through silently.
+    const res = await request.get(
+      "/api/auth/email-deliveries?format=csv&from=2025-01-01",
+      { headers: headers() },
+    );
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toMatch(/^text\/csv/);
+    expect(res.headers()["content-disposition"]).toBe(
+      'attachment; filename="email-delivery-from_2025-01-01.csv"',
+    );
+
+    // Pair a valid `from` with a malformed `to`: the strict
+    // YYYY-MM-DD guard must reject the bad `to` and still emit the
+    // partial-window filename rather than collapsing all the way to
+    // the today-stamped fallback. Catches a regression where a
+    // refactor short-circuits to the fallback the moment any input
+    // fails validation.
+    const malformed = await request.get(
+      "/api/auth/email-deliveries?format=csv&from=2025-01-01&to=garbage",
+      { headers: headers() },
+    );
+    expect(malformed.status()).toBe(200);
+    expect(malformed.headers()["content-disposition"]).toBe(
+      'attachment; filename="email-delivery-from_2025-01-01.csv"',
+    );
+    expect(malformed.headers()["content-disposition"]).not.toContain(
+      "garbage",
+    );
+  });
+
+  test("partial window filename: only `to` is a valid YYYY-MM-DD", async ({
+    request,
+  }) => {
+    // The mirror case of the `from`-only test: reviewers pulling
+    // "everything before <date>" rely on the `to_<date>` filename
+    // branch. Same shape of regression risk, exercised separately so
+    // a failure points at the right branch.
+    const res = await request.get(
+      "/api/auth/email-deliveries?format=csv&to=2025-03-31",
+      { headers: headers() },
+    );
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toMatch(/^text\/csv/);
+    expect(res.headers()["content-disposition"]).toBe(
+      'attachment; filename="email-delivery-to_2025-03-31.csv"',
+    );
+
+    // Pair a malformed `from` with a valid `to`: the bad `from` must
+    // be rejected without dragging the valid `to` down with it into
+    // the today-stamped fallback.
+    const malformed = await request.get(
+      "/api/auth/email-deliveries?format=csv&from=garbage&to=2025-03-31",
+      { headers: headers() },
+    );
+    expect(malformed.status()).toBe(200);
+    expect(malformed.headers()["content-disposition"]).toBe(
+      'attachment; filename="email-delivery-to_2025-03-31.csv"',
+    );
+    expect(malformed.headers()["content-disposition"]).not.toContain(
+      "garbage",
+    );
+  });
+
   test("non-YYYY-MM-DD inputs do not appear in the filename (header-injection guard)", async ({
     request,
   }) => {
