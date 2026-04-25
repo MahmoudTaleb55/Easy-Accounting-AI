@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react"
-import { useLocation, useSearch } from "wouter"
+import { Link, useLocation, useSearch } from "wouter"
 import { useQuery, useMutation } from "@tanstack/react-query"
+import { format } from "date-fns"
+import { ar, enUS } from "date-fns/locale"
 import { apiRequest, queryClient } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
 import { EmptyState } from "@/components/feedback/empty-state"
 import {
@@ -16,6 +19,13 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet"
 import { WriteGuard, useCanWrite } from "@/components/auth/write-guard"
 import {
   Select,
@@ -25,11 +35,32 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search, Sparkles } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronLeft, ChevronRight, Plus, Search, Sparkles } from "lucide-react"
 import type { Account } from "@shared/schema"
 import { useLocale } from "@/contexts/locale-context"
 import { useAuth } from "@/hooks/use-auth"
+import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
+
+/* ------------------------------------------------------------------ */
+/* Account ledger drawer types                                         */
+/* The /api/journal-entries endpoint returns each entry with its line  */
+/* array; we filter client-side to the selected account so the drawer  */
+/* shares cache with the journal page (no extra round-trip).           */
+/* ------------------------------------------------------------------ */
+interface LedgerJELine {
+  accountId: number
+  debit: string | number
+  credit: string | number
+  description?: string | null
+}
+interface LedgerJE {
+  id: number
+  reference: string
+  entryDate: string
+  description: string | null
+  lines: LedgerJELine[]
+}
 
 /* ------------------------------------------------------------------ */
 /* Type styling — token-based, no raw hex                               */
@@ -135,9 +166,38 @@ export default function ChartOfAccountsPage() {
         locale === "ar"
           ? "تعذّر استعادة الدليل الافتراضي"
           : "Could not restore the default chart",
+      ledgerTitle: locale === "ar" ? "حركة الحساب" : "Account ledger",
+      ledgerDesc:
+        locale === "ar"
+          ? "كل سطر مدين/دائن مرحَّل إلى هذا الحساب، مع رابط إلى قيد اليومية الأصلي."
+          : "Every debit/credit posted to this account, each linked back to its journal entry.",
+      ledgerDate: locale === "ar" ? "التاريخ" : "Date",
+      ledgerMemo: locale === "ar" ? "البيان" : "Memo",
+      ledgerDebit: locale === "ar" ? "مدين" : "Debit",
+      ledgerCredit: locale === "ar" ? "دائن" : "Credit",
+      ledgerJE: locale === "ar" ? "القيد" : "Entry",
+      ledgerEmpty:
+        locale === "ar"
+          ? "لا حركة على هذا الحساب بعد"
+          : "No postings to this account yet",
+      ledgerEmptyHint:
+        locale === "ar"
+          ? "ستظهر هنا أسطر القيود فور ترحيل أول قيد يستخدم الحساب."
+          : "Lines will appear here as soon as a journal entry posts to this account.",
+      ledgerOpenAria: locale === "ar" ? "فتح حركة الحساب" : "Open account ledger",
+      ledgerJEAria:
+        locale === "ar" ? "فتح قيد اليومية" : "Open journal entry",
+      ledgerTotalDebit: locale === "ar" ? "إجمالي المدين" : "Total debit",
+      ledgerTotalCredit: locale === "ar" ? "إجمالي الدائن" : "Total credit",
+      ledgerBalance: locale === "ar" ? "الرصيد" : "Balance",
     }),
     [locale]
   )
+
+  // Account ledger drawer — chosen account row whose postings we surface.
+  // Held in state instead of the URL so reload returns to the COA tree itself,
+  // which is the more informative landing.
+  const [ledgerAccount, setLedgerAccount] = useState<Account | null>(null)
 
   const { data: accounts, isLoading } = useQuery<Account[]>({
     queryKey: ["/api/accounts"],
@@ -489,6 +549,8 @@ export default function ChartOfAccountsPage() {
                     locale={locale}
                     isExpanded={isExpanded}
                     onToggle={toggle}
+                    onOpenLedger={setLedgerAccount}
+                    openLedgerAria={t.ledgerOpenAria}
                   />
                 ))}
               </ul>
@@ -496,6 +558,26 @@ export default function ChartOfAccountsPage() {
           ))}
         </div>
       )}
+
+      <AccountLedgerSheet
+        account={ledgerAccount}
+        onClose={() => setLedgerAccount(null)}
+        labels={{
+          title: t.ledgerTitle,
+          description: t.ledgerDesc,
+          date: t.ledgerDate,
+          memo: t.ledgerMemo,
+          debit: t.ledgerDebit,
+          credit: t.ledgerCredit,
+          je: t.ledgerJE,
+          empty: t.ledgerEmpty,
+          emptyHint: t.ledgerEmptyHint,
+          jeAria: t.ledgerJEAria,
+          totalDebit: t.ledgerTotalDebit,
+          totalCredit: t.ledgerTotalCredit,
+          balance: t.ledgerBalance,
+        }}
+      />
     </div>
   )
 }
@@ -514,9 +596,19 @@ interface TreeRowProps {
   locale: string
   isExpanded: (code: string) => boolean
   onToggle: (code: string) => void
+  onOpenLedger: (account: Account) => void
+  openLedgerAria: string
 }
 
-function TreeRow({ node, depth, locale, isExpanded, onToggle }: TreeRowProps) {
+function TreeRow({
+  node,
+  depth,
+  locale,
+  isExpanded,
+  onToggle,
+  onOpenLedger,
+  openLedgerAria,
+}: TreeRowProps) {
   const { account } = node
   const hasChildren = node.children.length > 0
   const expanded = hasChildren && isExpanded(account.code)
@@ -528,12 +620,19 @@ function TreeRow({ node, depth, locale, isExpanded, onToggle }: TreeRowProps) {
   // Base is 1.25rem (matches the previous flat layout) plus 1rem per level.
   const inlineStart = `${1.25 + depth * 1}rem`
 
+  // Header rows are organisational containers and never get postings, so we
+  // suppress the ledger affordance on them. Postable accounts open the
+  // ledger drawer on click.
+  const openable = !account.isHeader
+
   return (
     <>
       <li
         className={cn(
           "px-5 py-2.5 flex items-center gap-3 text-sm",
-          account.isHeader ? "bg-muted/30 font-medium" : "hover:bg-muted/30 transition-colors"
+          account.isHeader
+            ? "bg-muted/30 font-medium"
+            : "hover:bg-muted/30 transition-colors group"
         )}
         style={{ paddingInlineStart: inlineStart }}
         data-testid={`row-account-${account.code}`}
@@ -566,12 +665,34 @@ function TreeRow({ node, depth, locale, isExpanded, onToggle }: TreeRowProps) {
           <span aria-hidden className="shrink-0 inline-block w-5 h-5" />
         )}
 
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <span className="font-numeric text-[11px] text-muted-foreground tabular-nums w-12 shrink-0">
-            {account.code}
-          </span>
-          <span className="truncate text-foreground">{account.nameAr}</span>
-        </div>
+        {openable ? (
+          <button
+            type="button"
+            onClick={() => onOpenLedger(account)}
+            className={cn(
+              "flex items-center gap-3 min-w-0 flex-1 text-start rounded-sm",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            )}
+            aria-label={`${openLedgerAria} — ${account.code} ${account.nameAr}`}
+            data-testid={`button-open-ledger-${account.code}`}
+          >
+            <span className="font-numeric text-[11px] text-muted-foreground tabular-nums w-12 shrink-0">
+              {account.code}
+            </span>
+            <span className="truncate text-foreground">{account.nameAr}</span>
+            <BookOpen
+              className="w-3.5 h-3.5 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+              aria-hidden
+            />
+          </button>
+        ) : (
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <span className="font-numeric text-[11px] text-muted-foreground tabular-nums w-12 shrink-0">
+              {account.code}
+            </span>
+            <span className="truncate text-foreground">{account.nameAr}</span>
+          </div>
+        )}
         <span className="text-[11px] text-muted-foreground hidden sm:block truncate max-w-[40%]">
           {account.nameEn}
         </span>
@@ -585,8 +706,206 @@ function TreeRow({ node, depth, locale, isExpanded, onToggle }: TreeRowProps) {
             locale={locale}
             isExpanded={isExpanded}
             onToggle={onToggle}
+            onOpenLedger={onOpenLedger}
+            openLedgerAria={openLedgerAria}
           />
         ))}
     </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Account ledger drawer                                               */
+/* Mirror of task #105: just like JE → originating event, ledger rows  */
+/* now expose a one-click jump back to /app/journal#je-<id>. The JE    */
+/* page reads the hash, scrolls into view, and pulses a highlight.     */
+/* ------------------------------------------------------------------ */
+interface AccountLedgerSheetLabels {
+  title: string
+  description: string
+  date: string
+  memo: string
+  debit: string
+  credit: string
+  je: string
+  empty: string
+  emptyHint: string
+  jeAria: string
+  totalDebit: string
+  totalCredit: string
+  balance: string
+}
+
+interface AccountLedgerSheetProps {
+  account: Account | null
+  onClose: () => void
+  labels: AccountLedgerSheetLabels
+}
+
+interface LedgerPosting {
+  jeId: number
+  reference: string
+  entryDate: string
+  description: string | null
+  lineMemo: string | null
+  debit: number
+  credit: number
+}
+
+function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProps) {
+  const { locale } = useLocale()
+  const fmt = useFormatMoney()
+  const dfLocale = locale === "ar" ? ar : enUS
+
+  // Reuse the journal-entries cache so flipping between this drawer and the
+  // /app/journal page is instantaneous. Only fetch when the drawer opens to
+  // avoid a needless round-trip on the first COA visit.
+  const { data: entries, isLoading } = useQuery<LedgerJE[]>({
+    queryKey: ["/api/journal-entries"],
+    enabled: !!account,
+  })
+
+  const postings = useMemo<LedgerPosting[]>(() => {
+    if (!account || !entries) return []
+    const rows: LedgerPosting[] = []
+    for (const je of entries) {
+      for (const l of je.lines) {
+        if (l.accountId !== account.id) continue
+        const debit = Number(l.debit ?? 0)
+        const credit = Number(l.credit ?? 0)
+        if (debit === 0 && credit === 0) continue
+        rows.push({
+          jeId: je.id,
+          reference: je.reference,
+          entryDate: je.entryDate,
+          description: je.description,
+          lineMemo: l.description ?? null,
+          debit,
+          credit,
+        })
+      }
+    }
+    // Newest postings first — matches how users scan a ledger most of the time.
+    rows.sort((a, b) => (a.entryDate < b.entryDate ? 1 : a.entryDate > b.entryDate ? -1 : b.jeId - a.jeId))
+    return rows
+  }, [account, entries])
+
+  const totalDebit = postings.reduce((s, r) => s + r.debit, 0)
+  const totalCredit = postings.reduce((s, r) => s + r.credit, 0)
+  const isDebitNormal =
+    account?.type === "asset" || account?.type === "expense"
+  const balance = isDebitNormal ? totalDebit - totalCredit : totalCredit - totalDebit
+
+  return (
+    <Sheet open={!!account} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent
+        side={locale === "ar" ? "left" : "right"}
+        className="w-full sm:max-w-2xl overflow-y-auto"
+        data-testid="sheet-account-ledger"
+      >
+        <SheetHeader className="text-start">
+          <SheetTitle className="flex items-center gap-2.5">
+            <BookOpen className="w-4 h-4 text-muted-foreground" aria-hidden />
+            <span>{labels.title}</span>
+          </SheetTitle>
+          <SheetDescription>{labels.description}</SheetDescription>
+        </SheetHeader>
+
+        {account && (
+          <div className="mt-4 rounded-md border border-border bg-muted/30 px-4 py-3">
+            <div className="flex items-baseline gap-2.5 flex-wrap">
+              <span className="font-numeric text-xs text-muted-foreground tabular-nums">
+                {account.code}
+              </span>
+              <span className="text-sm font-medium text-foreground" data-testid="text-ledger-account-name">
+                {account.nameAr}
+              </span>
+              <span className="text-xs text-muted-foreground">{account.nameEn}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4">
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ) : postings.length === 0 ? (
+            <div
+              className="rounded-md border border-dashed border-border px-4 py-8 text-center"
+              data-testid="empty-account-ledger"
+            >
+              <p className="text-sm font-medium text-foreground">{labels.empty}</p>
+              <p className="text-xs text-muted-foreground mt-1">{labels.emptyHint}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto table-sticky-first">
+              <table className="w-full text-sm" data-testid="table-account-ledger">
+                <thead className="text-[11px] uppercase tracking-wider text-muted-foreground bg-muted/30">
+                  <tr>
+                    <th className="text-start px-3 py-2 font-medium">{labels.date}</th>
+                    <th className="text-start px-3 py-2 font-medium">{labels.memo}</th>
+                    <th className="text-end px-3 py-2 font-medium w-24">{labels.debit}</th>
+                    <th className="text-end px-3 py-2 font-medium w-24">{labels.credit}</th>
+                    <th className="text-end px-3 py-2 font-medium w-20">{labels.je}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {postings.map((p, i) => (
+                    <tr key={`${p.jeId}-${i}`} data-testid={`row-ledger-${p.jeId}-${i}`}>
+                      <td className="px-3 py-2 text-foreground font-numeric tabular-nums whitespace-nowrap">
+                        {format(new Date(p.entryDate), "d MMM yyyy", { locale: dfLocale })}
+                      </td>
+                      <td className="px-3 py-2 text-foreground">
+                        <div className="truncate max-w-[18rem]">
+                          {p.lineMemo || p.description || "—"}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-end font-numeric tabular-nums text-foreground">
+                        {p.debit > 0 ? fmt(p.debit) : ""}
+                      </td>
+                      <td className="px-3 py-2 text-end font-numeric tabular-nums text-foreground">
+                        {p.credit > 0 ? fmt(p.credit) : ""}
+                      </td>
+                      <td className="px-3 py-2 text-end">
+                        <Link
+                          href={`/app/journal#je-${p.jeId}`}
+                          className="font-numeric tabular-nums text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
+                          data-testid={`link-ledger-je-${p.jeId}`}
+                          title={`${labels.jeAria} ${p.reference}`}
+                          aria-label={`${labels.jeAria} ${p.reference}`}
+                          onClick={() => onClose()}
+                        >
+                          {p.reference || `JE #${p.jeId}`}
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-muted/40 text-xs">
+                  <tr>
+                    <td className="px-3 py-2 text-muted-foreground" colSpan={2}>
+                      <span className="font-medium text-foreground">{labels.balance}: </span>
+                      <span className="font-numeric tabular-nums text-foreground" data-testid="text-ledger-balance">
+                        {fmt(balance)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-end font-numeric tabular-nums text-foreground" data-testid="text-ledger-total-debit">
+                      {fmt(totalDebit)}
+                    </td>
+                    <td className="px-3 py-2 text-end font-numeric tabular-nums text-foreground" data-testid="text-ledger-total-credit">
+                      {fmt(totalCredit)}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }
