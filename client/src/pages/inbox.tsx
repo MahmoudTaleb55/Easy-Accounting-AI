@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useLocale } from "@/contexts/locale-context";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -844,6 +844,7 @@ function DocumentDetail({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      invalidateAccountBalances();
       toast({
         title: ar ? "تم الترحيل" : "Posted",
         description: ar

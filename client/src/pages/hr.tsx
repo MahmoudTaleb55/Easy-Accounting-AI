@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useFormatMoney, useSettings } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -808,6 +808,7 @@ function PayrollTab() {
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/insights"] });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/runs"] });
+      invalidateAccountBalances();
     },
     onError: (e: any) => toast({ title: "خطأ", description: e?.message, variant: "destructive" }),
   });
@@ -816,6 +817,10 @@ function PayrollTab() {
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/hr/payroll/runs/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/runs"] });
+      // Deleting a payroll run reverses its journal entry, so the COA
+      // trailing balances must be invalidated alongside the JE list.
+      queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      invalidateAccountBalances();
       toast({ title: "تم", description: "تم حذف كشف الرواتب" });
     },
     onError: (e: any) => {

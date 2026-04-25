@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type TransactionInput } from "@shared/routes";
 import type { TransactionWithJournal } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { invalidateAccountBalances } from "@/lib/queryClient";
 
 // Helper for parsing Zod responses safely
 function parseWithLogging<T>(schema: any, data: unknown, label: string): T {
@@ -73,6 +74,10 @@ export function useCreateTransaction() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.transactions.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.transactions.summary.path] });
+      // Creating a transaction auto-posts a balanced JE in the backend
+      // (server/storage.ts -> autoPostFromTransaction), so the chart-of-
+      // accounts trailing balances must be invalidated for every period.
+      invalidateAccountBalances();
       toast({
         title: "تم بنجاح!",
         description: "تمت إضافة المعاملة الجديدة.",
@@ -105,6 +110,9 @@ export function useDeleteTransaction() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.transactions.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.transactions.summary.path] });
+      // Deleting a transaction reverses its auto-posted JE, so the COA
+      // trailing balances cache is stale until invalidated.
+      invalidateAccountBalances();
       toast({
         title: "تم الحذف",
         description: "تم مسح المعاملة بنجاح.",

@@ -99,3 +99,23 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * Invalidate every cached `/api/accounts/balances` query so the chart of
+ * accounts page refetches its trailing balances on the next visit.
+ *
+ * The balances query is keyed by `["/api/accounts/balances", period]` (one
+ * cache entry per period chip), so we pass only the path prefix here —
+ * TanStack Query v5's `invalidateQueries` does prefix matching by default,
+ * which means every period variant gets invalidated in a single call.
+ *
+ * Call this from any mutation that changes journal lines (manual JE
+ * create/delete, transaction create/delete, AI auto-post, payroll run,
+ * fixed-asset events, depreciation post, the admin backfill recovery
+ * hatch). Keeping this in one helper prevents the kind of "I added a new
+ * mutation but forgot to invalidate balances" drift that lets stale
+ * balances linger on /app/accounts after a JE is posted elsewhere.
+ */
+export function invalidateAccountBalances(): void {
+  queryClient.invalidateQueries({ queryKey: ["/api/accounts/balances"] });
+}

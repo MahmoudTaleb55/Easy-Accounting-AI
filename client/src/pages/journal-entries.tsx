@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocation, useSearch } from "wouter"
 import { useQuery, useMutation } from "@tanstack/react-query"
-import { apiRequest, queryClient } from "@/lib/queryClient"
+import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
 import { format, type Locale } from "date-fns"
 import { ar, enUS } from "date-fns/locale"
@@ -249,6 +249,7 @@ export default function JournalEntriesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] })
       queryClient.invalidateQueries({ queryKey: ["/api/reports/trial-balance"] })
       queryClient.invalidateQueries({ queryKey: ["/api/reports/balance-sheet"] })
+      invalidateAccountBalances()
       toast({ title: t.created })
       setOpen(false)
       setDescription("")
@@ -267,6 +268,7 @@ export default function JournalEntriesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] })
       queryClient.invalidateQueries({ queryKey: ["/api/reports/trial-balance"] })
       queryClient.invalidateQueries({ queryKey: ["/api/reports/balance-sheet"] })
+      invalidateAccountBalances()
       toast({ title: t.deleted })
     },
   })

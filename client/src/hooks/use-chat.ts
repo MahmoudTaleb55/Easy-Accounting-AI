@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ChatMessageInput } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 import { useLocale } from "@/contexts/locale-context";
+import { invalidateAccountBalances } from "@/lib/queryClient";
 
 function parseWithLogging<T>(schema: any, data: unknown, label: string): T {
   const result = schema.safeParse(data);
@@ -73,6 +74,10 @@ export function useSendMessage() {
       // The AI might have added a transaction, so we invalidate those too
       queryClient.invalidateQueries({ queryKey: [api.transactions.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.transactions.summary.path] });
+      // Any AI-added transaction also auto-posts a JE, so the chart of
+      // accounts trailing balances need to be invalidated for every
+      // period the user might flip back to.
+      invalidateAccountBalances();
     },
     onError: (err, _, context) => {
       queryClient.setQueryData([api.chat.list.path], context?.previousMessages);

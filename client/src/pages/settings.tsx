@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ApiError, apiRequest, queryClient } from "@/lib/queryClient";
+import { ApiError, apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -144,8 +144,11 @@ function DataToolsCard() {
       setLastResult(data);
       // The journal entries page caches its list; invalidate so any newly
       // posted entries from the backfill show up immediately if the user
-      // navigates there.
+      // navigates there. The chart-of-accounts trailing balances cache is
+      // similarly stale after a backfill — invalidate it for every period
+      // so /app/accounts reflects the new GL on the next visit.
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      invalidateAccountBalances();
       toast({
         title: ar ? "تمّ الإصلاح" : "Done",
         description: ar

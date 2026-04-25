@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useCompany } from "@/contexts/company-context";
 import { useFormatMoney } from "@/lib/format";
@@ -897,6 +897,7 @@ function OperationDialog({ assetId, type, company, onClose }: { assetId: number;
     onSuccess: (d) => {
       queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      invalidateAccountBalances();
       toast({ title: "تم الترحيل", description: `قيد رقم JE ${d.journalEntryId}` });
       onClose();
     },
@@ -1060,6 +1061,7 @@ function DepreciationPanel({ company }: { company: Company }) {
       queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/depreciation-runs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      invalidateAccountBalances();
       toast({ title: "تم ترحيل قيد الإهلاك", description: `JE ${d.journalEntryId}` });
       setPreview(null);
       setUsage([]);
