@@ -932,37 +932,50 @@ export const authBizStorage = {
     // trusted from caller input — to keep accounting defaults consistent.
     const { code: currencyCode, symbol: currencySymbol } = resolveCurrency(opts?.currencyCode);
 
-    // All-or-nothing: a company without its settings row would leave the
-    // workspace bootstrap half-complete, so wrap both writes in a tx.
-    const created = await db.transaction(async (tx) => {
-      const [c] = await tx
-        .insert(companies)
-        .values({
-          name,
-          functionalCurrency: currencyCode,
+    // Workspace-creation crosses the active workspace's RLS boundary: the
+    // settings row and the seeded chart of accounts both live under the new
+    // company's id, which never matches `app.current_company_id` when this
+    // is called from inside an existing workspace's scope (e.g. an owner
+    // adding a second workspace, or a signed-in user without a membership
+    // bootstrapping their first one). Wrap the whole flow in `withRlsBypass`
+    // so the workspace_isolation policies on `settings` / `accounts` do not
+    // reject these "across-workspace" inserts. See
+    // docs/design/workspace-isolation-defense-in-depth.md → "Bypass paths".
+    const { withRlsBypass } = await import("../db");
+    return withRlsBypass("workspace:create", async () => {
+      // All-or-nothing: a company without its settings row would leave the
+      // workspace bootstrap half-complete, so wrap both writes in a tx.
+      const created = await db.transaction(async (tx) => {
+        const [c] = await tx
+          .insert(companies)
+          .values({
+            name,
+            functionalCurrency: currencyCode,
+            currencySymbol,
+            isDefault: false,
+            isActive: true,
+            ownerUserId,
+          })
+          .returning();
+
+        await tx.insert(settings).values({
+          companyId: c.id,
+          currencyCode,
           currencySymbol,
-          isDefault: false,
-          isActive: true,
-          ownerUserId,
-        })
-        .returning();
+        });
 
-      await tx.insert(settings).values({
-        companyId: c.id,
-        currencyCode,
-        currencySymbol,
+        return c;
       });
-
-      return c;
+      // Seed the default chart of accounts for the new workspace so the
+      // first quick transaction (auto-posted JE) and payroll run can
+      // immediately resolve cash/revenue/expense accounts by code. Done
+      // outside the tx because the seed touches a separate code path and is
+      // idempotent if re-run, while a failure here should not roll back the
+      // company itself.
+      const { seedDefaultCoaForCompany } = await import("../init-coa");
+      await seedDefaultCoaForCompany(created.id);
+      return created;
     });
-    // Seed the default chart of accounts for the new workspace so the first
-    // quick transaction (auto-posted JE) and payroll run can immediately
-    // resolve cash/revenue/expense accounts by code. Done outside the tx
-    // because the seed touches a separate code path and is idempotent if
-    // re-run, while a failure here should not roll back the company itself.
-    const { seedDefaultCoaForCompany } = await import("../init-coa");
-    await seedDefaultCoaForCompany(created.id);
-    return created;
   },
 
   // ---------- email delivery alerting ----------

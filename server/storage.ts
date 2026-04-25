@@ -1,4 +1,4 @@
-import { db, withCompanyScope } from "./db";
+import { db } from "./db";
 import {
   transactions,
   chatMessages,
@@ -1173,24 +1173,34 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(companies).orderBy(companies.name);
   }
   async createCompany(input: InsertCompany): Promise<Company> {
-    if (input.isDefault) {
-      await db.update(companies).set({ isDefault: false });
-    }
-    const [c] = await db.insert(companies).values(input).returning();
-    // Every workspace needs its own chart of accounts so that downstream
-    // postings (auto-posted JEs from quick transactions, payroll runs, fixed-
-    // asset events, etc.) can resolve `1110` cash, `4010` revenue, `6900`
-    // other-expense by code without falling back to silent no-ops.
+    // Creating a new workspace inherently crosses the active workspace's
+    // RLS boundary: the seed below writes accounts (and the settings insert
+    // inside `createCompanyForOwner`) under the *new* company's id, which
+    // never matches `app.current_company_id` when an owner is calling this
+    // from inside their existing workspace's scope. Wrap the whole flow in
+    // `withRlsBypass` so the seed/settings inserts are not rejected by the
+    // workspace_isolation policy. Audited reason: see
+    // docs/design/workspace-isolation-defense-in-depth.md → "Bypass paths".
     //
-    // The seed runs against `accounts` which is workspace-scoped under RLS
-    // (task #93). At signup time the caller has no membership for the brand-
-    // new workspace yet, so the request middleware hasn't pinned
-    // `app.current_company_id` to it. Pin the GUC here so the seed inserts
-    // satisfy the policy's WITH CHECK without needing the bypass escape
-    // hatch — every row the seed writes targets exactly this workspace.
-    const { seedDefaultCoaForCompany } = await import("./init-coa");
-    await withCompanyScope(c.id, () => seedDefaultCoaForCompany(c.id));
-    return c;
+    // Note: an alternative pattern (HEAD pre-rebase) wrapped only the seed
+    // in `withCompanyScope(c.id, …)` so the GUC matched the new workspace.
+    // We keep the bypass here for symmetry with `createCompanyForOwner`,
+    // which has to write `companies` + `settings` in one transaction and
+    // therefore cannot rely on the per-call scope override.
+    const { withRlsBypass } = await import("./db");
+    return withRlsBypass("workspace:create", async () => {
+      if (input.isDefault) {
+        await db.update(companies).set({ isDefault: false });
+      }
+      const [c] = await db.insert(companies).values(input).returning();
+      // Every workspace needs its own chart of accounts so that downstream
+      // postings (auto-posted JEs from quick transactions, payroll runs,
+      // fixed-asset events, etc.) can resolve `1110` cash, `4010` revenue,
+      // `6900` other-expense by code without falling back to silent no-ops.
+      const { seedDefaultCoaForCompany } = await import("./init-coa");
+      await seedDefaultCoaForCompany(c.id);
+      return c;
+    });
   }
   async updateCompany(id: number, input: Partial<InsertCompany>): Promise<Company> {
     if (input.isDefault) {

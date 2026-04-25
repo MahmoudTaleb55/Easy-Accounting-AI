@@ -418,6 +418,15 @@ on completion. Audited bypass call sites (with `reason` strings):
 - `bootstrap:rls` — re-runs migration 0008 itself.
 - `cron:email-delivery-alert-sweep` — the periodic alert evaluator that
   iterates every workspace.
+- `workspace:create` — `DatabaseStorage.createCompany` and
+  `authBizStorage.createCompanyForOwner`. Creating a new workspace inserts
+  the seed chart of accounts and a `settings` row under the *new* company's
+  id. When the caller is already an owner of an existing workspace, the
+  request runs inside `withCompanyScope(existingCompanyId)`, so the new
+  rows would be rejected by the `workspace_isolation` policy
+  (`new.company_id ≠ current_company_id()`). The bypass is the natural fit:
+  workspace creation is by definition the moment when the active scope is
+  about to change.
 
 If a future code path needs bypass it is expected to wrap itself in
 `withRlsBypass` with a fresh `reason` so the audit list stays grep-able.
