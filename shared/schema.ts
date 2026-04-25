@@ -823,6 +823,13 @@ export const impairmentEvents = pgTable(
     lossAmount: numeric("loss_amount", { precision: 18, scale: 2 }).notNull(),
     journalEntryId: integer("journal_entry_id"),
     notes: text("notes").default(""),
+    // Snapshot of the per-asset balance changes this event applied. Used by
+    // the matching DELETE route (see server/storage.ts deleteImpairmentEvent)
+    // to roll the asset row back precisely. Shape:
+    //   { asset?: { accumImpairment?: delta }, components?: [{ id, accumImpairmentDelta }] }
+    // Nullable for rows created before task #157 — the delete path falls back
+    // to a no-op for those (documented in storage.ts).
+    assetBalanceDelta: jsonb("asset_balance_delta"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
@@ -854,6 +861,12 @@ export const revaluationEvents = pgTable(
     plImpact: numeric("pl_impact", { precision: 18, scale: 2 }).notNull().default("0"), // change recorded in P&L (negative for loss)
     journalEntryId: integer("journal_entry_id"),
     notes: text("notes").default(""),
+    // Snapshot of the per-asset balance changes this event applied. Used by
+    // deleteRevaluationEvent in server/storage.ts to reverse the asset row.
+    // Shape: { asset?: { cost?, accumDepreciation?, accumImpairment?,
+    //                    revalSurplus?, accumRevalLoss? } }
+    // Nullable for rows created before task #157.
+    assetBalanceDelta: jsonb("asset_balance_delta"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
@@ -884,6 +897,11 @@ export const disposals = pgTable(
     surplusTransferred: numeric("surplus_transferred", { precision: 18, scale: 2 }).notNull().default("0"),
     journalEntryId: integer("journal_entry_id"),
     notes: text("notes").default(""),
+    // Snapshot of the per-asset balance changes this event applied. Used by
+    // deleteDisposal in server/storage.ts to reverse the asset row. Shape:
+    //   { asset?: { revalSurplus?: delta, statusBefore?: string } }
+    // Nullable for rows created before task #157.
+    assetBalanceDelta: jsonb("asset_balance_delta"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({

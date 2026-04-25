@@ -2157,15 +2157,6 @@ async function registerFixedAssetRoutes(app: Express) {
         source: "manual",
         lines: built.lines,
       }, userCtx(req));
-      const event = await storage.createImpairmentEvent({
-        companyId: asset.companyId,
-        assetId: id,
-        eventDate: body.eventDate,
-        recoverableAmount: body.recoverableAmount,
-        lossAmount: isReversal ? -amount : amount,
-        journalEntryId: je.id,
-        notes: body.notes,
-      });
       const signedDelta = isReversal ? -amount : amount;
       const newAccumImp = Number(asset.accumImpairment) + signedDelta;
       await storage.updateFixedAssetBalances(id, { accumImpairment: newAccumImp }, userCtx(req));
@@ -2174,6 +2165,11 @@ async function registerFixedAssetRoutes(app: Express) {
       // amount, so that future component-level depreciation reflects the
       // impairment per IAS 36. If there are no components, the asset-level
       // accumImpairment alone is used by `unitFromAsset`.
+      //
+      // Track the per-component delta we actually applied (after the
+      // non-negative clamp) so the matching delete can roll the same
+      // amount back without going negative on the asset row either.
+      const componentDeltas: Array<{ id: number; accumImpairment: number }> = [];
       const comps = await storage.getAssetComponents(id);
       if (comps.length > 0) {
         const carryings = comps.map((c) => Math.max(0, Number(c.cost) - Number(c.accumDepreciation) - Number(c.accumImpairment)));
@@ -2185,11 +2181,32 @@ async function registerFixedAssetRoutes(app: Express) {
             const isLast = i === comps.length - 1;
             const share = isLast ? signedDelta - allocated : Math.round((signedDelta * carryings[i] / totalCarry) * 100) / 100;
             allocated += share;
-            const nextImp = Math.max(0, Number(c.accumImpairment) + share);
+            const before = Number(c.accumImpairment);
+            const nextImp = Math.max(0, before + share);
+            const appliedDelta = nextImp - before;
             await db.update(assetComponents).set({ accumImpairment: String(nextImp) }).where(eq(assetComponents.id, c.id));
+            if (appliedDelta !== 0) {
+              componentDeltas.push({ id: c.id, accumImpairment: appliedDelta });
+            }
           }
         }
       }
+
+      // Snapshot the deltas we just applied so the matching DELETE route
+      // can subtract them off precisely (task #157).
+      const event = await storage.createImpairmentEvent({
+        companyId: asset.companyId,
+        assetId: id,
+        eventDate: body.eventDate,
+        recoverableAmount: body.recoverableAmount,
+        lossAmount: isReversal ? -amount : amount,
+        journalEntryId: je.id,
+        notes: body.notes,
+        assetBalanceDelta: {
+          asset: { accumImpairment: signedDelta },
+          components: componentDeltas,
+        },
+      });
 
       res.status(201).json({ event, journalEntryId: je.id, preview });
     } catch (err: any) {
@@ -2249,6 +2266,23 @@ async function registerFixedAssetRoutes(app: Express) {
         source: "manual",
         lines: built.lines,
       }, userCtx(req));
+      // Update accumulated P&L loss tracker:
+      //  - downward revaluations with negative plImpact ADD to the running loss
+      //  - upward revaluations that reverse part of that loss SUBTRACT from it
+      const newAccumRevalLoss = Math.max(
+        0,
+        Number(asset.accumRevalLoss) - Math.max(0, result.plImpact) + Math.max(0, -result.plImpact),
+      );
+      const newRevalSurplus = Number(asset.revalSurplus) + result.surplusDelta;
+      await storage.updateFixedAssetBalances(id, {
+        cost: result.newGrossCost,
+        accumDepreciation: result.newAccumDep,
+        accumImpairment: result.newAccumImp,
+        revalSurplus: newRevalSurplus,
+        accumRevalLoss: newAccumRevalLoss,
+      }, userCtx(req));
+      // Snapshot the per-asset deltas so the DELETE route can roll the
+      // asset row back precisely (task #157).
       const event = await storage.createRevaluationEvent({
         companyId: asset.companyId,
         assetId: id,
@@ -2259,21 +2293,16 @@ async function registerFixedAssetRoutes(app: Express) {
         plImpact: result.plImpact,
         journalEntryId: je.id,
         notes: body.notes,
+        assetBalanceDelta: {
+          asset: {
+            cost: result.newGrossCost - Number(asset.cost),
+            accumDepreciation: result.newAccumDep - Number(asset.accumDepreciation),
+            accumImpairment: result.newAccumImp - Number(asset.accumImpairment),
+            revalSurplus: result.surplusDelta,
+            accumRevalLoss: newAccumRevalLoss - Number(asset.accumRevalLoss),
+          },
+        },
       });
-      // Update accumulated P&L loss tracker:
-      //  - downward revaluations with negative plImpact ADD to the running loss
-      //  - upward revaluations that reverse part of that loss SUBTRACT from it
-      const newAccumRevalLoss = Math.max(
-        0,
-        Number(asset.accumRevalLoss) - Math.max(0, result.plImpact) + Math.max(0, -result.plImpact),
-      );
-      await storage.updateFixedAssetBalances(id, {
-        cost: result.newGrossCost,
-        accumDepreciation: result.newAccumDep,
-        accumImpairment: result.newAccumImp,
-        revalSurplus: Number(asset.revalSurplus) + result.surplusDelta,
-        accumRevalLoss: newAccumRevalLoss,
-      }, userCtx(req));
       res.status(201).json({ event, journalEntryId: je.id, preview });
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -2313,6 +2342,12 @@ async function registerFixedAssetRoutes(app: Express) {
         source: "manual",
         lines: built.lines,
       }, userCtx(req));
+      await storage.updateFixedAssetBalances(id, {
+        status: "disposed",
+        revalSurplus: Number(asset.revalSurplus) - result.surplusTransferred,
+      }, userCtx(req));
+      // Snapshot the per-asset deltas so the DELETE route can roll the
+      // asset row (status + surplus) back precisely (task #157).
       const event = await storage.createDisposal({
         companyId: asset.companyId,
         assetId: id,
@@ -2323,11 +2358,14 @@ async function registerFixedAssetRoutes(app: Express) {
         surplusTransferred: result.surplusTransferred,
         journalEntryId: je.id,
         notes: body.notes,
+        assetBalanceDelta: {
+          asset: {
+            revalSurplus: -result.surplusTransferred,
+            statusBefore: asset.status,
+            statusAfter: "disposed",
+          },
+        },
       });
-      await storage.updateFixedAssetBalances(id, {
-        status: "disposed",
-        revalSurplus: Number(asset.revalSurplus) - result.surplusTransferred,
-      }, userCtx(req));
       res.status(201).json({ event, journalEntryId: je.id, preview });
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });

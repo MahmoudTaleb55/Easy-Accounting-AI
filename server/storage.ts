@@ -341,6 +341,36 @@ export class JournalEntryReferenceConflictError extends Error {
 export const PayrollRunDeleteConflictError = JournalEntryReferenceConflictError;
 
 /**
+ * Per-event snapshot of the per-asset balance changes applied by an
+ * impairment / revaluation / disposal posting. The matching DELETE route
+ * (see `deleteImpairmentEvent` / `deleteRevaluationEvent` / `deleteDisposal`)
+ * subtracts these deltas (or restores `statusBefore`) so the asset row goes
+ * back exactly to its pre-event state — provided no other event has touched
+ * the same columns in the meantime, which is a documented limitation of the
+ * delta-rollback strategy. See task #157 for context.
+ */
+export interface ImpairmentBalanceDelta {
+  asset?: { accumImpairment?: number };
+  components?: Array<{ id: number; accumImpairment: number }>;
+}
+export interface RevaluationBalanceDelta {
+  asset?: {
+    cost?: number;
+    accumDepreciation?: number;
+    accumImpairment?: number;
+    revalSurplus?: number;
+    accumRevalLoss?: number;
+  };
+}
+export interface DisposalBalanceDelta {
+  asset?: {
+    revalSurplus?: number;
+    statusBefore?: string;
+    statusAfter?: string;
+  };
+}
+
+/**
  * The auto-posting source row that "owns" the JE we are about to reverse.
  * Each delete path passes its own kind+id so the guard knows which row to
  * exclude (otherwise the row would always self-reference and every delete
@@ -552,6 +582,112 @@ async function reverseAutoPostedJournalEntry(opts: {
       ctx: opts.ctx,
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Per-asset balance rollbacks (task #157)
+//
+// Each fixed-asset event (impairment / revaluation / disposal) stores the
+// per-asset deltas it applied in `asset_balance_delta`. The matching delete
+// route uses these helpers — inside the same transaction that reverses the
+// JE — to subtract the deltas back off `fixed_assets` (and `asset_components`
+// for impairments). Round to 2 decimals to keep numeric(18,2) clean.
+// ---------------------------------------------------------------------------
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+async function reverseImpairmentBalanceDelta(
+  tx: typeof db,
+  assetId: number,
+  delta: ImpairmentBalanceDelta | null | undefined,
+): Promise<void> {
+  if (!delta) return;
+  if (delta.asset?.accumImpairment !== undefined) {
+    const [row] = await tx
+      .select({ accumImpairment: fixedAssets.accumImpairment })
+      .from(fixedAssets)
+      .where(eq(fixedAssets.id, assetId));
+    if (row) {
+      const next = round2(Number(row.accumImpairment) - Number(delta.asset.accumImpairment));
+      await tx
+        .update(fixedAssets)
+        .set({ accumImpairment: String(next) })
+        .where(eq(fixedAssets.id, assetId));
+    }
+  }
+  if (delta.components && delta.components.length > 0) {
+    for (const c of delta.components) {
+      const [row] = await tx
+        .select({ accumImpairment: assetComponents.accumImpairment })
+        .from(assetComponents)
+        .where(eq(assetComponents.id, c.id));
+      if (!row) continue;
+      const next = round2(Number(row.accumImpairment) - Number(c.accumImpairment));
+      await tx
+        .update(assetComponents)
+        .set({ accumImpairment: String(next) })
+        .where(eq(assetComponents.id, c.id));
+    }
+  }
+}
+
+async function reverseRevaluationBalanceDelta(
+  tx: typeof db,
+  assetId: number,
+  delta: RevaluationBalanceDelta | null | undefined,
+): Promise<void> {
+  if (!delta?.asset) return;
+  const [row] = await tx
+    .select({
+      cost: fixedAssets.cost,
+      accumDepreciation: fixedAssets.accumDepreciation,
+      accumImpairment: fixedAssets.accumImpairment,
+      revalSurplus: fixedAssets.revalSurplus,
+      accumRevalLoss: fixedAssets.accumRevalLoss,
+    })
+    .from(fixedAssets)
+    .where(eq(fixedAssets.id, assetId));
+  if (!row) return;
+  const set: Record<string, string> = {};
+  const a = delta.asset;
+  if (a.cost !== undefined) set.cost = String(round2(Number(row.cost) - Number(a.cost)));
+  if (a.accumDepreciation !== undefined)
+    set.accumDepreciation = String(round2(Number(row.accumDepreciation) - Number(a.accumDepreciation)));
+  if (a.accumImpairment !== undefined)
+    set.accumImpairment = String(round2(Number(row.accumImpairment) - Number(a.accumImpairment)));
+  if (a.revalSurplus !== undefined)
+    set.revalSurplus = String(round2(Number(row.revalSurplus) - Number(a.revalSurplus)));
+  if (a.accumRevalLoss !== undefined)
+    set.accumRevalLoss = String(round2(Number(row.accumRevalLoss) - Number(a.accumRevalLoss)));
+  if (Object.keys(set).length === 0) return;
+  await tx.update(fixedAssets).set(set).where(eq(fixedAssets.id, assetId));
+}
+
+async function reverseDisposalBalanceDelta(
+  tx: typeof db,
+  assetId: number,
+  delta: DisposalBalanceDelta | null | undefined,
+): Promise<void> {
+  if (!delta?.asset) return;
+  const [row] = await tx
+    .select({
+      revalSurplus: fixedAssets.revalSurplus,
+      status: fixedAssets.status,
+    })
+    .from(fixedAssets)
+    .where(eq(fixedAssets.id, assetId));
+  if (!row) return;
+  const set: Record<string, string> = {};
+  const a = delta.asset;
+  if (a.revalSurplus !== undefined)
+    set.revalSurplus = String(round2(Number(row.revalSurplus) - Number(a.revalSurplus)));
+  // Only restore the prior status if the current status still matches what
+  // the disposal stamped — guards against another module having moved the
+  // asset on (eg manual edit) since the disposal was posted.
+  if (a.statusBefore && (!a.statusAfter || row.status === a.statusAfter)) {
+    set.status = a.statusBefore;
+  }
+  if (Object.keys(set).length === 0) return;
+  await tx.update(fixedAssets).set(set).where(eq(fixedAssets.id, assetId));
 }
 
 async function buildJournalSourceLinkMap(
@@ -1561,7 +1697,20 @@ export class DatabaseStorage implements IStorage {
     if (assetId) return await db.select().from(impairmentEvents).where(eq(impairmentEvents.assetId, assetId)).orderBy(desc(impairmentEvents.eventDate));
     return await db.select().from(impairmentEvents).orderBy(desc(impairmentEvents.eventDate));
   }
-  async createImpairmentEvent(input: { companyId: number; assetId: number; componentId?: number | null; eventDate: string; recoverableAmount: number; lossAmount: number; journalEntryId?: number | null; notes?: string }): Promise<ImpairmentEvent> {
+  async createImpairmentEvent(input: {
+    companyId: number;
+    assetId: number;
+    componentId?: number | null;
+    eventDate: string;
+    recoverableAmount: number;
+    lossAmount: number;
+    journalEntryId?: number | null;
+    notes?: string;
+    /** See task #157: per-event snapshot of the per-asset balance changes the
+     *  posting handler is about to apply. The matching delete subtracts these
+     *  deltas to roll the asset (and its components) back precisely. */
+    assetBalanceDelta?: ImpairmentBalanceDelta | null;
+  }): Promise<ImpairmentEvent> {
     // companyId is required so the composite FK to fixed_assets(id, companyId)
     // (and asset_components(id, companyId) when componentId is set) holds.
     const [c] = await db.insert(impairmentEvents).values({
@@ -1573,6 +1722,7 @@ export class DatabaseStorage implements IStorage {
       lossAmount: String(input.lossAmount),
       journalEntryId: input.journalEntryId ?? null,
       notes: input.notes ?? "",
+      assetBalanceDelta: input.assetBalanceDelta ?? null,
     }).returning();
     return c;
   }
@@ -1581,7 +1731,19 @@ export class DatabaseStorage implements IStorage {
     if (assetId) return await db.select().from(revaluationEvents).where(eq(revaluationEvents.assetId, assetId)).orderBy(desc(revaluationEvents.eventDate));
     return await db.select().from(revaluationEvents).orderBy(desc(revaluationEvents.eventDate));
   }
-  async createRevaluationEvent(input: { companyId: number; assetId: number; eventDate: string; fairValue: number; method: string; surplusDelta: number; plImpact: number; journalEntryId?: number | null; notes?: string }): Promise<RevaluationEvent> {
+  async createRevaluationEvent(input: {
+    companyId: number;
+    assetId: number;
+    eventDate: string;
+    fairValue: number;
+    method: string;
+    surplusDelta: number;
+    plImpact: number;
+    journalEntryId?: number | null;
+    notes?: string;
+    /** See task #157. */
+    assetBalanceDelta?: RevaluationBalanceDelta | null;
+  }): Promise<RevaluationEvent> {
     // companyId is required so the composite FK to fixed_assets(id, companyId)
     // holds.
     const [c] = await db.insert(revaluationEvents).values({
@@ -1594,6 +1756,7 @@ export class DatabaseStorage implements IStorage {
       plImpact: String(input.plImpact),
       journalEntryId: input.journalEntryId ?? null,
       notes: input.notes ?? "",
+      assetBalanceDelta: input.assetBalanceDelta ?? null,
     }).returning();
     return c;
   }
@@ -1602,7 +1765,19 @@ export class DatabaseStorage implements IStorage {
     if (assetId) return await db.select().from(disposals).where(eq(disposals.assetId, assetId)).orderBy(desc(disposals.eventDate));
     return await db.select().from(disposals).orderBy(desc(disposals.eventDate));
   }
-  async createDisposal(input: { companyId: number; assetId: number; eventDate: string; proceeds: number; method: string; gainLoss: number; surplusTransferred: number; journalEntryId?: number | null; notes?: string }): Promise<Disposal> {
+  async createDisposal(input: {
+    companyId: number;
+    assetId: number;
+    eventDate: string;
+    proceeds: number;
+    method: string;
+    gainLoss: number;
+    surplusTransferred: number;
+    journalEntryId?: number | null;
+    notes?: string;
+    /** See task #157. */
+    assetBalanceDelta?: DisposalBalanceDelta | null;
+  }): Promise<Disposal> {
     // companyId is required so the composite FK to fixed_assets(id, companyId)
     // holds.
     const [c] = await db.insert(disposals).values({
@@ -1615,6 +1790,7 @@ export class DatabaseStorage implements IStorage {
       surplusTransferred: String(input.surplusTransferred),
       journalEntryId: input.journalEntryId ?? null,
       notes: input.notes ?? "",
+      assetBalanceDelta: input.assetBalanceDelta ?? null,
     }).returning();
     return c;
   }
@@ -1623,12 +1799,15 @@ export class DatabaseStorage implements IStorage {
   //
   // Each of these reverses the auto-posted journal entry alongside the event
   // row OR refuses with a JournalEntryReferenceConflictError when the JE has
-  // been picked up by another module. They intentionally do NOT roll back
-  // the asset-balance side effects (accumImpairment, cost, accumDepreciation,
-  // status, …) — those would need an authoritative pre-event snapshot which
-  // the schema does not store today, and the existing `deleteFixedAsset`
-  // cascade has the same limitation. Restoring those balances precisely is
-  // tracked as a follow-up.
+  // been picked up by another module.
+  //
+  // They ALSO undo the per-asset balance changes the original posting handler
+  // stamped on `fixed_assets` (and on `asset_components` for impairments) by
+  // subtracting the deltas the create handler captured in
+  // `assetBalanceDelta` (task #157). Rows created before that column was
+  // added carry a `null` snapshot — the delete path skips the balance roll-
+  // back for those, matching the historical conservative behaviour, but the
+  // JE reversal still goes through.
 
   async deleteImpairmentEvent(
     companyId: number,
@@ -1656,6 +1835,11 @@ export class DatabaseStorage implements IStorage {
               eq(impairmentEvents.companyId, companyId),
             ),
           );
+        await reverseImpairmentBalanceDelta(
+          tx,
+          before.assetId,
+          before.assetBalanceDelta as ImpairmentBalanceDelta | null,
+        );
       },
       ctx,
     });
@@ -1687,6 +1871,11 @@ export class DatabaseStorage implements IStorage {
               eq(revaluationEvents.companyId, companyId),
             ),
           );
+        await reverseRevaluationBalanceDelta(
+          tx,
+          before.assetId,
+          before.assetBalanceDelta as RevaluationBalanceDelta | null,
+        );
       },
       ctx,
     });
@@ -1715,6 +1904,11 @@ export class DatabaseStorage implements IStorage {
           .where(
             and(eq(disposals.id, eventId), eq(disposals.companyId, companyId)),
           );
+        await reverseDisposalBalanceDelta(
+          tx,
+          before.assetId,
+          before.assetBalanceDelta as DisposalBalanceDelta | null,
+        );
       },
       ctx,
     });

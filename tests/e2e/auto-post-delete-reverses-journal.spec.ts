@@ -736,3 +736,394 @@ test.describe("DELETE /api/documents/:id keeps inbox and GL in sync @api", () =>
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression net for task #157: deleting an impairment / revaluation / disposal
+// event must also undo the per-asset balance changes the original posting
+// applied (accumImpairment, cost, accumDepreciation, revalSurplus, status, …).
+//
+// Each test simulates a fully-posted event by:
+//   1. Snapshotting the asset row pre-event.
+//   2. Inserting the event row WITH a populated `asset_balance_delta`
+//      snapshot AND mutating the asset row to match the post-event balances
+//      the real posting handler would have written.
+//   3. Issuing DELETE and asserting the asset row is exactly back to its
+//      pre-event snapshot.
+//
+// We bypass the public POST routes here for the same reason the JE-orphan
+// fixtures above do (those engines need an IFRS COA a fresh workspace
+// doesn't seed). The delete path under test is the same one the live
+// posting routes exercise, so this covers task #157 end-to-end.
+// ---------------------------------------------------------------------------
+
+interface AssetBalanceSnapshot {
+  cost: string;
+  accumDepreciation: string;
+  accumImpairment: string;
+  revalSurplus: string;
+  accumRevalLoss: string;
+  status: string;
+}
+
+async function snapshotAsset(
+  client: pg.Client,
+  assetId: number,
+): Promise<AssetBalanceSnapshot> {
+  const r = await client.query<AssetBalanceSnapshot>(
+    `SELECT cost, accum_depreciation AS "accumDepreciation",
+            accum_impairment AS "accumImpairment",
+            reval_surplus AS "revalSurplus",
+            accum_reval_loss AS "accumRevalLoss",
+            status
+       FROM fixed_assets WHERE id = $1`,
+    [assetId],
+  );
+  if (r.rowCount === 0) throw new Error(`asset ${assetId} not found`);
+  return r.rows[0];
+}
+
+test.describe("DELETE /api/impairment-events/:id restores asset balances @api", () => {
+  test("subtracts the captured accumImpairment delta back off the asset", async () => {
+    const user = await bootstrapUser("imp-bal");
+    const seeded = await seedAccountsAndJournalEntry(user, `imp-bal-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `imp-bal-${user.companyId}`);
+      const before = await snapshotAsset(client, assetId);
+
+      // Simulate a 700-loss impairment posting having ran end-to-end.
+      const lossAmount = 700;
+      await client.query(
+        `UPDATE fixed_assets SET accum_impairment = $1 WHERE id = $2`,
+        [String(Number(before.accumImpairment) + lossAmount), assetId],
+      );
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO impairment_events
+           (company_id, asset_id, event_date, recoverable_amount,
+            loss_amount, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-06-30', '5000.00', $3, $4, $5)
+         RETURNING id`,
+        [
+          user.companyId,
+          assetId,
+          String(lossAmount),
+          seeded.journalEntryId,
+          JSON.stringify({ asset: { accumImpairment: lossAmount } }),
+        ],
+      );
+      const eventId = ins.rows[0].id;
+
+      const midway = await snapshotAsset(client, assetId);
+      expect(Number(midway.accumImpairment)).toBe(Number(before.accumImpairment) + lossAmount);
+
+      const del = await call(
+        "DELETE",
+        `/api/impairment-events/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `delete: ${del.text}`).toBe(204);
+
+      const after = await snapshotAsset(client, assetId);
+      expect(after).toEqual(before);
+    } finally {
+      await client.end();
+    }
+  });
+
+  test("rolls per-component impairment back to its pre-event value", async () => {
+    const user = await bootstrapUser("imp-comp");
+    const seeded = await seedAccountsAndJournalEntry(user, `imp-comp-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `imp-comp-${user.companyId}`);
+      const assetBefore = await snapshotAsset(client, assetId);
+
+      // Seed two asset components with nonzero pre-event accumImpairment so we
+      // can prove the per-component delta is subtracted (not just zeroed out).
+      const compRows = await client.query<{ id: number; accum_impairment: string }>(
+        `INSERT INTO asset_components
+           (company_id, asset_id, name, cost, residual, useful_life_months,
+            method, accum_depreciation, accum_impairment)
+         VALUES
+           ($1, $2, 'Frame', '6000.00', '0.00', 60, 'straight_line',
+            '0.00', '50.00'),
+           ($1, $2, 'Engine', '4000.00', '0.00', 60, 'straight_line',
+            '0.00', '20.00')
+         RETURNING id, accum_impairment`,
+        [user.companyId, assetId],
+      );
+      expect(compRows.rowCount).toBe(2);
+      const [c0Before, c1Before] = compRows.rows;
+
+      // Simulate a 600-loss impairment that allocated 360 to comp0 and 240 to
+      // comp1 proportional to carrying amount, and lifted asset.accumImpairment
+      // by the full 600.
+      const lossAmount = 600;
+      const c0Delta = 360;
+      const c1Delta = 240;
+      await client.query(
+        `UPDATE fixed_assets SET accum_impairment = $1 WHERE id = $2`,
+        [String(Number(assetBefore.accumImpairment) + lossAmount), assetId],
+      );
+      await client.query(
+        `UPDATE asset_components SET accum_impairment = $1 WHERE id = $2`,
+        [String(Number(c0Before.accum_impairment) + c0Delta), c0Before.id],
+      );
+      await client.query(
+        `UPDATE asset_components SET accum_impairment = $1 WHERE id = $2`,
+        [String(Number(c1Before.accum_impairment) + c1Delta), c1Before.id],
+      );
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO impairment_events
+           (company_id, asset_id, event_date, recoverable_amount,
+            loss_amount, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-06-30', '4000.00', $3, $4, $5)
+         RETURNING id`,
+        [
+          user.companyId,
+          assetId,
+          String(lossAmount),
+          seeded.journalEntryId,
+          JSON.stringify({
+            asset: { accumImpairment: lossAmount },
+            components: [
+              { id: c0Before.id, accumImpairment: c0Delta },
+              { id: c1Before.id, accumImpairment: c1Delta },
+            ],
+          }),
+        ],
+      );
+      const eventId = ins.rows[0].id;
+
+      const del = await call(
+        "DELETE",
+        `/api/impairment-events/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `delete: ${del.text}`).toBe(204);
+
+      const assetAfter = await snapshotAsset(client, assetId);
+      expect(assetAfter).toEqual(assetBefore);
+
+      const compsAfter = await client.query<{ id: number; accum_impairment: string }>(
+        `SELECT id, accum_impairment FROM asset_components
+          WHERE asset_id = $1 ORDER BY id`,
+        [assetId],
+      );
+      expect(compsAfter.rows[0].accum_impairment).toBe(c0Before.accum_impairment);
+      expect(compsAfter.rows[1].accum_impairment).toBe(c1Before.accum_impairment);
+    } finally {
+      await client.end();
+    }
+  });
+
+  test("delete + re-post leaves the asset in the same balance state as a single post", async () => {
+    // Ensures the delete rollback is the true inverse of the create path —
+    // i.e. you can delete an event and recreate it (via the same direct-insert
+    // simulation) and end up with the same per-asset balances as a single
+    // posting would have left.
+    const user = await bootstrapUser("imp-rep");
+    const seeded = await seedAccountsAndJournalEntry(user, `imp-rep-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `imp-rep-${user.companyId}`);
+      const before = await snapshotAsset(client, assetId);
+
+      const post = async (loss: number, je: number) => {
+        await client.query(
+          `UPDATE fixed_assets
+              SET accum_impairment = accum_impairment::numeric + $1
+            WHERE id = $2`,
+          [String(loss), assetId],
+        );
+        const r = await client.query<{ id: number }>(
+          `INSERT INTO impairment_events
+             (company_id, asset_id, event_date, recoverable_amount,
+              loss_amount, journal_entry_id, asset_balance_delta)
+           VALUES ($1, $2, '2099-06-30', '5000.00', $3, $4, $5)
+           RETURNING id`,
+          [
+            user.companyId,
+            assetId,
+            String(loss),
+            je,
+            JSON.stringify({ asset: { accumImpairment: loss } }),
+          ],
+        );
+        return r.rows[0].id;
+      };
+
+      const lossAmount = 450;
+      const firstId = await post(lossAmount, seeded.journalEntryId);
+      const oncePosted = await snapshotAsset(client, assetId);
+
+      const del = await call(
+        "DELETE",
+        `/api/impairment-events/${firstId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `delete: ${del.text}`).toBe(204);
+      expect(await snapshotAsset(client, assetId)).toEqual(before);
+
+      // Re-post (with a fresh JE) and confirm we land on the same balances.
+      const reposted = await seedAccountsAndJournalEntry(user, `imp-rep2-${user.companyId}`);
+      await post(lossAmount, reposted.journalEntryId);
+      expect(await snapshotAsset(client, assetId)).toEqual(oncePosted);
+    } finally {
+      await client.end();
+    }
+  });
+});
+
+test.describe("DELETE /api/revaluation-events/:id restores asset balances @api", () => {
+  test("rolls cost / accumDep / accumImp / revalSurplus / accumRevalLoss back to pre-event", async () => {
+    const user = await bootstrapUser("rev-bal");
+    const seeded = await seedAccountsAndJournalEntry(user, `rev-bal-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `rev-bal-${user.companyId}`);
+      // Seed a non-trivial pre-event state so each delta value gets exercised
+      // (otherwise zero-deltas can mask sign mistakes in the rollback math).
+      await client.query(
+        `UPDATE fixed_assets
+            SET accum_depreciation = '1500.00',
+                accum_impairment = '300.00',
+                reval_surplus = '200.00',
+                accum_reval_loss = '50.00'
+          WHERE id = $1`,
+        [assetId],
+      );
+      const before = await snapshotAsset(client, assetId);
+
+      // Mimic an `elimination` revaluation that nukes accumDep + accumImp,
+      // restates cost to fairValue, and pushes the upward delta into surplus.
+      const newCost = 12000;
+      const newAccumDep = 0;
+      const newAccumImp = 0;
+      const newSurplus = 200 + 3800;
+      const newRevalLoss = 0;
+      await client.query(
+        `UPDATE fixed_assets
+            SET cost = $1,
+                accum_depreciation = $2,
+                accum_impairment = $3,
+                reval_surplus = $4,
+                accum_reval_loss = $5
+          WHERE id = $6`,
+        [
+          String(newCost),
+          String(newAccumDep),
+          String(newAccumImp),
+          String(newSurplus),
+          String(newRevalLoss),
+          assetId,
+        ],
+      );
+      const delta = {
+        asset: {
+          cost: newCost - Number(before.cost),
+          accumDepreciation: newAccumDep - Number(before.accumDepreciation),
+          accumImpairment: newAccumImp - Number(before.accumImpairment),
+          revalSurplus: newSurplus - Number(before.revalSurplus),
+          accumRevalLoss: newRevalLoss - Number(before.accumRevalLoss),
+        },
+      };
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO revaluation_events
+           (company_id, asset_id, event_date, fair_value, method,
+            surplus_delta, pl_impact, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-12-31', $3, 'elimination',
+                 $4, '0.00', $5, $6)
+         RETURNING id`,
+        [
+          user.companyId,
+          assetId,
+          String(newCost),
+          String(delta.asset.revalSurplus),
+          seeded.journalEntryId,
+          JSON.stringify(delta),
+        ],
+      );
+      const eventId = ins.rows[0].id;
+
+      const del = await call(
+        "DELETE",
+        `/api/revaluation-events/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `delete: ${del.text}`).toBe(204);
+
+      const after = await snapshotAsset(client, assetId);
+      expect(after).toEqual(before);
+    } finally {
+      await client.end();
+    }
+  });
+});
+
+test.describe("DELETE /api/disposals/:id restores asset balances @api", () => {
+  test("brings the asset back from 'disposed' and refunds the transferred surplus", async () => {
+    const user = await bootstrapUser("dis-bal");
+    const seeded = await seedAccountsAndJournalEntry(user, `dis-bal-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `dis-bal-${user.companyId}`);
+      // Seed a positive surplus so we can prove the transfer-back math works.
+      await client.query(
+        `UPDATE fixed_assets SET reval_surplus = '900.00' WHERE id = $1`,
+        [assetId],
+      );
+      const before = await snapshotAsset(client, assetId);
+      expect(before.status).toBe("active");
+
+      const surplusTransferred = 900;
+      await client.query(
+        `UPDATE fixed_assets
+            SET status = 'disposed',
+                reval_surplus = $1
+          WHERE id = $2`,
+        [String(Number(before.revalSurplus) - surplusTransferred), assetId],
+      );
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO disposals
+           (company_id, asset_id, event_date, proceeds, method,
+            gain_loss, surplus_transferred, journal_entry_id,
+            asset_balance_delta)
+         VALUES ($1, $2, '2099-12-31', '8000.00', 'sale',
+                 '-2000.00', $3, $4, $5)
+         RETURNING id`,
+        [
+          user.companyId,
+          assetId,
+          String(surplusTransferred),
+          seeded.journalEntryId,
+          JSON.stringify({
+            asset: {
+              revalSurplus: -surplusTransferred,
+              statusBefore: before.status,
+              statusAfter: "disposed",
+            },
+          }),
+        ],
+      );
+      const eventId = ins.rows[0].id;
+
+      const del = await call(
+        "DELETE",
+        `/api/disposals/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `delete: ${del.text}`).toBe(204);
+
+      const after = await snapshotAsset(client, assetId);
+      expect(after).toEqual(before);
+    } finally {
+      await client.end();
+    }
+  });
+});
