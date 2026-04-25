@@ -8,6 +8,7 @@ import {
   insertAccountSchema,
   createJournalEntrySchema,
   journalEntries,
+  type TransactionWithJournal,
 } from './schema';
 
 export const errorSchemas = {
@@ -29,7 +30,10 @@ export const api = {
       method: 'GET' as const,
       path: '/api/transactions' as const,
       responses: {
-        200: z.array(z.custom<typeof transactions.$inferSelect>()),
+        // Each row carries an optional journalEntryId/journalEntryReference so
+        // the transaction detail dialog can deep-link into the auto-posted
+        // journal entry. See `TransactionWithJournal` in `shared/schema.ts`.
+        200: z.array(z.custom<TransactionWithJournal>()),
       },
     },
     create: {

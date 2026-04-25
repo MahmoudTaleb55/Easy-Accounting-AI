@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type TransactionInput } from "@shared/routes";
+import type { TransactionWithJournal } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
 // Helper for parsing Zod responses safely
@@ -21,7 +22,11 @@ export function useTransactions() {
       const res = await fetch(api.transactions.list.path, { credentials: "include" });
       if (!res.ok) throw new Error("فشل في جلب المعاملات");
       const data = await res.json();
-      return parseWithLogging<any[]>(api.transactions.list.responses[200], data, "transactions.list");
+      return parseWithLogging<TransactionWithJournal[]>(
+        api.transactions.list.responses[200],
+        data,
+        "transactions.list",
+      );
     },
   });
 }

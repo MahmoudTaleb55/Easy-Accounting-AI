@@ -48,6 +48,7 @@ import {
   type RevaluationEvent,
   type Disposal,
   type Transaction,
+  type TransactionWithJournal,
   type InsertTransaction,
   type ChatMessage,
   type InsertChatMessage,
@@ -118,8 +119,12 @@ export interface IStorage {
   // All business-data methods are scoped by `companyId` so that two
   // memberships in different workspaces cannot read or write each other's rows.
 
-  // Legacy quick-entry transactions
-  getTransactions(companyId: number): Promise<Transaction[]>;
+  // Legacy quick-entry transactions. The list response augments each row with
+  // the auto-posted journal entry (id + reference) so the transaction detail
+  // dialog can deep-link back into `/app/journal#je-<id>` without having to
+  // issue a second per-row query. Both fields are optional — see
+  // `TransactionWithJournal` for the gracefully-hidden cases.
+  getTransactions(companyId: number): Promise<TransactionWithJournal[]>;
   createTransaction(companyId: number, tx: InsertTransaction, ctx?: AuditContext): Promise<Transaction>;
   deleteTransaction(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
 
@@ -898,12 +903,48 @@ async function nextJournalReference(companyId: number): Promise<string> {
 
 export class DatabaseStorage implements IStorage {
   // ----- Transactions -----
-  async getTransactions(companyId: number): Promise<Transaction[]> {
-    return await db
+  async getTransactions(companyId: number): Promise<TransactionWithJournal[]> {
+    // Two queries instead of a left-join keeps each transaction at one row in
+    // the result even on the (rare) edge case where a transaction has more
+    // than one auto-posted JE attached. We pick the smallest JE id so the
+    // detail dialog deep-links to the original posting, not a later replay.
+    const txRows = await db
       .select()
       .from(transactions)
       .where(eq(transactions.companyId, companyId))
       .orderBy(transactions.date);
+
+    if (txRows.length === 0) return [];
+
+    const jeRows = await db
+      .select({
+        id: journalEntries.id,
+        reference: journalEntries.reference,
+        sourceTransactionId: journalEntries.sourceTransactionId,
+      })
+      .from(journalEntries)
+      .where(
+        and(
+          eq(journalEntries.companyId, companyId),
+          sql`${journalEntries.sourceTransactionId} is not null`,
+        ),
+      );
+
+    const jeBySource = new Map<number, { id: number; reference: string }>();
+    for (const j of jeRows) {
+      if (j.sourceTransactionId == null) continue;
+      const existing = jeBySource.get(j.sourceTransactionId);
+      if (!existing || j.id < existing.id) {
+        jeBySource.set(j.sourceTransactionId, { id: j.id, reference: j.reference });
+      }
+    }
+
+    return txRows.map((t) => {
+      const je = jeBySource.get(t.id);
+      return je
+        ? { ...t, journalEntryId: je.id, journalEntryReference: je.reference }
+        : t;
+    });
   }
 
   async createTransaction(companyId: number, tx: InsertTransaction, ctx?: AuditContext): Promise<Transaction> {

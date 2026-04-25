@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react"
-import { useLocation, useSearch } from "wouter"
+import { Link, useLocation, useSearch } from "wouter"
 import { format, type Locale } from "date-fns"
 import { ar, enUS } from "date-fns/locale"
 import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions"
@@ -45,7 +45,7 @@ import { HistoryTimeline } from "@/components/audit/history-drawer"
 import { EmptyState } from "@/components/feedback/empty-state"
 import { ErrorState } from "@/components/feedback/error-state"
 import { ListSkeleton } from "@/components/feedback/list-skeleton"
-import type { Transaction } from "@shared/schema"
+import type { TransactionWithJournal } from "@shared/schema"
 
 type Filter = "all" | "income" | "expense"
 
@@ -60,7 +60,7 @@ export default function Transactions() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
-  const [detailTx, setDetailTx] = useState<Transaction | null>(null)
+  const [detailTx, setDetailTx] = useState<TransactionWithJournal | null>(null)
   const [, setLocation] = useLocation()
   const queryString = useSearch()
 
@@ -128,6 +128,10 @@ export default function Transactions() {
       typeIncome: locale === "ar" ? "إيراد" : "Revenue",
       typeExpense: locale === "ar" ? "مصروف" : "Expense",
       openDetailAria: locale === "ar" ? "فتح تفاصيل المعاملة" : "Open transaction details",
+      // "Posted as JE-…" deep-link in the detail dialog. Bilingual to match
+      // the rest of the dialog and the SourceLinkBadge on the JE page.
+      jePostedAs: locale === "ar" ? "مُرحّل في" : "Posted as",
+      jeOpenAria: locale === "ar" ? "فتح القيد المحاسبي" : "Open journal entry",
     }),
     [locale]
   )
@@ -394,6 +398,8 @@ export default function Transactions() {
             amount: t.detailAmount,
             typeIncome: t.typeIncome,
             typeExpense: t.typeExpense,
+            jePostedAs: t.jePostedAs,
+            jeOpenAria: t.jeOpenAria,
           }}
           dfLocale={dfLocale}
           fmt={fmt}
@@ -404,7 +410,7 @@ export default function Transactions() {
 }
 
 interface TransactionDetailDialogProps {
-  tx: Transaction
+  tx: TransactionWithJournal
   onClose: () => void
   labels: {
     description: string
@@ -416,6 +422,8 @@ interface TransactionDetailDialogProps {
     amount: string
     typeIncome: string
     typeExpense: string
+    jePostedAs: string
+    jeOpenAria: string
   }
   dfLocale: Locale
   fmt: ReturnType<typeof useFormatMoney>
@@ -491,6 +499,33 @@ function TransactionDetailDialog({ tx, onClose, labels, dfLocale, fmt }: Transac
                 {isIncome ? "+" : "−"} {fmt(Number(tx.amount))}
               </dd>
             </dl>
+            {tx.journalEntryId != null && (
+              // Deep-link to the auto-posted JE. Mirrors the
+              // SourceLinkBadge styling on the JE page so the cross-link
+              // pattern reads consistently in both directions. The
+              // `/app/journal#je-<id>` hash is consumed by
+              // `client/src/pages/journal-entries.tsx` (initialHashId +
+              // hashchange listener) which scrolls + highlights the row.
+              // Hidden when no JE is linked yet (still posting, posting
+              // failed, or legacy row pre-auto-post bridge).
+              <div className="mt-4 pt-3 border-t border-border/60">
+                <Link
+                  href={`/app/journal#je-${tx.journalEntryId}`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs font-medium text-foreground hover:bg-muted hover:border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={labels.jeOpenAria}
+                  data-testid="link-transaction-journal-entry"
+                >
+                  <span className="text-muted-foreground">{labels.jePostedAs}</span>
+                  <span
+                    className="font-numeric tabular-nums"
+                    data-testid="text-transaction-journal-entry-reference"
+                  >
+                    {tx.journalEntryReference || `JE-${tx.journalEntryId}`}
+                  </span>
+                  <ArrowUpRight className="w-3 h-3" aria-hidden />
+                </Link>
+              </div>
+            )}
           </TabsContent>
           <TabsContent value="changes" className="mt-4" data-testid="tab-content-transaction-changes">
             <div className="rounded-md border border-border max-h-96 overflow-hidden flex flex-col">

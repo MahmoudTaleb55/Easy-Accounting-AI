@@ -211,6 +211,20 @@ export type Transaction = typeof transactions.$inferSelect;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type CreateTransactionRequest = InsertTransaction;
 
+// Augments the raw Transaction row with the auto-posted journal entry the
+// transaction was reflected into. Both fields are optional because:
+//  * The JE is created in a try/catch right after the transaction insert and
+//    can theoretically fail (e.g. missing CASH account on a brand new
+//    workspace), leaving a transaction without a linked JE.
+//  * Legacy rows imported before the auto-post bridge existed never had a JE
+//    posted in the first place.
+// The transaction detail dialog uses these fields to render the
+// "Posted as JE-…" deep-link badge and gracefully hides it when absent.
+export type TransactionWithJournal = Transaction & {
+  journalEntryId?: number | null;
+  journalEntryReference?: string | null;
+};
+
 // ============================================================================
 // Budgets (per-account monthly budgets for Budget vs Actual)
 // ============================================================================
