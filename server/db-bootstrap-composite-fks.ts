@@ -2,10 +2,11 @@
  * Idempotent re-apply of migrations/0007_workspace_composite_fks_extension.sql
  * on every boot.
  *
- * Mirrors the pattern used for migrations 0003 / 0006 (see auth/storage.ts):
- * dev databases and any deploy that boots ahead of the migration runner end
- * up in the same shape as the canonical schema. Every statement is guarded
- * so re-runs are a no-op.
+ * Belt-and-suspenders alongside the SQL migration runner in server/migrate.ts:
+ * if 0007 ever fails to apply through the runner (or a database pre-dates the
+ * runner and was bootstrapped piecemeal), this helper still brings the
+ * affected tables into shape. Every statement is guarded so re-runs against
+ * an already-migrated DB are a no-op.
  *
  * The recipe (per-table, identical to the journal_lines fix from 0005):
  *   1. ADD COLUMN ... DEFAULT 1 IF NOT EXISTS so back-fill can populate it.
@@ -28,10 +29,9 @@ interface ChildSpec {
 }
 
 const COMPANY_ID_BACKFILLS: ChildSpec[] = [
-  // Defensively re-add the journal_lines.company_id back-fill from migration
-  // 0005 in case the dev DB was bootstrapped before it ran (we have no boot
-  // helper for 0005). Same recipe as the rest of this file.
-  { child: "journal_lines", parent: "journal_entries", childFk: "journal_entry_id" },
+  // Migration 0007 children. (The journal_lines back-fill from migration 0005
+  // used to live here too as a defensive re-apply; it is now applied through
+  // the SQL migration runner in server/migrate.ts.)
   { child: "payroll_lines", parent: "payroll_runs", childFk: "payroll_run_id" },
   { child: "asset_components", parent: "fixed_assets", childFk: "asset_id" },
   { child: "depreciation_schedule", parent: "fixed_assets", childFk: "asset_id" },
@@ -48,14 +48,10 @@ interface UniqueSpec {
 }
 
 const PARENT_UNIQUES: UniqueSpec[] = [
-  // Defensively re-add the parent uniques from migration 0005 in case the
-  // dev DB was bootstrapped before it ran (we have no boot helper for 0005).
-  { table: "accounts", constraint: "accounts_id_company_uq" },
-  { table: "journal_entries", constraint: "journal_entries_id_company_uq" },
-  { table: "asset_categories", constraint: "asset_categories_id_company_uq" },
-  { table: "fixed_assets", constraint: "fixed_assets_id_company_uq" },
-  { table: "employees", constraint: "employees_id_company_uq" },
-  // Parent uniques introduced by 0007 itself.
+  // Parent uniques introduced by 0007 itself. (The 0005 parent uniques —
+  // accounts / journal_entries / asset_categories / fixed_assets / employees
+  // — used to be defensively re-added here too; 0005 is now applied through
+  // the SQL migration runner in server/migrate.ts.)
   { table: "payroll_runs", constraint: "payroll_runs_id_company_uq" },
   { table: "asset_components", constraint: "asset_components_id_company_uq" },
   { table: "depreciation_runs", constraint: "depreciation_runs_id_company_uq" },
@@ -70,21 +66,12 @@ interface FkSpec {
 }
 
 const COMPOSITE_FKS: FkSpec[] = [
-  // Task #70 composite FKs (defensively re-applied here in case migration
-  // 0005 was never run on this DB — same rationale as PARENT_UNIQUES above).
-  // accounts.parent_id is nullable; MATCH SIMPLE skips the check when NULL.
-  { child: "accounts", childCols: ["parent_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "accounts_parent_company_fk" },
-  { child: "journal_lines", childCols: ["journal_entry_id", "company_id"], parent: "journal_entries", parentCols: ["id", "company_id"], constraint: "journal_lines_je_company_fk" },
-  { child: "journal_lines", childCols: ["account_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "journal_lines_account_company_fk" },
-  { child: "budgets", childCols: ["account_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "budgets_account_company_fk" },
-  { child: "fixed_assets", childCols: ["category_id", "company_id"], parent: "asset_categories", parentCols: ["id", "company_id"], constraint: "fixed_assets_category_company_fk" },
-  { child: "asset_categories", childCols: ["asset_cost_account_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "asset_categories_asset_cost_company_fk" },
-  { child: "asset_categories", childCols: ["accumulated_dep_account_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "asset_categories_accum_dep_company_fk" },
-  { child: "asset_categories", childCols: ["dep_expense_account_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "asset_categories_dep_expense_company_fk" },
-  { child: "asset_categories", childCols: ["accumulated_imp_account_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "asset_categories_accum_imp_company_fk" },
-  { child: "asset_categories", childCols: ["imp_loss_account_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "asset_categories_imp_loss_company_fk" },
-  { child: "asset_categories", childCols: ["reval_surplus_account_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "asset_categories_reval_surplus_company_fk" },
-  { child: "asset_categories", childCols: ["gain_loss_disposal_account_id", "company_id"], parent: "accounts", parentCols: ["id", "company_id"], constraint: "asset_categories_gain_loss_disposal_company_fk" },
+  // Migration 0007 composite FKs only. The Task #70 composite FKs from
+  // migration 0005 (accounts_parent_company_fk, journal_lines_*,
+  // budgets_account_company_fk, fixed_assets_category_company_fk, the
+  // asset_categories_*_company_fk family) used to be defensively re-applied
+  // here in case 0005 had never run on this DB; 0005 is now applied through
+  // the SQL migration runner in server/migrate.ts.
   // HR -----------------------------------------------------------------------
   { child: "attendance", childCols: ["employee_id", "company_id"], parent: "employees", parentCols: ["id", "company_id"], constraint: "attendance_employee_company_fk" },
   { child: "leaves", childCols: ["employee_id", "company_id"], parent: "employees", parentCols: ["id", "company_id"], constraint: "leaves_employee_company_fk" },
@@ -136,10 +123,8 @@ export async function applyExtendedCompositeFksOnStartup(): Promise<void> {
   }
 
   // 2. Clean up orphans / cross-workspace pointers ---------------------------
-  // journal_lines + budgets: defensively from migration 0005 (no boot helper).
-  await db.execute(sql`DELETE FROM "journal_lines" jl WHERE NOT EXISTS (SELECT 1 FROM "journal_entries" je WHERE je."id" = jl."journal_entry_id" AND je."company_id" = jl."company_id")`);
-  await db.execute(sql`DELETE FROM "journal_lines" jl WHERE NOT EXISTS (SELECT 1 FROM "accounts" a WHERE a."id" = jl."account_id" AND a."company_id" = jl."company_id")`);
-  await db.execute(sql`DELETE FROM "budgets" b WHERE NOT EXISTS (SELECT 1 FROM "accounts" a WHERE a."id" = b."account_id" AND a."company_id" = b."company_id")`);
+  // (The journal_lines / budgets orphan sweeps that used to live here are
+  // applied through the SQL migration runner now — see migration 0005.)
 
   // attendance + leaves: employees parent
   await db.execute(sql`DELETE FROM "attendance" a WHERE NOT EXISTS (SELECT 1 FROM "employees" e WHERE e."id" = a."employee_id" AND e."company_id" = a."company_id")`);

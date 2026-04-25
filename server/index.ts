@@ -125,8 +125,35 @@ app.use((req, res, next) => {
 
   await registerRoutes(httpServer, app);
 
-  // Re-apply migration 0007 (composite FKs) BEFORE migration 0008 (RLS) so
-  // that the table structure the policies attach to is in its final shape.
+  // Apply every checked-in `migrations/*.sql` file in order, exactly once,
+  // before any of the per-migration boot helpers below. This is the
+  // first-class migration runner; the bootstrap helpers that follow are
+  // belt-and-suspenders for tables / indexes that the runner has already
+  // brought into shape (kept until they can be retired one by one).
+  // Adding a new SQL migration only requires dropping the file in
+  // `migrations/` — no companion bootstrapper needed. See
+  // server/migrate.ts for the runner's idempotency contract.
+  //
+  // Migration failure is FATAL — we deliberately do NOT swallow the error.
+  // The whole point of task #121 was that a silently-skipped migration lets
+  // the app keep running against a drifted schema until something else
+  // surfaces the gap. Aborting boot means CI / dev / deploys notice the
+  // regression on the next restart instead of in production.
+  try {
+    const { runPendingMigrations } = await import("./migrate");
+    await runPendingMigrations();
+  } catch (err) {
+    console.error(
+      "FATAL: aborting boot — pending SQL migrations could not be applied:",
+      err,
+    );
+    process.exit(1);
+  }
+
+  // Defensive re-apply of migration 0007 (composite FKs). The runner above
+  // already applies 0007 on first boot; this stays as a safety net for
+  // databases that pre-date the runner and may have been bootstrapped
+  // out-of-order in the past.
   try {
     const { applyExtendedCompositeFksOnStartup } = await import(
       "./db-bootstrap-composite-fks"
