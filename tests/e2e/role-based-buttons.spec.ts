@@ -320,6 +320,52 @@ test.describe("role-based button gating @rbac", () => {
       const removeId = await removeBtn.getAttribute("data-testid");
       await expectUnguarded(page, removeId!);
     });
+
+    test("settings members: pending invitation resend + revoke are enabled", async ({ page }) => {
+      // Resend + revoke buttons live inside the Invitations tab and only
+      // render for rows whose status is 'pending'. The shared setup seeds
+      // exactly one such row so both per-invite WriteGuards are exercised
+      // for the owner role (the page is forbidden to non-owners — see
+      // the accountant/viewer counterparts of this describe block).
+      await gotoApp(page, "/app/settings/members");
+      await page.locator('[data-testid="tab-invitations"]').click();
+
+      await expectAnyRow(page, "row-invitation-");
+      const resend = page.locator('[data-testid^="button-resend-"]').first();
+      const resendId = await resend.getAttribute("data-testid");
+      await expectUnguarded(page, resendId!);
+      await expect(resend).toBeEnabled();
+
+      const revoke = page.locator('[data-testid^="button-revoke-"]').first();
+      const revokeId = await revoke.getAttribute("data-testid");
+      await expectUnguarded(page, revokeId!);
+      await expect(revoke).toBeEnabled();
+    });
+
+    test("settings: TeamPanel invite toggle is enabled (owner only surface)", async ({ page }) => {
+      // The Team & roles card on /app/settings sits behind an `isOwner`
+      // gate inside <TeamPanel> itself, so the WriteGuard around the
+      // toggle is only ever reached by owners. We assert the wrapper
+      // resolves to the unwrapped, enabled control here — the
+      // accountant/viewer describe blocks assert the inverse (banner +
+      // absence of the button).
+      await gotoApp(page, "/app/settings");
+      const card = page.locator('[data-testid="card-team-roles"]');
+      await expect(card).toBeVisible();
+      await expect(page.locator('[data-testid="banner-not-owner"]')).toHaveCount(0);
+      await expectUnguarded(page, "button-toggle-invite");
+      await expect(
+        page.locator('[data-testid="button-toggle-invite"]').first(),
+      ).toBeEnabled();
+    });
+
+    test("chart of accounts: 'New account' is enabled", async ({ page }) => {
+      await gotoApp(page, "/app/accounts");
+      await expectUnguarded(page, "button-add-account");
+      await expect(
+        page.locator('[data-testid="button-add-account"]').first(),
+      ).toBeEnabled();
+    });
   });
 
   // ----------------------------------------------------------------------
@@ -478,6 +524,31 @@ test.describe("role-based button gating @rbac", () => {
       await expect(page.locator('[data-testid="button-add-company"]')).toHaveCount(0);
       await expect(page.locator('[data-testid="button-save-fx"]')).toHaveCount(0);
       await expect(page.locator('[data-testid^="button-delete-fx-"]')).toHaveCount(0);
+    });
+
+    test("settings: TeamPanel shows owner-only banner; toggle-invite is absent", async ({ page }) => {
+      // <TeamPanel> guards every WriteGuard inside it behind an `isOwner`
+      // check, so accountants never reach the wrapped buttons. The card
+      // still renders but with a "owner manages the team" explainer in
+      // place of the invite/remove controls — assert both halves so a
+      // regression that drops the gate fails loudly.
+      await gotoApp(page, "/app/settings");
+      await expect(page.locator('[data-testid="card-team-roles"]')).toBeVisible();
+      await expect(page.locator('[data-testid="banner-not-owner"]')).toBeVisible();
+      await expect(page.locator('[data-testid="button-toggle-invite"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid="button-submit-invite"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-remove-member-"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-revoke-invite-"]')).toHaveCount(0);
+    });
+
+    test("chart of accounts: 'New account' stays enabled", async ({ page }) => {
+      // Accountants pass canWrite, so the WriteGuard wrapper is absent
+      // and the button must be live — same contract as the owner.
+      await gotoApp(page, "/app/accounts");
+      await expectUnguarded(page, "button-add-account");
+      await expect(
+        page.locator('[data-testid="button-add-account"]').first(),
+      ).toBeEnabled();
     });
   });
 
@@ -655,6 +726,31 @@ test.describe("role-based button gating @rbac", () => {
       await expect(page.locator('[data-testid="button-add-company"]')).toHaveCount(0);
       await expect(page.locator('[data-testid="button-save-fx"]')).toHaveCount(0);
       await expect(page.locator('[data-testid^="button-delete-fx-"]')).toHaveCount(0);
+    });
+
+    test("settings: TeamPanel shows owner-only banner; toggle-invite is absent", async ({ page }) => {
+      // Same contract as accountants — viewers also fail the inner
+      // isOwner gate inside <TeamPanel>, so none of its WriteGuards are
+      // ever rendered on this surface.
+      await gotoApp(page, "/app/settings");
+      await expect(page.locator('[data-testid="card-team-roles"]')).toBeVisible();
+      await expect(page.locator('[data-testid="banner-not-owner"]')).toBeVisible();
+      await expect(page.locator('[data-testid="button-toggle-invite"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid="button-submit-invite"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-remove-member-"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-revoke-invite-"]')).toHaveCount(0);
+    });
+
+    test("chart of accounts: 'New account' is read-only guarded", async ({ page }) => {
+      // Viewers fail canWrite, so the WriteGuard wrapper is rendered with
+      // the read-only tooltip and the underlying button is disabled.
+      await gotoApp(page, "/app/accounts");
+      await expectGuarded(
+        page,
+        "button-add-account",
+        "write-guard-disabled",
+        READ_ONLY_TOOLTIP,
+      );
     });
   });
 });

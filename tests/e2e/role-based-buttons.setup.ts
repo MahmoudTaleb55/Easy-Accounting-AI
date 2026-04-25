@@ -161,6 +161,35 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
       }
     }
 
+    // ---- (c.1) Pin the workspace locale to English ----
+    // `LocaleSync` (in `client/src/components/layout/main-layout.tsx`)
+    // hydrates the locale from `/api/settings` on every page mount and
+    // overrides whatever the test's `addInitScript` wrote to localStorage.
+    // The default `settings.locale` column value is 'ar', so without an
+    // explicit row pinned to 'en' the role-explainer tooltips would
+    // surface in Arabic and break the assertions in
+    // `expectGuarded(...OWNER_ONLY_TOOLTIP)` /
+    // `expectGuarded(...READ_ONLY_TOOLTIP)`. Seeding (or upserting) the
+    // singleton settings row with `locale = 'en'` keeps the
+    // English-tooltip contract stable across re-runs.
+    const existingSettings = (
+      await client.query(
+        `SELECT id FROM settings WHERE company_id = $1 LIMIT 1`,
+        [companyId],
+      )
+    ).rows[0];
+    if (existingSettings) {
+      await client.query(
+        `UPDATE settings SET locale = 'en' WHERE id = $1`,
+        [existingSettings.id],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO settings (company_id, locale) VALUES ($1, 'en')`,
+        [companyId],
+      );
+    }
+
     // ---- (d) Seed minimal data so non-RBAC disable conditions don't fire ----
     // The Run Payroll button is `forceDisabled` when the company has no
     // payroll lines (no employees → no preview). One employee is enough for
@@ -470,6 +499,43 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
         `INSERT INTO payroll_runs (company_id, year, month, status, total_gross, total_net, journal_entry_id)
          VALUES ($1, 2024, 6, 'posted', '5000.00', '4500.00', NULL)`,
         [companyId],
+      );
+    }
+
+    // ---- (d.8) One pending invitation → renders resend + revoke buttons ----
+    // The invitations panel on `/app/settings/members` only emits the
+    // `button-resend-{id}` and `button-revoke-{id}` controls when the
+    // invitation row is still in the `pending` state, so we seed exactly
+    // one such row owned by the owner user. The token is namespaced with
+    // a fixed marker so re-runs idempotently update the same row instead
+    // of stacking new pending invitations every time the setup runs.
+    const inviteToken = `e2e-role-invite-token-${companyId}`;
+    const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const existingInvite = (
+      await client.query(
+        `SELECT id FROM invitations WHERE token = $1 LIMIT 1`,
+        [inviteToken],
+      )
+    ).rows[0];
+    if (existingInvite) {
+      await client.query(
+        `UPDATE invitations
+           SET status = 'pending', expires_at = $1, role = 'viewer',
+               accepted_at = NULL, accepted_by_user_id = NULL
+         WHERE id = $2`,
+        [inviteExpires, existingInvite.id],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO invitations (company_id, invited_by_user_id, email, role, token, status, expires_at)
+         VALUES ($1, $2, $3, 'viewer', $4, 'pending', $5)`,
+        [
+          companyId,
+          ownerUserId,
+          `e2e-role-invite-${companyId}@example.test`,
+          inviteToken,
+          inviteExpires,
+        ],
       );
     }
   } finally {
