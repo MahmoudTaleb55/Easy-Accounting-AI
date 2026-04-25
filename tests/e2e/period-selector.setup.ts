@@ -93,11 +93,47 @@ setup("authenticate + seed period-selector fixtures", async ({ page }) => {
     });
 
     // ---- (b) Ensure the user owns a workspace ----
+    // Roles use the canonical enum (owner|accountant|viewer) — see
+    // shared/models/auth.ts and migration 0003. The server's
+    // `unifyRoleEnumOnStartup` rewrites any legacy 'admin' membership to
+    // 'owner' on every boot, so seeding 'admin' here would make the next
+    // run's lookup miss and silently insert a brand-new workspace,
+    // leaking the previous one. Stick to the canonical 'owner' role.
     companyId = await ensureCompany(client, {
       userId,
-      role: "admin",
+      role: "owner",
       companyName: "E2E Period Co",
     });
+
+    // ---- (b.1) Clean up any workspaces leaked by past runs of the
+    // pre-fix setup. Before this file was corrected, each run inserted
+    // a fresh `companies` row (because the role-enum normaliser rewrote
+    // the previous 'admin' membership to 'owner', so the role='admin'
+    // lookup missed). Those leaked workspaces all belong to *this* test
+    // user; consolidate by deleting their seed data + memberships +
+    // company rows so the user only owns the canonical workspace.
+    const stragglers = (
+      await client.query(
+        `SELECT c.id FROM memberships m
+         JOIN companies c ON c.id = m.company_id
+         WHERE m.user_id = $1 AND m.role = 'owner' AND c.id <> $2`,
+        [userId, companyId],
+      )
+    ).rows.map((r: { id: number | string }) => Number(r.id));
+    for (const strayId of stragglers) {
+      // Delete in dependency order, mirroring the per-run reset below.
+      await client.query(
+        `DELETE FROM attendance WHERE employee_id IN (SELECT id FROM employees WHERE company_id = $1)`,
+        [strayId],
+      );
+      await client.query(`DELETE FROM employees WHERE company_id = $1`, [strayId]);
+      await client.query(`DELETE FROM fixed_assets WHERE company_id = $1`, [strayId]);
+      await client.query(`DELETE FROM asset_categories WHERE company_id = $1`, [strayId]);
+      await client.query(`DELETE FROM transactions WHERE company_id = $1`, [strayId]);
+      await client.query(`DELETE FROM accounts WHERE company_id = $1`, [strayId]);
+      await client.query(`DELETE FROM memberships WHERE company_id = $1`, [strayId]);
+      await client.query(`DELETE FROM companies WHERE id = $1`, [strayId]);
+    }
 
     // ---- (c) Reset the workspace's seed data so the spec is deterministic ----
     // Delete in dependency order to avoid FK violations.
