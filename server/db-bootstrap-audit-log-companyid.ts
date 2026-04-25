@@ -2,26 +2,28 @@
  * Idempotent re-apply of migrations/0016_audit_log_company_id.sql on every
  * boot.
  *
- * Mirrors the pattern used for migrations 0003 / 0006 / 0007 / 0008 / 0010
- * / 0014 (see auth/storage.ts, db-bootstrap-composite-fks.ts,
- * db-bootstrap-rls.ts, db-bootstrap-accounts-code-uq.ts,
- * db-bootstrap-companyid-defaults.ts): dev databases and any deploy that
- * boots ahead of the migration runner end up in the same shape as the
- * canonical schema.
+ * Mirrors the pattern used for the surviving boot helpers (migrations
+ * 0005 / 0010 / 0014 — see auth/storage.ts,
+ * db-bootstrap-accounts-code-uq.ts, db-bootstrap-companyid-defaults.ts):
+ * dev databases and any deploy that boots ahead of the migration runner
+ * end up in the same shape as the canonical schema. The legacy 0003 /
+ * 0006 / 0007 / 0008 boot helpers were retired in task #165 once the SQL
+ * migration runner had reliably superseded them.
  *
  * Background — task #169. The `audit_log` table predated per-row tenancy
  * and had no `company_id` column. Tenant ownership of an audit row was
  * implicit through the entity row each audit pointed at, which broke down
  * on "delete" audits whose entity was gone. Adding the column lets the
- * `workspace_isolation` RLS policy (installed by `db-bootstrap-rls.ts`)
- * cover audit rows the same way it covers every other workspace-scoped
- * table.
+ * `workspace_isolation` RLS policy cover audit rows the same way it
+ * covers every other workspace-scoped table.
  *
- * MUST run BEFORE `applyWorkspaceRlsOnStartup` so the column exists by
- * the time the RLS bootstrap iterates `RLS_TABLES` (which now includes
- * `audit_log`). Wrapped by the caller in `withRlsBypass` so the backfill
- * UPDATEs across every workspace are not rejected by the policy on a
- * second boot pass.
+ * Scope: this helper re-stages only the column-bearing portion of
+ * migration 0016 (ADD COLUMN, backfill, SET NOT NULL, lookup index). The
+ * matching ENABLE / FORCE RLS + `workspace_isolation` policy install on
+ * `audit_log` is performed by migration 0016 itself, now applied by the
+ * SQL migration runner in `server/migrate.ts`. Wrapped by the caller in
+ * `withRlsBypass` so the backfill UPDATEs across every workspace are not
+ * rejected by the policy on a second boot pass.
  *
  * Every step is guarded so re-runs are no-ops:
  *   - `ADD COLUMN IF NOT EXISTS`

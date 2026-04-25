@@ -94,11 +94,11 @@ setup("authenticate + seed period-selector fixtures", async ({ page }) => {
 
     // ---- (b) Ensure the user owns a workspace ----
     // Roles use the canonical enum (owner|accountant|viewer) — see
-    // shared/models/auth.ts and migration 0003. The server's
-    // `unifyRoleEnumOnStartup` rewrites any legacy 'admin' membership to
-    // 'owner' on every boot, so seeding 'admin' here would make the next
-    // run's lookup miss and silently insert a brand-new workspace,
-    // leaking the previous one. Stick to the canonical 'owner' role.
+    // shared/models/auth.ts and migration 0003. That migration rewrites
+    // any legacy 'admin' membership to 'owner' once per database, so
+    // seeding 'admin' here would make the next run's lookup miss and
+    // silently insert a brand-new workspace, leaking the previous one.
+    // Stick to the canonical 'owner' role.
     companyId = await ensureCompany(client, {
       userId,
       role: "owner",

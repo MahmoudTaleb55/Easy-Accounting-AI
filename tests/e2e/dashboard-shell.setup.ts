@@ -54,10 +54,9 @@ setup("authenticate + seed dashboard fixtures", async ({ page }) => {
 
     // ---- (b) Ensure the user has at least one workspace they own ----
     // Roles use the canonical enum (owner|accountant|viewer) — see
-    // shared/models/auth.ts and migration 0003. Legacy 'admin' rows that
-    // pre-date that migration are normalised back to 'owner' on every
-    // boot by `unifyRoleEnumOnStartup`, so seeding 'owner' here keeps
-    // the setup idempotent across runs.
+    // shared/models/auth.ts and migration 0003. That migration normalises
+    // any legacy 'admin' rows back to 'owner' once per database, so
+    // seeding 'owner' here keeps the setup idempotent across runs.
     const companyId = await ensureCompany(client, {
       userId,
       role: "owner",

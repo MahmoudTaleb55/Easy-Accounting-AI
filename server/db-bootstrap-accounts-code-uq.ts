@@ -2,10 +2,13 @@
  * Idempotent re-apply of migrations/0010_accounts_code_per_workspace.sql
  * on every boot.
  *
- * Mirrors the pattern used for migrations 0003 / 0006 / 0007 / 0008
- * (see auth/storage.ts, db-bootstrap-composite-fks.ts, db-bootstrap-rls.ts):
- * dev databases and any deploy that boots ahead of the migration runner end
- * up in the same shape as the canonical schema.
+ * Same belt-and-suspenders pattern as the surviving boot helpers in this
+ * project (see `ensureEmailDeliveryAlertTablesOnStartup` in auth/storage.ts
+ * and db-bootstrap-companyid-defaults.ts): dev databases and any deploy
+ * that boots ahead of the migration runner end up in the same shape as
+ * the canonical schema. The 0003 / 0006 / 0007 / 0008 helpers that used
+ * to share this pattern were retired in task #165 once the SQL migration
+ * runner had reliably superseded them.
  *
  * The accounts table previously carried a *global* UNIQUE on `code`, which
  * silently broke every workspace after the first -- the canonical chart of

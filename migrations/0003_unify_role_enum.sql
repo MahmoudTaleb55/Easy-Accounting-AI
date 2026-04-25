@@ -14,9 +14,14 @@
 --   readonly -> viewer
 --   accountant -> accountant   (unchanged)
 --
--- The same fix-up is also re-run idempotently from the server on each boot
--- (see `unifyRoleEnumOnStartup` in `server/auth/storage.ts`) so workspaces
--- restored from older backups are normalised automatically.
+-- The migration runner (`server/migrate.ts`) applies this file exactly once
+-- per database via the `schema_migrations` ledger. Earlier revisions of this
+-- project also re-ran the same UPDATEs from a `unifyRoleEnumOnStartup` boot
+-- helper for belt-and-suspenders idempotency; that helper was retired in
+-- task #165 once the runner had reliably superseded it. The UPDATEs above
+-- remain idempotent on their own (a no-op once every legacy row has been
+-- normalised), so re-running them by hand against an already-migrated DB is
+-- safe.
 
 UPDATE memberships
    SET role = 'owner'

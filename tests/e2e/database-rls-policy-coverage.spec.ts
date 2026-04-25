@@ -4,7 +4,7 @@ import pg from "pg";
 /**
  * Task #139 — catch new workspace-scoped tables that forget RLS.
  *
- * The RLS bootstrap helper (`server/db-bootstrap-rls.ts`) hard-codes the
+ * The RLS migration (`migrations/0008_workspace_rls.sql`) hard-codes the
  * list of in-scope tables. If a future migration adds a new table with a
  * `company_id` column but the engineer forgets to add it to that list,
  * the table will silently leak across workspaces with no warning until a
@@ -38,9 +38,10 @@ import pg from "pg";
  *
  *   - It treats any *new* table with a `company_id` column as in scope
  *     too. If someone adds a workspace-scoped table tomorrow without
- *     also adding it to `RLS_TABLES` in `server/db-bootstrap-rls.ts`,
- *     this spec fails with that table named in the error message —
- *     without anyone having to update the allowlist.
+ *     also adding it to the `FOREACH t IN ARRAY ARRAY[…]` block in
+ *     `migrations/0008_workspace_rls.sql`, this spec fails with that
+ *     table named in the error message — without anyone having to
+ *     update the allowlist.
  *
  * The intentional opt-out list mirrors the "Tables intentionally out of
  * scope" section of `docs/design/workspace-isolation-defense-in-depth.md`:
@@ -55,11 +56,10 @@ import pg from "pg";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
-// Source of truth: every public-schema table that the bootstrap helper
+// Source of truth: every public-schema table that the RLS migration
 // MUST harden with RLS + the `workspace_isolation` policy. Mirrors the
-// `RLS_TABLES` constant in `server/db-bootstrap-rls.ts` and the
 // `FOREACH t IN ARRAY ARRAY[…]` block in
-// `migrations/0008_workspace_rls.sql`. Keep all three in sync.
+// `migrations/0008_workspace_rls.sql`. Keep both in sync.
 const KNOWN_RLS_PROTECTED = new Set<string>([
   "accounts",
   "journal_entries",
@@ -215,8 +215,7 @@ test.describe("workspace-scoped tables must be under RLS @db", () => {
       if (Number(row.policy_count) === 0) {
         problems.push(
           `no policy named "workspace_isolation" on this table ` +
-            `(install it via migrations/0008_workspace_rls.sql or the ` +
-            `RLS_TABLES list in server/db-bootstrap-rls.ts)`,
+            `(install it via migrations/0008_workspace_rls.sql)`,
         );
       }
       if (problems.length > 0) {
@@ -238,9 +237,8 @@ test.describe("workspace-scoped tables must be under RLS @db", () => {
                   o.problems.map((p) => `      • ${p}`).join("\n"),
               )
               .join("\n") +
-            "\n\nFix: add the table name to the `RLS_TABLES` constant " +
-            "in `server/db-bootstrap-rls.ts` AND to the matching " +
-            "ARRAY[…] in `migrations/0008_workspace_rls.sql`. If the " +
+            "\n\nFix: add the table name to the `ARRAY[…]` block in " +
+            "`migrations/0008_workspace_rls.sql`. If the " +
             "new table is genuinely meant to be readable across " +
             "workspaces (auth/membership-style), document the rationale " +
             "in `docs/design/workspace-isolation-defense-in-depth.md` " +

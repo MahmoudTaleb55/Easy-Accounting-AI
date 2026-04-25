@@ -105,21 +105,10 @@ const DB_IMPORT_ALLOWLIST: AllowlistEntry[] = [
     rationale:
       "authBizStorage methods cover the auth tables (intentionally not " +
       "RLS-protected). Methods called from inside the request middleware " +
-      "inherit its withCompanyScope; the *OnStartup helpers are wrapped " +
-      "in withRlsBypass at their server/index.ts call sites; " +
+      "inherit its withCompanyScope; the lone surviving boot helper " +
+      "(`ensureEmailDeliveryAlertTablesOnStartup`) is wrapped in " +
+      "withRlsBypass at its server/index.ts call site; " +
       "createCompanyForOwner wraps itself in withWorkspaceCreation.",
-  },
-  {
-    file: "server/db-bootstrap-rls.ts",
-    rationale:
-      "applyWorkspaceRlsOnStartup wraps its body in " +
-      "withRlsBypass('bootstrap:rls') internally.",
-  },
-  {
-    file: "server/db-bootstrap-composite-fks.ts",
-    rationale:
-      "applyExtendedCompositeFksOnStartup is called from server/index.ts " +
-      "inside withRlsBypass('bootstrap:composite-fks').",
   },
   {
     file: "server/db-bootstrap-accounts-code-uq.ts",
@@ -139,9 +128,10 @@ const DB_IMPORT_ALLOWLIST: AllowlistEntry[] = [
     rationale:
       "applyAuditLogCompanyIdOnStartup is called from server/index.ts " +
       "inside withRlsBypass('bootstrap:audit-log-companyid'). Adds + " +
-      "backfills audit_log.company_id; runs before the RLS bootstrap " +
-      "so the workspace_isolation policy install can reference the " +
-      "new column. See task #169 / migration 0016.",
+      "backfills audit_log.company_id; the matching workspace_isolation " +
+      "policy install on audit_log is performed by migration 0016 itself, " +
+      "now applied by the SQL migration runner. See task #169 / " +
+      "migration 0016.",
   },
   {
     file: "server/replit_integrations/auth/storage.ts",
@@ -424,9 +414,10 @@ test.describe("workspace isolation lint", () => {
 
     // Helpers that wrap themselves internally — they don't need an outer
     // wrapper at the call site. Keep this list short and obvious.
-    const SELF_WRAPPING = new Set<string>([
-      "applyWorkspaceRlsOnStartup",
-    ]);
+    // Currently empty: the only self-wrapping helper
+    // (`applyWorkspaceRlsOnStartup`) was retired in task #165 once the
+    // SQL migration runner had reliably superseded it.
+    const SELF_WRAPPING = new Set<string>([]);
 
     const lines = text.split("\n");
     // For each `await fooOnStartup(` invocation, search backwards a few
@@ -494,9 +485,9 @@ test.describe("workspace isolation lint", () => {
     );
     // Dynamic `const { ... } = await import("<storage>")` — flag only if
     // one of the destructured names is a runtime storage value. Migration
-    // / bootstrap helpers (e.g. `unifyRoleEnumOnStartup`) live in the
-    // same module but are gated by the *OnStartup wrapper test, not this
-    // one.
+    // / bootstrap helpers (e.g. `ensureEmailDeliveryAlertTablesOnStartup`)
+    // live in the same module but are gated by the *OnStartup wrapper
+    // test, not this one.
     const dynamicImportRe = new RegExp(
       String.raw`\{([^}]*)\}\s*=\s*await\s+import\s*\(\s*["'](?:` +
         pathAlts +

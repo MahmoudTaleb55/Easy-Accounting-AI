@@ -86,8 +86,8 @@ export interface EnsureCompanyOptions {
   userId: string;
   /**
    * Membership role to look up + insert. Defaults to `'owner'`, which is
-   * the canonical role after `unifyRoleEnumOnStartup` runs. Pass an
-   * alternate role for legacy seeds that haven't been migrated.
+   * the canonical role after migration 0003 normalises the legacy enum.
+   * Pass an alternate role for legacy seeds that haven't been migrated.
    */
   role?: string;
   /** Name to use when creating a fresh company. */

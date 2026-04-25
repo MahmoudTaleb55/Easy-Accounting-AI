@@ -260,14 +260,13 @@ on every write:
 - `server/routes.ts`: every caller of the above is updated to pass
   `companyId` so the type-checker enforces it at the boundary.
 
-The same `applyExtendedCompositeFksOnStartup` boot helper used for prior
-migrations runs `0007` idempotently on app start, mirroring the
-already-shipped pattern for `0003` / `0006`. As a defensive measure it
-*also* re-applies migration `0005`'s parent uniques and composite FKs (no
-boot helper had been written for `0005`, so dev databases that were
-bootstrapped before that migration ran would otherwise be left without
-the task #70 constraints — and without the back-filled
-`journal_lines.company_id` column the application now writes to).
+Migrations `0005` and `0007` are applied on every boot — exactly once per
+database — by the SQL migration runner (`server/migrate.ts`). Earlier
+revisions of this project also re-ran the same DDL idempotently from a
+hand-written `applyExtendedCompositeFksOnStartup` boot helper for
+belt-and-suspenders coverage of dev databases that pre-dated the runner;
+that helper (along with the matching helpers for `0003` / `0006`) was
+retired in task #165 once the runner had reliably superseded it.
 
 ### Tables intentionally not extended
 
@@ -419,31 +418,20 @@ on completion. Audited bypass call sites (with `reason` strings):
 - `bootstrap:ifrs-coa` — `ensureIfrsBootstrap` seeds the default chart of
   accounts and back-fills journal entries for legacy transactions across
   every workspace at boot.
-- `bootstrap:role-enum` — `unifyRoleEnumOnStartup` re-runs the legacy →
-  canonical role-enum data fix on the `memberships` / `invitations` tables.
-- `bootstrap:drop-workspace-members-mirror` — re-runs migration 0006.
-- `bootstrap:composite-fks` — re-runs migrations 0005 / 0007.
 - `bootstrap:accounts-code-uq` — re-runs migration 0010.
 - `bootstrap:companyid-defaults` — re-runs migration 0014.
-- `bootstrap:audit-log-companyid` — re-runs migration 0016 (adds the
-  `company_id` column to `audit_log`, backfills it from each entity
-  table + the legacy `companyId` change-set stamp, and pins it NOT NULL).
-  Wrapped in bypass because the backfill UPDATE walks every workspace's
-  audit rows and runs before the matching `workspace_isolation` policy
-  is installed.
-- `bootstrap:rls` — re-runs migration 0008 itself.
+- `bootstrap:audit-log-companyid` — re-runs the column-bearing portion
+  of migration 0016 (adds the `company_id` column to `audit_log`,
+  backfills it from each entity table + the legacy `companyId`
+  change-set stamp, and pins it NOT NULL). Wrapped in bypass because
+  the backfill UPDATE walks every workspace's audit rows. The matching
+  `workspace_isolation` policy install on `audit_log` is performed by
+  migration 0016 itself, applied by the SQL migration runner.
 - `bootstrap:email-delivery-alert-tables` —
   `ensureEmailDeliveryAlertTablesOnStartup` re-stages the parent
   `email_delivery_alert_settings` / `email_delivery_alerts` tables (auth
   surface, not RLS-protected, but wrapped for uniformity so the audit
   list below stays exhaustive).
-- `bootstrap:email-delivery-alert-recipients` —
-  `applyEmailDeliveryAlertRecipientsOnStartup` re-stages the per-recipient
-  outcome table for the alert evaluator.
-- `bootstrap:email-delivery-event-count-indexes` —
-  `applyEmailDeliveryEventCountIndexesOnStartup` re-stages the
-  `(message_id, created_at)` indexes the `/api/auth/email-deliveries/count`
-  endpoint depends on.
 - `cron:email-delivery-alert-sweep` — the periodic alert evaluator that
   iterates every workspace.
 - `workspace:create` — `DatabaseStorage.createCompany`,

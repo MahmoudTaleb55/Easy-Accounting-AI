@@ -2,11 +2,12 @@
  * Idempotent re-apply of migrations/0014_drop_company_id_defaults.sql on
  * every boot.
  *
- * Mirrors the pattern used for migrations 0003 / 0006 / 0007 / 0008 / 0010
- * (see auth/storage.ts, db-bootstrap-composite-fks.ts, db-bootstrap-rls.ts,
+ * Mirrors the pattern used for migration 0010 (see
  * db-bootstrap-accounts-code-uq.ts): dev databases and any deploy that
  * boots ahead of the migration runner end up in the same shape as the
- * canonical schema.
+ * canonical schema. The original 0003 / 0006 / 0007 / 0008 boot helpers
+ * were retired in task #165 once the SQL migration runner had reliably
+ * superseded them.
  *
  * Background — task #122. Previously, ten workspace-scoped tables
  * (accounts, journal_entries, transactions, budgets, settings, employees,

@@ -86,8 +86,8 @@ export async function withCompanyScope<T>(
     // Drop superuser privileges for the lifetime of this request — superusers
     // bypass RLS regardless of FORCE ROW LEVEL SECURITY, so without the role
     // switch the workspace_isolation policies would never fire. The role is
-    // created by `applyWorkspaceRlsOnStartup` and granted to the connecting
-    // role so SET ROLE succeeds. RESET ROLE on cleanup, below.
+    // created by `migrations/0008_workspace_rls.sql` and granted to the
+    // connecting role so SET ROLE succeeds. RESET ROLE on cleanup, below.
     await client.query(`SET ROLE app_api`);
     const scoped = drizzle(client, { schema });
     return await dbContext.run({ scoped }, fn);

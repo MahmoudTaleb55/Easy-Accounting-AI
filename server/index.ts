@@ -131,14 +131,18 @@ app.use((req, res, next) => {
 
   await registerRoutes(httpServer, app);
 
-  // Apply every checked-in `migrations/*.sql` file in order, exactly once,
-  // before any of the per-migration boot helpers below. This is the
-  // first-class migration runner; the bootstrap helpers that follow are
-  // belt-and-suspenders for tables / indexes that the runner has already
-  // brought into shape (kept until they can be retired one by one).
-  // Adding a new SQL migration only requires dropping the file in
-  // `migrations/` — no companion bootstrapper needed. See
-  // server/migrate.ts for the runner's idempotency contract.
+  // Apply every checked-in `migrations/*.sql` file in order, exactly once.
+  // This is the first-class migration runner: adding a new SQL migration
+  // only requires dropping the file in `migrations/` — no companion
+  // bootstrapper needed. See server/migrate.ts for the runner's
+  // idempotency contract.
+  //
+  // The handful of `*OnStartup` boot helpers that survive below this call
+  // (`ensureEmailDeliveryAlertTablesOnStartup`,
+  // `applyAccountsCodePerWorkspaceOnStartup`,
+  // `applyCompanyIdNoDefaultOnStartup`) are kept on a case-by-case basis;
+  // every helper that the runner has reliably superseded over multiple
+  // releases has been retired (task #165).
   //
   // Migration failure is FATAL — we deliberately do NOT swallow the error.
   // The whole point of task #121 was that a silently-skipped migration lets
@@ -154,22 +158,6 @@ app.use((req, res, next) => {
       err,
     );
     process.exit(1);
-  }
-
-  // Defensive re-apply of migration 0007 (composite FKs). The runner above
-  // already applies 0007 on first boot; this stays as a safety net for
-  // databases that pre-date the runner and may have been bootstrapped
-  // out-of-order in the past.
-  try {
-    const { applyExtendedCompositeFksOnStartup } = await import(
-      "./db-bootstrap-composite-fks"
-    );
-    const { withRlsBypass } = await import("./db");
-    await withRlsBypass("bootstrap:composite-fks", () =>
-      applyExtendedCompositeFksOnStartup(),
-    );
-  } catch (err) {
-    console.error("Failed to apply extended composite FK migration:", err);
   }
 
   // Re-apply migration 0005 on boot so the email-delivery-alert tables
@@ -239,12 +227,13 @@ app.use((req, res, next) => {
 
   // Re-apply migration 0016 on boot — adds the `company_id` column to
   // `audit_log`, backfills it from each entity table + the legacy
-  // `companyId` change-set stamp, and pins it NOT NULL. MUST run BEFORE
-  // `applyWorkspaceRlsOnStartup` because the audit_log table is now in
-  // its `RLS_TABLES` list and the policy install would fail without the
-  // column. Wrapped in `withRlsBypass` because the backfill UPDATE walks
-  // every workspace's audit rows. Idempotent. See task #169 and
-  // docs/design/workspace-isolation-defense-in-depth.md.
+  // `companyId` change-set stamp, and pins it NOT NULL. The matching
+  // `workspace_isolation` policy install for `audit_log` is performed
+  // by migration 0016 itself (now applied by the runner above), so this
+  // helper only needs to materialise the column on dev databases that
+  // boot ahead of the runner. Wrapped in `withRlsBypass` because the
+  // backfill UPDATE walks every workspace's audit rows. Idempotent. See
+  // task #169 and docs/design/workspace-isolation-defense-in-depth.md.
   try {
     const { applyAuditLogCompanyIdOnStartup } = await import(
       "./db-bootstrap-audit-log-companyid"
@@ -260,20 +249,6 @@ app.use((req, res, next) => {
     );
   }
 
-  // Re-apply migration 0008 on boot so RLS policies materialise on dev
-  // databases and on any deploy that boots ahead of the migration runner.
-  // Must run BEFORE any bootstrap that writes to RLS-protected tables —
-  // those bootstraps wrap themselves in `withRlsBypass`. Idempotent — see
-  // docs/design/workspace-isolation-defense-in-depth.md.
-  try {
-    const { applyWorkspaceRlsOnStartup } = await import(
-      "./db-bootstrap-rls"
-    );
-    await applyWorkspaceRlsOnStartup();
-  } catch (err) {
-    console.error("Failed to apply workspace RLS migration:", err);
-  }
-
   // Bootstrap IFRS Chart of Accounts and backfill journal entries for legacy
   // data. Reads / writes across every workspace, so it runs under bypass.
   try {
@@ -284,76 +259,6 @@ app.use((req, res, next) => {
   } catch (err) {
     console.error("Failed to bootstrap IFRS COA:", err);
   }
-
-  // Normalise any membership/invitation rows that still carry the legacy
-  // role vocabulary (admin/reviewer/readonly) onto the canonical
-  // owner|accountant|viewer enum. Idempotent — see migration 0003.
-  // Touches non-RLS tables (memberships/invitations) but bypass keeps the
-  // pattern consistent across boot helpers.
-  try {
-    const { unifyRoleEnumOnStartup } = await import("./auth/storage");
-    const { withRlsBypass } = await import("./db");
-    await withRlsBypass("bootstrap:role-enum", () =>
-      unifyRoleEnumOnStartup(),
-    );
-  } catch (err) {
-    console.error("Failed to normalise role enum:", err);
-  }
-
-  // Re-apply migration 0006 on boot so the retired `workspace_members`
-  // mirror table never lingers in dev databases or in deploys that boot
-  // ahead of the migration runner. Idempotent.
-  try {
-    const { dropWorkspaceMembersMirrorOnStartup } = await import("./auth/storage");
-    const { withRlsBypass } = await import("./db");
-    await withRlsBypass("bootstrap:drop-workspace-members-mirror", () =>
-      dropWorkspaceMembersMirrorOnStartup(),
-    );
-  } catch (err) {
-    console.error("Failed to drop workspace_members mirror:", err);
-  }
-
-  // Re-apply migrations 0009, 0011 and 0013 on boot so the per-recipient
-  // alert outcome table — and the one-shot `cooldown_cleared_at` "Re-arm"
-  // column — are in place before the evaluator (and its dedupe / retry
-  // passes) tries to read or write them. Idempotent. The 0013 piece is
-  // defense-in-depth against the duplicate-prefix migration bug fixed in
-  // task #161 (cooldown_cleared started life sharing a `0008_` prefix
-  // with `0008_workspace_rls.sql`).
-  try {
-    const { applyEmailDeliveryAlertRecipientsOnStartup } = await import(
-      "./auth/storage"
-    );
-    const { withRlsBypass } = await import("./db");
-    await withRlsBypass("bootstrap:email-delivery-alert-recipients", () =>
-      applyEmailDeliveryAlertRecipientsOnStartup(),
-    );
-  } catch (err) {
-    console.error(
-      "Failed to apply email_delivery_alert_recipients migration:",
-      err,
-    );
-  }
-
-  // Re-apply migration 0012 on boot so the (message_id, created_at)
-  // indexes that keep the /api/auth/email-deliveries/count endpoint
-  // snappy on long histories materialise on dev databases and on any
-  // deploy that boots ahead of the migration runner. Idempotent.
-  try {
-    const { applyEmailDeliveryEventCountIndexesOnStartup } = await import(
-      "./auth/storage"
-    );
-    const { withRlsBypass } = await import("./db");
-    await withRlsBypass("bootstrap:email-delivery-event-count-indexes", () =>
-      applyEmailDeliveryEventCountIndexesOnStartup(),
-    );
-  } catch (err) {
-    console.error(
-      "Failed to apply email-delivery event count indexes migration:",
-      err,
-    );
-  }
-
 
   // Background sweep that turns the failure-class delivery trends into a
   // banner / email when a workspace's threshold trips. Disabled in test runs
