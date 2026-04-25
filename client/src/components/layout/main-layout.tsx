@@ -15,18 +15,43 @@ import { useLocation } from "wouter";
 
 const SUPPORTED_LOCALES: Locale[] = ["ar", "en", "de", "fr"];
 
+const LOCALE_STORAGE_KEY = "app.locale";
+
+// Snapshot whether this device already had an explicit locale picked in
+// localStorage *before* any React code ran. The LocaleProvider's mount
+// effect rewrites localStorage on first paint, so we have to capture the
+// pre-mount state at module load time — once React has booted, the
+// distinction between "user explicitly picked en here" and "provider just
+// wrote its default to storage" is gone.
+const HAD_PRELOADED_LOCALE: boolean = (() => {
+  if (typeof window === "undefined") return false;
+  try {
+    const v = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    return v === "ar" || v === "en" || v === "de" || v === "fr";
+  } catch {
+    return false;
+  }
+})();
+
 /**
  * Sync the in-memory locale with the user's saved preference on initial load.
  *
  * Source of truth (in priority order):
- *   1. The signed-in user's `preferredLocale` (per-user, written by the
- *      topbar language picker and the profile page). The `users.preferred_
- *      locale` column is NOT NULL with a `'ar'` default, so a row always
- *      carries a value — meaning the user path effectively wins for every
- *      authenticated request. That is the desired behaviour: the user's
- *      explicit choice must NOT be reverted by the org-level default
- *      (this was the original "topbar reverts to Arabic on reload" bug).
- *   2. The org-wide `settings.locale` (Settings page). Only consulted when
+ *   1. An explicit per-device choice already saved in `localStorage` before
+ *      this session started. Once a user has picked a locale on this
+ *      device — via the topbar, profile page, or any other channel that
+ *      writes `app.locale` — that pick is treated as authoritative for
+ *      this device. Otherwise an English-preferring user whose server
+ *      profile still carries the schema default (`'ar'`) would silently
+ *      flip back to Arabic on every reload, which is the bug the
+ *      email-delivery alert banner was hitting end-to-end.
+ *   2. The signed-in user's `preferredLocale` (per-user, written by the
+ *      topbar language picker and the profile page). Applied on the
+ *      first load on a brand-new device (no localStorage value yet) so
+ *      the cross-device preference still propagates. The topbar also
+ *      mutates the in-memory locale optimistically and PATCHes the
+ *      profile, so the two stay in sync after that.
+ *   3. The org-wide `settings.locale` (Settings page). Only consulted when
  *      no user is signed in (e.g. shared / unauthenticated views inside
  *      the shell). When the user query is still loading we wait — applying
  *      the org locale prematurely would briefly flip the UI before the
@@ -65,6 +90,15 @@ function LocaleSync() {
         : null;
     if (!remote) return;
     if (lastAppliedRef.current === remote) return;
+    // First time we're seeing a remote preference this session: if this
+    // device already had an explicit local pick, trust it and just
+    // remember what the server reported so a future *change* (e.g. the
+    // user picks a different locale via the topbar, which refetches
+    // /api/auth/user) can still flow through normally.
+    if (lastAppliedRef.current === null && HAD_PRELOADED_LOCALE) {
+      lastAppliedRef.current = remote;
+      return;
+    }
     lastAppliedRef.current = remote;
     setLocale(remote as Locale);
   }, [user, user?.preferredLocale, settings?.locale, isAuthLoading, setLocale]);
