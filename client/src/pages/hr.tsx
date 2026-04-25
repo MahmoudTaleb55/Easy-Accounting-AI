@@ -18,11 +18,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Users, Plus, Trash2, Calendar, FileText, PlayCircle, AlertCircle, CheckCircle2, History } from "lucide-react";
+import { Users, Plus, Trash2, Calendar, FileText, PlayCircle, AlertCircle, CheckCircle2 } from "lucide-react";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { ErrorState } from "@/components/feedback/error-state";
-import { HistoryDrawer, HistoryTimeline } from "@/components/audit/history-drawer";
+import { HistoryTimeline } from "@/components/audit/history-drawer";
 import { PeriodChip } from "@/components/dashboard/period-chip";
 import { usePeriod } from "@/contexts/period-context";
 import type { Employee, Leave, Attendance, PayrollRun } from "@shared/schema";
@@ -303,7 +303,7 @@ function AttendanceTab() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState("present");
   const [overtime, setOvertime] = useState("0");
-  const [historyAtt, setHistoryAtt] = useState<Attendance | null>(null);
+  const [detailAtt, setDetailAtt] = useState<Attendance | null>(null);
   const yearMonth = date.slice(0, 7);
 
   const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/hr/employees"] });
@@ -395,17 +395,21 @@ function AttendanceTab() {
               <TableBody>
                 {records.map((r) => (
                   <TableRow key={r.id} data-testid={`row-att-${r.id}`}>
-                    <TableCell>{r.date}</TableCell>
+                    <TableCell>
+                      <button
+                        type="button"
+                        onClick={() => setDetailAtt(r)}
+                        className="hover:underline text-foreground text-start font-numeric tabular-nums"
+                        data-testid={`link-att-${r.id}`}
+                      >
+                        {r.date}
+                      </button>
+                    </TableCell>
                     <TableCell>{empName(r.employeeId)}</TableCell>
                     <TableCell>
                       <Badge variant={r.status === "absent" ? "destructive" : "default"}>{statusLabel[r.status] || r.status}</Badge>
                     </TableCell>
                     <TableCell>{Number(r.overtimeHours)}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => setHistoryAtt(r)} aria-label="السجل" data-testid={`button-history-att-${r.id}`}>
-                        <History className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -413,15 +417,70 @@ function AttendanceTab() {
           )}
         </CardContent>
       </Card>
-      <HistoryDrawer
-        open={!!historyAtt}
-        onOpenChange={(o) => { if (!o) setHistoryAtt(null); }}
-        title={historyAtt ? `${empName(historyAtt.employeeId)} — ${historyAtt.date}` : ""}
-        reference={historyAtt ? `ATT-${historyAtt.id}` : undefined}
-        entityType="attendance"
-        entityId={historyAtt?.id}
-      />
+      {detailAtt && (
+        <AttendanceDetailDialog
+          attendance={detailAtt}
+          employeeName={empName(detailAtt.employeeId)}
+          statusLabel={statusLabel[detailAtt.status] || detailAtt.status}
+          onClose={() => setDetailAtt(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function AttendanceDetailDialog({
+  attendance,
+  employeeName,
+  statusLabel,
+  onClose,
+}: {
+  attendance: Attendance;
+  employeeName: string;
+  statusLabel: string;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-attendance-detail">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
+              ATT-{attendance.id}
+            </span>
+            <span className="truncate">{employeeName} — {attendance.date}</span>
+          </DialogTitle>
+          <DialogDescription>تفاصيل سجل الحضور وسجل التغييرات.</DialogDescription>
+        </DialogHeader>
+        <Tabs defaultValue="summary">
+          <TabsList className="grid grid-cols-2 w-full">
+            <TabsTrigger value="summary" data-testid="tab-attendance-summary">ملخص</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-attendance-changes">التغييرات</TabsTrigger>
+          </TabsList>
+          <TabsContent value="summary" className="mt-4">
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div><dt className="text-muted-foreground">الكود</dt><dd className="font-mono">ATT-{attendance.id}</dd></div>
+              <div><dt className="text-muted-foreground">الموظف</dt><dd>{employeeName}</dd></div>
+              <div><dt className="text-muted-foreground">التاريخ</dt><dd className="font-numeric tabular-nums">{attendance.date}</dd></div>
+              <div>
+                <dt className="text-muted-foreground">الحالة</dt>
+                <dd><Badge variant={attendance.status === "absent" ? "destructive" : "default"}>{statusLabel}</Badge></dd>
+              </div>
+              <div><dt className="text-muted-foreground">ساعات إضافية</dt><dd className="font-numeric tabular-nums">{Number(attendance.overtimeHours)}</dd></div>
+            </dl>
+          </TabsContent>
+          <TabsContent value="changes" className="mt-4" data-testid="tab-content-attendance-changes">
+            <div className="rounded-md border border-border max-h-96 overflow-hidden flex flex-col">
+              <HistoryTimeline
+                entityType="attendance"
+                entityId={attendance.id}
+                className="flex-1 min-h-0"
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -435,7 +494,7 @@ function LeavesTab() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [type, setType] = useState("annual");
-  const [historyLeave, setHistoryLeave] = useState<Leave | null>(null);
+  const [detailLeave, setDetailLeave] = useState<Leave | null>(null);
 
   const { data: employees = [] } = useQuery<Employee[]>({ queryKey: ["/api/hr/employees"] });
   const { data: leaves = [] } = useQuery<Leave[]>({ queryKey: ["/api/hr/leaves"] });
@@ -530,22 +589,26 @@ function LeavesTab() {
               <TableBody>
                 {leaves.map((l) => (
                   <TableRow key={l.id} data-testid={`row-leave-${l.id}`}>
-                    <TableCell>{empName(l.employeeId)}</TableCell>
+                    <TableCell className="font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setDetailLeave(l)}
+                        className="hover:underline text-foreground text-start"
+                        data-testid={`link-leave-${l.id}`}
+                      >
+                        {empName(l.employeeId)}
+                      </button>
+                    </TableCell>
                     <TableCell>{l.startDate}</TableCell>
                     <TableCell>{l.endDate}</TableCell>
                     <TableCell>{l.days}</TableCell>
                     <TableCell><Badge variant="outline">{typeLabel[l.type] || l.type}</Badge></TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => setHistoryLeave(l)} aria-label="السجل" data-testid={`button-history-leave-${l.id}`}>
-                          <History className="w-4 h-4" />
+                      <WriteGuard>
+                        <Button variant="ghost" size="icon" onClick={() => remove.mutate(l.id)} data-testid={`button-delete-leave-${l.id}`}>
+                          <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>
-                        <WriteGuard>
-                          <Button variant="ghost" size="icon" onClick={() => remove.mutate(l.id)} data-testid={`button-delete-leave-${l.id}`}>
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </WriteGuard>
-                      </div>
+                      </WriteGuard>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -554,15 +617,84 @@ function LeavesTab() {
           )}
         </CardContent>
       </Card>
-      <HistoryDrawer
-        open={!!historyLeave}
-        onOpenChange={(o) => { if (!o) setHistoryLeave(null); }}
-        title={historyLeave ? `${empName(historyLeave.employeeId)} — ${typeLabel[historyLeave.type] || historyLeave.type}` : ""}
-        reference={historyLeave ? `LV-${historyLeave.id}` : undefined}
-        entityType="leave"
-        entityId={historyLeave?.id}
-      />
+      {detailLeave && (
+        <LeaveDetailDialog
+          leave={detailLeave}
+          employeeName={empName(detailLeave.employeeId)}
+          typeLabel={typeLabel[detailLeave.type] || detailLeave.type}
+          onClose={() => setDetailLeave(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function LeaveDetailDialog({
+  leave,
+  employeeName,
+  typeLabel,
+  onClose,
+}: {
+  leave: Leave;
+  employeeName: string;
+  typeLabel: string;
+  onClose: () => void;
+}) {
+  const statusLabel: Record<string, string> = {
+    approved: "معتمدة",
+    pending: "قيد الانتظار",
+    rejected: "مرفوضة",
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-leave-detail">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
+              LV-{leave.id}
+            </span>
+            <span className="truncate">{employeeName} — {typeLabel}</span>
+          </DialogTitle>
+          <DialogDescription>تفاصيل طلب الإجازة وسجل التغييرات.</DialogDescription>
+        </DialogHeader>
+        <Tabs defaultValue="summary">
+          <TabsList className="grid grid-cols-2 w-full">
+            <TabsTrigger value="summary" data-testid="tab-leave-summary">ملخص</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-leave-changes">التغييرات</TabsTrigger>
+          </TabsList>
+          <TabsContent value="summary" className="mt-4">
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div><dt className="text-muted-foreground">الكود</dt><dd className="font-mono">LV-{leave.id}</dd></div>
+              <div><dt className="text-muted-foreground">الموظف</dt><dd>{employeeName}</dd></div>
+              <div><dt className="text-muted-foreground">النوع</dt><dd><Badge variant="outline">{typeLabel}</Badge></dd></div>
+              <div>
+                <dt className="text-muted-foreground">الحالة</dt>
+                <dd>
+                  <Badge variant={leave.status === "rejected" ? "destructive" : leave.status === "pending" ? "secondary" : "default"}>
+                    {statusLabel[leave.status] || leave.status}
+                  </Badge>
+                </dd>
+              </div>
+              <div><dt className="text-muted-foreground">من</dt><dd className="font-numeric tabular-nums">{leave.startDate}</dd></div>
+              <div><dt className="text-muted-foreground">إلى</dt><dd className="font-numeric tabular-nums">{leave.endDate}</dd></div>
+              <div><dt className="text-muted-foreground">عدد الأيام</dt><dd className="font-numeric tabular-nums">{leave.days}</dd></div>
+              {leave.notes && (
+                <div className="col-span-2"><dt className="text-muted-foreground">ملاحظات</dt><dd>{leave.notes}</dd></div>
+              )}
+            </dl>
+          </TabsContent>
+          <TabsContent value="changes" className="mt-4" data-testid="tab-content-leave-changes">
+            <div className="rounded-md border border-border max-h-96 overflow-hidden flex flex-col">
+              <HistoryTimeline
+                entityType="leave"
+                entityId={leave.id}
+                className="flex-1 min-h-0"
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -598,7 +730,7 @@ function PayrollTab() {
   const month = period.end.getMonth() + 1;
   const prevYear = previousRange.end.getFullYear();
   const prevMonth = previousRange.end.getMonth() + 1;
-  const [historyRun, setHistoryRun] = useState<PayrollRun | null>(null);
+  const [detailRun, setDetailRun] = useState<PayrollRun | null>(null);
   // Deep-link support: when a JE-source-link badge points here with `#pr-<id>`
   // we scroll the matching row into view and pulse a highlight ring so the
   // user can spot it among many runs.
@@ -850,7 +982,14 @@ function PayrollTab() {
                     }
                   >
                     <TableCell className="font-medium font-numeric tabular-nums">
-                      {String(r.month).padStart(2, "0")}/{r.year}
+                      <button
+                        type="button"
+                        onClick={() => setDetailRun(r)}
+                        className="hover:underline text-foreground text-start font-numeric tabular-nums"
+                        data-testid={`link-payroll-run-${r.id}`}
+                      >
+                        {String(r.month).padStart(2, "0")}/{r.year}
+                      </button>
                     </TableCell>
                     <TableCell>
                       {r.status === "posted"
@@ -874,28 +1013,17 @@ function PayrollTab() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
+                      <WriteGuard>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => setHistoryRun(r)}
-                          aria-label="السجل"
-                          data-testid={`button-history-payroll-run-${r.id}`}
+                          onClick={() => removeRun.mutate(r.id)}
+                          disabled={removeRun.isPending}
+                          data-testid={`button-delete-payroll-run-${r.id}`}
                         >
-                          <History className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>
-                        <WriteGuard>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeRun.mutate(r.id)}
-                            disabled={removeRun.isPending}
-                            data-testid={`button-delete-payroll-run-${r.id}`}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </WriteGuard>
-                      </div>
+                      </WriteGuard>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -905,14 +1033,96 @@ function PayrollTab() {
         </CardContent>
       </Card>
 
-      <HistoryDrawer
-        open={!!historyRun}
-        onOpenChange={(o) => { if (!o) setHistoryRun(null); }}
-        title={historyRun ? `كشف رواتب ${String(historyRun.month).padStart(2, "0")}/${historyRun.year}` : ""}
-        reference={historyRun ? `PR-${historyRun.id}` : undefined}
-        entityType="payroll_run"
-        entityId={historyRun?.id}
-      />
+      {detailRun && (
+        <PayrollRunDetailDialog
+          run={detailRun}
+          monthLabel={monthsAr[detailRun.month - 1]}
+          fmt={fmt}
+          onClose={() => setDetailRun(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function PayrollRunDetailDialog({
+  run,
+  monthLabel,
+  fmt,
+  onClose,
+}: {
+  run: PayrollRun;
+  monthLabel: string;
+  fmt: ReturnType<typeof useFormatMoney>;
+  onClose: () => void;
+}) {
+  const gross = Number(run.totalGross);
+  const net = Number(run.totalNet);
+  const deductions = Math.max(0, gross - net);
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-payroll-run-detail">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
+              PR-{run.id}
+            </span>
+            <span className="truncate">كشف رواتب {monthLabel} {run.year}</span>
+          </DialogTitle>
+          <DialogDescription>تفاصيل كشف الرواتب وسجل التغييرات.</DialogDescription>
+        </DialogHeader>
+        <Tabs defaultValue="summary">
+          <TabsList className="grid grid-cols-2 w-full">
+            <TabsTrigger value="summary" data-testid="tab-payroll-run-summary">ملخص</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-payroll-run-changes">التغييرات</TabsTrigger>
+          </TabsList>
+          <TabsContent value="summary" className="mt-4">
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              <div><dt className="text-muted-foreground">الكود</dt><dd className="font-mono">PR-{run.id}</dd></div>
+              <div>
+                <dt className="text-muted-foreground">الحالة</dt>
+                <dd>
+                  {run.status === "posted"
+                    ? <Badge variant="default">معتمد</Badge>
+                    : <Badge variant="secondary">{run.status}</Badge>}
+                </dd>
+              </div>
+              <div><dt className="text-muted-foreground">الفترة</dt><dd className="font-numeric tabular-nums">{monthLabel} {run.year}</dd></div>
+              <div>
+                <dt className="text-muted-foreground">القيد المحاسبي</dt>
+                <dd>
+                  {run.journalEntryId ? (
+                    <Link
+                      href={`/app/journal#je-${run.journalEntryId}`}
+                      className="font-numeric tabular-nums text-primary underline-offset-4 hover:underline"
+                      data-testid={`link-detail-journal-entry-${run.id}`}
+                    >
+                      JE-{run.journalEntryId}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </dd>
+              </div>
+              <div><dt className="text-muted-foreground">إجمالي قبل الخصم</dt><dd className="font-numeric tabular-nums" data-testid="text-detail-total-gross">{fmt(gross)}</dd></div>
+              <div><dt className="text-muted-foreground">صافي للصرف</dt><dd className="font-numeric tabular-nums font-bold text-primary" data-testid="text-detail-total-net">{fmt(net)}</dd></div>
+              <div><dt className="text-muted-foreground">إجمالي الخصومات</dt><dd className="font-numeric tabular-nums" data-testid="text-detail-total-deductions">{fmt(deductions)}</dd></div>
+              {run.createdAt && (
+                <div><dt className="text-muted-foreground">تاريخ الإنشاء</dt><dd className="font-numeric tabular-nums">{new Date(run.createdAt).toISOString().slice(0, 10)}</dd></div>
+              )}
+            </dl>
+          </TabsContent>
+          <TabsContent value="changes" className="mt-4" data-testid="tab-content-payroll-run-changes">
+            <div className="rounded-md border border-border max-h-96 overflow-hidden flex flex-col">
+              <HistoryTimeline
+                entityType="payroll_run"
+                entityId={run.id}
+                className="flex-1 min-h-0"
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 }
