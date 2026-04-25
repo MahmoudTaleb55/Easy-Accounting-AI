@@ -82,14 +82,35 @@ export async function ensureUser(
   return userId;
 }
 
+/**
+ * Canonical membership-role enum. Mirrors `ROLES` in
+ * `shared/models/auth.ts` and the normalisation performed by
+ * `unifyRoleEnumOnStartup` in `server/auth/storage.ts`, which rewrites
+ * any legacy 'admin'/'reviewer'/'readonly' rows back to this enum on
+ * every server boot.
+ *
+ * Kept inline (instead of imported from `@shared/models/auth`) so the
+ * helper stays self-contained for Playwright's loader and pulls in zero
+ * server-side modules. If you change the canonical enum, update this
+ * list in lock-step.
+ */
+const ENSURE_COMPANY_ROLES = ["owner", "accountant", "viewer"] as const;
+type EnsureCompanyRole = (typeof ENSURE_COMPANY_ROLES)[number];
+
 export interface EnsureCompanyOptions {
   userId: string;
   /**
    * Membership role to look up + insert. Defaults to `'owner'`, which is
-   * the canonical role after migration 0003 normalises the legacy enum.
-   * Pass an alternate role for legacy seeds that haven't been migrated.
+   * the canonical role after migration 0003 normalises the legacy enum
+   * (re-applied on every boot by `unifyRoleEnumOnStartup`). Must be one
+   * of the canonical enum values (`owner | accountant | viewer`); any
+   * other value is rejected at the helper boundary so a stale or
+   * mistyped role can't silently re-introduce the workspace-leak bug
+   * fixed by task #127 (the lookup would miss after the role-enum
+   * normaliser rewrote the seed row, and the helper would then insert a
+   * brand-new workspace on the next run).
    */
-  role?: string;
+  role?: EnsureCompanyRole;
   /** Name to use when creating a fresh company. */
   companyName: string;
   /**
@@ -110,6 +131,16 @@ export async function ensureCompany(
   opts: EnsureCompanyOptions,
 ): Promise<number> {
   const role = opts.role ?? "owner";
+  if (!(ENSURE_COMPANY_ROLES as readonly string[]).includes(role)) {
+    throw new Error(
+      `ensureCompany: role '${role}' is not part of the canonical ` +
+        `membership-role enum (${ENSURE_COMPANY_ROLES.join(" | ")}). ` +
+        `See shared/models/auth.ts (ROLES) and unifyRoleEnumOnStartup ` +
+        `in server/auth/storage.ts — passing a legacy or mistyped role ` +
+        `causes the lookup to miss and silently leak a fresh workspace ` +
+        `on every run (see task #127).`,
+    );
+  }
   let companyRow = (
     await client.query(
       `SELECT c.id FROM memberships m
