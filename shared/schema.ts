@@ -20,7 +20,11 @@ export const accounts = pgTable(
   "accounts",
   {
     id: serial("id").primaryKey(),
-    companyId: integer("company_id").notNull().default(1),
+    // Intentionally NO column default: every insert site must supply the
+    // active workspace explicitly so a missing companyId fails loudly rather
+    // than silently being attributed to workspace 1. Enforced by the
+    // generalised regression net in `database-companyid-no-default.spec.ts`.
+    companyId: integer("company_id").notNull(),
     code: text("code").notNull(), // e.g., "1110" — unique per workspace; see codeCompanyUq below
     nameAr: text("name_ar").notNull(),
     nameEn: text("name_en").notNull(),
@@ -61,7 +65,8 @@ export type InsertAccount = z.infer<typeof insertAccountSchema>;
 
 export const journalEntries = pgTable("journal_entries", {
   id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().default(1),
+  // No column default — see `accounts.companyId` for the rationale.
+  companyId: integer("company_id").notNull(),
   reference: text("reference").notNull(), // JE-0001
   entryDate: timestamp("entry_date").notNull().defaultNow(),
   description: text("description").notNull(),
@@ -189,7 +194,8 @@ export type CreateJournalEntryInput = z.infer<typeof createJournalEntrySchema>;
 
 export const transactions = pgTable("transactions", {
   id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().default(1),
+  // No column default — see `accounts.companyId` for the rationale.
+  companyId: integer("company_id").notNull(),
   type: text("type").notNull(), // 'income' or 'expense'
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   description: text("description").notNull(),
@@ -213,7 +219,8 @@ export const budgets = pgTable(
   "budgets",
   {
     id: serial("id").primaryKey(),
-    companyId: integer("company_id").notNull().default(1),
+    // No column default — see `accounts.companyId` for the rationale.
+    companyId: integer("company_id").notNull(),
     accountId: integer("account_id").notNull(),
     year: integer("year").notNull(),
     month: integer("month").notNull(), // 1-12
@@ -242,7 +249,8 @@ export type InsertBudget = z.infer<typeof insertBudgetSchema>;
 
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().default(1),
+  // No column default — see `accounts.companyId` for the rationale.
+  companyId: integer("company_id").notNull(),
   orgName: text("org_name").notNull().default("My Business"),
   countryCode: text("country_code").notNull().default("INTL"),
   locale: text("locale").notNull().default("ar"), // 'ar' | 'en'
@@ -274,7 +282,8 @@ export const employees = pgTable(
   "employees",
   {
     id: serial("id").primaryKey(),
-    companyId: integer("company_id").notNull().default(1),
+    // No column default — see `accounts.companyId` for the rationale.
+    companyId: integer("company_id").notNull(),
     fullName: text("full_name").notNull(),
     jobTitle: text("job_title").notNull().default(""),
     hireDate: text("hire_date").notNull(), // YYYY-MM-DD
@@ -307,7 +316,8 @@ export const attendance = pgTable(
   "attendance",
   {
     id: serial("id").primaryKey(),
-    companyId: integer("company_id").notNull().default(1),
+    // No column default — see `accounts.companyId` for the rationale.
+    companyId: integer("company_id").notNull(),
     employeeId: integer("employee_id").notNull(),
     date: text("date").notNull(),
     status: text("status").notNull(), // present|absent|leave|holiday|weekend
@@ -336,7 +346,8 @@ export const leaves = pgTable(
   "leaves",
   {
     id: serial("id").primaryKey(),
-    companyId: integer("company_id").notNull().default(1),
+    // No column default — see `accounts.companyId` for the rationale.
+    companyId: integer("company_id").notNull(),
     employeeId: integer("employee_id").notNull(),
     startDate: text("start_date").notNull(),
     endDate: text("end_date").notNull(),
@@ -366,7 +377,8 @@ export const payrollRuns = pgTable(
   "payroll_runs",
   {
     id: serial("id").primaryKey(),
-    companyId: integer("company_id").notNull().default(1),
+    // No column default — see `accounts.companyId` for the rationale.
+    companyId: integer("company_id").notNull(),
     year: integer("year").notNull(),
     month: integer("month").notNull(),
     status: text("status").notNull().default("draft"), // draft|posted
@@ -904,7 +916,8 @@ export type WorkspaceRole = _Role;
 
 export const chatMessages = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().default(1),
+  // No column default — see `accounts.companyId` for the rationale.
+  companyId: integer("company_id").notNull(),
   role: text("role").notNull(), // 'user' or 'assistant'
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),

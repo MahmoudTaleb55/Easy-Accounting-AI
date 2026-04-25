@@ -206,6 +206,28 @@ app.use((req, res, next) => {
     );
   }
 
+  // Re-apply migration 0014 on boot — drops the legacy `DEFAULT 1` on
+  // `company_id` for every workspace-scoped table that still carried one
+  // (accounts, journal_entries, transactions, budgets, settings,
+  // employees, attendance, leaves, payroll_runs, chat_messages). Without
+  // this, a route handler that forgets to scope an insert by workspace
+  // silently lands the row in workspace 1 instead of failing closed —
+  // task #122. Idempotent.
+  try {
+    const { applyCompanyIdNoDefaultOnStartup } = await import(
+      "./db-bootstrap-companyid-defaults"
+    );
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:companyid-defaults", () =>
+      applyCompanyIdNoDefaultOnStartup(),
+    );
+  } catch (err) {
+    console.error(
+      "Failed to drop legacy company_id defaults:",
+      err,
+    );
+  }
+
   // Re-apply migration 0008 on boot so RLS policies materialise on dev
   // databases and on any deploy that boots ahead of the migration runner.
   // Must run BEFORE any bootstrap that writes to RLS-protected tables —
