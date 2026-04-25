@@ -19,10 +19,12 @@ import {
   ArrowLeft,
   Mic,
   Square,
+  Camera,
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
 import { cn } from "@/lib/utils"
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link"
+import { CameraCaptureDialog } from "@/components/camera/camera-capture-dialog"
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 /*  Assistant — accounting work surface                                      */
@@ -47,6 +49,7 @@ export default function AiAssistant() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
+  const [cameraOpen, setCameraOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -88,6 +91,12 @@ export default function AiAssistant() {
         fr: "Chaque résultat est enregistré dans le journal. Consultez vos livres après chaque action.",
       }),
       uploadAria: pickByLocale(locale, { ar: "ارفع صورة فاتورة", en: "Upload a receipt image", de: "Belegbild hochladen", fr: "Téléverser une image de reçu" }),
+      cameraAria: pickByLocale(locale, {
+        ar: "صوّر فاتورة بالكاميرا",
+        en: "Take a photo with the camera",
+        de: "Foto mit Kamera aufnehmen",
+        fr: "Prendre une photo avec la caméra",
+      }),
       sendAria: pickByLocale(locale, { ar: "إرسال", en: "Send", de: "Senden", fr: "Envoyer" }),
       receipt: pickByLocale(locale, { ar: "فاتورة", en: "Receipt", de: "Beleg", fr: "Reçu" }),
       newChat: pickByLocale(locale, { ar: "محادثة جديدة", en: "New", de: "Neu", fr: "Nouveau" }),
@@ -142,9 +151,7 @@ export default function AiAssistant() {
 
   /* ───────────────────────── handlers ───────────────────────── */
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const attachImageFile = (file: File) => {
     if (!file.type.startsWith("image/")) {
       toast({ title: t.typeError, description: t.typeErrorDesc, variant: "destructive" })
       return
@@ -156,6 +163,12 @@ export default function AiAssistant() {
     const reader = new FileReader()
     reader.onload = () => setImagePreview(reader.result as string)
     reader.readAsDataURL(file)
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    attachImageFile(file)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
@@ -381,6 +394,20 @@ export default function AiAssistant() {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
+                onClick={() => setCameraOpen(true)}
+                disabled={sendMessage.isPending}
+                className="text-muted-foreground hover:text-foreground shrink-0"
+                data-testid="button-open-camera-capture"
+                aria-label={t.cameraAria}
+                title={t.cameraAria}
+              >
+                <Camera className="w-4 h-4" />
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
                 onClick={isRecording ? stopRecording : startRecording}
                 disabled={isTranscribing || sendMessage.isPending}
                 className={cn(
@@ -436,6 +463,13 @@ export default function AiAssistant() {
               {t.footnote}
             </p>
           </form>
+
+          <CameraCaptureDialog
+            open={cameraOpen}
+            onOpenChange={setCameraOpen}
+            onCapture={(file) => attachImageFile(file)}
+            locale={locale}
+          />
         </div>
       </div>
     </div>

@@ -33,7 +33,7 @@ import {
   ShieldCheck,
   Camera,
 } from "lucide-react";
-import { CameraCaptureDialog } from "@/components/inbox/camera-capture-dialog";
+import { CameraCaptureDialog } from "@/components/camera/camera-capture-dialog";
 import type {
   DocumentRow,
   ExtractedDocument,
