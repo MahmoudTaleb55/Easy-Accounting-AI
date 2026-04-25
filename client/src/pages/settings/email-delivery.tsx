@@ -97,11 +97,14 @@ type TrendWindow = "1" | "7" | "30";
 
 const TREND_WINDOWS: TrendWindow[] = ["1", "7", "30"];
 
-// Session-storage keys for the three filters that should survive a page
-// reload. Kept side-by-side so the shared prefix and naming stay obvious.
+// Session-storage keys for the filters that should survive a page reload.
+// Kept side-by-side so the shared prefix and naming stay obvious.
 const TREND_WINDOW_STORAGE_KEY = "email-delivery:trend-window";
 const STATUS_FILTER_STORAGE_KEY = "email-delivery:status-filter";
 const RECIPIENT_FILTER_STORAGE_KEY = "email-delivery:recipient";
+const RANGE_PRESET_STORAGE_KEY = "email-delivery:range";
+const RANGE_FROM_STORAGE_KEY = "email-delivery:range-from";
+const RANGE_TO_STORAGE_KEY = "email-delivery:range-to";
 
 function isTrendWindow(value: unknown): value is TrendWindow {
   return value === "1" || value === "7" || value === "30";
@@ -136,6 +139,42 @@ const RANGE_DAYS: Partial<Record<RangePreset, number>> = {
   "30d": 30,
   "90d": 90,
 };
+
+const VALID_RANGE_PRESETS = new Set<string>(["all", "7d", "30d", "90d", "custom"]);
+
+function isRangePreset(value: unknown): value is RangePreset {
+  return typeof value === "string" && VALID_RANGE_PRESETS.has(value);
+}
+
+// Custom-range inputs are stored as YYYY-MM-DD strings (the native shape
+// of `<input type="date">`) or as the empty string when unset. Anything
+// else — partial input, malformed JSON, an old timestamp from a previous
+// schema, or a calendar-impossible value like 2026-02-31 — falls back to
+// "" so a stale storage entry can never feed a nonsense value into the
+// date picker or the API query.
+//
+// We validate calendar validity (not just shape) by constructing a UTC
+// date from the parts and round-tripping the components back through it.
+// JS's `Date` constructor silently rolls overflow over (Feb 31 → Mar 3),
+// so the round-trip check is what actually rejects impossible dates —
+// a regex alone would let "2026-99-99" or "2026-02-31" leak through and
+// then mutate into an unintended date downstream.
+function isStoredDateString(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (value === "") return true;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return (
+    d.getUTCFullYear() === year &&
+    d.getUTCMonth() === month - 1 &&
+    d.getUTCDate() === day
+  );
+}
 
 // Convert the chosen preset (or custom inputs) into the YYYY-MM-DD pair
 // the server understands. The server treats the `to` bound as inclusive
@@ -283,9 +322,24 @@ export default function EmailDeliveryPage() {
   // shortcuts to a from/to in days; `customFrom`/`customTo` are the inputs
   // shown when the admin picks "custom". Stored as YYYY-MM-DD strings so
   // they round-trip cleanly through query params and `<input type="date">`.
-  const [range, setRange] = useState<RangePreset>("all");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  // All three round-trip through sessionStorage with the same shared hook
+  // as the recipient/status/trend-window filters, so an admin's chosen
+  // window survives reloads and back/forth navigation within the tab.
+  const [range, setRange] = useSessionStorageState<RangePreset>(
+    RANGE_PRESET_STORAGE_KEY,
+    "all",
+    isRangePreset,
+  );
+  const [customFrom, setCustomFrom] = useSessionStorageState<string>(
+    RANGE_FROM_STORAGE_KEY,
+    "",
+    isStoredDateString,
+  );
+  const [customTo, setCustomTo] = useSessionStorageState<string>(
+    RANGE_TO_STORAGE_KEY,
+    "",
+    isStoredDateString,
+  );
 
   // Debounce the email input so each keystroke doesn't slam the API.
   useEffect(() => {
