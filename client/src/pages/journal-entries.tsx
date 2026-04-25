@@ -129,6 +129,16 @@ export default function JournalEntriesPage() {
           : "Entry lines and change history in one place.",
       tabLines: locale === "ar" ? "الأسطر" : "Lines",
       tabChanges: locale === "ar" ? "التغييرات" : "Changes",
+      reversedTitle:
+        locale === "ar" ? "قيد محذوف (تم عكسه)" : "Deleted entry (reversed)",
+      reversedDesc:
+        locale === "ar"
+          ? "هذا القيد لم يعد موجوداً في الأستاذ العام لأنه تم عكسه تلقائياً عند حذف السجل المصدر. السجل التالي يوضح متى وبواسطة ماذا."
+          : "This journal entry no longer exists in the GL because it was auto-reversed when its source row was deleted. The trail below shows when and by what.",
+      reversedNotFound:
+        locale === "ar"
+          ? "تعذّر العثور على هذا القيد ولا توجد سجلات عكس مرتبطة."
+          : "We couldn't find this entry or any related reversal trail.",
     }),
     [locale]
   )
@@ -197,6 +207,31 @@ export default function JournalEntriesPage() {
     const t = window.setTimeout(() => setHighlightId(null), 2400)
     return () => window.clearTimeout(t)
   }, [hashTargetId, entries])
+
+  // Reversal tombstone: when the deep-linked JE is gone (cascade-deleted by
+  // a `reverseAutoPostedJournalEntry` call) we still want auditors to see
+  // the trail. The dialog opens automatically once the live list has loaded
+  // and confirms the id isn't there. The `?reversed=1` query string lets
+  // links from elsewhere (e.g. the admin activity feed) force the tombstone
+  // even when a future re-create reuses the id.
+  const forceReversedView = useMemo(() => {
+    const params = new URLSearchParams(queryString)
+    return params.get("reversed") === "1"
+  }, [queryString])
+  const [reversedTombstoneId, setReversedTombstoneId] = useState<number | null>(null)
+  useEffect(() => {
+    if (hashTargetId == null) {
+      setReversedTombstoneId(null)
+      return
+    }
+    if (!allEntries) return
+    const found = (allEntries || []).some((e) => e.id === hashTargetId)
+    if (!found || forceReversedView) {
+      setReversedTombstoneId(hashTargetId)
+    } else {
+      setReversedTombstoneId(null)
+    }
+  }, [hashTargetId, allEntries, forceReversedView])
 
   const [description, setDescription] = useState("")
   const [entryDate, setEntryDate] = useState<string>(new Date().toISOString().slice(0, 10))
@@ -627,6 +662,27 @@ export default function JournalEntriesPage() {
           fmt={fmt}
         />
       )}
+
+      {reversedTombstoneId != null && (
+        <ReversedJournalEntryDialog
+          entryId={reversedTombstoneId}
+          onClose={() => {
+            setReversedTombstoneId(null)
+            // Strip the deep-link hash so reopening the page doesn't reopen
+            // the tombstone. The query string (which may carry `reversed=1`)
+            // is preserved by replacing the hash only.
+            if (typeof window !== "undefined" && window.location.hash) {
+              history.replaceState(null, "", window.location.pathname + window.location.search)
+              setHashTargetId(null)
+            }
+          }}
+          labels={{
+            title: t.reversedTitle,
+            description: t.reversedDesc,
+            notFound: t.reversedNotFound,
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -753,6 +809,58 @@ function JournalEntryDetailDialog({ entry, onClose, labels, dfLocale, fmt }: Jou
             </div>
           </TabsContent>
         </Tabs>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface ReversedJournalEntryDialogProps {
+  entryId: number
+  onClose: () => void
+  labels: {
+    title: string
+    description: string
+    notFound: string
+  }
+}
+
+// Tombstone dialog for a journal entry that was cascade-deleted by a
+// `reverseAutoPostedJournalEntry` call. The drawer body re-uses the same
+// HistoryTimeline as the live JE detail dialog, but is mounted with
+// `includeReversal` so it reads the audit log via the reversal-aware
+// endpoint instead of the standard one (which would 404).
+function ReversedJournalEntryDialog({
+  entryId,
+  onClose,
+  labels,
+}: ReversedJournalEntryDialogProps) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        className="sm:max-w-2xl max-h-[90vh] overflow-y-auto"
+        data-testid="dialog-entry-reversed"
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
+              JE #{entryId}
+            </span>
+            <span className="truncate">{labels.title}</span>
+          </DialogTitle>
+          <DialogDescription>{labels.description}</DialogDescription>
+        </DialogHeader>
+        <div
+          className="rounded-md border border-border max-h-[60vh] overflow-hidden flex flex-col mt-2"
+          data-testid="reversed-entry-history"
+        >
+          <HistoryTimeline
+            entityType="journal_entry"
+            entityId={entryId}
+            includeReversal
+            emptyLabel={labels.notFound}
+            className="flex-1 min-h-0"
+          />
+        </div>
       </DialogContent>
     </Dialog>
   )

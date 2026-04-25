@@ -178,6 +178,19 @@ export interface IStorage {
   // an empty array (the route layer turns that into a 404).
   getAuditLog(companyId: number, entityType: AuditEntityType, entityId: number): Promise<AuditLogEntry[]>;
   entityBelongsToCompany(entityType: AuditEntityType, entityId: number, companyId: number): Promise<boolean>;
+  /**
+   * Reversal-aware variant for journal entries: returns the audit log even
+   * when the JE was cascade-deleted by a `reverseAutoPostedJournalEntry`
+   * call. Ownership is verified against the `companyId` stamp written into
+   * the JE-side reversal audit row (see `reverseAutoPostedJournalEntry`).
+   *
+   * Returns `null` when the JE neither belongs to the caller's workspace
+   * nor has a verifiable reversal trail in the audit log.
+   */
+  getJournalEntryAuditWithReversal(
+    companyId: number,
+    entityId: number,
+  ): Promise<AuditLogEntry[] | null>;
 
   // AI document inbox
   createDocument(companyId: number, input: InsertDocument): Promise<DocumentRow>;
@@ -571,6 +584,12 @@ async function reverseAutoPostedJournalEntry(opts: {
     // Stamp the JE delete on its own audit thread so the History drawer for
     // the journal entry shows the reversal even though it was triggered by
     // a source-row delete.
+    //
+    // The `companyId` field is recorded in the change set itself (the
+    // audit_log table predates per-row tenancy) so that the "include
+    // reversals" lookup can later verify ownership of an audit row whose
+    // owning entity is gone — without it, both the JE and the source row
+    // would be unverifiable after a reversal.
     await recordAudit({
       entityType: "journal_entry",
       entityId: linkedJournal.id,
@@ -578,6 +597,7 @@ async function reverseAutoPostedJournalEntry(opts: {
       changes: [
         ...snapshotChanges(linkedJournal),
         { field: "reversedBy", to: `${opts.source.kind}#${opts.source.id}` },
+        { field: "companyId", to: opts.companyId },
       ],
       ctx: opts.ctx,
     });
@@ -2108,6 +2128,54 @@ export class DatabaseStorage implements IStorage {
       .from(auditLog)
       .where(and(eq(auditLog.entityType, entityType), eq(auditLog.entityId, entityId)))
       .orderBy(desc(auditLog.occurredAt));
+  }
+
+  async getJournalEntryAuditWithReversal(
+    companyId: number,
+    entityId: number,
+  ): Promise<AuditLogEntry[] | null> {
+    // Live JE: defer to the standard ownership-checked path.
+    const owned = await this.entityBelongsToCompany(
+      "journal_entry",
+      entityId,
+      companyId,
+    );
+    if (owned) {
+      return await db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.entityType, "journal_entry"),
+            eq(auditLog.entityId, entityId),
+          ),
+        )
+        .orderBy(desc(auditLog.occurredAt));
+    }
+
+    // Deleted JE: pull every audit row for this id and verify ownership via
+    // the `companyId` change stamp written by `reverseAutoPostedJournalEntry`.
+    // Old reversal rows (predating that stamp) and cross-tenant probes both
+    // fall through to `null`, which the route layer turns into a 404.
+    const rows = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.entityType, "journal_entry"),
+          eq(auditLog.entityId, entityId),
+        ),
+      )
+      .orderBy(desc(auditLog.occurredAt));
+    if (rows.length === 0) return null;
+    const ownsAtLeastOneRow = rows.some((r) => {
+      const changes = (r.changes ?? []) as AuditChange[];
+      return changes.some(
+        (c) => c.field === "companyId" && Number(c.to) === companyId,
+      );
+    });
+    if (!ownsAtLeastOneRow) return null;
+    return rows;
   }
 
   // ----- AI Document Inbox -----

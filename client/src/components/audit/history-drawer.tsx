@@ -1,8 +1,9 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Clock, User, Bot, Cog, History, Filter } from "lucide-react";
+import { Clock, User, Bot, Cog, History, Filter, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocale } from "@/contexts/locale-context";
 import { format } from "date-fns";
@@ -24,6 +25,89 @@ export type HistoryEntityType =
   | "leave"
   | "payroll_run";
 
+// Source kinds that can trigger a `reverseAutoPostedJournalEntry` cascade.
+// Mirrors `JournalEntrySourceKind` in `server/storage.ts`. Kept inline here
+// instead of importing from `@shared/schema` because the public `JournalEntrySourceKind`
+// in shared/schema.ts is the user-facing variant (no `_event` suffixes, no
+// `document` kind) — the audit row stamps the internal kind.
+type ReversalSourceKind =
+  | "payroll_run"
+  | "depreciation_run"
+  | "impairment_event"
+  | "revaluation_event"
+  | "disposal"
+  | "document";
+
+interface ReversalSource {
+  kind: ReversalSourceKind;
+  id: number;
+}
+
+function parseReversedBy(value: unknown): ReversalSource | null {
+  if (typeof value !== "string") return null;
+  const m = value.match(/^([a-z_]+)#(\d+)$/);
+  if (!m) return null;
+  const kind = m[1] as ReversalSourceKind;
+  const id = Number(m[2]);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  // Defensive: only accept the documented kinds. Unknown kinds render as a
+  // tombstone rather than as a clickable mystery link.
+  if (
+    kind !== "payroll_run" &&
+    kind !== "depreciation_run" &&
+    kind !== "impairment_event" &&
+    kind !== "revaluation_event" &&
+    kind !== "disposal" &&
+    kind !== "document"
+  ) {
+    return null;
+  }
+  return { kind, id };
+}
+
+// Where to deep-link when the user clicks the source reference. The hash
+// anchors mirror the patterns used by `buildJournalSourceLinkMap` in
+// `server/storage.ts` so a still-living source row will scroll into view; a
+// deleted source row simply leaves the user on the parent page (the
+// "tombstone" fallback called out in the task spec).
+function reversalSourceHref(source: ReversalSource): string {
+  switch (source.kind) {
+    case "payroll_run":
+      return `/app/hr#pr-${source.id}`;
+    case "depreciation_run":
+      return `/app/fixed-assets#dr-${source.id}`;
+    case "impairment_event":
+      return `/app/fixed-assets#imp-${source.id}`;
+    case "revaluation_event":
+      return `/app/fixed-assets#rev-${source.id}`;
+    case "disposal":
+      return `/app/fixed-assets#disp-${source.id}`;
+    case "document":
+      return `/app/inbox#doc-${source.id}`;
+  }
+}
+
+function reversalSourceLabel(
+  source: ReversalSource,
+  locale: "ar" | "en",
+): string {
+  const ar = locale === "ar";
+  switch (source.kind) {
+    case "payroll_run":
+      return ar ? `كشف رواتب #${source.id}` : `Payroll run #${source.id}`;
+    case "depreciation_run":
+      return ar ? `دورة إهلاك #${source.id}` : `Depreciation run #${source.id}`;
+    case "impairment_event":
+      return ar ? `انخفاض قيمة #${source.id}` : `Impairment #${source.id}`;
+    case "revaluation_event":
+      return ar ? `إعادة تقييم #${source.id}` : `Revaluation #${source.id}`;
+    case "disposal":
+      return ar ? `استبعاد #${source.id}` : `Disposal #${source.id}`;
+    case "document":
+      return ar ? `مستند مرفوع #${source.id}` : `Document #${source.id}`;
+  }
+}
+
 export interface HistoryEvent {
   id: string | number;
   at: string | Date;
@@ -33,6 +117,7 @@ export interface HistoryEvent {
   actionKey?: HistoryAction;
   changes?: Array<{ field: string; from?: unknown; to?: unknown }>;
   note?: string;
+  reversedBy?: ReversalSource;
 }
 
 interface AuditRow {
@@ -53,7 +138,18 @@ interface HistoryDrawerProps {
   reference?: string;
   entityType?: HistoryEntityType;
   entityId?: number;
+  /**
+   * For `entityType="journal_entry"` only: when true, fetch the audit log via
+   * the reversal-aware endpoint so the drawer surfaces the trail even if the
+   * JE was cascade-deleted by a `reverseAutoPostedJournalEntry` call.
+   */
+  includeReversal?: boolean;
 }
+
+// Internal-use audit-row metadata that the timeline strips out before
+// rendering the per-event change list. `reversedBy` becomes the dedicated
+// "Reversed by …" link and `companyId` is purely an ownership stamp.
+const HIDDEN_CHANGE_FIELDS = new Set(["reversedBy", "companyId"]);
 
 const SOURCE_META: Record<
   HistorySource,
@@ -81,6 +177,21 @@ interface HistoryTimelineProps {
   entityId?: number;
   enabled?: boolean;
   className?: string;
+  /**
+   * Journal entries can be cascade-deleted by `reverseAutoPostedJournalEntry`
+   * (payroll-run delete, depreciation-run delete, fixed-asset event delete,
+   * document delete). When this drawer is rendered for a JE that may already
+   * be gone, set this flag so the timeline reads from the reversal-aware
+   * endpoint and surfaces the "Reversed by …" trail.
+   */
+  includeReversal?: boolean;
+  /**
+   * Override the empty-state text. Useful when the timeline is mounted
+   * inside a tombstone dialog and we want a more specific message
+   * (e.g. "We couldn't find this entry or any related reversal trail.")
+   * instead of the generic "No history yet for this item.".
+   */
+  emptyLabel?: string;
 }
 
 export function HistoryTimeline({
@@ -88,11 +199,13 @@ export function HistoryTimeline({
   entityId,
   enabled: enabledProp = true,
   className,
+  includeReversal = false,
+  emptyLabel,
 }: HistoryTimelineProps) {
   const { locale } = useLocale();
   const dfLocale = locale === "ar" ? ar : enUS;
   const labels = {
-    none: locale === "ar" ? "لا يوجد سجل بعد لهذا العنصر." : "No history yet for this item.",
+    none: emptyLabel ?? (locale === "ar" ? "لا يوجد سجل بعد لهذا العنصر." : "No history yet for this item."),
     loading: locale === "ar" ? "جارٍ التحميل…" : "Loading…",
     error:
       locale === "ar"
@@ -102,6 +215,8 @@ export function HistoryTimeline({
     update: locale === "ar" ? "تم التعديل" : "Updated",
     delete: locale === "ar" ? "تم الحذف" : "Deleted",
     post: locale === "ar" ? "تم الترحيل" : "Posted",
+    reversed: locale === "ar" ? "تم العكس" : "Reversed",
+    reversedBy: locale === "ar" ? "بواسطة" : "by",
     actorUnavailable: locale === "ar" ? "المنفّذ غير متوفر" : "Actor unavailable",
     filterSource: locale === "ar" ? "المصدر" : "Source",
     filterAction: locale === "ar" ? "الإجراء" : "Action",
@@ -116,16 +231,24 @@ export function HistoryTimeline({
     post: labels.post,
   };
 
+  const useReversalEndpoint =
+    includeReversal && entityType === "journal_entry";
   const enabled = enabledProp && !!entityType && !!entityId && entityId > 0;
   const { data, isLoading, isError } = useQuery<AuditRow[]>({
-    queryKey: ["/api/audit", entityType, entityId],
+    // Two distinct cache keys so a normal lookup and the reversal-aware
+    // lookup do not stomp on each other when both surfaces are visited.
+    queryKey: useReversalEndpoint
+      ? ["/api/audit/journal_entry", entityId, "with-reversal"]
+      : ["/api/audit", entityType, entityId],
     enabled,
   });
 
   const events: HistoryEvent[] = React.useMemo(() => {
     if (!data) return [];
-    const actionLabel = (a: string) =>
-      a === "create"
+    const actionLabel = (a: string, isReversal: boolean) =>
+      isReversal
+        ? labels.reversed
+        : a === "create"
         ? labels.create
         : a === "update"
         ? labels.update
@@ -141,21 +264,39 @@ export function HistoryTimeline({
       const actKey = (ACTION_KEYS as string[]).includes(row.action)
         ? (row.action as HistoryAction)
         : undefined;
+      const rawChanges = row.changes || [];
+      const reversedByChange = rawChanges.find((c) => c.field === "reversedBy");
+      const reversedBy = reversedByChange
+        ? parseReversedBy(reversedByChange.to)
+        : null;
       return {
         id: row.id,
         at: row.occurredAt,
         source: src,
         actor: row.actor || undefined,
-        action: actionLabel(row.action),
+        action: actionLabel(row.action, !!reversedBy),
         actionKey: actKey,
-        changes: (row.changes || []).map((c) => ({
-          field: c.field,
-          from: c.from === undefined ? undefined : formatPrimitive(c.from),
-          to: c.to === undefined ? undefined : formatPrimitive(c.to),
-        })),
+        // Strip the reversal marker + ownership stamp from the per-event
+        // change list so the UI renders the dedicated "Reversed by" link
+        // once and doesn't surface internal bookkeeping fields.
+        changes: rawChanges
+          .filter((c) => !HIDDEN_CHANGE_FIELDS.has(c.field))
+          .map((c) => ({
+            field: c.field,
+            from: c.from === undefined ? undefined : formatPrimitive(c.from),
+            to: c.to === undefined ? undefined : formatPrimitive(c.to),
+          })),
+        reversedBy: reversedBy ?? undefined,
       } satisfies HistoryEvent;
     });
-  }, [data, labels.create, labels.update, labels.delete, labels.post]);
+  }, [
+    data,
+    labels.create,
+    labels.update,
+    labels.delete,
+    labels.post,
+    labels.reversed,
+  ]);
 
   const [sourceFilter, setSourceFilter] = React.useState<Set<HistorySource>>(
     () => new Set(SOURCE_KEYS),
@@ -325,11 +466,13 @@ export function HistoryTimeline({
               const isAi = ev.source === "ai";
               const isAiFallback = isAi && (!ev.actor || ev.actor === "AI assistant");
               const isAiViaHuman = isAi && !!ev.actor && ev.actor !== "AI assistant";
+              const reversal = ev.reversedBy;
               return (
                 <li
                   key={ev.id}
                   className="relative ps-7"
                   data-testid={`history-event-${ev.id}`}
+                  data-reversal={reversal ? "true" : undefined}
                 >
                   {!isLast && (
                     <span
@@ -338,9 +481,11 @@ export function HistoryTimeline({
                     />
                   )}
                   <span
-                    className={`absolute start-0 top-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-background border border-border ${meta.tone}`}
+                    className={`absolute start-0 top-0.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-background border border-border ${
+                      reversal ? "text-warning" : meta.tone
+                    }`}
                   >
-                    <Icon className="w-3 h-3" />
+                    {reversal ? <RotateCcw className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
                   </span>
                   <div className="flex items-baseline justify-between gap-3 flex-wrap">
                     <p className="text-sm font-medium text-foreground">{ev.action}</p>
@@ -370,6 +515,21 @@ export function HistoryTimeline({
                       </span>
                     )}
                   </div>
+                  {reversal && (
+                    <div
+                      className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                      data-testid={`history-reversal-${ev.id}`}
+                    >
+                      <span>{labels.reversedBy}</span>
+                      <Link
+                        href={reversalSourceHref(reversal)}
+                        className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] font-medium text-foreground hover:bg-muted hover:border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        data-testid={`link-history-reversal-source-${reversal.kind}-${reversal.id}`}
+                      >
+                        {reversalSourceLabel(reversal, locale === "ar" ? "ar" : "en")}
+                      </Link>
+                    </div>
+                  )}
                   {ev.changes && ev.changes.length > 0 && (
                     <ul className="mt-2 space-y-1 border-s border-border ps-3 text-xs">
                       {ev.changes.map((c, idx) => (
@@ -412,6 +572,7 @@ export function HistoryDrawer({
   reference,
   entityType,
   entityId,
+  includeReversal = false,
 }: HistoryDrawerProps) {
   const { locale, dir } = useLocale();
   const labels = {
@@ -445,6 +606,7 @@ export function HistoryDrawer({
           entityType={entityType}
           entityId={entityId}
           enabled={open}
+          includeReversal={includeReversal}
           className="flex-1 min-h-0"
         />
       </SheetContent>

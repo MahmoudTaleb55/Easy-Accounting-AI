@@ -522,6 +522,22 @@ export async function registerRoutes(
     res.json(events);
   });
 
+  // Reversal-aware journal-entry audit lookup. Used by the JE History drawer
+  // so auditors can trace why a JE disappeared from the GL — the JE may have
+  // been cascade-deleted by a `reverseAutoPostedJournalEntry` call, in which
+  // case the standard `entityBelongsToCompany` check returns false. The
+  // workspace-scoped storage method falls back to the `companyId` stamp
+  // recorded inside the reversal audit row to verify ownership.
+  app.get(api.audit.journalEntryWithReversal.path, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: "Invalid id" });
+    }
+    const events = await storage.getJournalEntryAuditWithReversal(cid(req), id);
+    if (events === null) return res.status(404).json({ message: "Not found" });
+    res.json(events);
+  });
+
   // ----- Reports: Trial Balance -----
   app.get(api.reports.trialBalance.path, async (req, res) => {
     const allAccounts = await storage.getAccounts(cid(req));

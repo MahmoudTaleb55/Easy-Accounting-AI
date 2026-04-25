@@ -197,6 +197,16 @@ export const api = {
         200: z.array(z.any()),
       },
     },
+    // Reversal-aware audit lookup for journal entries: returns history even
+    // when the JE was cascade-deleted by a `reverseAutoPostedJournalEntry`
+    // call, so auditors can trace why a JE disappeared from the GL.
+    journalEntryWithReversal: {
+      method: 'GET' as const,
+      path: '/api/audit/journal_entry/:id/with-reversal' as const,
+      responses: {
+        200: z.array(z.any()),
+      },
+    },
   },
   admin: {
     // Owner-only recovery endpoint: posts a balanced double-entry JE for
