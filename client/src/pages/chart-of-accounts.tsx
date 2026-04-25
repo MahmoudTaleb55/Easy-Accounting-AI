@@ -36,9 +36,22 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { BookOpen, ChevronDown, ChevronLeft, ChevronRight, Plus, Search, Sparkles } from "lucide-react"
 import type { Account } from "@shared/schema"
-import { computeBalanceByAccountId } from "@/pages/chart-of-accounts-rollup"
+import {
+  computeBalanceByAccountId,
+  type BalanceBreakdown,
+} from "@/pages/chart-of-accounts-rollup"
 import { useLocale } from "@/contexts/locale-context"
 import { useAuth } from "@/hooks/use-auth"
 import { useFormatMoney } from "@/lib/format"
@@ -225,6 +238,13 @@ export default function ChartOfAccountsPage() {
       periodYear: locale === "ar" ? "هذه السنة" : "This year",
       periodAll: locale === "ar" ? "كل الفترات" : "All time",
       balanceAria: locale === "ar" ? "الرصيد الحالي" : "Current balance",
+      balanceBreakdownDebit: locale === "ar" ? "مدين" : "Debit",
+      balanceBreakdownCredit: locale === "ar" ? "دائن" : "Credit",
+      balanceBreakdownNet: locale === "ar" ? "صافي" : "Net",
+      balanceBreakdownAria:
+        locale === "ar"
+          ? "تفصيل الرصيد لهذه الفترة"
+          : "Balance breakdown for this period",
     }),
     [locale]
   )
@@ -304,6 +324,13 @@ export default function ChartOfAccountsPage() {
   /* `chart-of-accounts-rollup.ts` so the unit suite can pin the         */
   /* multi-level descendant-sum contract without spinning up the page    */
   /* — see `__tests__/chart-of-accounts-rollup.test.ts`.                  */
+  /*                                                                      */
+  /* The helper now returns a `{ debit, credit, balance }` breakdown per  */
+  /* account so the trailing-balance hover/popover (task #224) can show   */
+  /* the period's gross debit and credit alongside the net. Headers sum   */
+  /* each side independently across the subtree — the same pattern as     */
+  /* the net — which avoids ever having to re-derive a parent's gross     */
+  /* movement from a (potentially small) net.                              */
   /* ------------------------------------------------------------------ */
   const balanceByAccountId = useMemo(
     () => computeBalanceByAccountId(accounts, balances?.rows),
@@ -692,6 +719,12 @@ export default function ChartOfAccountsPage() {
                     balancesError={balancesError}
                     formatMoney={fmt}
                     balanceAria={t.balanceAria}
+                    breakdownLabels={{
+                      debit: t.balanceBreakdownDebit,
+                      credit: t.balanceBreakdownCredit,
+                      net: t.balanceBreakdownNet,
+                      aria: t.balanceBreakdownAria,
+                    }}
                   />
                 ))}
               </ul>
@@ -735,6 +768,13 @@ function countNodes(nodes: TreeNode[]): number {
   return n
 }
 
+interface BreakdownLabels {
+  debit: string
+  credit: string
+  net: string
+  aria: string
+}
+
 interface TreeRowProps {
   node: TreeNode
   depth: number
@@ -743,11 +783,12 @@ interface TreeRowProps {
   onToggle: (code: string) => void
   onOpenLedger: (account: Account) => void
   openLedgerAria: string
-  balanceByAccountId: Map<number, number>
+  balanceByAccountId: Map<number, BalanceBreakdown>
   balancesLoading: boolean
   balancesError: boolean
   formatMoney: (n: number | string | null | undefined) => string
   balanceAria: string
+  breakdownLabels: BreakdownLabels
 }
 
 function TreeRow({
@@ -763,6 +804,7 @@ function TreeRow({
   balancesError,
   formatMoney,
   balanceAria,
+  breakdownLabels,
 }: TreeRowProps) {
   const { account } = node
   const hasChildren = node.children.length > 0
@@ -786,7 +828,9 @@ function TreeRow({
   // the formatted zero rather than blanking the cell, matching the trial
   // balance view. Header rows render the rolled-up total with a muted weight
   // so they read as totals rather than primary values.
-  const balance = balanceByAccountId.get(account.id) ?? 0
+  const breakdown =
+    balanceByAccountId.get(account.id) ?? { debit: 0, credit: 0, balance: 0 }
+  const balance = breakdown.balance
 
   return (
     <>
@@ -880,18 +924,61 @@ function TreeRow({
             ·
           </span>
         ) : (
-          <span
-            className={cn(
-              "ms-auto shrink-0 font-numeric tabular-nums text-[12.5px]",
-              account.isHeader
-                ? "text-muted-foreground font-normal"
-                : "text-foreground"
-            )}
-            aria-label={`${balanceAria} — ${formatMoney(balance)}`}
-            data-testid={`text-balance-${account.code}`}
-          >
-            {formatMoney(balance)}
-          </span>
+          // The trailing balance doubles as a hover/touch trigger for the
+          // period's debit/credit/net breakdown. Tooltip handles desktop
+          // hover + keyboard focus; Popover handles touch & click. Sharing
+          // a single <button> trigger via `asChild` keeps both surfaces in
+          // sync without rendering extra DOM. Test IDs are preserved so
+          // existing balance assertions keep working.
+          <Tooltip delayDuration={150}>
+            <Popover>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "ms-auto shrink-0 font-numeric tabular-nums text-[12.5px]",
+                      "rounded-sm cursor-default",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                      account.isHeader
+                        ? "text-muted-foreground font-normal"
+                        : "text-foreground"
+                    )}
+                    aria-label={`${balanceAria} — ${formatMoney(balance)}. ${breakdownLabels.debit}: ${formatMoney(breakdown.debit)}. ${breakdownLabels.credit}: ${formatMoney(breakdown.credit)}.`}
+                    data-testid={`text-balance-${account.code}`}
+                  >
+                    {formatMoney(balance)}
+                  </button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                align="end"
+                className="p-0"
+                data-testid={`tooltip-balance-${account.code}`}
+              >
+                <BalanceBreakdownContent
+                  breakdown={breakdown}
+                  labels={breakdownLabels}
+                  formatMoney={formatMoney}
+                  accountCode={account.code}
+                />
+              </TooltipContent>
+              <PopoverContent
+                side="top"
+                align="end"
+                className="w-auto p-2.5"
+                data-testid={`popover-balance-${account.code}`}
+              >
+                <BalanceBreakdownContent
+                  breakdown={breakdown}
+                  labels={breakdownLabels}
+                  formatMoney={formatMoney}
+                  accountCode={account.code}
+                />
+              </PopoverContent>
+            </Popover>
+          </Tooltip>
         )}
       </li>
       {expanded &&
@@ -910,9 +997,71 @@ function TreeRow({
             balancesError={balancesError}
             formatMoney={formatMoney}
             balanceAria={balanceAria}
+            breakdownLabels={breakdownLabels}
           />
         ))}
     </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* BalanceBreakdownContent                                             */
+/* Shared body of the trailing-balance hover tooltip and click/touch   */
+/* popover. Renders the period's debit, credit, and net side-by-side   */
+/* using the same numeric font + tabular numerals as the row itself,   */
+/* so the two figures line up visually whether the surface is open or  */
+/* not. Layout uses logical (start/end) alignment so the breakdown     */
+/* mirrors automatically in RTL.                                        */
+/* ------------------------------------------------------------------ */
+interface BalanceBreakdownContentProps {
+  breakdown: BalanceBreakdown
+  labels: BreakdownLabels
+  formatMoney: (n: number | string | null | undefined) => string
+  accountCode: string
+}
+
+function BalanceBreakdownContent({
+  breakdown,
+  labels,
+  formatMoney,
+  accountCode,
+}: BalanceBreakdownContentProps) {
+  return (
+    <div
+      className="font-numeric tabular-nums text-xs min-w-[10rem]"
+      role="group"
+      aria-label={labels.aria}
+    >
+      <div className="flex items-baseline justify-between gap-6 px-2 py-1">
+        <span className="text-popover-foreground/70">{labels.debit}</span>
+        <span
+          className="text-popover-foreground"
+          data-testid={`text-balance-breakdown-debit-${accountCode}`}
+        >
+          {formatMoney(breakdown.debit)}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-6 px-2 py-1">
+        <span className="text-popover-foreground/70">{labels.credit}</span>
+        <span
+          className="text-popover-foreground"
+          data-testid={`text-balance-breakdown-credit-${accountCode}`}
+        >
+          {formatMoney(breakdown.credit)}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-6 px-2 py-1 mt-0.5 border-t border-border/60">
+        <span className="text-popover-foreground/70 font-medium">
+          {labels.net}
+        </span>
+        <span
+          className="text-popover-foreground font-medium"
+          data-testid={`text-balance-breakdown-net-${accountCode}`}
+        >
+          {formatMoney(breakdown.balance)}
+        </span>
+      </div>
+    </div>
   )
 }
 

@@ -13,12 +13,12 @@ import {
  * scoping, debit-vs-credit-normal sign conventions) is exercised end-
  * to-end against the live API in
  * `tests/e2e/account-balances-rollup.spec.ts`. This file pins the
- * client-side rollup contract: every header row's displayed balance
- * must equal the sum of every descendant leaf's balance, no matter how
- * deep the hierarchy goes. A regression here (e.g. a future refactor
- * that only sums direct children, or stops descending past header
- * rows) would silently mislead owners about how much sits in each
- * bucket.
+ * client-side rollup contract: every header row's displayed balance —
+ * and, since task #224, gross debit and gross credit too — must equal
+ * the sum of every descendant leaf's figures, no matter how deep the
+ * hierarchy goes. A regression here (e.g. a future refactor that only
+ * sums direct children, or stops descending past header rows) would
+ * silently mislead owners about how much sits in each bucket.
  */
 
 /**
@@ -48,10 +48,30 @@ function account(
   } as Account
 }
 
+/**
+ * Most of these tests only care about how the *balance* rolls up.
+ * Synthesise plausible debit/credit values from the net (debit = max(0,
+ * balance), credit = max(0, -balance)) so the row stays consistent
+ * without each test having to spell them out. The dedicated
+ * "rolls up debit and credit independently" test below uses richer
+ * fixtures where debit and credit are not just the positive/negative
+ * halves of the net.
+ */
+function row(accountId: number, balance: number): AccountBalanceRow {
+  return {
+    accountId,
+    debit: balance > 0 ? balance : 0,
+    credit: balance < 0 ? -balance : 0,
+    balance,
+  }
+}
+
 describe("computeBalanceByAccountId", () => {
   test("returns an empty map when accounts or balance rows are missing", () => {
     expect(computeBalanceByAccountId(undefined, undefined).size).toBe(0)
-    expect(computeBalanceByAccountId(null, [{ accountId: 1, balance: 5 }]).size).toBe(0)
+    expect(
+      computeBalanceByAccountId(null, [row(1, 5)]).size,
+    ).toBe(0)
     expect(computeBalanceByAccountId([account(1, null)], null).size).toBe(0)
   })
 
@@ -60,15 +80,15 @@ describe("computeBalanceByAccountId", () => {
       account(10, null, { code: "1110" }),
       account(11, null, { code: "1120" }),
     ]
-    const balances: AccountBalanceRow[] = [{ accountId: 10, balance: 250.5 }]
+    const balances: AccountBalanceRow[] = [row(10, 250.5)]
 
     const result = computeBalanceByAccountId(accounts, balances)
 
-    expect(result.get(10)).toBe(250.5)
-    // Unposted leaves still appear in the map with a zero balance so the
-    // page never silently blanks a row that exists in the chart but
+    expect(result.get(10)?.balance).toBe(250.5)
+    // Unposted leaves still appear in the map with a zero breakdown so
+    // the page never silently blanks a row that exists in the chart but
     // hasn't been posted to yet.
-    expect(result.get(11)).toBe(0)
+    expect(result.get(11)).toEqual({ debit: 0, credit: 0, balance: 0 })
   })
 
   test("a 2-level deep header sums every descendant leaf — the core rollup contract", () => {
@@ -91,21 +111,18 @@ describe("computeBalanceByAccountId", () => {
       account(3, 2, { code: "1110" }),
       account(4, 2, { code: "1120" }),
     ]
-    const balances: AccountBalanceRow[] = [
-      { accountId: 3, balance: 100 },
-      { accountId: 4, balance: 250 },
-    ]
+    const balances: AccountBalanceRow[] = [row(3, 100), row(4, 250)]
 
     const result = computeBalanceByAccountId(accounts, balances)
 
     // Direct leaves carry their own balance.
-    expect(result.get(3)).toBe(100)
-    expect(result.get(4)).toBe(250)
+    expect(result.get(3)?.balance).toBe(100)
+    expect(result.get(4)?.balance).toBe(250)
     // Mid-level header sums its direct leaf children.
-    expect(result.get(2)).toBe(350)
+    expect(result.get(2)?.balance).toBe(350)
     // Root header sums every descendant leaf — *not* just its direct
     // children (which are themselves headers with no posted balance).
-    expect(result.get(1)).toBe(350)
+    expect(result.get(1)?.balance).toBe(350)
   })
 
   test("rollup descends through multiple header layers and across sibling subtrees", () => {
@@ -130,17 +147,17 @@ describe("computeBalanceByAccountId", () => {
       account(7, 6),
     ]
     const balances: AccountBalanceRow[] = [
-      { accountId: 3, balance: 10 },
-      { accountId: 5, balance: 20 },
-      { accountId: 7, balance: 70 },
+      row(3, 10),
+      row(5, 20),
+      row(7, 70),
     ]
 
     const result = computeBalanceByAccountId(accounts, balances)
 
-    expect(result.get(4)).toBe(20) // header above a single leaf
-    expect(result.get(2)).toBe(30) // header summing leaf + nested header subtree
-    expect(result.get(6)).toBe(70) // sibling subtree
-    expect(result.get(1)).toBe(100) // root summing both subtrees
+    expect(result.get(4)?.balance).toBe(20) // header above a single leaf
+    expect(result.get(2)?.balance).toBe(30) // header summing leaf + nested header subtree
+    expect(result.get(6)?.balance).toBe(70) // sibling subtree
+    expect(result.get(1)?.balance).toBe(100) // root summing both subtrees
   })
 
   test("preserves balance signs so debit-normal vs credit-normal headers roll up correctly", () => {
@@ -156,16 +173,13 @@ describe("computeBalanceByAccountId", () => {
       account(101, 100), // posted leaf, +500
       account(102, 100), // posted leaf, -200 (e.g. an overdrawn liability)
     ]
-    const balances: AccountBalanceRow[] = [
-      { accountId: 101, balance: 500 },
-      { accountId: 102, balance: -200 },
-    ]
+    const balances: AccountBalanceRow[] = [row(101, 500), row(102, -200)]
 
     const result = computeBalanceByAccountId(accounts, balances)
 
-    expect(result.get(101)).toBe(500)
-    expect(result.get(102)).toBe(-200)
-    expect(result.get(100)).toBe(300)
+    expect(result.get(101)?.balance).toBe(500)
+    expect(result.get(102)?.balance).toBe(-200)
+    expect(result.get(100)?.balance).toBe(300)
   })
 
   test("treats accounts with an unknown parentId as roots so partial loads stay defensive", () => {
@@ -174,10 +188,41 @@ describe("computeBalanceByAccountId", () => {
     // pagination, soft-deleted parent), the orphan is rolled up as
     // its own root rather than silently dropped from the map.
     const accounts: Account[] = [account(42, 999 /* parent not in list */)]
-    const balances: AccountBalanceRow[] = [{ accountId: 42, balance: 17 }]
+    const balances: AccountBalanceRow[] = [row(42, 17)]
 
     const result = computeBalanceByAccountId(accounts, balances)
 
-    expect(result.get(42)).toBe(17)
+    expect(result.get(42)?.balance).toBe(17)
+  })
+
+  test("rolls up debit and credit independently of the net balance", () => {
+    // Task #224: the trailing-balance hover/popover shows the period's
+    // gross debit + gross credit + net for every row, including header
+    // rollups. So debit and credit must be summed across the subtree
+    // independently — not derived from the net after the fact (a
+    // header whose children have offsetting debit and credit could
+    // otherwise show 0 / 0 for both sides while still surfacing a
+    // tiny net, which would be flat-out wrong).
+    //
+    //   1 (header)
+    //     ├─ 2 (leaf, debit 1500, credit 0   → balance +1500)
+    //     └─ 3 (leaf, debit 0,    credit 400 → balance  -400)
+    const accounts: Account[] = [
+      account(1, null, { isHeader: true }),
+      account(2, 1),
+      account(3, 1),
+    ]
+    const balances: AccountBalanceRow[] = [
+      { accountId: 2, debit: 1500, credit: 0, balance: 1500 },
+      { accountId: 3, debit: 0, credit: 400, balance: -400 },
+    ]
+
+    const result = computeBalanceByAccountId(accounts, balances)
+
+    expect(result.get(2)).toEqual({ debit: 1500, credit: 0, balance: 1500 })
+    expect(result.get(3)).toEqual({ debit: 0, credit: 400, balance: -400 })
+    // Header sums each side independently — a regression that derived
+    // debit/credit from the (small) net 1100 would fail this loudly.
+    expect(result.get(1)).toEqual({ debit: 1500, credit: 400, balance: 1100 })
   })
 })
