@@ -40,15 +40,21 @@ export function log(message: string, source = "express") {
 // Baseline security headers. We deliberately don't ship a full CSP yet — it
 // needs a careful audit of Vite HMR, OpenAI image hosts, and the public
 // /objects/avatars proxy — but the headers below are safe everywhere.
+//
+// X-Frame-Options is intentionally only set in production: the Replit
+// workspace preview embeds the dev server inside a cross-origin iframe, and
+// any value (DENY *or* SAMEORIGIN) breaks that preview. Production still
+// gets full clickjacking protection.
+const isProduction = process.env.NODE_ENV === "production";
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader(
     "Permissions-Policy",
     "camera=(), microphone=(self), geolocation=(), payment=()",
   );
-  if (process.env.NODE_ENV === "production") {
+  if (isProduction) {
+    res.setHeader("X-Frame-Options", "DENY");
     res.setHeader(
       "Strict-Transport-Security",
       "max-age=31536000; includeSubDomains",
