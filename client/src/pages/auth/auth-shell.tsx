@@ -1,8 +1,20 @@
 import { Link } from "wouter";
-import { ArrowUpRight } from "lucide-react";
-import { useLocale } from "@/contexts/locale-context";
-import { Button } from "@/components/ui/button";
+import { ArrowUpRight, Check, Languages } from "lucide-react";
+import { useLocale, type Locale } from "@/contexts/locale-context";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { BrandMark } from "@/components/brand/mark";
+
+const LANG_NATIVE: Record<Locale, string> = {
+  ar: "العربية",
+  en: "English",
+  de: "Deutsch",
+  fr: "Français",
+};
 
 interface AuthShellProps {
   title: string;
@@ -59,9 +71,7 @@ export function AuthShell({ title, subtitle, side, children, footer }: AuthShell
             >
               <BrandMark withWordmark locale={locale} size="md" />
             </Link>
-            <Button variant="ghost" size="sm" onClick={toggleLocale} data-testid="button-toggle-locale">
-              {ar ? "EN" : "ع"}
-            </Button>
+            <LocalePicker />
           </div>
 
           <div className="max-w-md relative">
@@ -119,9 +129,7 @@ export function AuthShell({ title, subtitle, side, children, footer }: AuthShell
               >
                 <BrandMark withWordmark locale={locale} size="sm" />
               </Link>
-              <Button variant="ghost" size="sm" onClick={toggleLocale}>
-                {ar ? "EN" : "ع"}
-              </Button>
+              <LocalePicker testId="button-toggle-locale-mobile" />
             </div>
 
             <header className="mb-7">
@@ -136,5 +144,44 @@ export function AuthShell({ title, subtitle, side, children, footer }: AuthShell
         </main>
       </div>
     </div>
+  );
+}
+
+/**
+ * Language picker shown on the auth shell (sign-in / sign-up / accept invite).
+ * Replaces the prior binary "EN/ع" toggle which only let the user reach
+ * Arabic and English even though the app supports German and French too.
+ */
+function LocalePicker({ testId = "button-toggle-locale" }: { testId?: string } = {}) {
+  const { locale, setLocale } = useLocale();
+  const ar = locale === "ar";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={ar ? "تغيير اللغة" : "Change language"}
+          data-testid={testId}
+          title={LANG_NATIVE[locale]}
+          className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-md text-sm text-foreground/80 hover:text-foreground hover-elevate transition-colors duration-150"
+        >
+          <Languages className="size-4 opacity-70" />
+          <span className="text-small font-medium">{LANG_NATIVE[locale]}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="shadow-md min-w-[10rem]">
+        {(["ar", "en", "de", "fr"] as const).map((code) => (
+          <DropdownMenuItem
+            key={code}
+            onClick={() => setLocale(code)}
+            data-testid={`menu-lang-${code}`}
+            className="text-small"
+          >
+            <Check className={`size-3.5 me-2 ${locale === code ? "opacity-100" : "opacity-0"}`} />
+            {LANG_NATIVE[code]}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

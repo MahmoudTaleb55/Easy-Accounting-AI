@@ -10,29 +10,57 @@ import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
 import { AiRail } from "./ai-rail";
 import { ReadOnlyBanner } from "./readonly-banner";
 import { EmailDeliveryAlertBanner } from "./email-delivery-alert-banner";
+import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 
 const SUPPORTED_LOCALES: Locale[] = ["ar", "en", "de", "fr"];
 
 /**
- * Adopt the org's saved locale on initial load, then stay out of the way.
+ * Sync the in-memory locale with the user's saved preference on initial load.
  *
- * The effect only fires when the *server-reported* locale changes — never when
- * the in-memory `locale` changes. That's important: the topbar/settings let the
- * user pick a language, and we must not fight back when they do. The ref tracks
- * the last value we adopted from the API so the same value isn't re-applied.
+ * Source of truth (in priority order):
+ *   1. The signed-in user's `preferredLocale` (per-user, written by the
+ *      topbar language picker and the profile page). The `users.preferred_
+ *      locale` column is NOT NULL with a `'ar'` default, so a row always
+ *      carries a value — meaning the user path effectively wins for every
+ *      authenticated request. That is the desired behaviour: the user's
+ *      explicit choice must NOT be reverted by the org-level default
+ *      (this was the original "topbar reverts to Arabic on reload" bug).
+ *   2. The org-wide `settings.locale` (Settings page). Only consulted when
+ *      no user is signed in (e.g. shared / unauthenticated views inside
+ *      the shell). When the user query is still loading we wait — applying
+ *      the org locale prematurely would briefly flip the UI before the
+ *      user's preference arrives a few ms later.
+ *
+ * The effect only fires when the *server-reported* preferred locale changes —
+ * never when the in-memory `locale` changes. The ref tracks the last value we
+ * adopted from the API so the same value isn't re-applied (which would fight
+ * the topbar/Settings flow that mutate the in-memory locale optimistically).
  */
 function LocaleSync() {
   const { setLocale } = useLocale();
-  const { data } = useQuery<{ locale?: string }>({ queryKey: ["/api/settings"] });
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const { data: settings } = useQuery<{ locale?: string }>({ queryKey: ["/api/settings"] });
   const lastAppliedRef = useRef<string | null>(null);
   useEffect(() => {
-    const remote = data?.locale;
-    if (!remote || !SUPPORTED_LOCALES.includes(remote as Locale)) return;
+    // Wait for the auth query to settle before deciding which source to honour,
+    // otherwise we can briefly apply the org locale and then flip to the user's
+    // personal locale a render later.
+    if (isAuthLoading) return;
+    const userPref = user?.preferredLocale;
+    const orgPref = settings?.locale;
+    const remote = user
+      ? userPref && SUPPORTED_LOCALES.includes(userPref as Locale)
+        ? userPref
+        : null
+      : orgPref && SUPPORTED_LOCALES.includes(orgPref as Locale)
+        ? orgPref
+        : null;
+    if (!remote) return;
     if (lastAppliedRef.current === remote) return;
     lastAppliedRef.current = remote;
     setLocale(remote as Locale);
-  }, [data?.locale, setLocale]);
+  }, [user, user?.preferredLocale, settings?.locale, isAuthLoading, setLocale]);
   return null;
 }
 
