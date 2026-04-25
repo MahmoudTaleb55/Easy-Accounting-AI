@@ -34,11 +34,133 @@ const baseDb = drizzle(pool, { schema });
  * already does `db.select()`, `db.insert()`, `db.transaction()`, or
  * `db.execute()` continues to work, and automatically picks up the active
  * scope when one is in flight.
+ *
+ * Task #193: the AsyncLocalStorage store also carries an optional
+ * `unscoped: { reason }` slot, populated by `withUnscopedDb(reason, fn)`.
+ * That slot is the explicit "I know this `db.` call is intentionally
+ * outside the workspace scope, here's why" marker used by the legitimate
+ * pre-membership lookups in `server/auth/middleware.ts` (and any other
+ * audited cross-tenant auth path). When neither `scoped` nor `unscoped` is
+ * set, `activeDb()` logs a one-line stack-trace warning the first time
+ * each call site is observed in the process — caught early enough that a
+ * regression in a pre-existing allowlisted file doesn't have to wait for
+ * the static lint at `tests/e2e/db-isolation-allowlist.spec.ts` to fire.
  */
-const dbContext = new AsyncLocalStorage<{ scoped: Drizzle }>();
+type DbContextStore = {
+  scoped?: Drizzle;
+  unscoped?: { reason: string };
+};
+const dbContext = new AsyncLocalStorage<DbContextStore>();
+
+/**
+ * Per-process dedup key set for the runtime "unscoped db. call" warning.
+ * Keyed on a stack-frame string so each unique call site is reported
+ * exactly once and a hot path (e.g. a tight loop) doesn't spam the log.
+ */
+const warnedUnscopedCallSites = new Set<string>();
+
+/** Test-only: clear the dedup set so a spec can deterministically observe
+ *  the "first warning per call site" behaviour without spawning a fresh
+ *  process. Not part of the public API; the leading underscore is the
+ *  convention. */
+export function __resetUnscopedDbWarningsForTesting(): void {
+  warnedUnscopedCallSites.clear();
+}
+
+function extractCallSiteFromStack(stack: string): string {
+  // Pick the first stack frame that lives outside this file and outside
+  // the warning machinery itself. That frame is the offending caller —
+  // the one a future author needs to wrap (or mark with withUnscopedDb).
+  const lines = stack.split("\n");
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line.startsWith("at ")) continue;
+    if (line.includes("/server/db.ts") || line.includes("\\server\\db.ts")) continue;
+    if (line.includes("activeDb")) continue;
+    if (line.includes("warnUnscopedDbAccess")) continue;
+    if (line.includes("extractCallSiteFromStack")) continue;
+    if (line.includes("Object.get") && line.includes("Proxy")) continue;
+    return line;
+  }
+  return lines[1]?.trim() ?? "<unknown>";
+}
+
+function warnUnscopedDbAccess(): void {
+  // Build the stack trace once and reuse for both the dedup key and the
+  // warning payload. `Error.captureStackTrace` would also work but `new
+  // Error().stack` is portable and is fine in the warm path because we
+  // dedupe on the result.
+  const stack = new Error("Unscoped db. call").stack ?? "";
+  const callSite = extractCallSiteFromStack(stack);
+  if (warnedUnscopedCallSites.has(callSite)) return;
+  warnedUnscopedCallSites.add(callSite);
+
+  const message =
+    `[workspace-isolation] Unscoped db. call detected at ${callSite}. ` +
+    `Wrap the caller in withCompanyScope(...) or withRlsBypass(...), or — ` +
+    `if it is a deliberate pre-membership / cross-tenant auth lookup — ` +
+    `mark it with withUnscopedDb(reason, fn). See ` +
+    `docs/design/workspace-isolation-defense-in-depth.md.\n${stack}`;
+
+  if (process.env.WORKSPACE_ISOLATION_GUARD === "throw") {
+    // Opt-in CI escalation: turn the warning into a hard error. Keeps the
+    // dedup add above so a single throw is enough — no point re-throwing
+    // for every subsequent access from the same site.
+    throw new Error(message);
+  }
+  // eslint-disable-next-line no-console
+  console.warn(message);
+}
 
 function activeDb(): Drizzle {
-  return dbContext.getStore()?.scoped ?? baseDb;
+  const store = dbContext.getStore();
+  if (store?.scoped) return store.scoped;
+  // Production: skip the warning entirely. The legitimate pre-membership
+  // lookups in server/auth/middleware.ts run *every* request, and even
+  // with dedup we don't want production noise around a code path the
+  // static lint already audits at CI time.
+  if (process.env.NODE_ENV !== "production" && !store?.unscoped) {
+    warnUnscopedDbAccess();
+  }
+  return baseDb;
+}
+
+/**
+ * Mark a region of code as deliberately running against the unscoped pool.
+ *
+ * The runtime guard in `activeDb()` warns the first time each call site
+ * issues a `db.` call with no `withCompanyScope` / `withRlsBypass` in
+ * flight. The legitimate pre-membership / cross-tenant auth lookups in
+ * `server/auth/middleware.ts` (and anything else listed in the design doc
+ * under "Tables intentionally out of scope") would trip that warning on
+ * every request, so they wrap themselves in `withUnscopedDb(reason, fn)`
+ * to silence the guard while keeping a grep-able audit marker.
+ *
+ * `reason` doubles as a search term — a future reviewer can grep for
+ * `withUnscopedDb(` and see every audited unscoped path at a glance.
+ *
+ * The wrapped function continues to read/write through the unscoped pool
+ * (no client check-out, no GUC change) — this helper does *not* establish
+ * RLS bypass. Use `withRlsBypass` for that. The helper exists purely to
+ * tell the runtime guard "we know what we're doing here".
+ */
+export async function withUnscopedDb<T>(
+  reason: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!reason) throw new Error("withUnscopedDb: reason is required for audit");
+  // Preserve any active workspace scope from an outer
+  // `withCompanyScope`/`withRlsBypass` so a nested `withUnscopedDb` does
+  // not silently drop the workspace pin. `activeDb()` checks `scoped`
+  // first, so this turns the marker into a no-op when an outer scope is
+  // already in flight (the right behaviour: there is nothing to suppress
+  // and nothing to forget). The `unscoped` slot is still set so that an
+  // inner caller without a scope keeps the audit-marker semantics.
+  const existing = dbContext.getStore();
+  return dbContext.run(
+    { scoped: existing?.scoped, unscoped: { reason } },
+    fn,
+  );
 }
 
 export const db: Drizzle = new Proxy(baseDb, {

@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction, RequestHandler } from "express";
-import { db } from "../db";
+import { db, withUnscopedDb } from "../db";
 import { eq, and } from "drizzle-orm";
 import { memberships, type Role, ROLE_TIER, users, companies } from "@shared/schema";
 import * as client from "openid-client";
@@ -58,20 +58,30 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
 };
 
 /** Read the active workspace id from `X-Company-Id` header, `?companyId=`, or
- *  fall back to the user's first membership. */
+ *  fall back to the user's first membership.
+ *
+ *  The fallback `db.select` runs *before* `withCompanyScope` is attached
+ *  (we don't yet know which workspace this request is scoped to), and it
+ *  only reads the auth-tier `memberships` table which is intentionally out
+ *  of `workspace_isolation` RLS scope (see design doc 'Tables intentionally
+ *  out of scope'). The whole body is wrapped in `withUnscopedDb` so the
+ *  task #193 runtime guard does not flag this legitimate path on every
+ *  request — while keeping a grep-able audit marker. */
 export async function resolveActiveCompanyId(req: Request, userId: string): Promise<number | null> {
-  const headerId = req.header("x-company-id");
-  const queryId = (req.query.companyId as string | undefined) ?? undefined;
-  const candidate = Number(headerId ?? queryId);
-  if (Number.isFinite(candidate) && candidate > 0) return candidate;
+  return withUnscopedDb("auth:resolve-active-company-id", async () => {
+    const headerId = req.header("x-company-id");
+    const queryId = (req.query.companyId as string | undefined) ?? undefined;
+    const candidate = Number(headerId ?? queryId);
+    if (Number.isFinite(candidate) && candidate > 0) return candidate;
 
-  // Fallback: any membership the user holds.
-  const [m] = await db
-    .select({ companyId: memberships.companyId })
-    .from(memberships)
-    .where(eq(memberships.userId, userId))
-    .limit(1);
-  return m?.companyId ?? null;
+    // Fallback: any membership the user holds.
+    const [m] = await db
+      .select({ companyId: memberships.companyId })
+      .from(memberships)
+      .where(eq(memberships.userId, userId))
+      .limit(1);
+    return m?.companyId ?? null;
+  });
 }
 
 export interface MembershipContext {
@@ -83,19 +93,27 @@ export interface MembershipContext {
 /**
  * Loads the active membership for the signed-in user and the resolved company.
  * On miss → 403.
+ *
+ * Runs *before* `withCompanyScope` is attached — the whole point is to
+ * decide which workspace scope to attach. Only reads the auth-tier
+ * `memberships` table (intentionally out of `workspace_isolation` RLS
+ * scope). Wrapped in `withUnscopedDb` so the task #193 runtime guard does
+ * not flag this legitimate path on every request.
  */
 export async function loadMembership(req: Request): Promise<MembershipContext | null> {
-  const user = req.user as any;
-  const userId = user?.claims?.sub as string | undefined;
-  if (!userId) return null;
-  const companyId = await resolveActiveCompanyId(req, userId);
-  if (!companyId) return null;
-  const [m] = await db
-    .select()
-    .from(memberships)
-    .where(and(eq(memberships.userId, userId), eq(memberships.companyId, companyId)));
-  if (!m) return null;
-  return { userId, companyId, role: m.role as Role };
+  return withUnscopedDb("auth:load-membership", async () => {
+    const user = req.user as any;
+    const userId = user?.claims?.sub as string | undefined;
+    if (!userId) return null;
+    const companyId = await resolveActiveCompanyId(req, userId);
+    if (!companyId) return null;
+    const [m] = await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.userId, userId), eq(memberships.companyId, companyId)));
+    if (!m) return null;
+    return { userId, companyId, role: m.role as Role };
+  });
 }
 
 export const attachMembership: RequestHandler = async (req, _res, next) => {
