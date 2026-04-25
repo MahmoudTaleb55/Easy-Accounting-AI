@@ -58,7 +58,7 @@ args = "PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test --reporter=line"
 isValidation = true
 
 [agent]
-integrations = ["javascript_database:1.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_log_in_with_replit:2.0.0"]
+integrations = ["javascript_database:1.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_log_in_with_replit:2.0.0", "javascript_object_storage:2.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"

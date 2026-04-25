@@ -52,6 +52,12 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import OpenAI from "openai";
 import multer from "multer";
+import {
+  ObjectStorageService,
+  ObjectNotFoundError,
+  ObjectPermission,
+  canAccessObject,
+} from "./replit_integrations/object_storage";
 import { ASSISTANT_TOOLS, executeTool, type ToolArtifact } from "./services/assistant-tools";
 import { readFile as readGeneratedFile } from "./services/assistant-files";
 import { extractDocument, suggestJournalForDocument } from "./services/document-extraction";
@@ -124,6 +130,51 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // ---------------------------------------------------------------
+  // Public avatar proxy (object storage)
+  //
+  // Avatars uploaded via POST /api/auth/profile/avatar are stored in
+  // the bucket under `avatars/<userId>/<sha>.<ext>` with a public ACL,
+  // so an <img src="/objects/avatars/…"/> in the topbar can render
+  // without a session cookie.
+  //
+  // Defence in depth: the route is scoped to the `avatars/` prefix
+  // (no other object class can be served through it) AND we still
+  // consult the object's ACL via `canAccessObject` before streaming
+  // the bytes. An anonymous request (`userId = undefined`) only
+  // succeeds when the policy has `visibility: "public"`, so a private
+  // object that was somehow saved under this prefix would still be
+  // refused.
+  // ---------------------------------------------------------------
+  {
+    const objectStorageService = new ObjectStorageService();
+    app.get(/^\/objects\/avatars\/.+$/, async (req, res) => {
+      try {
+        const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+        const allowed = await canAccessObject({
+          objectFile,
+          requestedPermission: ObjectPermission.READ,
+        });
+        if (!allowed) {
+          return res.status(404).json({ message: "Object not found" });
+        }
+        await objectStorageService.downloadObject(objectFile, res);
+      } catch (error) {
+        if (error instanceof ObjectNotFoundError) {
+          return res.status(404).json({ message: "Object not found" });
+        }
+        console.error("Error serving object:", error);
+        return res.status(500).json({ message: "Failed to serve object" });
+      }
+    });
+    // Anything else under /objects/ has no public surface — short-circuit
+    // with a 404 so the SPA fallback doesn't return index.html and mask a
+    // misrouted request.
+    app.all(/^\/objects(\/.*)?$/, (_req, res) => {
+      return res.status(404).json({ message: "Object not found" });
+    });
+  }
+
   // Global API gate: every /api/* request that is NOT in the public allowlist
   // must be authenticated. Mutations additionally require a workspace role of
   // owner or accountant (viewers are blocked from writes).

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,7 +17,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, Upload, Trash2 } from "lucide-react";
+
+const ACCEPTED_AVATAR_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 export default function ProfilePage() {
   const { user, signOut, isSigningOut } = useAuth();
@@ -25,12 +28,15 @@ export default function ProfilePage() {
   const { toast } = useToast();
   const ar = locale === "ar";
 
+  // The avatar image is now managed by the upload picker below and is
+  // persisted by its own mutation, so it is intentionally not part of
+  // this form (which would otherwise have to revalidate the relative
+  // /objects/avatars URL we save on the server after the upload).
   const profileForm = useForm({
     resolver: zodResolver(updateProfileSchema),
     defaultValues: {
       firstName: user?.firstName ?? "",
       lastName: user?.lastName ?? "",
-      profileImageUrl: user?.profileImageUrl ?? "",
       preferredLocale: (user?.preferredLocale as "ar" | "en") ?? locale,
     },
   });
@@ -40,7 +46,6 @@ export default function ProfilePage() {
       profileForm.reset({
         firstName: user.firstName ?? "",
         lastName: user.lastName ?? "",
-        profileImageUrl: user.profileImageUrl ?? "",
         preferredLocale: (user.preferredLocale as "ar" | "en") ?? "ar",
       });
     }
@@ -66,6 +71,79 @@ export default function ProfilePage() {
     },
     onError: (e) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
+
+  const uploadAvatar = useMutation<User, Error, File>({
+    mutationFn: async (file) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/auth/profile/avatar", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let message = text;
+        try { message = JSON.parse(text).message ?? text; } catch { /* leave as text */ }
+        throw new Error(message || `${res.status}`);
+      }
+      return (await res.json()) as User;
+    },
+    onSuccess: (u) => {
+      // Bust caches for the topbar avatar (keyed off /api/auth/user) and any
+      // route that lists members so the new image shows up immediately.
+      queryClient.setQueryData<User>(["/api/auth/user"], u);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/members"] });
+      toast({ title: ar ? "تم تحديث الصورة" : "Photo updated" });
+    },
+    onError: (e) =>
+      toast({
+        title: ar ? "تعذر رفع الصورة" : "Upload failed",
+        description: e.message,
+        variant: "destructive",
+      }),
+  });
+
+  const removeAvatar = useMutation<User, Error, void>({
+    mutationFn: async () =>
+      (await apiRequest("PATCH", "/api/auth/profile", { profileImageUrl: null })).json(),
+    onSuccess: (u) => {
+      queryClient.setQueryData<User>(["/api/auth/user"], u);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/members"] });
+      toast({ title: ar ? "تم حذف الصورة" : "Photo removed" });
+    },
+    onError: (e) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  function handleFile(file: File | null | undefined) {
+    if (!file) return;
+    if (!ACCEPTED_AVATAR_TYPES.includes(file.type)) {
+      toast({
+        title: ar ? "نوع ملف غير مدعوم" : "Unsupported file type",
+        description: ar
+          ? "اختر صورة بصيغة PNG أو JPEG أو WEBP أو GIF."
+          : "Choose a PNG, JPEG, WEBP or GIF image.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast({
+        title: ar ? "الصورة كبيرة جداً" : "Image too large",
+        description: ar
+          ? "الحد الأقصى لحجم الصورة هو ٢ ميغابايت."
+          : "Maximum image size is 2 MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+    uploadAvatar.mutate(file);
+  }
 
   const changePw = useMutation<{ ok: true }, Error, ChangePasswordInput>({
     mutationFn: async (v) => (await apiRequest("POST", "/api/auth/change-password", v)).json(),
@@ -98,14 +176,81 @@ export default function ProfilePage() {
           <CardTitle>{ar ? "المعلومات الشخصية" : "Personal info"}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="mb-6 flex items-center gap-4">
-            <Avatar className="h-14 w-14">
+          <div className="mb-6 flex items-start gap-4">
+            <Avatar className="h-20 w-20">
               {user?.profileImageUrl && <AvatarImage src={user.profileImageUrl} alt={fullName} />}
-              <AvatarFallback>{initials}</AvatarFallback>
+              <AvatarFallback className="text-lg">{initials}</AvatarFallback>
             </Avatar>
-            <div>
-              <p className="text-sm font-medium" data-testid="text-profile-name">{fullName}</p>
-              <p className="text-xs text-muted-foreground" data-testid="text-profile-email">{user?.email}</p>
+            <div className="flex-1 space-y-3">
+              <div>
+                <p className="text-sm font-medium" data-testid="text-profile-name">{fullName}</p>
+                <p className="text-xs text-muted-foreground" data-testid="text-profile-email">{user?.email}</p>
+              </div>
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  handleFile(e.dataTransfer.files?.[0]);
+                }}
+                className={[
+                  "rounded-md border border-dashed px-4 py-3 transition-colors",
+                  isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25",
+                ].join(" ")}
+                data-testid="dropzone-avatar"
+              >
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadAvatar.isPending}
+                    data-testid="button-choose-photo"
+                  >
+                    {uploadAvatar.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="mr-2 h-4 w-4" />
+                    )}
+                    {ar ? "اختر صورة" : "Choose photo"}
+                  </Button>
+                  {user?.profileImageUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeAvatar.mutate()}
+                      disabled={removeAvatar.isPending}
+                      data-testid="button-remove-photo"
+                    >
+                      {removeAvatar.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="mr-2 h-4 w-4" />
+                      )}
+                      {ar ? "إزالة الصورة" : "Remove photo"}
+                    </Button>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {ar
+                      ? "أو اسحب وأسقط صورة هنا. PNG / JPEG / WEBP / GIF حتى ٢ ميغابايت."
+                      : "Or drag & drop. PNG, JPEG, WEBP or GIF up to 2 MB."}
+                  </p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED_AVATAR_TYPES.join(",")}
+                  className="hidden"
+                  data-testid="input-avatar-file"
+                  onChange={(e) => {
+                    handleFile(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
             </div>
           </div>
 
@@ -144,22 +289,6 @@ export default function ProfilePage() {
                   </p>
                 )}
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="profileImageUrl">{ar ? "رابط الصورة الشخصية" : "Profile image URL"}</Label>
-              <Input
-                id="profileImageUrl"
-                type="url"
-                maxLength={500}
-                placeholder="https://…"
-                data-testid="input-profile-image-url"
-                {...profileForm.register("profileImageUrl")}
-              />
-              {profileForm.formState.errors.profileImageUrl && (
-                <p className="text-xs text-destructive" data-testid="error-profile-image-url">
-                  {ar ? "أدخل رابطاً صحيحاً أو اتركه فارغاً." : "Enter a valid URL or leave blank."}
-                </p>
-              )}
             </div>
             <div className="space-y-2">
               <Label>{ar ? "اللغة المفضلة" : "Preferred language"}</Label>

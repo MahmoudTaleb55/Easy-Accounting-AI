@@ -1,7 +1,13 @@
-import type { Express, Request, Response } from "express";
+import type { Express, NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import crypto from "crypto";
+import multer from "multer";
 import { z } from "zod";
+import {
+  ALLOWED_AVATAR_MIME_TYPES,
+  MAX_AVATAR_BYTES,
+  saveAvatarFile,
+} from "../services/avatar-storage";
 import {
   signUpSchema,
   signInSchema,
@@ -420,6 +426,72 @@ export function registerLocalAuthRoutes(app: Express) {
       next(err);
     }
   });
+
+  // ---------- avatar upload ----------
+  // Avatar files are persisted to object storage by `saveAvatarFile` and
+  // served back as a public object via the /objects/avatars/* route in
+  // server/routes.ts. We use multer's memory storage here because the
+  // file is small (<= 2 MB) and the avatar-storage helper hashes the
+  // buffer for dedupe before pushing it to the bucket.
+  const avatarUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_AVATAR_BYTES },
+    fileFilter: (_req, file, cb) => {
+      if (!ALLOWED_AVATAR_MIME_TYPES.includes(file.mimetype.toLowerCase())) {
+        return cb(new Error("Only image uploads are supported (PNG, JPEG, WEBP, GIF)."));
+      }
+      cb(null, true);
+    },
+  });
+
+  app.post(
+    "/api/auth/profile/avatar",
+    requireAuth,
+    avatarUpload.single("file"),
+    async (req, res, next) => {
+      try {
+        const userId = getUserIdOrThrow(req);
+        const file = req.file;
+        if (!file) {
+          return res.status(400).json({ message: "No file uploaded" });
+        }
+        const saved = await saveAvatarFile({
+          userId,
+          buffer: file.buffer,
+          mimeType: file.mimetype,
+        });
+        const u = await authBizStorage.updateUser(userId, { profileImageUrl: saved.publicUrl });
+        res.json(u);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Multer / fileFilter errors → 400 instead of 500, matching the
+  // /api/documents handler's behaviour so the client can surface them.
+  app.use(
+    "/api/auth/profile/avatar",
+    (err: any, _req: Request, res: Response, next: NextFunction) => {
+      if (err && err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            message: "Image is too large. Maximum size is 2 MB.",
+          });
+        }
+        return res.status(400).json({ message: err.message });
+      }
+      if (err && /Only image uploads/.test(err.message)) {
+        return res.status(400).json({ message: err.message });
+      }
+      return next(err);
+    },
+  );
+
+  // Avatar bytes are served by the standard /objects/:objectPath route
+  // (registered via registerObjectStorageRoutes in server/routes.ts). The
+  // upload above stamps the object with a public ACL so anyone with the
+  // URL can render it without needing a session.
 
   app.post("/api/auth/change-password", requireAuth, async (req, res, next) => {
     try {
