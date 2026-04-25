@@ -1,13 +1,14 @@
 import { test as setup } from "@playwright/test";
 import crypto from "node:crypto";
-import bcrypt from "bcryptjs";
-import pg from "pg";
-import fs from "node:fs";
 import path from "node:path";
-// @ts-ignore — express-session ships these without bundled types
-import cookieSignature from "cookie-signature";
-// @ts-ignore
-import uidSafe from "uid-safe";
+import fs from "node:fs";
+import pg from "pg";
+import {
+  ensureUser,
+  forgeSession,
+  requireCookieSecret,
+  requireDbUrl,
+} from "./_helpers/forge-session";
 
 /**
  * One-time auth + seed setup for the role-based-buttons spec.
@@ -20,26 +21,35 @@ import uidSafe from "uid-safe";
  * disabled, and which tooltip the disabled wrapper carries.
  *
  * What this does for each role:
- *   1. Inserts (or refreshes) the user with a known bcrypt password hash.
- *   2. Inserts (or refreshes) the user's membership in the shared workspace
- *      with the canonical role enum (owner | accountant | viewer) — the
- *      legacy admin/reviewer/readonly enum was retired in migration 0003,
- *      so anything outside that enum gets normalised back to "viewer" by
- *      `mapRole` and silently breaks owner/accountant gating. The
- *      `memberships` row is the single source of truth — the legacy
- *      `workspace_members` mirror table was dropped in migration 0006.
- *   3. Forges a passport session row + signs the connect.sid cookie so the
- *      browser context is "logged in" without ever calling /api/auth/signin
- *      (which is rate-limited per IP).
- *   4. Writes the per-role storage state to .playwright/role-{role}.json,
+ *   1. `ensureUser` inserts (or refreshes) the user with a known bcrypt
+ *      password hash.
+ *   2. Inserts (or refreshes) the user's membership in the shared
+ *      workspace with the canonical role enum (owner | accountant |
+ *      viewer) — the legacy admin/reviewer/readonly enum was retired in
+ *      migration 0003, so anything outside that enum gets normalised
+ *      back to "viewer" by `mapRole` and silently breaks
+ *      owner/accountant gating. The `memberships` row is the single
+ *      source of truth — the legacy `workspace_members` mirror table
+ *      was dropped in migration 0006. The shared workspace itself is
+ *      kept inline (rather than going through the helper's
+ *      `ensureCompany`) because this setup needs `is_default=false` and
+ *      an explicit `is_active=true` reset, neither of which the helper
+ *      defaults to.
+ *   3. `forgeSession` writes a passport session row + signs the
+ *      connect.sid cookie so the browser context is "logged in" without
+ *      ever calling /api/auth/signin (which is rate-limited per IP), and
+ *      persists the per-role storage state to .playwright/role-{role}.json
  *      which the spec then loads via `test.use({ storageState })`.
+ *
+ * The auth-cookie + session-row machinery in steps (1) and (3) lives in
+ * `tests/e2e/_helpers/forge-session.ts` and is shared with other e2e
+ * setups so cookie-name / secret-rotation / schema changes only need to
+ * be made in one place.
  *
  * Shared seed data (one employee, one FX rate) is also inserted so the HR
  * payroll preview returns at least one line and the FX panel has a row to
  * delete — both required to assert the *enabled* state for the owner.
  */
-
-const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
 
 interface RoleSpec {
   /** Canonical workspace role enum (owner|accountant|viewer) — see
@@ -73,13 +83,8 @@ const ROLE_SPECS: RoleSpec[] = [
 ];
 
 setup("authenticate + seed role-based fixtures", async ({ page }) => {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) throw new Error("DATABASE_URL must be set for the role-based-buttons setup.");
-  if (!COOKIE_SECRET) {
-    throw new Error(
-      "SESSION_SECRET (or WM_COOKIE_SECRET) must be set for the role-based-buttons setup to sign the connect.sid cookie.",
-    );
-  }
+  const dbUrl = requireDbUrl("the role-based-buttons setup");
+  requireCookieSecret("the role-based-buttons setup");
 
   const userIds = new Map<string, string>();
   let companyId: number;
@@ -89,29 +94,26 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
   try {
     // ---- (a) Ensure each user exists with a known password hash ----
     for (const spec of ROLE_SPECS) {
-      const passwordHash = await bcrypt.hash(spec.password, 10);
-      const existing = (
-        await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [spec.email])
-      ).rows[0];
-      let uid: string;
-      if (existing) {
-        uid = existing.id;
-        await client.query(
-          `UPDATE users SET password_hash=$1, first_name='E2E', last_name=$2 WHERE id=$3`,
-          [passwordHash, `Role-${spec.role}`, uid],
-        );
-      } else {
-        uid = crypto.randomUUID();
-        await client.query(
-          `INSERT INTO users (id, email, password_hash, first_name, last_name, preferred_locale)
-           VALUES ($1, $2, $3, 'E2E', $4, 'en')`,
-          [uid, spec.email, passwordHash, `Role-${spec.role}`],
-        );
-      }
+      const uid = await ensureUser(client, {
+        email: spec.email,
+        password: spec.password,
+        firstName: "E2E",
+        lastName: `Role-${spec.role}`,
+      });
       userIds.set(spec.role, uid);
     }
 
     // ---- (b) Ensure the shared company exists, owned by the owner user ----
+    // We deliberately keep this lookup keyed by company *name* (rather than
+    // delegating to `ensureCompany`) for two reasons:
+    //   • The spec needs the company to be the canonical "E2E Roles Co"
+    //     row even after a prior run renamed it, so a name-anchored lookup
+    //     is the most defensive across re-runs.
+    //   • The setup needs `is_default=false` (the bootstrap workspace is
+    //     already the default) and an explicit `is_active=true` reset, so
+    //     stale rows from a prior session don't accidentally surface as
+    //     inactive. The shared helper's defaults (`is_default=true`, no
+    //     `is_active` reset) don't fit that contract.
     const ownerUserId = userIds.get("owner")!;
     let companyRow = (
       await client.query(`SELECT id FROM companies WHERE name = $1 LIMIT 1`, [COMPANY_NAME])
@@ -133,7 +135,10 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
       companyId = Number(companyRow.id);
     }
 
-    // ---- (c) Memberships per role (admin / accountant / readonly) ----
+    // ---- (c) Memberships per role (owner / accountant / viewer) ----
+    // We seed all three rows directly so they share the company exactly
+    // and only differ on `role`. Idempotent so re-running the setup
+    // normalises any stale role drift back to the canonical enum.
     for (const spec of ROLE_SPECS) {
       const uid = userIds.get(spec.role)!;
       const existingMembership = (
@@ -472,65 +477,23 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
   }
 
   // ---- (e) For each role: forge a session, plant cookies, save state ----
-  const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
-  const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
-  const sessionsClient = new pg.Client({ connectionString: dbUrl });
-  await sessionsClient.connect();
-  try {
-    for (const spec of ROLE_SPECS) {
-      const uid = userIds.get(spec.role)!;
-      const sessionId = await uidSafe(24);
-      const sessionExpire = new Date(Date.now() + sessionTtlMs);
-      const sessionPayload = {
-        cookie: {
-          originalMaxAge: sessionTtlMs,
-          expires: sessionExpire.toISOString(),
-          httpOnly: true,
-          path: "/",
-          secure: true,
-        },
-        passport: {
-          user: {
-            _local: true,
-            claims: {
-              sub: uid,
-              email: spec.email,
-              first_name: "E2E",
-              last_name: `Role-${spec.role}`,
-              profile_image_url: null,
-            },
-          },
-        },
-      };
-      await sessionsClient.query(
-        `INSERT INTO sessions (sid, sess, expire) VALUES ($1, $2::json, $3)
-         ON CONFLICT (sid) DO UPDATE SET sess = EXCLUDED.sess, expire = EXCLUDED.expire`,
-        [sessionId, JSON.stringify(sessionPayload), sessionExpire],
-      );
-      const signedSid = "s:" + cookieSignature.sign(sessionId, COOKIE_SECRET!);
-
-      // Reset the test page's cookie jar between roles so each saved state
-      // contains exactly one user's cookies and nothing leaks across roles.
-      await page.context().clearCookies();
-      await page.context().addCookies([
-        { name: "connect.sid", value: signedSid, url: baseURL, sameSite: "Lax" },
-      ]);
-
-      // Confirm the session is real before saving — catches typos in the
-      // session payload shape, a wrong SESSION_SECRET, etc.
-      const me = await page.request.get("/api/auth/user");
-      if (me.status() !== 200) {
-        throw new Error(
-          `/api/auth/user expected 200 for ${spec.role} but got ${me.status()}: ${await me.text()}`,
-        );
-      }
-
-      const storagePath = path.resolve(spec.storagePath);
-      fs.mkdirSync(path.dirname(storagePath), { recursive: true });
-      await page.context().storageState({ path: storagePath });
-    }
-  } finally {
-    await sessionsClient.end();
+  // The shared `forgeSession` helper does the passport-row insert, cookie
+  // signing, /api/auth/user sanity probe, and storage-state persistence.
+  // We just have to clear the page's cookie jar between roles so each
+  // saved state contains exactly one user's cookies and nothing leaks
+  // across roles.
+  for (const spec of ROLE_SPECS) {
+    const uid = userIds.get(spec.role)!;
+    await page.context().clearCookies();
+    await forgeSession({
+      page,
+      dbUrl,
+      userId: uid,
+      email: spec.email,
+      firstName: "E2E",
+      lastName: `Role-${spec.role}`,
+      storagePath: path.resolve(spec.storagePath),
+    });
   }
 
   // ---- (f) Persist the shared company id so role-based-api can pin it ----

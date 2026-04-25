@@ -1,11 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
-import crypto from "node:crypto";
-import bcrypt from "bcryptjs";
 import pg from "pg";
-// @ts-ignore — express-session ships these without bundled types
-import cookieSignature from "cookie-signature";
-// @ts-ignore
-import uidSafe from "uid-safe";
+import {
+  ensureUser,
+  forgeSession,
+  requireCookieSecret,
+  requireDbUrl,
+} from "./_helpers/forge-session";
 
 /**
  * End-to-end coverage for the topbar profile menu.
@@ -29,10 +29,11 @@ import uidSafe from "uid-safe";
  * RTL mirroring. Each test mints a fresh passport session because sign-out
  * destroys the session row, so a shared `storageState` would only be valid
  * for the first test in a worker.
+ *
+ * The user-creation + session-forging machinery is shared with the other
+ * e2e setups via `tests/e2e/_helpers/forge-session.ts` so cookie-name /
+ * secret-rotation / schema changes only need to be made in one place.
  */
-
-const COOKIE_NAME_OWNER = "wm_id";
-const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
 
 const TEST_EMAIL = "e2e-topbar@example.test";
 const TEST_PASSWORD = "playwright-topbar-pw-2025";
@@ -40,139 +41,57 @@ const TEST_FIRST = "Playwright";
 const TEST_LAST = "Topbar";
 const FULL_NAME = `${TEST_FIRST} ${TEST_LAST}`;
 
-function signMemberId(id: number): string {
-  if (!COOKIE_SECRET) {
-    throw new Error(
-      "SESSION_SECRET (or WM_COOKIE_SECRET) must be set so the topbar test " +
-        "can mint the legacy workspace-owner cookie.",
-    );
-  }
-  const sig = crypto
-    .createHmac("sha256", COOKIE_SECRET)
-    .update(String(id))
-    .digest("hex")
-    .slice(0, 32);
-  return `${id}.${sig}`;
-}
-
 /**
  * Mint a fresh signed-in session for the seeded test user and plant the
  * cookies in the given page's context. Returns the user id so the caller
  * can assert downstream calls (e.g. /api/auth/user) against the right
- * account. Mirrors the cookie-forging trick used by `dashboard-shell.setup.ts`
- * because the dev server's `connect.sid` is `Secure` and a browser would
- * otherwise refuse to retain it over HTTP.
+ * account.
+ *
+ * The legacy `workspace_members` mirror table — and the `wm_id` cookie
+ * that signed against it — were retired in migration 0006, so we no
+ * longer mint that companion cookie. The modern auth layer reads
+ * identity straight off the passport session row that `forgeSession`
+ * writes below.
  */
 async function injectFreshSession(page: Page): Promise<{ userId: string }> {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) throw new Error("DATABASE_URL must be set for the topbar profile test.");
-  if (!COOKIE_SECRET) throw new Error("SESSION_SECRET must be set for the topbar profile test.");
+  const dbUrl = requireDbUrl("the topbar profile test");
+  requireCookieSecret("the topbar profile test");
 
   const client = new pg.Client({ connectionString: dbUrl });
   await client.connect();
-  let ownerCookie: string;
   let userId: string;
   try {
-    // Workspace-owner cookie demanded by the legacy RBAC layer.
-    let ownerRow = (
-      await client.query(
-        `SELECT id FROM workspace_members WHERE role='owner' AND status='active' ORDER BY id ASC LIMIT 1`,
-      )
-    ).rows[0];
-    if (!ownerRow) {
-      ownerRow = (
-        await client.query(
-          `INSERT INTO workspace_members (name, email, role, status)
-           VALUES ('Playwright Owner', 'playwright-owner@workspace.local', 'owner', 'active')
-           RETURNING id`,
-        )
-      ).rows[0];
-    }
-    ownerCookie = signMemberId(Number(ownerRow.id));
-
-    // Idempotently ensure the topbar test user exists with a known name + password.
-    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
-    const existing = (
-      await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [TEST_EMAIL])
-    ).rows[0];
-    if (existing) {
-      userId = existing.id;
-      await client.query(
-        `UPDATE users SET password_hash=$1, first_name=$2, last_name=$3 WHERE id=$4`,
-        [passwordHash, TEST_FIRST, TEST_LAST, userId],
-      );
-    } else {
-      userId = crypto.randomUUID();
-      await client.query(
-        `INSERT INTO users (id, email, password_hash, first_name, last_name, preferred_locale)
-         VALUES ($1, $2, $3, $4, $5, 'en')`,
-        [userId, TEST_EMAIL, passwordHash, TEST_FIRST, TEST_LAST],
-      );
-    }
-
-    // The topbar reads `useCompany`, which falls back gracefully to no companies,
-    // so we deliberately skip seeding a workspace here — the profile dropdown
-    // renders independently of memberships and we want this test to stay
-    // narrowly focused on the topbar contract.
+    userId = await ensureUser(client, {
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+      firstName: TEST_FIRST,
+      lastName: TEST_LAST,
+    });
+    // The topbar reads `useCompany`, which falls back gracefully to no
+    // companies, so we deliberately skip seeding a workspace here — the
+    // profile dropdown renders independently of memberships and we want
+    // this test to stay narrowly focused on the topbar contract.
   } finally {
     await client.end();
   }
 
-  // Forge a passport session row + signed connect.sid cookie.
-  const sessionId = await uidSafe(24);
-  const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
-  const sessionExpire = new Date(Date.now() + sessionTtlMs);
-  const sessionPayload = {
-    cookie: {
-      originalMaxAge: sessionTtlMs,
-      expires: sessionExpire.toISOString(),
-      httpOnly: true,
-      path: "/",
-      secure: true,
-    },
-    passport: {
-      user: {
-        _local: true,
-        claims: {
-          sub: userId,
-          email: TEST_EMAIL,
-          first_name: TEST_FIRST,
-          last_name: TEST_LAST,
-          profile_image_url: null,
-        },
-      },
-    },
-  };
-  const reopen = new pg.Client({ connectionString: dbUrl });
-  await reopen.connect();
-  try {
-    await reopen.query(
-      `INSERT INTO sessions (sid, sess, expire) VALUES ($1, $2::json, $3)
-       ON CONFLICT (sid) DO UPDATE SET sess = EXCLUDED.sess, expire = EXCLUDED.expire`,
-      [sessionId, JSON.stringify(sessionPayload), sessionExpire],
-    );
-  } finally {
-    await reopen.end();
-  }
-  const signedSid = "s:" + cookieSignature.sign(sessionId, COOKIE_SECRET);
-
-  const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
   // Wipe any stale session cookie left over from a prior test that signed
   // out — otherwise the browser would still send the killed sid alongside
   // the freshly-minted one and confuse the server.
   await page.context().clearCookies();
-  await page.context().addCookies([
-    { name: COOKIE_NAME_OWNER, value: ownerCookie, url: baseURL, sameSite: "Lax" },
-    { name: "connect.sid", value: signedSid, url: baseURL, sameSite: "Lax" },
-  ]);
 
-  // Sanity check — fail fast if the forged session was rejected.
-  const me = await page.request.get("/api/auth/user");
-  if (me.status() !== 200) {
-    throw new Error(
-      `Expected /api/auth/user to be 200 after session injection but got ${me.status()}: ${await me.text()}`,
-    );
-  }
+  // Forge a passport session row + signed connect.sid cookie. No
+  // `storagePath` is provided because each test in this spec mints its
+  // own session (sign-out destroys the row), so persisting state across
+  // tests would defeat the test's premise.
+  await forgeSession({
+    page,
+    dbUrl,
+    userId,
+    email: TEST_EMAIL,
+    firstName: TEST_FIRST,
+    lastName: TEST_LAST,
+  });
 
   return { userId };
 }

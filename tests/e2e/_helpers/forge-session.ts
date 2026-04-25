@@ -162,8 +162,13 @@ export interface ForgeSessionOptions {
   email: string;
   firstName: string;
   lastName: string;
-  /** Where to write the resulting `storageState` JSON. */
-  storagePath: string;
+  /**
+   * Where to write the resulting `storageState` JSON. Optional — when
+   * omitted (e.g. for an inline forge inside a `*.spec.ts` that doesn't
+   * share state across tests) the cookies are still planted into the
+   * page's browser context but no file is written.
+   */
+  storagePath?: string;
   /**
    * Optional override for the local server origin used when planting the
    * cookie. Defaults to `http://127.0.0.1:${PORT||5000}`.
@@ -257,6 +262,8 @@ export async function forgeSession(opts: ForgeSessionOptions): Promise<void> {
     );
   }
 
-  fs.mkdirSync(path.dirname(opts.storagePath), { recursive: true });
-  await opts.page.context().storageState({ path: opts.storagePath });
+  if (opts.storagePath) {
+    fs.mkdirSync(path.dirname(opts.storagePath), { recursive: true });
+    await opts.page.context().storageState({ path: opts.storagePath });
+  }
 }
