@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { useLocation, useSearch } from "wouter"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { apiRequest, queryClient } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
@@ -68,6 +69,19 @@ export default function ChartOfAccountsPage() {
   const canWrite = useCanWrite()
   const [search, setSearch] = useState("")
   const [open, setOpen] = useState(false)
+  const [, setLocation] = useLocation()
+  const queryString = useSearch()
+
+  // Quick-create deep-link from the topbar Plus-menu / command palette:
+  // `?new=1` should auto-open the add-account dialog. Strip the param
+  // after opening so reload / back doesn't re-open it.
+  useEffect(() => {
+    const params = new URLSearchParams(queryString)
+    if (params.get("new") === "1" && canWrite) {
+      setOpen(true)
+      setLocation("/app/accounts", { replace: true })
+    }
+  }, [queryString, canWrite, setLocation])
   const [form, setForm] = useState({
     code: "",
     nameAr: "",

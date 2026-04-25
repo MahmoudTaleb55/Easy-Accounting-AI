@@ -12,23 +12,25 @@ import path from "node:path";
  *
  *   • the dropdown trigger itself (e.g. a Radix prop rename),
  *   • client-side routing for `?new=1` deep links,
- *   • the page-level "Add" button that opens the dialog,
+ *   • the page-level effect that auto-opens the dialog when `?new=1`
+ *     is present (the whole point of the Plus-menu shortcut),
  *   • the dialog's form validation / mutation,
  *
  * would surface immediately to every signed-in user. This spec drives
  * each quick-action end-to-end against an isolated workspace seeded by
  * `quick-actions.setup.ts`:
  *
- *   1. quick-new-tx  → /app/transactions → Add transaction dialog
- *   2. quick-new-acc → /app/accounts     → Add account dialog
- *   3. quick-new-je  → /app/journal      → Add journal entry dialog
+ *   1. quick-new-tx  → /app/transactions → Add transaction dialog auto-opens
+ *   2. quick-new-acc → /app/accounts     → Add account dialog auto-opens
+ *   3. quick-new-je  → /app/journal      → Add journal entry dialog auto-opens
  *
  * For each one we open the dropdown, click the item, wait for the
- * destination page, click that page's primary "Add" button to mount the
- * dialog, fill in the minimum valid set of fields and submit. Success
- * is asserted by (a) the dialog disappearing and (b) the new record
- * appearing in the page's list — i.e. the round-trip mutation actually
- * landed in the API.
+ * destination page, then assert the dialog appears WITHOUT clicking the
+ * page's primary "Add" button — that auto-open is the entire value of
+ * the Plus-menu shortcut. We then fill in the minimum valid set of
+ * fields and submit; success is asserted by (a) the dialog disappearing
+ * and (b) the new record appearing in the page's list — i.e. the
+ * round-trip mutation actually landed in the API.
  *
  * Note on scope: the topbar exposes three quick-create items today —
  * "New transaction", "New journal entry", "New account". The originating
@@ -93,11 +95,17 @@ test.describe("topbar quick-create actions", () => {
       "page-transactions",
     );
 
-    // Open the page's add-transaction dialog. Type defaults to "expense"
-    // so we don't need to touch the Select.
-    await page.getByTestId("button-add-transaction").click();
+    // The Plus-menu deep-links to `?new=1`, which the page reads on
+    // mount and uses to auto-open the create dialog — no extra click on
+    // the page's "Add" button required. Type defaults to "expense" so
+    // we don't need to touch the Select.
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible();
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    // The auto-open effect strips `?new=1` from the URL via a
+    // replace-navigation so a refresh / back-nav doesn't re-open it.
+    await expect
+      .poll(() => new URL(page.url()).search)
+      .toBe("");
 
     const description = `QA tx ${Date.now()}`;
     await page.getByTestId("input-transaction-amount").fill("123.45");
@@ -124,9 +132,12 @@ test.describe("topbar quick-create actions", () => {
       "page-chart-of-accounts",
     );
 
-    await page.getByTestId("button-add-account").click();
+    // Auto-opened by the page's `?new=1` effect — no extra click needed.
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible();
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(() => new URL(page.url()).search)
+      .toBe("");
 
     // `accounts.code` is GLOBALLY unique (migration 0005), so namespace
     // the test code with a timestamp to keep reruns idempotent.
@@ -153,9 +164,12 @@ test.describe("topbar quick-create actions", () => {
       "page-journal-entries",
     );
 
-    await page.getByTestId("button-new-entry").click();
+    // Auto-opened by the page's `?new=1` effect — no extra click needed.
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible();
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(() => new URL(page.url()).search)
+      .toBe("");
 
     const description = `QA je ${Date.now()}`;
     await page.getByTestId("input-entry-description").fill(description);

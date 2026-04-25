@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
+import { useLocation, useSearch } from "wouter"
 import { format } from "date-fns"
 import { ar, enUS } from "date-fns/locale"
 import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions"
@@ -60,6 +61,20 @@ export default function Transactions() {
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
   const [historyTx, setHistoryTx] = useState<Transaction | null>(null)
+  const [, setLocation] = useLocation()
+  const queryString = useSearch()
+
+  // Quick-create deep-link: visiting `/app/transactions?new=1` from the
+  // topbar Plus-menu (or the command palette) should drop the user
+  // straight into the create dialog. We strip the param after consuming
+  // it so a refresh or back-navigation doesn't re-open the dialog.
+  useEffect(() => {
+    const params = new URLSearchParams(queryString)
+    if (params.get("new") === "1" && canWrite) {
+      setIsDialogOpen(true)
+      setLocation("/app/transactions", { replace: true })
+    }
+  }, [queryString, canWrite, setLocation])
 
   const t = useMemo(
     () => ({

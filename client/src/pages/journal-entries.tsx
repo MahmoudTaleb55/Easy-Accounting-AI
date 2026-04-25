@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link, useLocation } from "wouter"
+import { Link, useLocation, useSearch } from "wouter"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { apiRequest, queryClient } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
@@ -19,7 +19,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { WriteGuard } from "@/components/auth/write-guard"
+import { WriteGuard, useCanWrite } from "@/components/auth/write-guard"
 import {
   Select,
   SelectContent,
@@ -65,8 +65,22 @@ export default function JournalEntriesPage() {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [detailEntry, setDetailEntry] = useState<JE | null>(null)
-  const [location] = useLocation()
+  const [location, setLocation] = useLocation()
   const [highlightId, setHighlightId] = useState<number | null>(null)
+  const canWrite = useCanWrite()
+  const queryString = useSearch()
+
+  // Quick-create deep-link from the topbar Plus-menu / command palette:
+  // `?new=1` should auto-open the post-entry dialog. Strip the param
+  // after opening so reload / back doesn't re-open it. Viewer-role
+  // users can't post entries, so the auto-open is gated behind write.
+  useEffect(() => {
+    const params = new URLSearchParams(queryString)
+    if (params.get("new") === "1" && canWrite) {
+      setOpen(true)
+      setLocation("/app/journal", { replace: true })
+    }
+  }, [queryString, canWrite, setLocation])
 
   const t = useMemo(
     () => ({
