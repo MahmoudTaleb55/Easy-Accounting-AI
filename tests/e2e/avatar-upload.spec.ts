@@ -118,6 +118,13 @@ test.describe("profile avatar upload", () => {
       buffer: TINY_PNG_BUFFER,
     });
 
+    // Picking a file no longer uploads directly — it opens a crop modal.
+    // Confirm the cropper is up, then commit the (un-zoomed) crop.
+    await expect(page.locator('[data-testid="dialog-avatar-cropper"]')).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.locator('[data-testid="button-cropper-confirm"]').click();
+
     // Wait for the avatar mutation to land — easiest proxy is the user
     // probe returning a non-null profileImageUrl.
     await expect
@@ -136,11 +143,16 @@ test.describe("profile avatar upload", () => {
     const avatarUrl: string = after.profileImageUrl;
     expect(avatarUrl.startsWith(`/objects/avatars/${encodeURIComponent(userId)}/`)).toBe(true);
 
-    // Serving route returns the bytes with the right content type.
+    // Serving route returns the bytes with the right content type. The
+    // body length will NOT match the original 1×1 PNG: the client now
+    // re-encodes the cropped 512×512 region as a fresh PNG before upload.
     const fetched = await page.request.get(avatarUrl);
     expect(fetched.status()).toBe(200);
     expect(fetched.headers()["content-type"]).toBe("image/png");
-    expect((await fetched.body()).length).toBe(TINY_PNG_BUFFER.length);
+    const fetchedBody = await fetched.body();
+    expect(fetchedBody.length).toBeGreaterThan(0);
+    // PNG signature — proves the served bytes are still a valid PNG.
+    expect(fetchedBody.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
 
     // Avatars are stored with a public ACL — anonymous (no-cookie) clients
     // can render them. This is the contract the topbar <img> relies on.

@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AvatarCropper } from "@/components/profile/avatar-cropper";
 import { Loader2, LogOut, Upload, Trash2 } from "lucide-react";
 
 const ACCEPTED_AVATAR_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
@@ -119,6 +120,7 @@ export default function ProfilePage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   function handleFile(file: File | null | undefined) {
     if (!file) return;
@@ -142,7 +144,7 @@ export default function ProfilePage() {
       });
       return;
     }
-    uploadAvatar.mutate(file);
+    setPendingFile(file);
   }
 
   const changePw = useMutation<{ ok: true }, Error, ChangePasswordInput>({
@@ -253,6 +255,16 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+
+          <AvatarCropper
+            file={pendingFile}
+            ar={ar}
+            onCancel={() => setPendingFile(null)}
+            onCropped={(file) => {
+              setPendingFile(null);
+              uploadAvatar.mutate(file);
+            }}
+          />
 
           <form
             onSubmit={profileForm.handleSubmit((v) => saveProfile.mutate(v))}

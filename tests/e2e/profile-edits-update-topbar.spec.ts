@@ -205,6 +205,12 @@ test.describe("profile edits flow into the topbar", () => {
       mimeType: "image/png",
       buffer: TINY_PNG_BUFFER,
     });
+    // Picking a file now opens a crop modal; commit the crop to fire the
+    // POST /api/auth/profile/avatar that the topbar listens for.
+    await expect(page.locator('[data-testid="dialog-avatar-cropper"]')).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.locator('[data-testid="button-cropper-confirm"]').click();
     const avatarResp = await avatarPost;
     expect(avatarResp.status()).toBe(200);
     const avatarBody = await avatarResp.json();
