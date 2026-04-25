@@ -3,8 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Clock, User, Bot, Cog, History, Filter, RotateCcw } from "lucide-react";
+import { Clock, User, Bot, Cog, History, Filter, RotateCcw, CalendarRange } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useLocale } from "@/contexts/locale-context";
 import { format } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
@@ -172,6 +179,11 @@ function formatPrimitive(v: unknown): string {
   }
 }
 
+export interface HistoryEntityPeriod {
+  start?: string | Date | null;
+  end?: string | Date | null;
+}
+
 interface HistoryTimelineProps {
   entityType?: HistoryEntityType;
   entityId?: number;
@@ -192,6 +204,32 @@ interface HistoryTimelineProps {
    * instead of the generic "No history yet for this item.".
    */
   emptyLabel?: string;
+  /**
+   * If provided, enables a "this entity's period" preset in the period filter
+   * dropdown. Both start and end are inclusive. Either bound may be omitted
+   * for open-ended ranges.
+   */
+  entityPeriod?: HistoryEntityPeriod;
+}
+
+type PeriodPreset = "all" | "entity" | "7d" | "30d" | "90d";
+
+function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function endOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function toDate(v: string | Date | null | undefined): Date | null {
+  if (v === null || v === undefined || v === "") return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 export function HistoryTimeline({
@@ -201,6 +239,7 @@ export function HistoryTimeline({
   className,
   includeReversal = false,
   emptyLabel,
+  entityPeriod,
 }: HistoryTimelineProps) {
   const { locale } = useLocale();
   const dfLocale = locale === "ar" ? ar : enUS;
@@ -220,9 +259,15 @@ export function HistoryTimeline({
     actorUnavailable: locale === "ar" ? "المنفّذ غير متوفر" : "Actor unavailable",
     filterSource: locale === "ar" ? "المصدر" : "Source",
     filterAction: locale === "ar" ? "الإجراء" : "Action",
+    filterPeriod: locale === "ar" ? "الفترة" : "Period",
     filterReset: locale === "ar" ? "مسح" : "Reset",
     noMatch:
       locale === "ar" ? "لا توجد أحداث مطابقة للفلاتر." : "No events match your filters.",
+    periodAll: locale === "ar" ? "كل الأوقات" : "All time",
+    periodEntity: locale === "ar" ? "ضمن فترة العنصر" : "Within this period",
+    period7d: locale === "ar" ? "آخر 7 أيام" : "Last 7 days",
+    period30d: locale === "ar" ? "آخر 30 يوماً" : "Last 30 days",
+    period90d: locale === "ar" ? "آخر 90 يوماً" : "Last 90 days",
   };
   const actionLabels: Record<HistoryAction, string> = {
     create: labels.create,
@@ -304,6 +349,28 @@ export function HistoryTimeline({
   const [actionFilter, setActionFilter] = React.useState<Set<HistoryAction>>(
     () => new Set(ACTION_KEYS),
   );
+  const hasEntityPeriod = !!entityPeriod && (
+    entityPeriod.start !== undefined && entityPeriod.start !== null && entityPeriod.start !== "" ||
+    entityPeriod.end !== undefined && entityPeriod.end !== null && entityPeriod.end !== ""
+  );
+  const [periodFilter, setPeriodFilter] = React.useState<PeriodPreset>("all");
+
+  const periodWindow = React.useMemo<{ from: Date | null; to: Date | null }>(() => {
+    if (periodFilter === "all") return { from: null, to: null };
+    if (periodFilter === "entity") {
+      const start = toDate(entityPeriod?.start);
+      const end = toDate(entityPeriod?.end);
+      return {
+        from: start ? startOfDay(start) : null,
+        to: end ? endOfDay(end) : null,
+      };
+    }
+    const days = periodFilter === "7d" ? 7 : periodFilter === "30d" ? 30 : 90;
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - days);
+    return { from: startOfDay(from), to: endOfDay(now) };
+  }, [periodFilter, entityPeriod?.start, entityPeriod?.end]);
 
   const sourceCounts = React.useMemo(() => {
     const m: Record<HistorySource, number> = { user: 0, ai: 0, system: 0, integration: 0 };
@@ -321,9 +388,15 @@ export function HistoryTimeline({
     return events.filter((ev) => {
       if (!sourceFilter.has(ev.source)) return false;
       if (ev.actionKey && !actionFilter.has(ev.actionKey)) return false;
+      if (periodWindow.from || periodWindow.to) {
+        const at = new Date(ev.at);
+        if (Number.isNaN(at.getTime())) return false;
+        if (periodWindow.from && at < periodWindow.from) return false;
+        if (periodWindow.to && at > periodWindow.to) return false;
+      }
       return true;
     });
-  }, [events, sourceFilter, actionFilter]);
+  }, [events, sourceFilter, actionFilter, periodWindow]);
 
   const toggle = <T,>(set: Set<T>, key: T, setter: (s: Set<T>) => void) => {
     const next = new Set(set);
@@ -333,11 +406,14 @@ export function HistoryTimeline({
   };
 
   const filtersDirty =
-    sourceFilter.size !== SOURCE_KEYS.length || actionFilter.size !== ACTION_KEYS.length;
+    sourceFilter.size !== SOURCE_KEYS.length ||
+    actionFilter.size !== ACTION_KEYS.length ||
+    periodFilter !== "all";
 
   const resetFilters = React.useCallback(() => {
     setSourceFilter(new Set(SOURCE_KEYS));
     setActionFilter(new Set(ACTION_KEYS));
+    setPeriodFilter("all");
   }, []);
 
   React.useEffect(() => {
@@ -351,10 +427,10 @@ export function HistoryTimeline({
           className="px-5 py-3 border-b border-border space-y-2 bg-muted/20"
           data-testid="history-filters"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-              <Filter className="w-3 h-3" />
-              {labels.filterSource}
+              <CalendarRange className="w-3 h-3" />
+              {labels.filterPeriod}
             </div>
             {filtersDirty && (
               <Button
@@ -368,6 +444,40 @@ export function HistoryTimeline({
                 {labels.filterReset}
               </Button>
             )}
+          </div>
+          <Select
+            value={periodFilter}
+            onValueChange={(v) => setPeriodFilter(v as PeriodPreset)}
+          >
+            <SelectTrigger
+              className="h-7 text-xs w-full"
+              data-testid="select-history-filter-period"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" data-testid="option-history-period-all">
+                {labels.periodAll}
+              </SelectItem>
+              {hasEntityPeriod && (
+                <SelectItem value="entity" data-testid="option-history-period-entity">
+                  {labels.periodEntity}
+                </SelectItem>
+              )}
+              <SelectItem value="7d" data-testid="option-history-period-7d">
+                {labels.period7d}
+              </SelectItem>
+              <SelectItem value="30d" data-testid="option-history-period-30d">
+                {labels.period30d}
+              </SelectItem>
+              <SelectItem value="90d" data-testid="option-history-period-90d">
+                {labels.period90d}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide pt-1">
+            <Filter className="w-3 h-3" />
+            {labels.filterSource}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {SOURCE_KEYS.map((key) => {

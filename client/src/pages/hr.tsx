@@ -483,6 +483,7 @@ function AttendanceDetailDialog({
               <HistoryTimeline
                 entityType="attendance"
                 entityId={attendance.id}
+                entityPeriod={{ start: attendance.date, end: attendance.date }}
                 className="flex-1 min-h-0"
               />
             </div>
@@ -697,6 +698,7 @@ function LeaveDetailDialog({
               <HistoryTimeline
                 entityType="leave"
                 entityId={leave.id}
+                entityPeriod={{ start: leave.startDate, end: leave.endDate }}
                 className="flex-1 min-h-0"
               />
             </div>
@@ -1185,6 +1187,10 @@ function PayrollRunDetailDialog({
               <HistoryTimeline
                 entityType="payroll_run"
                 entityId={run.id}
+                entityPeriod={{
+                  start: new Date(run.year, run.month - 1, 1),
+                  end: new Date(run.year, run.month, 0),
+                }}
                 className="flex-1 min-h-0"
               />
             </div>
