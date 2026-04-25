@@ -1,11 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
-import crypto from "node:crypto";
-import bcrypt from "bcryptjs";
 import pg from "pg";
-// @ts-ignore — express-session ships these without bundled types
-import cookieSignature from "cookie-signature";
-// @ts-ignore
-import uidSafe from "uid-safe";
+import {
+  ensureCompany,
+  ensureUser,
+  forgeSession,
+  requireCookieSecret,
+  requireDbUrl,
+} from "./_helpers/forge-session";
 
 /**
  * End-to-end coverage for the topbar language switcher.
@@ -41,9 +42,11 @@ import uidSafe from "uid-safe";
  *           the org setting, and `LocaleProvider` seeds itself from
  *           `localStorage` so the German UI is visible from the very
  *           first paint after reload.
+ *
+ * The user-creation + session-forging machinery is shared with the other
+ * e2e setups via `tests/e2e/_helpers/forge-session.ts` so cookie-name /
+ * secret-rotation / schema changes only need to be made in one place.
  */
-
-const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
 
 const TEST_EMAIL = "e2e-topbar-lang@example.test";
 const TEST_PASSWORD = "playwright-topbar-lang-pw-2025";
@@ -51,122 +54,54 @@ const TEST_FIRST = "Playwright";
 const TEST_LAST = "Lang";
 
 async function injectFreshSession(page: Page): Promise<{ userId: string }> {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) throw new Error("DATABASE_URL must be set for the language test.");
-  if (!COOKIE_SECRET) throw new Error("SESSION_SECRET must be set for the language test.");
+  const dbUrl = requireDbUrl("the language test");
+  requireCookieSecret("the language test");
 
   const client = new pg.Client({ connectionString: dbUrl });
   await client.connect();
   let userId: string;
   try {
-    // Idempotently ensure the language test user exists, and crucially
-    // *reset* their preferred_locale to 'en' on every run so the test
-    // is independent of prior runs that may have flipped it to German.
-    // The legacy `workspace_members` mirror table was retired in
-    // 2026-04 (migration 0006) so we do *not* mint a `wm_id` cookie —
-    // the modern auth layer reads identity straight off the passport
-    // session row we forge below.
-    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
-    const existing = (
-      await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [TEST_EMAIL])
-    ).rows[0];
-    if (existing) {
-      userId = existing.id;
-      await client.query(
-        `UPDATE users SET password_hash=$1, first_name=$2, last_name=$3, preferred_locale='en' WHERE id=$4`,
-        [passwordHash, TEST_FIRST, TEST_LAST, userId],
-      );
-    } else {
-      userId = crypto.randomUUID();
-      await client.query(
-        `INSERT INTO users (id, email, password_hash, first_name, last_name, preferred_locale)
-         VALUES ($1, $2, $3, $4, $5, 'en')`,
-        [userId, TEST_EMAIL, passwordHash, TEST_FIRST, TEST_LAST],
-      );
-    }
+    // Idempotently ensure the language test user exists. The legacy
+    // `workspace_members` mirror table was retired in 2026-04
+    // (migration 0006) so we do *not* mint a `wm_id` cookie — the
+    // modern auth layer reads identity straight off the passport
+    // session row that `forgeSession` writes below.
+    userId = await ensureUser(client, {
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+      firstName: TEST_FIRST,
+      lastName: TEST_LAST,
+    });
+    // Reset `preferred_locale` to 'en' on every run so the test is
+    // independent of prior runs that may have flipped it to German.
+    // The shared `ensureUser` helper doesn't touch this column for an
+    // already-existing user, so we have to pin it here.
+    await client.query(
+      `UPDATE users SET preferred_locale = 'en' WHERE id = $1`,
+      [userId],
+    );
 
     // The topbar's `changeLanguage` only PATCHes the profile when the
     // signed-in user has an active workspace role — `useAuth` derives
     // `role` from the active membership. Ensure the test user owns at
     // least one workspace so the mutation actually fires.
-    const existingMembership = (
-      await client.query(
-        `SELECT c.id FROM memberships m
-         JOIN companies c ON c.id = m.company_id
-         WHERE m.user_id = $1 AND m.role = 'owner'
-         ORDER BY m.created_at ASC LIMIT 1`,
-        [userId],
-      )
-    ).rows[0];
-    if (!existingMembership) {
-      const company = (
-        await client.query(
-          `INSERT INTO companies (name, owner_user_id, functional_currency, currency_symbol, is_default)
-           VALUES ($1, $2, 'USD', '$', true)
-           RETURNING id`,
-          ["Playwright Lang Co", userId],
-        )
-      ).rows[0];
-      await client.query(
-        `INSERT INTO memberships (id, user_id, company_id, role)
-         VALUES ($1, $2, $3, 'owner')
-         ON CONFLICT DO NOTHING`,
-        [crypto.randomUUID(), userId, company.id],
-      );
-    }
+    await ensureCompany(client, {
+      userId,
+      companyName: "Playwright Lang Co",
+    });
   } finally {
     await client.end();
   }
 
-  const sessionId = await uidSafe(24);
-  const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
-  const sessionExpire = new Date(Date.now() + sessionTtlMs);
-  const sessionPayload = {
-    cookie: {
-      originalMaxAge: sessionTtlMs,
-      expires: sessionExpire.toISOString(),
-      httpOnly: true,
-      path: "/",
-      secure: true,
-    },
-    passport: {
-      user: {
-        _local: true,
-        claims: {
-          sub: userId,
-          email: TEST_EMAIL,
-          first_name: TEST_FIRST,
-          last_name: TEST_LAST,
-          profile_image_url: null,
-        },
-      },
-    },
-  };
-  const reopen = new pg.Client({ connectionString: dbUrl });
-  await reopen.connect();
-  try {
-    await reopen.query(
-      `INSERT INTO sessions (sid, sess, expire) VALUES ($1, $2::json, $3)
-       ON CONFLICT (sid) DO UPDATE SET sess = EXCLUDED.sess, expire = EXCLUDED.expire`,
-      [sessionId, JSON.stringify(sessionPayload), sessionExpire],
-    );
-  } finally {
-    await reopen.end();
-  }
-  const signedSid = "s:" + cookieSignature.sign(sessionId, COOKIE_SECRET);
-
-  const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
   await page.context().clearCookies();
-  await page.context().addCookies([
-    { name: "connect.sid", value: signedSid, url: baseURL, sameSite: "Lax" },
-  ]);
-
-  const me = await page.request.get("/api/auth/user");
-  if (me.status() !== 200) {
-    throw new Error(
-      `Expected /api/auth/user to be 200 after session injection but got ${me.status()}: ${await me.text()}`,
-    );
-  }
+  await forgeSession({
+    page,
+    dbUrl,
+    userId,
+    email: TEST_EMAIL,
+    firstName: TEST_FIRST,
+    lastName: TEST_LAST,
+  });
 
   return { userId };
 }

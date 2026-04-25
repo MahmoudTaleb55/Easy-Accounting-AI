@@ -1,13 +1,14 @@
 import { test as setup } from "@playwright/test";
-import crypto from "node:crypto";
-import bcrypt from "bcryptjs";
 import pg from "pg";
 import fs from "node:fs";
 import path from "node:path";
-// @ts-ignore — express-session ships these without bundled types
-import cookieSignature from "cookie-signature";
-// @ts-ignore
-import uidSafe from "uid-safe";
+import {
+  ensureCompany,
+  ensureUser,
+  forgeSession,
+  requireCookieSecret,
+  requireDbUrl,
+} from "./_helpers/forge-session";
 
 /**
  * One-time auth + seed setup for the quick-actions spec.
@@ -26,36 +27,32 @@ import uidSafe from "uid-safe";
  *   • two non-header GL accounts so the journal-entry create dialog has
  *     something to pick on each line and can satisfy the balanced-debits/
  *     credits refinement on `createJournalEntrySchema`. Account `code` is
- *     GLOBALLY unique (see migration 0005), so we namespace the seeded
- *     codes with the workspace id and re-home any stray rows from a
- *     previous run before re-using them.
+ *     unique per workspace (see migration 0010), so we namespace the
+ *     seeded codes with the workspace id and re-home any stray rows from
+ *     a previous run before re-using them.
  *
  * Account ids are persisted to `.playwright/quick-actions-fixtures.json`
  * so the spec can populate the JE form's account selects without having
  * to re-fetch them through the UI.
  *
- * Auth is forged the same way the dashboard-shell / period-selector
- * setups do it: insert the user + a passport session row directly,
- * then sign the connect.sid cookie with `SESSION_SECRET`. The dev
- * server's outbound cookie is `Secure`, which a browser refuses to
- * keep over HTTP, so we mint both cookies ourselves.
+ * The user-creation + session-forging machinery is shared with the other
+ * e2e setups via `tests/e2e/_helpers/forge-session.ts` so cookie-name /
+ * secret-rotation / schema changes only need to be made in one place.
+ * The dev server's outbound `connect.sid` cookie is `Secure`, which a
+ * browser refuses to keep over HTTP, so the helper mints both the
+ * passport session row and a non-Secure inbound cookie for us.
  */
-
-const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
 
 const TEST_EMAIL = "e2e-quick-actions@example.test";
 const TEST_PASSWORD = "playwright-quick-actions-pw-2026";
+const TEST_FIRST = "E2E";
+const TEST_LAST = "QuickActions";
 const STORAGE_PATH = path.resolve(".playwright/quick-actions-state.json");
 const FIXTURES_PATH = path.resolve(".playwright/quick-actions-fixtures.json");
 
 setup("authenticate + seed quick-actions fixtures", async ({ page }) => {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) throw new Error("DATABASE_URL must be set for the quick-actions setup.");
-  if (!COOKIE_SECRET) {
-    throw new Error(
-      "SESSION_SECRET (or WM_COOKIE_SECRET) must be set for the quick-actions setup to sign the connect.sid cookie.",
-    );
-  }
+  const dbUrl = requireDbUrl("the quick-actions setup");
+  requireCookieSecret("the quick-actions setup");
 
   const client = new pg.Client({ connectionString: dbUrl });
   await client.connect();
@@ -65,52 +62,18 @@ setup("authenticate + seed quick-actions fixtures", async ({ page }) => {
   let revenueAccountId: number;
   try {
     // ---- (a) Ensure the test user exists with a known password ----
-    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
-    const existing = (
-      await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [TEST_EMAIL])
-    ).rows[0];
-    if (existing) {
-      userId = existing.id;
-      await client.query(
-        `UPDATE users SET password_hash=$1, first_name='E2E', last_name='QuickActions' WHERE id=$2`,
-        [passwordHash, userId],
-      );
-    } else {
-      userId = crypto.randomUUID();
-      await client.query(
-        `INSERT INTO users (id, email, password_hash, first_name, last_name, preferred_locale)
-         VALUES ($1, $2, $3, 'E2E', 'QuickActions', 'en')`,
-        [userId, TEST_EMAIL, passwordHash],
-      );
-    }
+    userId = await ensureUser(client, {
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD,
+      firstName: TEST_FIRST,
+      lastName: TEST_LAST,
+    });
 
     // ---- (b) Ensure the user owns a workspace ----
-    let companyRow = (
-      await client.query(
-        `SELECT c.id FROM memberships m
-         JOIN companies c ON c.id = m.company_id
-         WHERE m.user_id = $1 AND m.role = 'owner'
-         ORDER BY m.created_at ASC LIMIT 1`,
-        [userId],
-      )
-    ).rows[0];
-    if (!companyRow) {
-      companyRow = (
-        await client.query(
-          `INSERT INTO companies (name, owner_user_id, functional_currency, currency_symbol, is_default)
-           VALUES ('E2E Quick Actions Co', $1, 'USD', '$', false)
-           RETURNING id`,
-          [userId],
-        )
-      ).rows[0];
-      await client.query(
-        `INSERT INTO memberships (id, user_id, company_id, role)
-         VALUES ($1, $2, $3, 'owner')
-         ON CONFLICT DO NOTHING`,
-        [crypto.randomUUID(), userId, companyRow.id],
-      );
-    }
-    companyId = Number(companyRow.id);
+    companyId = await ensureCompany(client, {
+      userId,
+      companyName: "E2E Quick Actions Co",
+    });
 
     // ---- (c) Reset the workspace's seed data so the spec is deterministic ----
     // Each spec run asserts a fresh count delta (e.g. "exactly one tx after
@@ -126,9 +89,10 @@ setup("authenticate + seed quick-actions fixtures", async ({ page }) => {
       [companyId],
     );
     await client.query(`DELETE FROM transactions WHERE company_id = $1`, [companyId]);
-    // Drop only the two seeded posting accounts (code is GLOBALLY unique;
-    // we namespace by company id so a stray row from a previous run with a
-    // different company id can be re-homed below instead of duplicated).
+    // Drop only the two seeded posting accounts (code is unique per
+    // workspace; we namespace by company id so a stray row from a
+    // previous run with a different company id can be re-homed below
+    // instead of duplicated).
     const cashCode = `QA-CASH-${companyId}`;
     const revCode = `QA-REV-${companyId}`;
 
@@ -188,77 +152,33 @@ setup("authenticate + seed quick-actions fixtures", async ({ page }) => {
     await client.end();
   }
 
-  // ---- (e) Forge a passport session row + signed connect.sid cookie ----
-  const sessionId = await uidSafe(24);
-  const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
-  const sessionExpire = new Date(Date.now() + sessionTtlMs);
-  const sessionPayload = {
-    cookie: {
-      originalMaxAge: sessionTtlMs,
-      expires: sessionExpire.toISOString(),
-      httpOnly: true,
-      path: "/",
-      secure: true,
-    },
-    passport: {
-      user: {
-        _local: true,
-        claims: {
-          sub: userId,
-          email: TEST_EMAIL,
-          first_name: "E2E",
-          last_name: "QuickActions",
-          profile_image_url: null,
-        },
-      },
-    },
-  };
-  const reopen = new pg.Client({ connectionString: dbUrl });
-  await reopen.connect();
-  try {
-    await reopen.query(
-      `INSERT INTO sessions (sid, sess, expire) VALUES ($1, $2::json, $3)
-       ON CONFLICT (sid) DO UPDATE SET sess = EXCLUDED.sess, expire = EXCLUDED.expire`,
-      [sessionId, JSON.stringify(sessionPayload), sessionExpire],
-    );
-  } finally {
-    await reopen.end();
-  }
-  const signedSid = "s:" + cookieSignature.sign(sessionId, COOKIE_SECRET);
-
-  // ---- (f) Plant the cookie + persist the active company in localStorage ----
+  // ---- (e) Forge a passport session via the shared helper ----
+  // The helper plants the signed `connect.sid` cookie into the page
+  // context, verifies `/api/auth/user` returns 200, and persists the
+  // resulting storage state. Pre-seed `active_company_id` in the
+  // `afterCookiesPlanted` hook so the CompanyProvider doesn't have to
+  // wait for `/api/companies` to settle before the topbar's quick-create
+  // dropdown mounts and the X-Company-Id header is attached to mutation
+  // requests.
   const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
-  await page.context().addCookies([
-    {
-      name: "connect.sid",
-      value: signedSid,
-      url: baseURL,
-      sameSite: "Lax",
+  await forgeSession({
+    page,
+    dbUrl,
+    userId,
+    email: TEST_EMAIL,
+    firstName: TEST_FIRST,
+    lastName: TEST_LAST,
+    storagePath: STORAGE_PATH,
+    baseURL,
+    afterCookiesPlanted: async (p) => {
+      await p.goto(baseURL, { waitUntil: "domcontentloaded" });
+      await p.evaluate((id) => {
+        window.localStorage.setItem("active_company_id", String(id));
+      }, companyId);
     },
-  ]);
+  });
 
-  // Pre-seed `active_company_id` so the CompanyProvider doesn't have to wait
-  // for /api/companies to settle before the topbar's quick-create dropdown
-  // mounts and the X-Company-Id header is attached to mutation requests.
-  await page.goto(baseURL, { waitUntil: "domcontentloaded" });
-  await page.evaluate((id) => {
-    window.localStorage.setItem("active_company_id", String(id));
-  }, companyId);
-
-  // ---- (g) Confirm the session is real before saving storageState ----
-  const me = await page.request.get("/api/auth/user");
-  if (me.status() !== 200) {
-    throw new Error(
-      `Expected /api/auth/user to be 200 after session injection but got ${me.status()}.\n` +
-        `userId=${userId} sid=${sessionId}\n` +
-        `Body: ${await me.text()}`,
-    );
-  }
-
-  fs.mkdirSync(path.dirname(STORAGE_PATH), { recursive: true });
-  await page.context().storageState({ path: STORAGE_PATH });
-
-  // ---- (h) Persist the seeded account ids so the JE spec can use them ----
+  // ---- (f) Persist the seeded account ids so the JE spec can use them ----
   fs.writeFileSync(
     FIXTURES_PATH,
     JSON.stringify({ companyId, cashAccountId, revenueAccountId }, null, 2) + "\n",
