@@ -125,6 +125,77 @@ interface RlsRow {
   policy_count: string; // pg returns BIGINT as string
 }
 
+// Task #190 — the canonical text Postgres stores for the
+// `workspace_isolation` policy installed by
+// `migrations/0008_workspace_rls.sql` (and re-applied for `audit_log`
+// by `migrations/0016_audit_log_company_id.sql`). Both USING and
+// WITH CHECK clauses are written identically.
+//
+// `pg_get_expr(polqual, polrelid)` round-trips the parsed expression,
+// so the form Postgres returns is its own canonicalisation: a leading
+// outer `(...)`, the OR's right-hand `=` comparison wrapped in its own
+// `(...)`. If the migration ever rewrites the expression, *this* string
+// must move with it — they are deliberately coupled.
+const CANONICAL_POLICY_EXPR =
+  "(rls_is_bypassed() OR (company_id = current_company_id()))";
+
+interface PolicyExprRow {
+  table_name: string;
+  qual: string | null;
+  with_check: string | null;
+}
+
+interface PolicyDrift {
+  table: string;
+  problems: string[];
+}
+
+// Compare each `workspace_isolation` policy's USING / WITH CHECK
+// against the canonical expression. Pulled out of the test body so the
+// sibling "tampering trips the check" spec can call the exact same
+// detection logic — the verification is meaningful only if the same
+// code path is what catches the tamper.
+function findPolicyDrifts(rows: PolicyExprRow[]): PolicyDrift[] {
+  const drifts: PolicyDrift[] = [];
+  for (const r of rows) {
+    const problems: string[] = [];
+    if (r.qual !== CANONICAL_POLICY_EXPR) {
+      problems.push(
+        `USING expression is ${JSON.stringify(r.qual)} ` +
+          `but should be ${JSON.stringify(CANONICAL_POLICY_EXPR)}`,
+      );
+    }
+    if (r.with_check !== CANONICAL_POLICY_EXPR) {
+      problems.push(
+        `WITH CHECK expression is ${JSON.stringify(r.with_check)} ` +
+          `but should be ${JSON.stringify(CANONICAL_POLICY_EXPR)}`,
+      );
+    }
+    if (problems.length > 0) {
+      drifts.push({ table: r.table_name, problems });
+    }
+  }
+  return drifts;
+}
+
+// Read every `workspace_isolation` policy's parsed expression text
+// directly from `pg_policy` via `pg_get_expr`. Going through `pg_policy`
+// + `pg_get_expr` (rather than the `pg_policies` view's `qual` /
+// `with_check` columns) keeps us on the same canonicalisation pass that
+// produced `CANONICAL_POLICY_EXPR` above, so a string comparison is
+// meaningful without normalising whitespace or parens by hand.
+const POLICY_EXPR_QUERY = `
+  SELECT cls.relname                                AS table_name,
+         pg_get_expr(p.polqual,      p.polrelid)    AS qual,
+         pg_get_expr(p.polwithcheck, p.polrelid)    AS with_check
+    FROM pg_policy   p
+    JOIN pg_class    cls ON cls.oid = p.polrelid
+    JOIN pg_namespace ns ON ns.oid = cls.relnamespace
+   WHERE ns.nspname = 'public'
+     AND p.polname  = 'workspace_isolation'
+   ORDER BY cls.relname
+`;
+
 test.describe("workspace-scoped tables must be under RLS @db", () => {
   test.skip(
     !DATABASE_URL,
@@ -259,5 +330,142 @@ test.describe("workspace-scoped tables must be under RLS @db", () => {
         `longer exist (or have lost their company_id column). Remove ` +
         `the stale entries from INTENTIONALLY_EXEMPT: ${staleExemptions.join(", ")}`,
     ).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Task #190 — the test above only checks that *a* policy named
+  // `workspace_isolation` exists. A future migration (or an over-eager
+  // hand-edit in prod) could install a policy with the right name but a
+  // permissive expression like `USING (true)` and the spec above would
+  // still pass — yet the table would silently leak across tenants.
+  //
+  // The two tests below close that loop:
+  //   1. Read the parsed USING / WITH CHECK text of every
+  //      `workspace_isolation` policy and assert it equals the canonical
+  //      expression installed by `migrations/0008_workspace_rls.sql`.
+  //   2. Sanity-check that the detection helper actually fires by
+  //      tampering one row inside a transaction (`USING (true)` /
+  //      `WITH CHECK (true)`) and asserting the helper names the table
+  //      and the offending clauses, then ROLLBACK so the tamper never
+  //      escapes the spec.
+  // -------------------------------------------------------------------------
+  test("every workspace_isolation policy uses the canonical expression", async () => {
+    const { rows } = await pool.query<PolicyExprRow>(POLICY_EXPR_QUERY);
+
+    // Belt-and-braces: if the previous test passed but somehow no
+    // policy rows came back here, fail loudly rather than vacuously
+    // pass on an empty set.
+    expect(
+      rows.length,
+      `Found 0 policies named "workspace_isolation" in the public schema. ` +
+        `Either no migration has installed them or pg_policy is being ` +
+        `read incorrectly.`,
+    ).toBeGreaterThan(0);
+
+    const drifts = findPolicyDrifts(rows);
+
+    expect(
+      drifts,
+      drifts.length === 0
+        ? ""
+        : "One or more `workspace_isolation` policies have drifted from " +
+            "the canonical expression installed by " +
+            "`migrations/0008_workspace_rls.sql`. A policy with the right " +
+            "name but a permissive USING / WITH CHECK clause (e.g. " +
+            "`USING (true)`) would let SELECT/UPDATE/DELETE leak across " +
+            "tenants:\n" +
+            drifts
+              .map(
+                (d) =>
+                  `  - ${d.table}:\n` +
+                  d.problems.map((p) => `      • ${p}`).join("\n"),
+              )
+              .join("\n") +
+            `\n\nFix: re-apply the canonical policy on the offending ` +
+            `table by re-running the DO-block in ` +
+            `migrations/0008_workspace_rls.sql, or — for audit_log — ` +
+            `migrations/0016_audit_log_company_id.sql. The expected ` +
+            `expression for both clauses is:\n` +
+            `  ${CANONICAL_POLICY_EXPR}`,
+    ).toEqual([]);
+  });
+
+  test("the canonical-expression check trips on a USING (true) tamper", async () => {
+    // Pick a well-known RLS-protected table that the spec above already
+    // requires to exist. `accounts` is the first entry in the bootstrap
+    // list and the one the cross-workspace read-isolation spec exercises
+    // by name, so a regression here would also surface there.
+    const TARGET = "accounts";
+    expect(
+      KNOWN_RLS_PROTECTED.has(TARGET),
+      `Verification table "${TARGET}" is no longer in KNOWN_RLS_PROTECTED ` +
+        `— pick another known-protected table for this sanity check.`,
+    ).toBe(true);
+
+    // Run the tamper inside a transaction and ROLLBACK in `finally` so
+    // the production policy is restored even if the assertions throw.
+    // Postgres treats CREATE/DROP POLICY as transactional DDL, so the
+    // rollback truly undoes the change — no leaked permissive policy.
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `DROP POLICY IF EXISTS workspace_isolation ON "${TARGET}"`,
+      );
+      await client.query(
+        `CREATE POLICY workspace_isolation ON "${TARGET}" ` +
+          `USING (true) WITH CHECK (true)`,
+      );
+
+      const { rows } = await client.query<PolicyExprRow>(POLICY_EXPR_QUERY);
+      const drifts = findPolicyDrifts(rows);
+
+      const tampered = drifts.find((d) => d.table === TARGET);
+      expect(
+        tampered,
+        `findPolicyDrifts() failed to flag a USING (true) / WITH CHECK ` +
+          `(true) tamper on "${TARGET}" — the canonical-expression check ` +
+          `is a no-op.`,
+      ).toBeDefined();
+      expect(
+        tampered!.problems.some((p) => p.startsWith("USING expression")),
+        `Tamper detected on "${TARGET}" but no USING-clause problem was ` +
+          `reported: ${JSON.stringify(tampered!.problems)}`,
+      ).toBe(true);
+      expect(
+        tampered!.problems.some((p) => p.startsWith("WITH CHECK expression")),
+        `Tamper detected on "${TARGET}" but no WITH CHECK-clause problem ` +
+          `was reported: ${JSON.stringify(tampered!.problems)}`,
+      ).toBe(true);
+    } finally {
+      // Always undo the tamper, regardless of pass/fail above.
+      await client.query("ROLLBACK").catch(() => {});
+      client.release();
+    }
+
+    // Belt-and-braces: after rollback, re-read the live policy and
+    // assert it's back to canonical. If this fails, the rollback didn't
+    // take and the production policy is now permissive — fail loudly so
+    // the operator knows to re-apply the migration.
+    const { rows: postRollback } = await pool.query<PolicyExprRow>(
+      POLICY_EXPR_QUERY,
+    );
+    const post = postRollback.find((r) => r.table_name === TARGET);
+    expect(
+      post,
+      `After ROLLBACK, no workspace_isolation policy was visible on ` +
+        `"${TARGET}". The rollback may not have restored it — re-run ` +
+        `migrations/0008_workspace_rls.sql immediately.`,
+    ).toBeDefined();
+    expect(
+      post!.qual,
+      `After ROLLBACK, the live USING expression on "${TARGET}" is not ` +
+        `the canonical form — the tamper may have leaked.`,
+    ).toBe(CANONICAL_POLICY_EXPR);
+    expect(
+      post!.with_check,
+      `After ROLLBACK, the live WITH CHECK expression on "${TARGET}" is ` +
+        `not the canonical form — the tamper may have leaked.`,
+    ).toBe(CANONICAL_POLICY_EXPR);
   });
 });
