@@ -25,6 +25,7 @@ import { useLocale } from "@/contexts/locale-context"
 import { cn } from "@/lib/utils"
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link"
 import { CameraCaptureDialog } from "@/components/camera/camera-capture-dialog"
+import { enhanceAndCompressImageFile } from "@/lib/image-enhance"
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 /*  Assistant — accounting work surface                                      */
@@ -151,7 +152,10 @@ export default function AiAssistant() {
 
   /* ───────────────────────── handlers ───────────────────────── */
 
-  const attachImageFile = (file: File) => {
+  const attachImageFile = async (
+    file: File,
+    opts: { alreadyEnhanced?: boolean } = {},
+  ) => {
     if (!file.type.startsWith("image/")) {
       toast({ title: t.typeError, description: t.typeErrorDesc, variant: "destructive" })
       return
@@ -160,9 +164,18 @@ export default function AiAssistant() {
       toast({ title: t.sizeError, description: t.sizeErrorDesc, variant: "destructive" })
       return
     }
+    // Run the same conservative auto-levels + compression pass that the
+    // camera dialog uses, so uploaded receipts are OCR-friendlier and the
+    // attached payload is smaller. Camera captures already came through
+    // the shared pipeline inside the dialog, so skip re-processing in that
+    // case to avoid a redundant lossy recompression. Falls back to the
+    // original file if the browser cannot decode it.
+    const processed = opts.alreadyEnhanced
+      ? file
+      : await enhanceAndCompressImageFile(file)
     const reader = new FileReader()
     reader.onload = () => setImagePreview(reader.result as string)
-    reader.readAsDataURL(file)
+    reader.readAsDataURL(processed)
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -467,7 +480,7 @@ export default function AiAssistant() {
           <CameraCaptureDialog
             open={cameraOpen}
             onOpenChange={setCameraOpen}
-            onCapture={(file) => attachImageFile(file)}
+            onCapture={(file) => attachImageFile(file, { alreadyEnhanced: true })}
             locale={locale}
           />
         </div>

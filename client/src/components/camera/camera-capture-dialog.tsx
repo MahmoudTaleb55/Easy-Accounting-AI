@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Webcam from "react-webcam";
-import imageCompression from "browser-image-compression";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +18,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import type { Locale } from "@/contexts/locale-context";
+import { enhanceAndCompressDataUrl } from "@/lib/image-enhance";
 
 type Strings = {
   title: string;
@@ -138,93 +138,6 @@ type Props = {
   locale: Locale;
 };
 
-/**
- * Apply a light image-processing pass to a captured frame to improve OCR/legibility:
- *   - autoLevels-style contrast stretch on the luminance channel
- *   - mild gamma correction to lift mid-tones
- * This is intentionally conservative — strong filters can break colour invoices.
- */
-function enhanceImageData(img: HTMLImageElement): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = img.naturalWidth;
-  canvas.height = img.naturalHeight;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return canvas;
-  ctx.drawImage(img, 0, 0);
-  try {
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const px = data.data;
-
-    // First pass: collect luminance histogram extremes (1st / 99th percentile).
-    const hist = new Uint32Array(256);
-    for (let i = 0; i < px.length; i += 4) {
-      const y = (px[i] * 299 + px[i + 1] * 587 + px[i + 2] * 114) / 1000;
-      hist[y | 0]++;
-    }
-    const total = (px.length / 4) | 0;
-    const lo = Math.floor(total * 0.01);
-    const hi = Math.floor(total * 0.99);
-    let acc = 0;
-    let loY = 0;
-    let hiY = 255;
-    for (let v = 0; v < 256; v++) {
-      acc += hist[v];
-      if (acc >= lo) {
-        loY = v;
-        break;
-      }
-    }
-    acc = 0;
-    for (let v = 0; v < 256; v++) {
-      acc += hist[v];
-      if (acc >= hi) {
-        hiY = v;
-        break;
-      }
-    }
-    const range = Math.max(1, hiY - loY);
-    const gamma = 0.9;
-
-    // Second pass: stretch + gamma per channel.
-    for (let i = 0; i < px.length; i += 4) {
-      for (let c = 0; c < 3; c++) {
-        let v = (px[i + c] - loY) * (255 / range);
-        v = Math.max(0, Math.min(255, v));
-        v = 255 * Math.pow(v / 255, gamma);
-        px[i + c] = v;
-      }
-    }
-    ctx.putImageData(data, 0, 0);
-  } catch {
-    // getImageData can fail under certain CORS/tainted-canvas conditions; fall
-    // back to the raw frame.
-  }
-  return canvas;
-}
-
-function dataUrlToImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Failed to decode captured image"));
-    img.src = dataUrl;
-  });
-}
-
-function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  type = "image/jpeg",
-  quality = 0.92,
-): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("Canvas toBlob failed"))),
-      type,
-      quality,
-    );
-  });
-}
-
 type EnvBlock =
   | { kind: "ok" }
   | { kind: "iframe"; topUrl: string }
@@ -319,25 +232,10 @@ export function CameraCaptureDialog({
     if (!snapshot) return;
     setProcessing(true);
     try {
-      const img = await dataUrlToImage(snapshot);
-      const enhanced = enhanceImageData(img);
-      const rawBlob = await canvasToBlob(enhanced, "image/jpeg", 0.92);
-      const rawFile = new File(
-        [rawBlob],
-        `invoice-camera-${Date.now()}.jpg`,
-        { type: "image/jpeg" },
+      const finalFile = await enhanceAndCompressDataUrl(
+        snapshot,
+        "invoice-camera",
       );
-      const compressed = await imageCompression(rawFile, {
-        maxSizeMB: 1.5,
-        maxWidthOrHeight: 2400,
-        useWebWorker: true,
-        fileType: "image/jpeg",
-        initialQuality: 0.85,
-      });
-      const finalFile =
-        compressed instanceof File
-          ? compressed
-          : new File([compressed], rawFile.name, { type: "image/jpeg" });
       onCapture(finalFile);
       setSnapshot(null);
       onOpenChange(false);
@@ -346,7 +244,7 @@ export function CameraCaptureDialog({
     } finally {
       setProcessing(false);
     }
-  }, [snapshot, onCapture, onOpenChange]);
+  }, [snapshot, onCapture, onOpenChange, t.processingFailed]);
 
   const handleSwitch = useCallback(() => {
     setFacingMode((m) => (m === "environment" ? "user" : "environment"));
