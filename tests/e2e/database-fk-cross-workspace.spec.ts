@@ -136,6 +136,38 @@ test.describe("database-level workspace isolation @db", () => {
         expect(r3.constraint).toBe("budgets_account_company_fk");
       }
 
+      // ----- Cross-tenant accounts.parent_id (chart-of-accounts tree) ------
+      // Migration 0005 added accounts_parent_company_fk specifically so a
+      // chart-of-accounts node in workspace A can never be re-parented under
+      // a node in workspace B. Without a dedicated assertion that names the
+      // constraint, a future migration could silently drop it and every
+      // other case here would still pass.
+      const rParentInsert = await attempt(
+        `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, parent_id)
+         VALUES ($1, $2, 'child', 'child', 'asset', 'current_asset', $3)`,
+        [cidA, `P-${tag}`, aidB],
+      );
+      expect(rParentInsert.ok).toBe(false);
+      if (!rParentInsert.ok) {
+        expect(rParentInsert.code).toBe("23503");
+        expect(rParentInsert.constraint).toBe("accounts_parent_company_fk");
+      }
+
+      // Symmetric positive control: a same-workspace re-parent UPDATE must
+      // still succeed. Stand up a second account in workspace A and reparent
+      // it under aidA — both live in cidA, so the composite FK is satisfied.
+      const accAChild = await client.query(
+        `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype)
+         VALUES ($1, $2, 'c', 'c', 'asset', 'current_asset') RETURNING id`,
+        [cidA, `C-${tag}`],
+      );
+      const aidAChild: number = accAChild.rows[0].id;
+      const rParentUpdate = await attempt(
+        `UPDATE accounts SET parent_id = $1 WHERE id = $2`,
+        [aidA, aidAChild],
+      );
+      expect(rParentUpdate.ok).toBe(true);
+
       // ----- Cross-tenant asset_categories pointer ------------------------
       // Eight account-id pointer columns; we test one (gain_loss_disposal)
       // since they all share the same shape.
