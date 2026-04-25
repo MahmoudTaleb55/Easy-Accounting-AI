@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
 import { cn } from "@/lib/utils"
+import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link"
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 /*  Assistant — accounting work surface                                      */
@@ -644,25 +645,32 @@ function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean })
   }
 
   if (artifact.kind === "journal_entry") {
+    // Wrap the artifact card in a `JournalEntryRefLink` so the assistant's
+    // "Posted JE #N" confirmation is itself navigable: a single tap opens
+    // the JE on the Journal page (preserving the existing scroll/highlight
+    // flow), and if the JE has since been cascade-reversed by a downstream
+    // delete, the same tap surfaces the reversal-trail tombstone instead
+    // of dropping the user onto a 404.
     return (
-      <div
+      <JournalEntryRefLink
+        id={artifact.id}
         data-testid={`card-je-${artifact.id}`}
-        className="border border-border bg-background p-3 rounded-md"
+        className="block w-full text-start border border-border bg-background hover:border-foreground/30 transition-colors p-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring no-underline"
       >
-        <div className="flex items-center gap-3">
+        <span className="flex items-center gap-3">
           <BookOpen className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.75} />
-          <div className="flex-1 min-w-0">
-            <div className="text-[13.5px] font-medium text-foreground truncate">
+          <span className="flex-1 min-w-0 block">
+            <span className="block text-[13.5px] font-medium text-foreground truncate">
               <span className="font-mono text-muted-foreground">#{artifact.id}</span>
               <span className="mx-1.5 text-muted-foreground/50">·</span>
               {artifact.description}
-            </div>
-            <div className="text-[11px] text-muted-foreground mt-0.5 tabular-nums font-mono">
+            </span>
+            <span className="block text-[11px] text-muted-foreground mt-0.5 tabular-nums font-mono">
               {artifact.lines} {isAr ? "سطر" : "lines"} · {isAr ? "مدين" : "Dr"} {artifact.totalDebit.toLocaleString()} = {isAr ? "دائن" : "Cr"} {artifact.totalCredit.toLocaleString()}
-            </div>
-          </div>
-        </div>
-      </div>
+            </span>
+          </span>
+        </span>
+      </JournalEntryRefLink>
     )
   }
 

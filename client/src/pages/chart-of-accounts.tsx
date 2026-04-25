@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
-import { Link, useLocation, useSearch } from "wouter"
+import { useLocation, useSearch } from "wouter"
+import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { ar, enUS } from "date-fns/locale"
@@ -1206,16 +1207,16 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
                         {fmt(p.balance)}
                       </td>
                       <td className="px-3 py-2 text-end">
-                        <Link
-                          href={`/app/journal#je-${p.jeId}`}
+                        <JournalEntryRefLink
+                          id={p.jeId}
                           className="font-numeric tabular-nums text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-ledger-je-${p.jeId}`}
                           title={`${labels.jeAria} ${p.reference}`}
-                          aria-label={`${labels.jeAria} ${p.reference}`}
-                          onClick={() => onClose()}
+                          ariaLabel={`${labels.jeAria} ${p.reference}`}
+                          onLiveClick={() => onClose()}
                         >
                           {p.reference || `JE #${p.jeId}`}
-                        </Link>
+                        </JournalEntryRefLink>
                       </td>
                     </tr>
                   ))}

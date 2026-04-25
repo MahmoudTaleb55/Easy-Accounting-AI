@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useLocale } from "@/contexts/locale-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -714,14 +714,14 @@ function ZeroInboxState({ ar, docs }: { ar: boolean; docs: DocumentRow[] }) {
                     </div>
                     <div className="text-[10px] text-muted-foreground font-mono">
                       {d.journalEntryId ? (
-                        <Link
-                          href={`/app/journal#je-${d.journalEntryId}`}
+                        <JournalEntryRefLink
+                          id={d.journalEntryId}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-recent-${d.id}`}
                           title={ar ? `فتح قيد اليومية JE #${d.journalEntryId}` : `Open journal entry JE #${d.journalEntryId}`}
                         >
                           JE #{d.journalEntryId}
-                        </Link>
+                        </JournalEntryRefLink>
                       ) : "—"} · {timeAgo(d.postedAt!, ar)}
                     </div>
                   </div>
@@ -1074,24 +1074,30 @@ function DocumentDetail({
                       <span className="text-emerald-700 dark:text-emerald-400">
                         {ar ? "تم الترحيل كقيد رقم " : "Posted as journal entry "}
                         {doc.journalEntryId ? (
-                          <Link
-                            href={`/app/journal#je-${doc.journalEntryId}`}
+                          <JournalEntryRefLink
+                            id={doc.journalEntryId}
                             className="underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm font-medium"
                             data-testid={`link-journal-entry-posted-${doc.id}`}
                             title={ar ? `فتح قيد اليومية ${doc.journalEntryId}` : `Open journal entry #${doc.journalEntryId}`}
                           >
                             {ar ? doc.journalEntryId : `#${doc.journalEntryId}`}
-                          </Link>
+                          </JournalEntryRefLink>
                         ) : <span className="text-muted-foreground">—</span>}
                       </span>
                     </div>
-                    <Link
-                      href={doc.journalEntryId ? `/app/journal#je-${doc.journalEntryId}` : "/app/journal"}
-                      className="text-xs underline-offset-4 hover:underline text-foreground/70 inline-flex items-center gap-1"
-                      data-testid="link-view-journal"
-                    >
-                      {ar ? "عرض" : "View"} <ArrowUpRight className="h-3 w-3" />
-                    </Link>
+                    {doc.journalEntryId ? (
+                      <JournalEntryRefLink
+                        id={doc.journalEntryId}
+                        className="text-xs underline-offset-4 hover:underline text-foreground/70 inline-flex items-center gap-1"
+                        data-testid="link-view-journal"
+                      >
+                        {ar ? "عرض" : "View"} <ArrowUpRight className="h-3 w-3" />
+                      </JournalEntryRefLink>
+                    ) : (
+                      <span className="text-xs text-muted-foreground inline-flex items-center gap-1" data-testid="link-view-journal-disabled">
+                        {ar ? "عرض" : "View"} <ArrowUpRight className="h-3 w-3" />
+                      </span>
+                    )}
                   </div>
                   {doc.postedAt && (
                     <div className="text-[11px] text-muted-foreground font-mono mt-2">

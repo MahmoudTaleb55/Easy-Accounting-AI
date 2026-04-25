@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
+import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1032,14 +1033,14 @@ function PayrollTab() {
                     <TableCell className="font-bold text-primary">{fmt(Number(r.totalNet))}</TableCell>
                     <TableCell className="text-xs">
                       {r.journalEntryId ? (
-                        <Link
-                          href={`/app/journal#je-${r.journalEntryId}`}
+                        <JournalEntryRefLink
+                          id={r.journalEntryId}
                           className="font-numeric tabular-nums text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-${r.id}`}
                           title={`فتح قيد اليومية JE-${r.journalEntryId}`}
                         >
                           JE-{r.journalEntryId}
-                        </Link>
+                        </JournalEntryRefLink>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -1159,13 +1160,13 @@ function PayrollRunDetailDialog({
                 <dt className="text-muted-foreground">القيد المحاسبي</dt>
                 <dd>
                   {run.journalEntryId ? (
-                    <Link
-                      href={`/app/journal#je-${run.journalEntryId}`}
+                    <JournalEntryRefLink
+                      id={run.journalEntryId}
                       className="font-numeric tabular-nums text-primary underline-offset-4 hover:underline"
                       data-testid={`link-detail-journal-entry-${run.id}`}
                     >
                       JE-{run.journalEntryId}
-                    </Link>
+                    </JournalEntryRefLink>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}

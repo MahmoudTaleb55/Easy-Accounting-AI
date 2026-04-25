@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "wouter";
+import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -721,14 +721,14 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                       <td className="py-1">{r.type}</td>
                       <td className="py-1 tabular-nums">{fmt(r.amount, company.currencySymbol)}</td>
                       <td className="py-1">{r.je ? (
-                        <Link
-                          href={`/app/journal#je-${r.je}`}
+                        <JournalEntryRefLink
+                          id={r.je}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-history-${i}`}
                           title={`فتح قيد اليومية JE ${r.je}`}
                         >
                           JE {r.je}
-                        </Link>
+                        </JournalEntryRefLink>
                       ) : <span className="text-muted-foreground">—</span>}</td>
                       <td className="py-1 text-xs text-muted-foreground">{r.notes}</td>
                     </tr>
@@ -759,14 +759,14 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                       <td className="py-1 tabular-nums">{fmt(e.recoverableAmount)}</td>
                       <td className="py-1 tabular-nums">{fmt(e.lossAmount)}</td>
                       <td className="py-1">{e.journalEntryId ? (
-                        <Link
-                          href={`/app/journal#je-${e.journalEntryId}`}
+                        <JournalEntryRefLink
+                          id={e.journalEntryId}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-impairment-${e.id}`}
                           title={`فتح قيد اليومية JE ${e.journalEntryId}`}
                         >
                           JE {e.journalEntryId}
-                        </Link>
+                        </JournalEntryRefLink>
                       ) : <span className="text-muted-foreground">—</span>}</td>
                     </tr>
                   ))}</tbody></table></div>
@@ -783,14 +783,14 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                       <td className="py-1 tabular-nums">{fmt(e.surplusDelta)}</td>
                       <td className="py-1 tabular-nums">{fmt(e.plImpact)}</td>
                       <td className="py-1">{e.journalEntryId ? (
-                        <Link
-                          href={`/app/journal#je-${e.journalEntryId}`}
+                        <JournalEntryRefLink
+                          id={e.journalEntryId}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-revaluation-${e.id}`}
                           title={`فتح قيد اليومية JE ${e.journalEntryId}`}
                         >
                           JE {e.journalEntryId}
-                        </Link>
+                        </JournalEntryRefLink>
                       ) : <span className="text-muted-foreground">—</span>}</td>
                     </tr>
                   ))}</tbody></table></div>
@@ -806,14 +806,14 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                       <td className="py-1 tabular-nums">{fmt(e.proceeds)}</td>
                       <td className="py-1 tabular-nums">{fmt(e.gainLoss)}</td>
                       <td className="py-1">{e.journalEntryId ? (
-                        <Link
-                          href={`/app/journal#je-${e.journalEntryId}`}
+                        <JournalEntryRefLink
+                          id={e.journalEntryId}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-disposal-${e.id}`}
                           title={`فتح قيد اليومية JE ${e.journalEntryId}`}
                         >
                           JE {e.journalEntryId}
-                        </Link>
+                        </JournalEntryRefLink>
                       ) : <span className="text-muted-foreground">—</span>}</td>
                     </tr>
                   ))}</tbody></table></div>
@@ -1140,14 +1140,14 @@ function DepreciationPanel({ company }: { company: Company }) {
                   <td className="py-2 tabular-nums">{fmt(r.totalAmount, company.currencySymbol)}</td>
                   <td className="py-2"><Badge variant={r.status === "posted" ? "default" : "secondary"}>{r.status}</Badge></td>
                   <td className="py-2">{r.journalEntryId ? (
-                    <Link
-                      href={`/app/journal#je-${r.journalEntryId}`}
+                    <JournalEntryRefLink
+                      id={r.journalEntryId}
                       className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                       data-testid={`link-journal-entry-depreciation-run-${r.id}`}
                       title={`فتح قيد اليومية JE ${r.journalEntryId}`}
                     >
                       JE {r.journalEntryId}
-                    </Link>
+                    </JournalEntryRefLink>
                   ) : <span className="text-muted-foreground">—</span>}</td>
                 </tr>
               ))}</tbody>

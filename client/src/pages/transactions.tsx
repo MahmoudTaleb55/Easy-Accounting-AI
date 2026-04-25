@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react"
-import { Link, useLocation, useSearch } from "wouter"
+import { useLocation, useSearch } from "wouter"
+import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link"
 import { format, type Locale } from "date-fns"
 import { ar, enUS } from "date-fns/locale"
 import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions"
@@ -507,12 +508,14 @@ function TransactionDetailDialog({ tx, onClose, labels, dfLocale, fmt }: Transac
               // `client/src/pages/journal-entries.tsx` (initialHashId +
               // hashchange listener) which scrolls + highlights the row.
               // Hidden when no JE is linked yet (still posting, posting
-              // failed, or legacy row pre-auto-post bridge).
+              // failed, or legacy row pre-auto-post bridge). When the JE
+              // has been cascade-reversed, `JournalEntryRefLink` swaps in
+              // a tombstone affordance instead of letting the click 404.
               <div className="mt-4 pt-3 border-t border-border/60">
-                <Link
-                  href={`/app/journal#je-${tx.journalEntryId}`}
+                <JournalEntryRefLink
+                  id={tx.journalEntryId}
                   className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs font-medium text-foreground hover:bg-muted hover:border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label={labels.jeOpenAria}
+                  ariaLabel={labels.jeOpenAria}
                   data-testid="link-transaction-journal-entry"
                 >
                   <span className="text-muted-foreground">{labels.jePostedAs}</span>
@@ -523,7 +526,7 @@ function TransactionDetailDialog({ tx, onClose, labels, dfLocale, fmt }: Transac
                     {tx.journalEntryReference || `JE-${tx.journalEntryId}`}
                   </span>
                   <ArrowUpRight className="w-3 h-3" aria-hidden />
-                </Link>
+                </JournalEntryRefLink>
               </div>
             )}
           </TabsContent>
