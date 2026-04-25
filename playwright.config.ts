@@ -46,6 +46,8 @@ export default defineConfig({
         /email-delivery-csv-export\.spec\.ts/,
         /email-delivery-list-parity\.spec\.ts/,
         /email-delivery-filters-persist\.spec\.ts/,
+        /email-delivery-count-cache\.setup\.ts/,
+        /email-delivery-count-cache\.spec\.ts/,
         /delivery-alert-audit\.setup\.ts/,
         /delivery-alert-audit\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
@@ -189,6 +191,28 @@ export default defineConfig({
       name: "email-delivery-filters-persist",
       testMatch: /email-delivery-filters-persist\.spec\.ts/,
       dependencies: ["email-delivery-alerts-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
+      // One-time setup that provisions a *dedicated* workspace +
+      // dedicated owner for the email-delivery-count-cache spec.
+      // Sharing the workspace from `email-delivery-alerts-setup` would
+      // race the alerts spec (which also wipes/seeds the same event
+      // tables for that workspace) once Playwright starts running spec
+      // projects in parallel after the shared setup finishes — this
+      // dedicated setup keeps the count assertions exact.
+      name: "email-delivery-count-cache-setup",
+      testMatch: /email-delivery-count-cache\.setup\.ts/,
+    },
+    {
+      // Freshness + per-filter cache-key coverage for the 5s in-memory
+      // cache wrapping `countEmailDeliveriesForCompany` (see
+      // server/auth/storage.ts).
+      name: "email-delivery-count-cache",
+      testMatch: /email-delivery-count-cache\.spec\.ts/,
+      dependencies: ["email-delivery-count-cache-setup"],
       use: {
         viewport: { width: 1280, height: 800 },
       },
