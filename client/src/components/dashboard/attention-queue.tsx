@@ -78,7 +78,7 @@ export function AttentionQueue() {
           severity: "info",
           title: t("attention_inactive"),
           description: dir === "rtl" ? "آخر معاملة قبل أكثر من 7 أيام." : "Last transaction was over 7 days ago.",
-          href: "/app/transactions",
+          href: "/app/transactions?new=1",
         });
       }
     }
