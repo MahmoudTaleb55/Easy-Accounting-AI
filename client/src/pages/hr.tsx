@@ -13,6 +13,15 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { WriteGuard } from "@/components/auth/write-guard";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -735,6 +744,12 @@ function PayrollTab() {
   // we scroll the matching row into view and pulse a highlight ring so the
   // user can spot it among many runs.
   const [highlightRunId, setHighlightRunId] = useState<number | null>(null);
+  // When the server refuses a payroll-run delete with HTTP 409 (because the
+  // auto-posted journal entry is referenced by another GL-impact module —
+  // depreciation, impairment, document inbox, …), we show its `message`
+  // verbatim inside a modal alert. A toast would auto-dismiss before the
+  // user could read which module is holding the JE.
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery<{ year: number; month: number; lines: PreviewLine[] }>({
     queryKey: ["/api/hr/payroll/preview", { year, month }],
@@ -795,12 +810,58 @@ function PayrollTab() {
   });
 
   const removeRun = useMutation({
-    mutationFn: async (id: number) => await apiRequest("DELETE", `/api/hr/payroll/runs/${id}`),
+    // We bypass the shared `apiRequest` helper here so we can read the JSON
+    // body of an HTTP 409 response and surface its `message` exactly as the
+    // server worded it ("القيد المحاسبي مرتبط بدورة إهلاك", etc.). The
+    // helper coerces every non-2xx into `Error("<status>: <text>")`, which
+    // would force us to string-parse for the conflict reason.
+    mutationFn: async (id: number) => {
+      const headers: Record<string, string> = {};
+      if (typeof window !== "undefined") {
+        const cid = window.localStorage.getItem("active_company_id");
+        if (cid) headers["X-Company-Id"] = cid;
+      }
+      const res = await fetch(`/api/hr/payroll/runs/${id}`, {
+        method: "DELETE",
+        headers,
+        credentials: "include",
+      });
+      if (res.status === 409) {
+        let message = "تعذّر حذف كشف الرواتب: القيد المحاسبي مرتبط بسجلات أخرى.";
+        try {
+          const body = await res.json();
+          if (body && typeof body.message === "string" && body.message.trim().length > 0) {
+            message = body.message;
+          }
+        } catch {
+          /* server didn't send JSON — keep the fallback message */
+        }
+        const err = new Error(message) as Error & { status?: number };
+        err.status = 409;
+        throw err;
+      }
+      if (!res.ok) {
+        const text = (await res.text().catch(() => "")) || res.statusText;
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/runs"] });
       toast({ title: "تم", description: "تم حذف كشف الرواتب" });
     },
-    onError: (e: any) => toast({ title: "خطأ", description: e?.message, variant: "destructive" }),
+    onError: (e: any) => {
+      if (e?.status === 409) {
+        // Park the conflict reason in state so the modal alert below can
+        // render it. Toasts auto-dismiss after a few seconds, and this
+        // message tells the user *which* downstream module is holding the
+        // journal entry — they often need long enough to read it, switch
+        // tabs, and copy the reference out.
+        setConflictMessage(String(e?.message ?? ""));
+        return;
+      }
+      toast({ title: "خطأ", description: e?.message, variant: "destructive" });
+    },
   });
 
   const lines = data?.lines || [];
@@ -1041,6 +1102,40 @@ function PayrollTab() {
           onClose={() => setDetailRun(null)}
         />
       )}
+
+      {/*
+        Conflict alert: rendered as a modal AlertDialog (not a toast) so the
+        server-supplied reason stays on screen until the user dismisses it.
+        That gives them time to read which downstream module is holding the
+        payroll run's journal entry and to copy any reference out.
+      */}
+      <AlertDialog
+        open={!!conflictMessage}
+        onOpenChange={(o) => { if (!o) setConflictMessage(null); }}
+      >
+        <AlertDialogContent dir="rtl" data-testid="dialog-payroll-delete-conflict">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-right">
+              <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
+              تعذّر حذف كشف الرواتب
+            </AlertDialogTitle>
+            <AlertDialogDescription
+              className="text-sm leading-relaxed text-foreground text-right whitespace-pre-line"
+              data-testid="text-payroll-delete-conflict-message"
+            >
+              {conflictMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setConflictMessage(null)}
+              data-testid="button-payroll-delete-conflict-close"
+            >
+              فهمت
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
