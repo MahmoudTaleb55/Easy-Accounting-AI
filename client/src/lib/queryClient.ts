@@ -1,9 +1,41 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+/**
+ * Error thrown by `apiRequest` / `getQueryFn` when the server responds with
+ * a non-2xx status. Carries the numeric `status` plus the parsed JSON `body`
+ * (when the response was JSON) so callers can branch on, e.g., `err.status
+ * === 409` and render `err.body?.message` without re-doing the fetch dance.
+ *
+ * The `message` is intentionally kept in the historical `"${status}: ${text}"`
+ * shape so older call sites that string-match it (e.g. `auth-utils`'s
+ * `isUnauthorizedError`, the auth pages stripping the leading `\d+:\s*`) keep
+ * working unchanged.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(status: number, message: string, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let body: unknown = undefined;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        // Server didn't reply with JSON — leave `body` undefined and let
+        // callers fall back to `message` / `status`.
+      }
+    }
+    throw new ApiError(res.status, `${res.status}: ${text}`, body);
   }
 }
 

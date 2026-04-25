@@ -810,42 +810,7 @@ function PayrollTab() {
   });
 
   const removeRun = useMutation({
-    // We bypass the shared `apiRequest` helper here so we can read the JSON
-    // body of an HTTP 409 response and surface its `message` exactly as the
-    // server worded it ("القيد المحاسبي مرتبط بدورة إهلاك", etc.). The
-    // helper coerces every non-2xx into `Error("<status>: <text>")`, which
-    // would force us to string-parse for the conflict reason.
-    mutationFn: async (id: number) => {
-      const headers: Record<string, string> = {};
-      if (typeof window !== "undefined") {
-        const cid = window.localStorage.getItem("active_company_id");
-        if (cid) headers["X-Company-Id"] = cid;
-      }
-      const res = await fetch(`/api/hr/payroll/runs/${id}`, {
-        method: "DELETE",
-        headers,
-        credentials: "include",
-      });
-      if (res.status === 409) {
-        let message = "تعذّر حذف كشف الرواتب: القيد المحاسبي مرتبط بسجلات أخرى.";
-        try {
-          const body = await res.json();
-          if (body && typeof body.message === "string" && body.message.trim().length > 0) {
-            message = body.message;
-          }
-        } catch {
-          /* server didn't send JSON — keep the fallback message */
-        }
-        const err = new Error(message) as Error & { status?: number };
-        err.status = 409;
-        throw err;
-      }
-      if (!res.ok) {
-        const text = (await res.text().catch(() => "")) || res.statusText;
-        throw new Error(`${res.status}: ${text}`);
-      }
-      return res;
-    },
+    mutationFn: async (id: number) => apiRequest("DELETE", `/api/hr/payroll/runs/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/runs"] });
       toast({ title: "تم", description: "تم حذف كشف الرواتب" });
@@ -857,7 +822,11 @@ function PayrollTab() {
         // message tells the user *which* downstream module is holding the
         // journal entry — they often need long enough to read it, switch
         // tabs, and copy the reference out.
-        setConflictMessage(String(e?.message ?? ""));
+        const fallback = "تعذّر حذف كشف الرواتب: القيد المحاسبي مرتبط بسجلات أخرى.";
+        const serverMsg = typeof e?.body?.message === "string" && e.body.message.trim().length > 0
+          ? e.body.message
+          : fallback;
+        setConflictMessage(serverMsg);
         return;
       }
       toast({ title: "خطأ", description: e?.message, variant: "destructive" });
