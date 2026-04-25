@@ -135,3 +135,42 @@ export async function withRlsBypass<T>(
     client.release();
   }
 }
+
+/**
+ * The single, named, grep-able way to say "I am about to create a new
+ * workspace". Wraps `withRlsBypass("workspace:create", fn)`.
+ *
+ * Why a dedicated helper (task #167):
+ *
+ *   Creating a workspace is the one moment when the active scope is about
+ *   to change. The seed chart of accounts and the per-workspace settings
+ *   row are written under the *new* company's id, which never matches the
+ *   `app.current_company_id` of the caller's existing scope — so the
+ *   `workspace_isolation` RLS policies on `accounts` / `settings` reject
+ *   the inserts unless we run with `app.rls_bypass = 'on'`.
+ *
+ *   Two of these paths exist today (`POST /api/companies` →
+ *   `DatabaseStorage.createCompany`, and the signup-time bootstrap →
+ *   `authBizStorage.createCompanyForOwner`); a future admin
+ *   "clone workspace" tool, a bulk-import script, or a teammate-onboarding
+ *   flow would hit the same wall the moment it ran from inside an existing
+ *   workspace's scope. Funnelling every workspace-creation site through
+ *   this one helper means:
+ *
+ *     1. The convention is grep-able — `withWorkspaceCreation(` is the
+ *        single search term that surfaces every workspace-creation path.
+ *     2. The lint at `tests/e2e/db-isolation-allowlist.spec.ts` can
+ *        statically reject any future `db.insert(companies)` that does
+ *        *not* sit inside a `withWorkspaceCreation(...)` block, so this
+ *        isn't rediscovered the hard way.
+ *
+ * The bypass scope is intentionally narrow: it lasts only for the
+ * insert + seed of the new workspace, and is released the moment `fn`
+ * returns. Caller code outside the helper continues to run with the
+ * original `app.current_company_id` scope.
+ */
+export async function withWorkspaceCreation<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  return withRlsBypass("workspace:create", fn);
+}

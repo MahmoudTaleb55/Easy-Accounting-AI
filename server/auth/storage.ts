@@ -985,13 +985,17 @@ export const authBizStorage = {
     // company's id, which never matches `app.current_company_id` when this
     // is called from inside an existing workspace's scope (e.g. an owner
     // adding a second workspace, or a signed-in user without a membership
-    // bootstrapping their first one). Wrap the whole flow in `withRlsBypass`
-    // so the workspace_isolation policies on `settings` / `accounts` do not
-    // reject these "across-workspace" inserts. See
+    // bootstrapping their first one). Wrap the whole flow in
+    // `withWorkspaceCreation` (the named, grep-able helper for "I am about
+    // to create a new workspace") so the workspace_isolation policies on
+    // `settings` / `accounts` do not reject these "across-workspace"
+    // inserts. The lint at tests/e2e/db-isolation-allowlist.spec.ts
+    // statically requires that every `insert(companies)` sits inside one
+    // of these blocks. See
     // docs/design/workspace-isolation-defense-in-depth.md → "Bypass paths".
-    const { withRlsBypass } = await import("../db");
+    const { withWorkspaceCreation } = await import("../db");
     const { seedDefaultCoaInTx } = await import("../init-coa");
-    return withRlsBypass("workspace:create", async () => {
+    return withWorkspaceCreation(async () => {
       // All-or-nothing: a workspace without its settings row OR without its
       // chart of accounts would leave the bootstrap half-complete and let
       // the first quick transaction silently fail to auto-post a journal

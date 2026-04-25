@@ -58,7 +58,7 @@ const DB_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "DatabaseStorage methods are invoked from the /api/* request " +
       "middleware in server/routes.ts, which wraps the whole handler in " +
       "withCompanyScope. The one cross-tenant code path " +
-      "(createCompany) wraps itself in withRlsBypass.",
+      "(createCompany) wraps itself in withWorkspaceCreation.",
   },
   {
     file: "server/insights.ts",
@@ -107,8 +107,7 @@ const DB_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "RLS-protected). Methods called from inside the request middleware " +
       "inherit its withCompanyScope; the *OnStartup helpers are wrapped " +
       "in withRlsBypass at their server/index.ts call sites; " +
-      "createCompanyForOwner wraps itself in withRlsBypass " +
-      "('workspace:create').",
+      "createCompanyForOwner wraps itself in withWorkspaceCreation.",
   },
   {
     file: "server/db-bootstrap-rls.ts",
@@ -278,6 +277,67 @@ const POOL_CONNECT_ALLOWLIST = new Set([
   "server/db.ts",
   "server/migrate.ts",
 ]);
+
+/**
+ * Workspace-creation lint (task #167).
+ *
+ * Inserting into `companies` is the one moment when the active workspace
+ * scope is about to change: the seed chart of accounts and the
+ * per-workspace settings row are written under the *new* company's id,
+ * which never matches the caller's `app.current_company_id`. The seed
+ * inserts are therefore rejected by the `workspace_isolation` RLS policies
+ * unless the whole flow runs inside `withWorkspaceCreation(...)` (the
+ * named, grep-able helper that wraps `withRlsBypass("workspace:create")`).
+ *
+ * Two such code paths exist today (`POST /api/companies` →
+ * `DatabaseStorage.createCompany`, and the signup-time bootstrap →
+ * `authBizStorage.createCompanyForOwner`); plus the boot-time default
+ * workspace creation in `ensureDefaultCompanyAndCategories`. A future
+ * admin "clone workspace" tool, a bulk-import script, or a
+ * teammate-onboarding flow would hit the same wall the moment it ran from
+ * inside an existing workspace's scope.
+ *
+ * The lint enforces both halves of the convention:
+ *
+ *   1. The set of files that contain `*.insert(companies)` is pinned to
+ *      the WORKSPACE_CREATE_ALLOWLIST below. Adding a fourth file is the
+ *      deliberate moment to re-read the design doc and confirm the new
+ *      caller funnels through the helper.
+ *   2. Every `*.insert(companies)` *occurrence* must be lexically
+ *      preceded — within a small backward window — by a
+ *      `withWorkspaceCreation(` call in the same file. That catches the
+ *      regression where someone keeps the file on the allowlist but
+ *      drops the helper around a brand-new insert.
+ */
+const WORKSPACE_CREATE_ALLOWLIST: AllowlistEntry[] = [
+  {
+    file: "server/storage.ts",
+    rationale:
+      "DatabaseStorage.createCompany — the /api/companies handler. Wraps " +
+      "the company write + chart-of-accounts seed in " +
+      "withWorkspaceCreation(...) so the seed inserts under the new " +
+      "company's id are not rejected by the workspace_isolation RLS " +
+      "policies.",
+  },
+  {
+    file: "server/auth/storage.ts",
+    rationale:
+      "authBizStorage.createCompanyForOwner — the signup-time bootstrap. " +
+      "Wraps the company + settings + CoA seed in " +
+      "withWorkspaceCreation(...) so the cross-workspace inserts are " +
+      "accepted regardless of which workspace scope (if any) the caller " +
+      "is currently in.",
+  },
+  {
+    file: "server/init-coa.ts",
+    rationale:
+      "ensureDefaultCompanyAndCategories — boot-time creation of the " +
+      "implicit \"Default Company\" workspace when the table is empty. " +
+      "The insert sits inside withWorkspaceCreation(...) for uniformity " +
+      "with the runtime paths, even though the surrounding boot helper " +
+      "already runs under withRlsBypass('bootstrap:ifrs-coa').",
+  },
+];
 
 const SERVER_ROOT = path.resolve(process.cwd(), "server");
 
@@ -507,6 +567,102 @@ test.describe("workspace isolation lint", () => {
         `auth/cross-tenant tables that are intentionally out of RLS scope). ` +
         `See docs/design/workspace-isolation-defense-in-depth.md.`,
     ).toEqual({ unexpected: [], missing: [] });
+  });
+
+  test("every `insert(companies)` is on the workspace-creation allowlist and uses withWorkspaceCreation", async () => {
+    const all = await walkServer();
+
+    // `*.insert(companies)` covers `db.insert(companies)`,
+    // `tx.insert(companies)`, and any other receiver — the marker is the
+    // table reference, not the binding it's called on. Whitespace inside
+    // the parens is tolerated to match the prevailing prettier output.
+    const insertRe = /\.insert\(\s*companies\s*\)/g;
+    // The grep-able marker that must precede every insert. We deliberately
+    // do NOT accept the bare `withRlsBypass("workspace:create", ...)` form
+    // here: the whole point of task #167 is that the named helper is the
+    // one true entry point, so a future hand-written bypass call would
+    // (correctly) trip this lint and force the author to consolidate.
+    const helperRe = /\bwithWorkspaceCreation\s*\(/g;
+
+    const filesWithInsert: string[] = [];
+    const occurrenceViolations: { file: string; line: number }[] = [];
+
+    for (const f of all) {
+      const rel = projectRelative(f);
+      const text = await fs.readFile(f, "utf8");
+      const lines = text.split("\n");
+
+      // A line is a "comment line" if its trimmed start is `//`, `*`, or
+      // `/*` — that is the prevailing style for both single-line and
+      // JSDoc-style block comments in this codebase. Comment-only lines
+      // are stripped from the insert scan so a docstring that mentions
+      // `db.insert(companies)` (e.g. the rationale comment in
+      // server/db.ts that introduces withWorkspaceCreation) does not
+      // count as a real insert site.
+      const isCommentLine = (line: string): boolean => {
+        const t = line.trimStart();
+        return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
+      };
+
+      const insertLineIdxs: number[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        if (isCommentLine(lines[i])) continue;
+        // Reset lastIndex; we use .test() with a /g regex.
+        insertRe.lastIndex = 0;
+        if (insertRe.test(lines[i])) insertLineIdxs.push(i);
+      }
+      if (insertLineIdxs.length === 0) continue;
+      filesWithInsert.push(rel);
+
+      // For each `insert(companies)` line, look back up to 80 lines for a
+      // `withWorkspaceCreation(` call. 80 lines is generous enough to
+      // cover the longest current call site (createCompany has ~25 lines
+      // of comment + dynamic import before the helper call) without
+      // hiding inserts that live in a separate function from the
+      // helper.
+      for (const idx of insertLineIdxs) {
+        const start = Math.max(0, idx - 80);
+        const window = lines.slice(start, idx + 1).join("\n");
+        helperRe.lastIndex = 0;
+        if (!helperRe.test(window)) {
+          occurrenceViolations.push({ file: rel, line: idx + 1 });
+        }
+      }
+    }
+
+    const allowlistFiles = WORKSPACE_CREATE_ALLOWLIST.map((e) => e.file);
+    const unexpected = filesWithInsert
+      .filter((f) => !allowlistFiles.includes(f))
+      .sort();
+    const missing = allowlistFiles
+      .filter((f) => !filesWithInsert.includes(f))
+      .sort();
+
+    expect(
+      { unexpected, missing },
+      `Files containing \`*.insert(companies)\` must be on the ` +
+        `WORKSPACE_CREATE_ALLOWLIST in tests/e2e/db-isolation-allowlist.spec.ts. ` +
+        `Creating a workspace inserts the seed chart of accounts and the ` +
+        `per-workspace settings row under the *new* company's id, which ` +
+        `the workspace_isolation RLS policies reject unless the whole ` +
+        `flow runs inside withWorkspaceCreation(...). If you are adding a ` +
+        `new workspace-creation path (admin "clone workspace", bulk-import ` +
+        `script, teammate-onboarding flow, etc.), wrap the insert in ` +
+        `withWorkspaceCreation(...) and add an entry to the allowlist with ` +
+        `a rationale. See ` +
+        `docs/design/workspace-isolation-defense-in-depth.md → "Bypass paths".`,
+    ).toEqual({ unexpected: [], missing: [] });
+
+    expect(
+      occurrenceViolations,
+      `Every \`*.insert(companies)\` occurrence must be lexically ` +
+        `preceded (within 80 lines) by a withWorkspaceCreation(...) call ` +
+        `in the same file. Wrap the insert in withWorkspaceCreation(async ` +
+        `() => { ... }) so the seed chart of accounts and per-workspace ` +
+        `settings row can be written under the new company's id without ` +
+        `tripping the workspace_isolation RLS policies. See ` +
+        `docs/design/workspace-isolation-defense-in-depth.md → "Bypass paths".`,
+    ).toEqual([]);
   });
 
   test("`pool.connect()` is only used by the workspace-isolation primitives", async () => {

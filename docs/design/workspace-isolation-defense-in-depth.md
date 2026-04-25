@@ -432,15 +432,36 @@ on completion. Audited bypass call sites (with `reason` strings):
   endpoint depends on.
 - `cron:email-delivery-alert-sweep` — the periodic alert evaluator that
   iterates every workspace.
-- `workspace:create` — `DatabaseStorage.createCompany` and
-  `authBizStorage.createCompanyForOwner`. Creating a new workspace inserts
-  the seed chart of accounts and a `settings` row under the *new* company's
-  id. When the caller is already an owner of an existing workspace, the
-  request runs inside `withCompanyScope(existingCompanyId)`, so the new
-  rows would be rejected by the `workspace_isolation` policy
-  (`new.company_id ≠ current_company_id()`). The bypass is the natural fit:
-  workspace creation is by definition the moment when the active scope is
-  about to change.
+- `workspace:create` — `DatabaseStorage.createCompany`,
+  `authBizStorage.createCompanyForOwner`, and the boot-time
+  `ensureDefaultCompanyAndCategories` (when the table is empty). Creating
+  a new workspace inserts the seed chart of accounts and a `settings`
+  row under the *new* company's id. When the caller is already an owner
+  of an existing workspace, the request runs inside
+  `withCompanyScope(existingCompanyId)`, so the new rows would be
+  rejected by the `workspace_isolation` policy
+  (`new.company_id ≠ current_company_id()`). The bypass is the natural
+  fit: workspace creation is by definition the moment when the active
+  scope is about to change.
+
+  All three call sites route through the named helper
+  `withWorkspaceCreation(fn)` in `server/db.ts`, which is a thin wrapper
+  around `withRlsBypass("workspace:create", fn)`. Routing through the
+  named helper instead of writing the bypass call by hand has two
+  payoffs:
+
+    - **Grep-able convention.** `withWorkspaceCreation(` is the single
+      search term that surfaces every workspace-creation path. A future
+      maintainer adding an admin "clone workspace" tool, a bulk-import
+      script, or a teammate-onboarding flow finds the prior art with
+      one ripgrep query and a uniform code shape to copy.
+    - **Statically enforceable.** The lint at
+      `tests/e2e/db-isolation-allowlist.spec.ts` (test
+      `every \`insert(companies)\` is on the workspace-creation
+      allowlist and uses withWorkspaceCreation`) fails in CI if any
+      future `*.insert(companies)` is added without sitting inside a
+      `withWorkspaceCreation(...)` block, so the wall the design doc
+      describes isn't rediscovered the hard way again (task #167).
 
 If a future code path needs bypass it is expected to wrap itself in
 `withRlsBypass` with a fresh `reason` so the audit list stays grep-able.

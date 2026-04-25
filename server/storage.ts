@@ -1338,8 +1338,11 @@ export class DatabaseStorage implements IStorage {
     // RLS boundary: the seed below writes accounts under the *new* company's
     // id, which never matches `app.current_company_id` when an owner is
     // calling this from inside their existing workspace's scope. Wrap the
-    // whole flow in `withRlsBypass` so the seed inserts are not rejected by
-    // the workspace_isolation policy. Audited reason: see
+    // whole flow in `withWorkspaceCreation` (the named, grep-able helper
+    // for "I am about to create a new workspace") so the seed inserts are
+    // not rejected by the workspace_isolation policy. The lint at
+    // tests/e2e/db-isolation-allowlist.spec.ts statically requires that
+    // every `insert(companies)` sits inside one of these blocks. See
     // docs/design/workspace-isolation-defense-in-depth.md → "Bypass paths".
     //
     // The company write and the chart-of-accounts seed share a single
@@ -1348,9 +1351,9 @@ export class DatabaseStorage implements IStorage {
     // than leaving a half-bootstrapped workspace whose first quick
     // transaction would silently fail to resolve `1110`, `4010`, `6900`
     // by code.
-    const { withRlsBypass } = await import("./db");
+    const { withWorkspaceCreation } = await import("./db");
     const { seedDefaultCoaInTx } = await import("./init-coa");
-    return withRlsBypass("workspace:create", async () => {
+    return withWorkspaceCreation(async () => {
       if (input.isDefault) {
         await db.update(companies).set({ isDefault: false });
       }

@@ -422,10 +422,25 @@ export async function ensureDefaultCompanyAndCategories(): Promise<void> {
   const existingCompanies = await db.select().from(companies);
   let companyId: number;
   if (existingCompanies.length === 0) {
-    const [created] = await db
-      .insert(companies)
-      .values({ name: "Default Company", functionalCurrency: "USD", currencySymbol: "$", isDefault: true, isActive: true })
-      .returning();
+    // Even at boot time — when this whole helper already runs under
+    // `withRlsBypass("bootstrap:ifrs-coa", ...)` — the moment we are about
+    // to insert into `companies` we route through the named, grep-able
+    // workspace-creation helper. Two payoffs (task #167):
+    //   1. The convention "every workspace-creation site uses
+    //      withWorkspaceCreation" stays uniform regardless of caller, so
+    //      a future maintainer can grep this one helper to find every
+    //      workspace-creation path.
+    //   2. The lint at tests/e2e/db-isolation-allowlist.spec.ts can
+    //      statically reject any future `insert(companies)` that does not
+    //      sit inside a `withWorkspaceCreation(...)` block.
+    const { withWorkspaceCreation } = await import("./db");
+    const created = await withWorkspaceCreation(async () => {
+      const [c] = await db
+        .insert(companies)
+        .values({ name: "Default Company", functionalCurrency: "USD", currencySymbol: "$", isDefault: true, isActive: true })
+        .returning();
+      return c;
+    });
     companyId = created.id;
   } else {
     companyId = (existingCompanies.find((c) => c.isDefault) ?? existingCompanies[0]).id;
