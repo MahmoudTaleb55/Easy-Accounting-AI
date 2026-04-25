@@ -922,6 +922,12 @@ export function registerLocalAuthRoutes(app: Express) {
   // name. Drives the "Recent alerts" table on /app/settings/email-delivery
   // so owners can see *who* silenced *what* and *when*. Bounded server-side
   // (default 20, hard cap 100) so the response stays small.
+  //
+  // Pagination is keyset on `firedAt`: pass `?before=<ISO>` to fetch the
+  // page older than that timestamp. The response carries a `nextCursor`
+  // (oldest row's firedAt) when a full page came back, or `null` when the
+  // caller has reached the end. Keyset (vs OFFSET) keeps each read cheap
+  // even after the table grows.
   app.get(
     "/api/auth/email-delivery-alerts/history",
     requireAuth,
@@ -932,12 +938,27 @@ export function registerLocalAuthRoutes(app: Express) {
       const limit = Number.isFinite(limitRaw) && limitRaw > 0
         ? Math.min(limitRaw, 100)
         : 20;
+      let before: Date | null = null;
+      if (typeof req.query.before === "string" && req.query.before.length > 0) {
+        const parsed = new Date(req.query.before);
+        if (Number.isNaN(parsed.getTime())) {
+          return res.status(400).json({ message: "Invalid 'before' cursor" });
+        }
+        before = parsed;
+      }
       const rows = await authBizStorage.listRecentEmailDeliveryAlerts(
         ctx.companyId,
         limit,
+        before,
       );
-      res.json(
-        rows.map((r) => ({
+      // A full page implies more rows may exist; surface the oldest row's
+      // firedAt as the next cursor. A short page means we've reached the end.
+      const nextCursor =
+        rows.length === limit && rows.length > 0
+          ? rows[rows.length - 1].firedAt
+          : null;
+      res.json({
+        rows: rows.map((r) => ({
           id: r.id,
           firedAt: r.firedAt,
           windowHours: r.windowHours,
@@ -952,7 +973,8 @@ export function registerLocalAuthRoutes(app: Express) {
           dismissedByName: r.dismissedByName,
           dismissedByEmail: r.dismissedByEmail,
         })),
-      );
+        nextCursor,
+      });
     },
   );
 

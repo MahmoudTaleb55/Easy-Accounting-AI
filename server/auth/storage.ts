@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import {
   users,
   memberships,
@@ -1442,10 +1442,16 @@ export const authBizStorage = {
    * display name so the audit log on /app/settings/email-delivery can show
    * "dismissed by Alice 5m ago" without a second round-trip. Bounded by
    * `limit` so the response stays small even after years of evaluator runs.
+   *
+   * `before` is a keyset cursor on `firedAt` — pass the oldest row's
+   * timestamp from the previous page to fetch the next one. Keyset (vs
+   * OFFSET) keeps the read O(limit) on the existing
+   * `(company_id, fired_at)` index even after the table grows.
    */
   async listRecentEmailDeliveryAlerts(
     companyId: number,
     limit = 20,
+    before?: Date | null,
   ): Promise<
     Array<
       EmailDeliveryAlert & {
@@ -1455,6 +1461,12 @@ export const authBizStorage = {
     >
   > {
     const cap = Math.max(1, Math.min(limit, 100));
+    const where = before
+      ? and(
+          eq(emailDeliveryAlerts.companyId, companyId),
+          lt(emailDeliveryAlerts.firedAt, before),
+        )
+      : eq(emailDeliveryAlerts.companyId, companyId);
     const rows = await db
       .select({
         alert: emailDeliveryAlerts,
@@ -1464,7 +1476,7 @@ export const authBizStorage = {
       })
       .from(emailDeliveryAlerts)
       .leftJoin(users, eq(users.id, emailDeliveryAlerts.dismissedByUserId))
-      .where(eq(emailDeliveryAlerts.companyId, companyId))
+      .where(where)
       .orderBy(desc(emailDeliveryAlerts.firedAt))
       .limit(cap);
     return rows.map((r) => {

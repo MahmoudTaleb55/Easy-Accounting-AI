@@ -1,5 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useLocale } from "@/contexts/locale-context";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -1463,6 +1468,13 @@ interface RecentAlertRow {
  * "Re-arm" button is enabled only on that row; older rows show a tooltip
  * explaining why the action is disabled.
  */
+interface RecentAlertsPage {
+  rows: RecentAlertRow[];
+  nextCursor: string | null;
+}
+
+const RECENT_ALERTS_PAGE_SIZE = 20;
+
 function RecentAlertsCard({ ar }: { ar: boolean }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -1471,8 +1483,31 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
   // an admin asks to see the address list for that alert.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const { data, isLoading } = useQuery<RecentAlertRow[]>({
+  // Keyset-paginated audit log: each page fetches `RECENT_ALERTS_PAGE_SIZE`
+  // older rows than the previous page's `nextCursor` (firedAt of the
+  // oldest row on that page). When the server returns a `null` cursor we
+  // know we've reached the end and can disable the "Load older" button.
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery<RecentAlertsPage>({
     queryKey: ["/api/auth/email-delivery-alerts/history"],
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({
+        limit: String(RECENT_ALERTS_PAGE_SIZE),
+      });
+      if (pageParam) params.set("before", String(pageParam));
+      const res = await apiRequest(
+        "GET",
+        `/api/auth/email-delivery-alerts/history?${params.toString()}`,
+      );
+      return (await res.json()) as RecentAlertsPage;
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
 
   const rearm = useMutation<{ ok: boolean; cleared: boolean }, Error, string>({
@@ -1515,9 +1550,17 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
     },
   });
 
-  const rows = data ?? [];
+  // Flatten the per-page response into a single ordered list for rendering.
+  // Pages are already sorted newest-first within themselves and the cursor
+  // marches strictly older across pages, so a flat concat keeps the table
+  // sorted descending by firedAt without an extra sort pass.
+  const rows = useMemo(
+    () => (data?.pages ?? []).flatMap((p) => p.rows),
+    [data],
+  );
   const mostRecentId = rows[0]?.id;
   const cooldownGated = !!rows[0] && !!rows[0].firedAt;
+  const hasLoadedAny = !isLoading && rows.length > 0;
 
   return (
     <Card data-testid="card-recent-alerts">
@@ -1732,6 +1775,37 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+        {hasLoadedAny && (
+          <div className="mt-4 flex items-center justify-center">
+            {hasNextPage ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                data-testid="button-load-older-alerts"
+              >
+                {isFetchingNextPage ? (
+                  <>
+                    <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                    {ar ? "جارٍ التحميل..." : "Loading..."}
+                  </>
+                ) : (
+                  ar ? "تحميل الأقدم" : "Load older"
+                )}
+              </Button>
+            ) : (
+              <p
+                className="text-xs text-muted-foreground"
+                data-testid="text-no-more-alerts"
+              >
+                {ar
+                  ? "لا توجد سجلات أقدم."
+                  : "No older alerts to show."}
+              </p>
+            )}
           </div>
         )}
       </CardContent>
