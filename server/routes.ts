@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
-import { storage, isAuditEntityType, assertAllOwnedByCompany, PayrollRunDeleteConflictError, type AuditContext } from "./storage";
+import { storage, isAuditEntityType, assertAllOwnedByCompany, JournalEntryReferenceConflictError, type AuditContext } from "./storage";
 import { accounts as accountsTable, employees as employeesTable } from "@shared/schema";
 
 // Build an AuditContext for user-initiated mutations. The `actor` is derived
@@ -749,7 +749,7 @@ export async function registerRoutes(
       // Refuse with 409 (Conflict) when the run's auto-posted journal entry is
       // referenced from outside the payroll subsystem — silently dropping the
       // run while leaving the GL twin behind would desynchronise HR & GL.
-      if (err instanceof PayrollRunDeleteConflictError) {
+      if (err instanceof JournalEntryReferenceConflictError) {
         return res.status(409).json({ message: err.message });
       }
       res.status(500).json({ message: err?.message || "تعذر حذف كشف الرواتب" });
@@ -1415,17 +1415,26 @@ function registerDocumentRoutes(app: Express) {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid id" });
     const companyId = cid(req);
-    const removed = await storage.deleteDocument(companyId, id);
-    if (removed) {
-      await deleteDocumentFileIfOrphaned(removed.storagePath, async () => {
-        const remaining = await storage.countDocumentsByStoragePath(
-          companyId,
-          removed.storagePath,
-        );
-        return remaining > 0;
-      });
+    try {
+      const removed = await storage.deleteDocument(companyId, id, userCtx(req));
+      if (removed) {
+        await deleteDocumentFileIfOrphaned(removed.storagePath, async () => {
+          const remaining = await storage.countDocumentsByStoragePath(
+            companyId,
+            removed.storagePath,
+          );
+          return remaining > 0;
+        });
+      }
+      res.status(204).send();
+    } catch (err: any) {
+      // 409 when the document's posted JE is referenced elsewhere — same
+      // contract as DELETE /api/hr/payroll/runs/:id.
+      if (err instanceof JournalEntryReferenceConflictError) {
+        return res.status(409).json({ message: err.message });
+      }
+      res.status(500).json({ message: err?.message || "تعذر حذف المستند" });
     }
-    res.status(204).send();
   });
 
   // Multer / fileFilter errors → 400 instead of 500.
@@ -1738,6 +1747,87 @@ async function registerFixedAssetRoutes(app: Express) {
     const postings = await storage.getDepreciationPostings(run.id);
     res.json({ ...run, postings });
   });
+
+  // Reverse a posted depreciation run + its journal entry, or refuse with 409
+  // if the JE is referenced from another module. Mirrors the payroll-run
+  // delete contract.
+  app.delete("/api/depreciation-runs/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid id" });
+      }
+      const run = await storage.getDepreciationRun(id);
+      if (!run || run.companyId !== cid(req)) {
+        return res.status(404).json({ message: "غير موجود" });
+      }
+      await storage.deleteDepreciationRun(cid(req), id, userCtx(req));
+      res.status(204).send();
+    } catch (err: any) {
+      if (err instanceof JournalEntryReferenceConflictError) {
+        return res.status(409).json({ message: err.message });
+      }
+      res.status(500).json({ message: err?.message || "تعذر حذف دورة الإهلاك" });
+    }
+  });
+
+  // Reverse an impairment / revaluation / disposal event + its journal entry
+  // — same contract. We don't currently expose a per-asset event listing
+  // route, so the lookup keys on (event id, active workspace company) and
+  // 404s otherwise.
+  async function deleteFixedAssetEvent(
+    req: Request,
+    res: Response,
+    kind: "impairment" | "revaluation" | "disposal",
+  ): Promise<void> {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ message: "Invalid id" });
+        return;
+      }
+      const companyId = cid(req);
+      const ctx = userCtx(req);
+      // Cross-check ownership against the underlying event row.
+      const events =
+        kind === "impairment"
+          ? await storage.getImpairmentEvents()
+          : kind === "revaluation"
+            ? await storage.getRevaluationEvents()
+            : await storage.getDisposals();
+      const owned = events.find((e) => e.id === id && e.companyId === companyId);
+      if (!owned) {
+        res.status(404).json({ message: "غير موجود" });
+        return;
+      }
+      if (kind === "impairment") {
+        await storage.deleteImpairmentEvent(companyId, id, ctx);
+      } else if (kind === "revaluation") {
+        await storage.deleteRevaluationEvent(companyId, id, ctx);
+      } else {
+        await storage.deleteDisposal(companyId, id, ctx);
+      }
+      res.status(204).send();
+    } catch (err: any) {
+      if (err instanceof JournalEntryReferenceConflictError) {
+        res.status(409).json({ message: err.message });
+        return;
+      }
+      res
+        .status(500)
+        .json({ message: err?.message || "تعذر حذف الحدث" });
+    }
+  }
+
+  app.delete("/api/impairment-events/:id", (req, res) =>
+    deleteFixedAssetEvent(req, res, "impairment"),
+  );
+  app.delete("/api/revaluation-events/:id", (req, res) =>
+    deleteFixedAssetEvent(req, res, "revaluation"),
+  );
+  app.delete("/api/disposals/:id", (req, res) =>
+    deleteFixedAssetEvent(req, res, "disposal"),
+  );
 
   // Preview depreciation for a given month — returns per-asset amounts & totals.
   // companyId is derived from the active workspace; never accepted from the client.

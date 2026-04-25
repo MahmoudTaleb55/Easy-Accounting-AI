@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, withCompanyScope } from "./db";
 import {
   transactions,
   chatMessages,
@@ -195,7 +195,33 @@ export interface IStorage {
    */
   claimDocumentForPosting(companyId: number, id: number): Promise<DocumentRow | null>;
   markDocumentPosted(companyId: number, id: number, journalEntryId: number): Promise<DocumentRow>;
-  deleteDocument(companyId: number, id: number): Promise<DocumentRow | undefined>;
+  deleteDocument(
+    companyId: number,
+    id: number,
+    ctx?: AuditContext,
+  ): Promise<DocumentRow | undefined>;
+
+  // Auto-posting fixed-asset deletes — same JE-orphan guard as payroll runs
+  deleteDepreciationRun(
+    companyId: number,
+    runId: number,
+    ctx?: AuditContext,
+  ): Promise<void>;
+  deleteImpairmentEvent(
+    companyId: number,
+    eventId: number,
+    ctx?: AuditContext,
+  ): Promise<void>;
+  deleteRevaluationEvent(
+    companyId: number,
+    eventId: number,
+    ctx?: AuditContext,
+  ): Promise<void>;
+  deleteDisposal(
+    companyId: number,
+    eventId: number,
+    ctx?: AuditContext,
+  ): Promise<void>;
   countDocumentsByStoragePath(companyId: number, storagePath: string): Promise<number>;
 }
 
@@ -289,22 +315,45 @@ export async function assertAllOwnedByCompany(
 }
 
 /**
- * Thrown by `deletePayrollRun` when the payroll run's auto-posted journal
- * entry has been picked up by another module (depreciation, document inbox,
- * fixed-asset events, …) and can no longer be silently reversed. The route
+ * Thrown by any *delete* path that auto-posts a journal entry (payroll runs,
+ * depreciation runs, impairment / revaluation / disposal events, document
+ * inbox posts, …) when the linked JE has been picked up by another module
+ * and can no longer be silently reversed alongside its source row. The route
  * layer catches this and surfaces a 409 Conflict with the human message.
+ *
+ * This used to be `PayrollRunDeleteConflictError`; the alias below preserves
+ * the historical export name for any external callers, but new code should
+ * use `JournalEntryReferenceConflictError` directly.
  */
-export class PayrollRunDeleteConflictError extends Error {
+export class JournalEntryReferenceConflictError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "PayrollRunDeleteConflictError";
+    this.name = "JournalEntryReferenceConflictError";
   }
 }
 
+/** @deprecated Use `JournalEntryReferenceConflictError` — the same class. */
+export const PayrollRunDeleteConflictError = JournalEntryReferenceConflictError;
+
+/**
+ * The auto-posting source row that "owns" the JE we are about to reverse.
+ * Each delete path passes its own kind+id so the guard knows which row to
+ * exclude (otherwise the row would always self-reference and every delete
+ * would 409).
+ */
+export type JournalEntrySourceKind =
+  | "payroll_run"
+  | "depreciation_run"
+  | "impairment_event"
+  | "revaluation_event"
+  | "disposal"
+  | "document";
+
 /**
  * Returns the human-readable list of modules that point at `journalEntryId`
- * (besides the payroll run itself, which is deletable). Used as the
- * "locked / reconciled / otherwise referenced" guard for payroll-run delete.
+ * (besides `excludeSource`, which is itself the row being deleted). Used as
+ * the "locked / reconciled / otherwise referenced" guard for every delete
+ * path that auto-posts a JE.
  *
  * Each branch is intentionally a separate `select` against a tiny indexed
  * table — the totals here are bounded by the number of accounting-impact
@@ -312,32 +361,39 @@ export class PayrollRunDeleteConflictError extends Error {
  */
 async function detectJournalEntryReferences(
   journalEntryId: number,
-  opts: { excludePayrollRunId?: number },
+  opts: { excludeSource?: { kind: JournalEntrySourceKind; id: number } } = {},
 ): Promise<string[]> {
   const conflicts: string[] = [];
+  const exclude = (kind: JournalEntrySourceKind, idCol: PgColumn) =>
+    opts.excludeSource && opts.excludeSource.kind === kind
+      ? sql`${idCol} <> ${opts.excludeSource.id}`
+      : sql`true`;
 
-  // Other payroll runs pointing at the same JE (defence-in-depth: one JE per
-  // run is the invariant, but a backfill or a manual SQL fix-up could break
-  // it, in which case we should refuse rather than silently reverse).
+  // Defence-in-depth: one JE per source row is the invariant, but a backfill
+  // or a manual SQL fix-up could break it, in which case we should refuse
+  // rather than silently reverse.
   const otherPayroll = await db
     .select({ id: payrollRuns.id })
     .from(payrollRuns)
     .where(
       and(
         eq(payrollRuns.journalEntryId, journalEntryId),
-        opts.excludePayrollRunId
-          ? sql`${payrollRuns.id} <> ${opts.excludePayrollRunId}`
-          : sql`true`,
+        exclude("payroll_run", payrollRuns.id),
       ),
     );
   if (otherPayroll.length > 0) {
-    conflicts.push(`كشوفات رواتب أخرى (${otherPayroll.length})`);
+    conflicts.push(`كشوفات رواتب (${otherPayroll.length})`);
   }
 
   const depRuns = await db
     .select({ id: depreciationRuns.id })
     .from(depreciationRuns)
-    .where(eq(depreciationRuns.journalEntryId, journalEntryId));
+    .where(
+      and(
+        eq(depreciationRuns.journalEntryId, journalEntryId),
+        exclude("depreciation_run", depreciationRuns.id),
+      ),
+    );
   if (depRuns.length > 0) {
     conflicts.push(`دورة إهلاك (${depRuns.length})`);
   }
@@ -345,7 +401,12 @@ async function detectJournalEntryReferences(
   const impair = await db
     .select({ id: impairmentEvents.id })
     .from(impairmentEvents)
-    .where(eq(impairmentEvents.journalEntryId, journalEntryId));
+    .where(
+      and(
+        eq(impairmentEvents.journalEntryId, journalEntryId),
+        exclude("impairment_event", impairmentEvents.id),
+      ),
+    );
   if (impair.length > 0) {
     conflicts.push(`خسارة انخفاض قيمة (${impair.length})`);
   }
@@ -353,7 +414,12 @@ async function detectJournalEntryReferences(
   const reval = await db
     .select({ id: revaluationEvents.id })
     .from(revaluationEvents)
-    .where(eq(revaluationEvents.journalEntryId, journalEntryId));
+    .where(
+      and(
+        eq(revaluationEvents.journalEntryId, journalEntryId),
+        exclude("revaluation_event", revaluationEvents.id),
+      ),
+    );
   if (reval.length > 0) {
     conflicts.push(`إعادة تقييم (${reval.length})`);
   }
@@ -361,7 +427,12 @@ async function detectJournalEntryReferences(
   const disp = await db
     .select({ id: disposals.id })
     .from(disposals)
-    .where(eq(disposals.journalEntryId, journalEntryId));
+    .where(
+      and(
+        eq(disposals.journalEntryId, journalEntryId),
+        exclude("disposal", disposals.id),
+      ),
+    );
   if (disp.length > 0) {
     conflicts.push(`استبعاد أصل (${disp.length})`);
   }
@@ -369,7 +440,12 @@ async function detectJournalEntryReferences(
   const docs = await db
     .select({ id: documents.id })
     .from(documents)
-    .where(eq(documents.journalEntryId, journalEntryId));
+    .where(
+      and(
+        eq(documents.journalEntryId, journalEntryId),
+        exclude("document", documents.id),
+      ),
+    );
   if (docs.length > 0) {
     conflicts.push(`مستند مرفوع (${docs.length})`);
   }
@@ -389,6 +465,90 @@ async function detectJournalEntryReferences(
  * in the map for that id and the badge naturally disappears in the UI — this
  * is exactly the behaviour the task spec calls for.
  */
+/**
+ * Shared workhorse for "delete the source row + reverse its auto-posted JE
+ * atomically, or refuse with a 409 if the JE is otherwise referenced".
+ *
+ * Each module's delete method is responsible for the side effects that are
+ * specific to it (eg payroll lines, depreciation postings, schedule cleanup,
+ * audit changes) — this helper only owns the JE part: the conflict guard,
+ * the JE/line cascade, and the JE-side audit row stamped with `reversedBy`.
+ *
+ * `extraDelete` runs inside the same transaction as the JE delete so a
+ * failure in either rolls back both.
+ */
+async function reverseAutoPostedJournalEntry(opts: {
+  companyId: number;
+  source: { kind: JournalEntrySourceKind; id: number };
+  journalEntryId: number | null | undefined;
+  /** Built error message when the guard refuses; module-specific wording. */
+  conflictMessage: (conflicts: string[]) => string;
+  /** Extra deletes that must commit/rollback alongside the JE delete. */
+  extraDelete: (tx: typeof db) => Promise<void>;
+  ctx?: AuditContext;
+}): Promise<void> {
+  let linkedJournal: JournalEntry | undefined;
+  if (opts.journalEntryId) {
+    const [je] = await db
+      .select()
+      .from(journalEntries)
+      .where(
+        and(
+          eq(journalEntries.id, opts.journalEntryId),
+          eq(journalEntries.companyId, opts.companyId),
+        ),
+      );
+    if (je) {
+      linkedJournal = je;
+      const conflicts = await detectJournalEntryReferences(opts.journalEntryId, {
+        excludeSource: opts.source,
+      });
+      if (conflicts.length > 0) {
+        throw new JournalEntryReferenceConflictError(opts.conflictMessage(conflicts));
+      }
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    // Delete the source row(s) FIRST, then the JE. Some source tables
+    // (eg `documents`) carry a composite FK back to journal_entries, so
+    // dropping the JE while the source row still references it would fail
+    // with a 23503 foreign-key violation. Source tables that point the
+    // other way around (eg payroll_runs FK to JE has no action declared)
+    // are unaffected by this ordering.
+    await opts.extraDelete(tx as unknown as typeof db);
+    if (linkedJournal) {
+      await tx
+        .delete(journalLines)
+        .where(eq(journalLines.journalEntryId, linkedJournal.id));
+      await tx
+        .delete(journalEntries)
+        .where(
+          and(
+            eq(journalEntries.id, linkedJournal.id),
+            eq(journalEntries.companyId, opts.companyId),
+          ),
+        );
+    }
+  });
+
+  if (linkedJournal) {
+    // Stamp the JE delete on its own audit thread so the History drawer for
+    // the journal entry shows the reversal even though it was triggered by
+    // a source-row delete.
+    await recordAudit({
+      entityType: "journal_entry",
+      entityId: linkedJournal.id,
+      action: "delete",
+      changes: [
+        ...snapshotChanges(linkedJournal),
+        { field: "reversedBy", to: `${opts.source.kind}#${opts.source.id}` },
+      ],
+      ctx: opts.ctx,
+    });
+  }
+}
+
 async function buildJournalSourceLinkMap(
   companyId: number,
   jeIds: number[],
@@ -1021,8 +1181,15 @@ export class DatabaseStorage implements IStorage {
     // postings (auto-posted JEs from quick transactions, payroll runs, fixed-
     // asset events, etc.) can resolve `1110` cash, `4010` revenue, `6900`
     // other-expense by code without falling back to silent no-ops.
+    //
+    // The seed runs against `accounts` which is workspace-scoped under RLS
+    // (task #93). At signup time the caller has no membership for the brand-
+    // new workspace yet, so the request middleware hasn't pinned
+    // `app.current_company_id` to it. Pin the GUC here so the seed inserts
+    // satisfy the policy's WITH CHECK without needing the bypass escape
+    // hatch — every row the seed writes targets exactly this workspace.
     const { seedDefaultCoaForCompany } = await import("./init-coa");
-    await seedDefaultCoaForCompany(c.id);
+    await withCompanyScope(c.id, () => seedDefaultCoaForCompany(c.id));
     return c;
   }
   async updateCompany(id: number, input: Partial<InsertCompany>): Promise<Company> {
@@ -1226,9 +1393,78 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return u;
   }
-  async deleteDepreciationRun(runId: number): Promise<void> {
-    await db.delete(depreciationPostings).where(eq(depreciationPostings.runId, runId));
-    await db.delete(depreciationRuns).where(eq(depreciationRuns.id, runId));
+  async deleteDepreciationRun(
+    companyId: number,
+    runId: number,
+    ctx?: AuditContext,
+  ): Promise<void> {
+    const [before] = await db
+      .select()
+      .from(depreciationRuns)
+      .where(
+        and(eq(depreciationRuns.id, runId), eq(depreciationRuns.companyId, companyId)),
+      );
+    if (!before) return;
+
+    // Snapshot postings BEFORE the cascade so we can roll back the per-asset
+    // accumDepreciation deltas this run had stamped on each fixed asset. We
+    // intentionally do NOT touch `accumDepNoImpairment` — the noImp delta is
+    // not stored per posting, and leaving the running counter slightly higher
+    // is the conservative side for the IAS 36 reversal cap.
+    const postings = await db
+      .select()
+      .from(depreciationPostings)
+      .where(eq(depreciationPostings.runId, runId));
+    const perAssetReversal = new Map<number, number>();
+    for (const p of postings) {
+      perAssetReversal.set(
+        p.assetId,
+        (perAssetReversal.get(p.assetId) ?? 0) + Number(p.amount),
+      );
+    }
+
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "depreciation_run", id: runId },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن حذف دورة الإهلاك لأن قيدها المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        // Schedule rows posted by this run point at it via a composite FK
+        // (run_id, company_id) → depreciation_runs(id, company_id). Reset
+        // them to "planned" so the FK is satisfied and a future re-post can
+        // pick them up again.
+        await tx
+          .update(depreciationSchedule)
+          .set({ status: "planned", runId: null })
+          .where(eq(depreciationSchedule.runId, runId));
+        await tx
+          .delete(depreciationPostings)
+          .where(eq(depreciationPostings.runId, runId));
+        await tx
+          .delete(depreciationRuns)
+          .where(
+            and(eq(depreciationRuns.id, runId), eq(depreciationRuns.companyId, companyId)),
+          );
+      },
+      ctx,
+    });
+
+    // Roll back the per-asset accumDepreciation this run added. Done outside
+    // the JE transaction so a slow update doesn't hold the audit-log row;
+    // the run + JE are already gone, so partial failure here merely leaves a
+    // stale balance that an admin can correct (rather than orphaning a JE).
+    for (const [assetId, amount] of Array.from(perAssetReversal.entries())) {
+      const [asset] = await db
+        .select()
+        .from(fixedAssets)
+        .where(and(eq(fixedAssets.id, assetId), eq(fixedAssets.companyId, companyId)));
+      if (!asset) continue;
+      await db
+        .update(fixedAssets)
+        .set({ accumDepreciation: String(Math.max(0, Number(asset.accumDepreciation) - amount)) })
+        .where(and(eq(fixedAssets.id, assetId), eq(fixedAssets.companyId, companyId)));
+    }
   }
 
   // ----- Schedule (planned rows) -----
@@ -1370,6 +1606,107 @@ export class DatabaseStorage implements IStorage {
     return c;
   }
 
+  // ----- Fixed-asset event deletes (mirror payroll-run JE-orphan guard) -----
+  //
+  // Each of these reverses the auto-posted journal entry alongside the event
+  // row OR refuses with a JournalEntryReferenceConflictError when the JE has
+  // been picked up by another module. They intentionally do NOT roll back
+  // the asset-balance side effects (accumImpairment, cost, accumDepreciation,
+  // status, …) — those would need an authoritative pre-event snapshot which
+  // the schema does not store today, and the existing `deleteFixedAsset`
+  // cascade has the same limitation. Restoring those balances precisely is
+  // tracked as a follow-up.
+
+  async deleteImpairmentEvent(
+    companyId: number,
+    eventId: number,
+    ctx?: AuditContext,
+  ): Promise<void> {
+    const [before] = await db
+      .select()
+      .from(impairmentEvents)
+      .where(and(eq(impairmentEvents.id, eventId), eq(impairmentEvents.companyId, companyId)));
+    if (!before) return;
+
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "impairment_event", id: eventId },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن حذف خسارة الانخفاض لأن قيدها المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        await tx
+          .delete(impairmentEvents)
+          .where(
+            and(
+              eq(impairmentEvents.id, eventId),
+              eq(impairmentEvents.companyId, companyId),
+            ),
+          );
+      },
+      ctx,
+    });
+  }
+
+  async deleteRevaluationEvent(
+    companyId: number,
+    eventId: number,
+    ctx?: AuditContext,
+  ): Promise<void> {
+    const [before] = await db
+      .select()
+      .from(revaluationEvents)
+      .where(and(eq(revaluationEvents.id, eventId), eq(revaluationEvents.companyId, companyId)));
+    if (!before) return;
+
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "revaluation_event", id: eventId },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن حذف إعادة التقييم لأن قيدها المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        await tx
+          .delete(revaluationEvents)
+          .where(
+            and(
+              eq(revaluationEvents.id, eventId),
+              eq(revaluationEvents.companyId, companyId),
+            ),
+          );
+      },
+      ctx,
+    });
+  }
+
+  async deleteDisposal(
+    companyId: number,
+    eventId: number,
+    ctx?: AuditContext,
+  ): Promise<void> {
+    const [before] = await db
+      .select()
+      .from(disposals)
+      .where(and(eq(disposals.id, eventId), eq(disposals.companyId, companyId)));
+    if (!before) return;
+
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "disposal", id: eventId },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن حذف الاستبعاد لأن قيده المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        await tx
+          .delete(disposals)
+          .where(
+            and(eq(disposals.id, eventId), eq(disposals.companyId, companyId)),
+          );
+      },
+      ctx,
+    });
+  }
+
   // ----- Payroll runs -----
   async listPayrollRuns(companyId: number): Promise<PayrollRun[]> {
     return await db
@@ -1391,66 +1728,21 @@ export class DatabaseStorage implements IStorage {
     // (preferred) or refuse the delete with a clear conflict error if the JE
     // has been picked up by another module — i.e. it is "locked / reconciled
     // / otherwise referenced" from outside the payroll subsystem.
-    let linkedJournal: JournalEntry | undefined;
-    if (before.journalEntryId) {
-      const [je] = await db
-        .select()
-        .from(journalEntries)
-        .where(
-          and(
-            eq(journalEntries.id, before.journalEntryId),
-            eq(journalEntries.companyId, companyId),
-          ),
-        );
-      if (je) {
-        linkedJournal = je;
-        const conflicts = await detectJournalEntryReferences(
-          before.journalEntryId,
-          { excludePayrollRunId: id },
-        );
-        if (conflicts.length > 0) {
-          throw new PayrollRunDeleteConflictError(
-            `لا يمكن حذف كشف الرواتب لأن قيده المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
-          );
-        }
-      }
-    }
-
-    await db.transaction(async (tx) => {
-      if (linkedJournal) {
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "payroll_run", id },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن حذف كشف الرواتب لأن قيده المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        await tx.delete(payrollLines).where(eq(payrollLines.payrollRunId, id));
         await tx
-          .delete(journalLines)
-          .where(eq(journalLines.journalEntryId, linkedJournal.id));
-        await tx
-          .delete(journalEntries)
-          .where(
-            and(
-              eq(journalEntries.id, linkedJournal.id),
-              eq(journalEntries.companyId, companyId),
-            ),
-          );
-      }
-      await tx.delete(payrollLines).where(eq(payrollLines.payrollRunId, id));
-      await tx
-        .delete(payrollRuns)
-        .where(and(eq(payrollRuns.id, id), eq(payrollRuns.companyId, companyId)));
+          .delete(payrollRuns)
+          .where(and(eq(payrollRuns.id, id), eq(payrollRuns.companyId, companyId)));
+      },
+      ctx,
     });
 
-    if (linkedJournal) {
-      // Stamp the JE delete on its own audit thread so the History drawer for
-      // the journal entry shows the reversal even though it was triggered by
-      // a payroll-run delete.
-      await recordAudit({
-        entityType: "journal_entry",
-        entityId: linkedJournal.id,
-        action: "delete",
-        changes: [
-          ...snapshotChanges(linkedJournal),
-          { field: "reversedBy", to: `payroll_run#${id}` },
-        ],
-        ctx,
-      });
-    }
     await recordAudit({
       entityType: "payroll_run",
       entityId: id,
@@ -1664,12 +1956,37 @@ export class DatabaseStorage implements IStorage {
     return rows.length;
   }
 
-  async deleteDocument(companyId: number, id: number): Promise<DocumentRow | undefined> {
-    const [row] = await db
-      .delete(documents)
-      .where(and(eq(documents.companyId, companyId), eq(documents.id, id)))
-      .returning();
-    return row;
+  async deleteDocument(
+    companyId: number,
+    id: number,
+    ctx?: AuditContext,
+  ): Promise<DocumentRow | undefined> {
+    const [before] = await db
+      .select()
+      .from(documents)
+      .where(and(eq(documents.companyId, companyId), eq(documents.id, id)));
+    if (!before) return undefined;
+
+    // Apply the same JE-orphan guard as payroll-run delete: if the inbox
+    // document was posted (it owns a journalEntryId) we either reverse the
+    // JE alongside the row or refuse with a clear conflict if the JE has
+    // been picked up by another module. Un-posted documents (journalEntryId
+    // null) skip the guard entirely.
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "document", id },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن حذف المستند لأن قيده المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        await tx
+          .delete(documents)
+          .where(and(eq(documents.companyId, companyId), eq(documents.id, id)));
+      },
+      ctx,
+    });
+
+    return before;
   }
 }
 
