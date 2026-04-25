@@ -1507,7 +1507,7 @@ export async function dropWorkspaceMembersMirrorOnStartup(): Promise<void> {
 /**
  * Idempotent re-apply of the email-delivery-alert tables — both the parent
  * `email_delivery_alerts` / `email_delivery_alert_settings` from migration
- * 0005 and the per-recipient outcome table from migration 0008.
+ * 0009 and the per-recipient outcome table from migration 0011.
  *
  * Same pattern as the other 000X bootstrappers in this file: every statement
  * is guarded with IF NOT EXISTS so re-runs are a no-op. We re-stage both
@@ -1516,7 +1516,7 @@ export async function dropWorkspaceMembersMirrorOnStartup(): Promise<void> {
  * (and its dedupe / retry passes) need to read and write.
  */
 export async function applyEmailDeliveryAlertRecipientsOnStartup(): Promise<void> {
-  // Migration 0005 — parent settings + history tables. Required by the FK
+  // Migration 0009 — parent settings + history tables. Required by the FK
   // on email_delivery_alert_recipients(alert_id), so we create these first.
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS email_delivery_alert_settings (
@@ -1557,7 +1557,7 @@ export async function applyEmailDeliveryAlertRecipientsOnStartup(): Promise<void
       ON email_delivery_alerts (company_id, fired_at)
   `);
 
-  // Migration 0008 — per-recipient outcome rows.
+  // Migration 0011 — per-recipient outcome rows.
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS email_delivery_alert_recipients (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1581,7 +1581,7 @@ export async function applyEmailDeliveryAlertRecipientsOnStartup(): Promise<void
 }
 
 /**
- * Idempotent re-apply of migrations/0010_email_delivery_event_count_indexes.sql.
+ * Idempotent re-apply of migrations/0012_email_delivery_event_count_indexes.sql.
  *
  * Same pattern as the other 000X bootstrappers: dev databases and
  * any deploy that boots ahead of the migration runner end up with

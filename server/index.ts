@@ -240,7 +240,7 @@ app.use((req, res, next) => {
     console.error("Failed to drop workspace_members mirror:", err);
   }
 
-  // Re-apply migration 0009 on boot so the per-recipient alert outcome
+  // Re-apply migration 0011 on boot so the per-recipient alert outcome
   // table is in place before the evaluator (and its dedupe / retry passes)
   // tries to read or write it. Idempotent.
   try {
@@ -255,7 +255,7 @@ app.use((req, res, next) => {
     );
   }
 
-  // Re-apply migration 0010 on boot so the (message_id, created_at)
+  // Re-apply migration 0012 on boot so the (message_id, created_at)
   // indexes that keep the /api/auth/email-deliveries/count endpoint
   // snappy on long histories materialise on dev databases and on any
   // deploy that boots ahead of the migration runner. Idempotent.

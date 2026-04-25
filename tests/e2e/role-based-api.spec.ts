@@ -498,23 +498,20 @@ test.describe("API-side role gating @rbac-api", () => {
     // proves the gate is open. Once the underlying bug is fixed the entry
     // here should be removed so the strong 2xx assertion kicks back in.
     //
-    //   • POST /api/journal-entries — `journal_lines.company_id` column
-    //     is missing in the DB (migration 0005_workspace_composite_fks
-    //     never applied because two migration files share the 0005
-    //     prefix; see migrations/0005_email_delivery_alerts.sql vs
-    //     migrations/0005_workspace_composite_fks.sql). The route 500s
-    //     for everyone, owner included — independent of RBAC.
+    // Two endpoints used to live here:
     //
-    // POST /api/hr/payroll/run used to live here too: the shared E2E
-    // workspace couldn't seed the canonical payroll accounts because
-    // `accounts.code` carried a *global* UNIQUE constraint. That
-    // constraint was scoped per-workspace in
-    // migrations/0010_accounts_code_per_workspace.sql, the setup now
-    // seeds the full payroll account set, and the strong 2xx assertion
-    // is back on for that endpoint.
-    const OWNER_SUCCESS_KNOWN_BLOCKED = new Set<string>([
-      "POST /api/journal-entries (button-new-entry)",
-    ]);
+    //   • POST /api/hr/payroll/run — the `accounts.code` global UNIQUE
+    //     constraint was scoped per-workspace in
+    //     migrations/0010_accounts_code_per_workspace.sql, the setup
+    //     now seeds the full payroll account set, and the strong 2xx
+    //     assertion is back on.
+    //   • POST /api/journal-entries — `journal_lines.company_id` was
+    //     missing because two migration files shared the 0005 prefix
+    //     and one was silently skipped. The duplicate prefixes have
+    //     been removed (the email-delivery-alert chain was renumbered
+    //     into the 0009-0013 range), and the strong 2xx assertion is
+    //     back on for journal entries too.
+    const OWNER_SUCCESS_KNOWN_BLOCKED = new Set<string>([]);
 
     for (const ep of GATED_ENDPOINTS) {
       test(`${ep.method} ${ep.label} succeeds for owner`, async ({ request }) => {
