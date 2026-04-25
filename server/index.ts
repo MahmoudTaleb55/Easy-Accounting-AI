@@ -290,9 +290,13 @@ app.use((req, res, next) => {
     console.error("Failed to drop workspace_members mirror:", err);
   }
 
-  // Re-apply migration 0011 on boot so the per-recipient alert outcome
-  // table is in place before the evaluator (and its dedupe / retry passes)
-  // tries to read or write it. Idempotent.
+  // Re-apply migrations 0009, 0011 and 0013 on boot so the per-recipient
+  // alert outcome table — and the one-shot `cooldown_cleared_at` "Re-arm"
+  // column — are in place before the evaluator (and its dedupe / retry
+  // passes) tries to read or write them. Idempotent. The 0013 piece is
+  // defense-in-depth against the duplicate-prefix migration bug fixed in
+  // task #161 (cooldown_cleared started life sharing a `0008_` prefix
+  // with `0008_workspace_rls.sql`).
   try {
     const { applyEmailDeliveryAlertRecipientsOnStartup } = await import(
       "./auth/storage"

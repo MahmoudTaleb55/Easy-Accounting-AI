@@ -1680,15 +1680,28 @@ export async function ensureEmailDeliveryAlertTablesOnStartup(): Promise<void> {
 }
 
 /**
- * Idempotent re-apply of the email-delivery-alert tables — both the parent
+ * Idempotent re-apply of the email-delivery-alert tables — the parent
  * `email_delivery_alerts` / `email_delivery_alert_settings` from migration
- * 0009 and the per-recipient outcome table from migration 0011.
+ * 0009, the per-recipient outcome table from migration 0011, and the
+ * one-shot `cooldown_cleared_at` "Re-arm" timestamp column from migration
+ * 0013.
  *
  * Same pattern as the other 000X bootstrappers in this file: every statement
- * is guarded with IF NOT EXISTS so re-runs are a no-op. We re-stage both
- * migrations together so dev databases and any deploy that boots ahead of
- * the migration runner end up with the full set of tables the evaluator
- * (and its dedupe / retry passes) need to read and write.
+ * is guarded with IF NOT EXISTS so re-runs are a no-op. We re-stage all
+ * three migrations together so dev databases and any deploy that boots
+ * ahead of the migration runner end up with the full set of tables/columns
+ * the evaluator (and its dedupe / retry passes) need to read and write.
+ *
+ * Why 0013 is in here too (task #161): migration
+ * `0013_email_delivery_alert_cooldown_cleared.sql` started life sharing a
+ * `0008_` prefix with `0008_workspace_rls.sql` and was renamed to break
+ * that collision. As defense-in-depth against any future migration runner
+ * that processes prefixes uniquely (the same kind that dropped the 0005
+ * work earlier — see tasks #70 -> #91 -> #117), we also re-create the
+ * `cooldown_cleared_at` column here. Without this, a fresh DB that lost
+ * the 0013 migration would silently be missing the column even though
+ * `clearEmailDeliveryAlertCooldown()` (above) writes to it on the
+ * owner-facing "Re-arm" action.
  */
 export async function applyEmailDeliveryAlertRecipientsOnStartup(): Promise<void> {
   // Migration 0009 — parent settings + history tables. Required by the FK
@@ -1752,6 +1765,19 @@ export async function applyEmailDeliveryAlertRecipientsOnStartup(): Promise<void
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS email_delivery_alert_recipients_dedupe_idx
       ON email_delivery_alert_recipients (company_id, reason, email, attempted_at)
+  `);
+
+  // Migration 0013 — one-shot "Re-arm" timestamp on the per-workspace
+  // settings row. Read by the evaluator's cooldown gate
+  // (`cfg.cooldownClearedAt > most recent alert.fired_at` ⇒ cooldown is
+  // cleared) and written by `clearEmailDeliveryAlertCooldown()` on the
+  // owner-facing "Re-arm" action. Re-staged here so a dev DB whose
+  // migration runner ever skipped the 0013 file (e.g. a future runner
+  // that processed prefixes uniquely) doesn't silently drop the column
+  // out from under the runtime.
+  await db.execute(sql`
+    ALTER TABLE email_delivery_alert_settings
+      ADD COLUMN IF NOT EXISTS cooldown_cleared_at timestamp
   `);
 }
 
