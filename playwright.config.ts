@@ -47,6 +47,7 @@ export default defineConfig({
         /delivery-alert-audit\.setup\.ts/,
         /delivery-alert-audit\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
+        /journal-entry-deeplinks\.spec\.ts/,
       ],
     },
     {
@@ -211,6 +212,28 @@ export default defineConfig({
       use: {
         viewport: { width: 1280, height: 800 },
         storageState: ".playwright/payroll-journal-link-state.json",
+      },
+    },
+    {
+      // One-time setup that provisions a dedicated workspace and seeds
+      // a posted document, posted depreciation run, and impairment
+      // event — each linked to its own journal_entry — so the spec can
+      // exercise every JE deep-link surface in one pass. See
+      // `journal-entry-deeplinks.setup.ts`.
+      name: "journal-entry-deeplinks-setup",
+      testMatch: /journal-entry-deeplinks\.setup\.ts/,
+    },
+    {
+      // Locks down the JE deep-link contract on /app/inbox and
+      // /app/fixed-assets so a future refactor can't silently regress
+      // these references back to plain text. See
+      // `journal-entry-deeplinks.spec.ts`.
+      name: "journal-entry-deeplinks",
+      testMatch: /journal-entry-deeplinks\.spec\.ts/,
+      dependencies: ["journal-entry-deeplinks-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+        storageState: ".playwright/je-deeplinks-state.json",
       },
     },
   ],
