@@ -63,6 +63,23 @@ function buildLocalSession(user: { id: string; email: string | null; firstName: 
 // truncated.
 const EMAIL_DELIVERY_EXPORT_CAP = 10000;
 
+/**
+ * Read the dev-only `?skipCooldown` query parameter on the
+ * `/api/auth/email-delivery-alerts/evaluate` route. Hard-gated to
+ * non-production NODE_ENV — production builds always return `false` so a
+ * real workspace cannot use the bypass to spam owners by re-firing the
+ * evaluator inside the cooldown window.
+ *
+ * Exported so the production-gate spec can lock the gate in with a unit
+ * test (see `tests/e2e/dev-only-routes-production-gate.spec.ts`).
+ */
+export function readDevSkipCooldownFromQuery(
+  query: { skipCooldown?: unknown },
+): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  return query.skipCooldown === "1" || query.skipCooldown === "true";
+}
+
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1h
   max: 8,
@@ -1084,9 +1101,7 @@ export function registerLocalAuthRoutes(app: Express) {
     async (req, res, next) => {
       try {
         const ctx = (req as any).membership!;
-        const skipCooldown =
-          process.env.NODE_ENV !== "production" &&
-          (req.query.skipCooldown === "1" || req.query.skipCooldown === "true");
+        const skipCooldown = readDevSkipCooldownFromQuery(req.query);
         const result = await evaluateEmailDeliveryAlertsForCompany(
           ctx.companyId,
           { skipCooldown },

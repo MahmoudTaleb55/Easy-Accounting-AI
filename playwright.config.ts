@@ -52,6 +52,7 @@ export default defineConfig({
         /delivery-alert-audit\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
         /journal-entry-deeplinks\.spec\.ts/,
+        /dev-only-routes-production-gate\.spec\.ts/,
       ],
     },
     {
@@ -252,6 +253,19 @@ export default defineConfig({
       // its setup project.
       name: "email-delivery-alerts-side-channel",
       testMatch: /email-delivery-alerts-side-channel\.spec\.ts/,
+    },
+    {
+      // Locks the test-only `POST /api/dev/email-stub` route and the
+      // `?skipCooldown=1` query parameter on the evaluator route off in
+      // a production build (see
+      // `tests/e2e/dev-only-routes-production-gate.spec.ts`). Runs in a
+      // dedicated project because the spec sets
+      // `process.env.NODE_ENV = "production"` at the top of the file —
+      // isolating it in its own worker prevents that toggle from
+      // bleeding into any sibling spec that imports server modules and
+      // assumes `NODE_ENV !== "production"`.
+      name: "dev-only-routes-production-gate",
+      testMatch: /dev-only-routes-production-gate\.spec\.ts/,
     },
     {
       // One-time setup that provisions a dedicated workspace and seeds a
