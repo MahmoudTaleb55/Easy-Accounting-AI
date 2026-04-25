@@ -44,6 +44,8 @@ export default defineConfig({
         /email-delivery-alerts\.spec\.ts/,
         /email-delivery-alerts-side-channel\.spec\.ts/,
         /email-delivery-csv-export\.spec\.ts/,
+        /delivery-alert-audit\.setup\.ts/,
+        /delivery-alert-audit\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
       ],
     },
@@ -151,6 +153,28 @@ export default defineConfig({
       name: "email-delivery-csv-export",
       testMatch: /email-delivery-csv-export\.spec\.ts/,
       dependencies: ["email-delivery-alerts-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
+      // One-time setup that provisions an *isolated* workspace + owner
+      // for the `delivery-alert-audit` spec. A dedicated workspace is
+      // essential because the spec wipes + seeds alert rows in
+      // beforeEach; sharing the workspace with the sibling
+      // `email-delivery-alerts` project would race the two specs'
+      // resets when Playwright runs them in parallel.
+      name: "delivery-alert-audit-setup",
+      testMatch: /delivery-alert-audit\.setup\.ts/,
+    },
+    {
+      // Locks in the `Dismissed by` attribution column on the Recent
+      // Alerts audit table at /app/settings/email-delivery — proves
+      // the dismissed_by_user_id → users join keeps producing a real
+      // display name end-to-end. See `delivery-alert-audit.spec.ts`.
+      name: "delivery-alert-audit",
+      testMatch: /delivery-alert-audit\.spec\.ts/,
+      dependencies: ["delivery-alert-audit-setup"],
       use: {
         viewport: { width: 1280, height: 800 },
       },
