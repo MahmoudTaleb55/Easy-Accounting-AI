@@ -206,6 +206,13 @@ interface AlertSettings {
   ratioThreshold: number;
   minSamplesForRatio: number;
   cooldownMinutes: number;
+  // Optional per-workspace override of the dedupe / retry windows. Omitting
+  // them (or sending null) leaves the env-derived fallback in effect — see
+  // `getDedupeHours` / `getRetryMinutes` in server/auth/email-delivery-alerts.ts.
+  // Carried on this interface so `Partial<AlertSettings>` patches in the new
+  // tuning-field tests (section 5/6 below) compile without a separate type.
+  dedupeHours?: number | null;
+  retryMinutes?: number | null;
 }
 
 const PERMISSIVE: AlertSettings = {
@@ -1323,3 +1330,327 @@ test.describe("recent-alerts pagination @alerts", () => {
     ).toBeVisible();
   });
 });
+
+// ===========================================================================
+// 5) Alert tuning fields — locks down the GET shape and PUT bounds for the
+//    new per-workspace `dedupeHours` / `retryMinutes` overrides surfaced on
+//    the operator-facing settings card.
+//
+//    Until this block landed, the Playwright suite exercised every other
+//    knob on the card but not these two — a refactor of the card or the
+//    upsert schema could silently drop the per-workspace override (the
+//    evaluator would fall back to the env value) and we'd only learn
+//    about it when a customer's inbox got spammed by a flapping provider.
+//
+//    The override columns are nullable on purpose (legacy rows pre-date
+//    them); the GET shape must reflect that with `number | null` and
+//    *also* surface a numeric `effective*` fallback so the UI can show an
+//    "inherited vs. custom" badge instead of silently substituting a
+//    default that looks identical to a saved override. The PUT bounds
+//    mirror the env-fallback clamp inside `getDedupeHours` /
+//    `getRetryMinutes` (one week / one day) so a misconfigured value
+//    can't permanently mute alerts.
+// ===========================================================================
+test.describe("delivery-alert tuning fields shape + bounds @alerts", () => {
+  test.use({ storageState: ROLE_FILES.owner });
+
+  test.beforeEach(async () => {
+    await resetAlertState();
+  });
+
+  test("GET /settings exposes dedupeHours/retryMinutes (number | null) and effective fallbacks", async ({
+    request,
+  }) => {
+    interface SettingsBody {
+      dedupeHours: number | null;
+      retryMinutes: number | null;
+      effectiveDedupeHours: number;
+      effectiveRetryMinutes: number;
+    }
+
+    // Phase 1 — fresh workspace (no settings row written). The columns
+    // are nullable so the GET must surface `null` on the override fields
+    // and a positive number on the effective fields (the env-derived
+    // fallback the evaluator would actually use right now). Asserting
+    // the env-fallback is *positive* — rather than pinning to an exact
+    // 12h/60min — keeps the test robust against operators tuning the
+    // process-wide defaults via env.
+    const fresh = await call(request, "GET", "/api/auth/email-delivery-alerts/settings");
+    expect(fresh.status).toBe(200);
+    const freshBody = fresh.body as SettingsBody;
+    expect(freshBody.dedupeHours, "fresh workspace: dedupeHours override is null").toBeNull();
+    expect(freshBody.retryMinutes, "fresh workspace: retryMinutes override is null").toBeNull();
+    expect(typeof freshBody.effectiveDedupeHours).toBe("number");
+    expect(typeof freshBody.effectiveRetryMinutes).toBe("number");
+    expect(freshBody.effectiveDedupeHours).toBeGreaterThan(0);
+    expect(freshBody.effectiveRetryMinutes).toBeGreaterThan(0);
+
+    // Phase 2 — write explicit overrides; GET must echo them and the
+    // effective values must collapse onto the override (the evaluator
+    // prefers a non-null per-workspace value over the env fallback).
+    await writeSettings(request, { dedupeHours: 24, retryMinutes: 30 });
+    const after = await call(request, "GET", "/api/auth/email-delivery-alerts/settings");
+    expect(after.status).toBe(200);
+    const afterBody = after.body as SettingsBody;
+    expect(afterBody.dedupeHours).toBe(24);
+    expect(afterBody.retryMinutes).toBe(30);
+    expect(afterBody.effectiveDedupeHours).toBe(24);
+    expect(afterBody.effectiveRetryMinutes).toBe(30);
+
+    // Phase 3 — clear the overrides back to null. The evaluator falls
+    // back to the env value again, so the effective fields go positive
+    // while the override fields go null — proving the API distinguishes
+    // "operator explicitly cleared" from "operator picked a value".
+    await writeSettings(request, { dedupeHours: null, retryMinutes: null });
+    const cleared = await call(request, "GET", "/api/auth/email-delivery-alerts/settings");
+    expect(cleared.status).toBe(200);
+    const clearedBody = cleared.body as SettingsBody;
+    expect(clearedBody.dedupeHours, "after clearing: dedupeHours back to null").toBeNull();
+    expect(clearedBody.retryMinutes, "after clearing: retryMinutes back to null").toBeNull();
+    expect(typeof clearedBody.effectiveDedupeHours).toBe("number");
+    expect(typeof clearedBody.effectiveRetryMinutes).toBe("number");
+    expect(clearedBody.effectiveDedupeHours).toBeGreaterThan(0);
+    expect(clearedBody.effectiveRetryMinutes).toBeGreaterThan(0);
+  });
+
+  test("PUT /settings enforces 0..168 dedupeHours and 0..1440 retryMinutes bounds", async ({
+    request,
+  }) => {
+    // Boundary values inside each range must be accepted. 0 explicitly
+    // disables the gate — verifying it round-trips proves the schema
+    // didn't accidentally use `.positive()` instead of `.min(0)`.
+    const allowed: Array<Partial<AlertSettings>> = [
+      { dedupeHours: 0, retryMinutes: 0 },
+      { dedupeHours: 168, retryMinutes: 1440 },
+      { dedupeHours: null, retryMinutes: null },
+    ];
+    for (const ok of allowed) {
+      const r = await call(
+        request,
+        "PUT",
+        "/api/auth/email-delivery-alerts/settings",
+        { ...PERMISSIVE, ...ok },
+      );
+      expect(
+        r.status,
+        `boundary ${JSON.stringify(ok)} should be accepted, got ${r.status}: ${JSON.stringify(r.body)}`,
+      ).toBe(200);
+    }
+
+    // Just-outside values (one tick past either end of each range) must
+    // be rejected. We probe both ends of both fields independently so a
+    // future schema bug that swapped one bound for another (e.g. dedupe
+    // accidentally clamped at 1440 like retry, or retry at 168 like
+    // dedupe) is still caught here rather than only when the evaluator
+    // mis-clamps in production.
+    const rejected: Array<Partial<AlertSettings>> = [
+      { dedupeHours: -1 },
+      { dedupeHours: 169 },
+      { retryMinutes: -1 },
+      { retryMinutes: 1441 },
+    ];
+    for (const bad of rejected) {
+      const r = await call(
+        request,
+        "PUT",
+        "/api/auth/email-delivery-alerts/settings",
+        { ...PERMISSIVE, ...bad },
+      );
+      expect(
+        r.status,
+        `out-of-range ${JSON.stringify(bad)} should be rejected, got ${r.status}: ${JSON.stringify(r.body)}`,
+      ).toBe(400);
+    }
+  });
+});
+
+// ===========================================================================
+// 6) dedupeHours override beats env value — proves the per-workspace column
+//    drives the dedupe gate, not the EMAIL_DELIVERY_ALERT_DEDUPE_HOURS env
+//    fallback. Without this assertion a refactor that accidentally read
+//    only the env value would still pass every other test in this file
+//    (the gate would simply use the wrong number) but operators who set
+//    a non-default override would silently get the env behaviour instead
+//    — the exact scenario that motivated the per-workspace column.
+//
+//    Mechanism: the dedupe gate consults
+//    `email_delivery_alert_recipients` for any `status='sent'` row whose
+//    `attempted_at` is within the configured window. We pre-seed a
+//    successful "previously alerted 4h ago" row for *every* workspace
+//    owner, then run two evaluator passes back-to-back with different
+//    override values. The 4h-old rows are *outside* a 2h window (every
+//    owner re-emailed, deduped=0) but *inside* a 12h window (every owner
+//    deduped, deduped=ownerCount). Same fixture, two outcomes — driven
+//    entirely by the per-workspace override.
+//
+//    Pre-seeding *every* owner (not just OWNER_A) keeps the assertion
+//    deterministic regardless of whether section 4 — which idempotently
+//    plants OWNER_B in this workspace — has already run, and uses the
+//    NODE_ENV-gated email stub so the test doesn't depend on Resend.
+// ===========================================================================
+test.describe("delivery-alert dedupeHours override beats env @alerts", () => {
+  test.use({ storageState: ROLE_FILES.owner });
+
+  test.beforeAll(async () => {
+    // Plant the second owner regardless of whether section 4 ran first,
+    // so the assertion below is deterministic in isolation (e.g. when a
+    // developer runs `npx playwright test -g "dedupeHours override"`).
+    // Idempotent: section 4 calls the same helper. Either way, this
+    // workspace ends up with the {OWNER_A, OWNER_B} owner pair the test
+    // pre-seeds prior-send history for.
+    await ensureSecondOwner();
+  });
+
+  test.beforeEach(async ({ request }) => {
+    // Fully reset so the dedupe gate has nothing to draw on except the
+    // pre-seeded "previously alerted" rows this test plants. Mirrors the
+    // belt-and-braces wipe in section 4 — the production schema doesn't
+    // actually carry the alert→recipient FK so prior runs of any spec
+    // can leave orphaned recipient rows that would trip the gate.
+    await resetAlertState();
+    await wipeRecipientsForSharedCompany();
+    await clearEmailStub(request);
+  });
+
+  test.afterAll(async ({ request }) => {
+    // Best-effort: don't let the stub linger past this block — a later
+    // spec (or the next `npx playwright test` run reusing the dev
+    // server) must see the real transport again. If the dev server has
+    // already gone away the request just throws and we move on.
+    try {
+      await clearEmailStub(request);
+    } catch {
+      /* server gone — nothing to clear */
+    }
+  });
+
+  test("4h-old send is outside dedupeHours=2 (re-emails) but inside dedupeHours=12 (skips)", async ({
+    request,
+  }) => {
+    // Stub Resend so every send always succeeds — we're not testing the
+    // transport here, we're testing which knob drives the dedupe gate.
+    await installEmailStub(request, []);
+
+    // The workspace owner pair is fixed by `ensureSecondOwner()` (in
+    // beforeAll) plus the dedicated setup — listing them once and
+    // pinning both phases to the same number keeps the assertion
+    // explicit instead of hard-coding "2".
+    const ownerEmails = [OWNER_A_EMAIL, OWNER_B_EMAIL];
+    const ownerCount = ownerEmails.length;
+
+    // ---------------------------------------------------------------
+    // Phase 1 — dedupeHours=2. Every owner has a 4h-old prior send,
+    // OUTSIDE the 2h window, so the dedupe gate must NOT skip anyone.
+    // ---------------------------------------------------------------
+    await writeSettings(request, {
+      absoluteThreshold: 3,
+      cooldownMinutes: 360,
+      emailEnabled: true,
+      dedupeHours: 2,
+    });
+    await seedEvents("bounced", 3);
+    for (const email of ownerEmails) {
+      await seedRecipientHistory({ email, hoursAgo: 4 });
+    }
+
+    const fire1 = (await evaluate(request)) as EvaluateOutcome & {
+      emailDeduped?: number;
+    };
+    expect(
+      fire1.fired,
+      `phase 1: evaluator should fire — got ${JSON.stringify(fire1)}`,
+    ).toBe(true);
+    expect(
+      fire1.emailRecipients,
+      `dedupeHours=2 must NOT skip a 4h-old send for any owner — got ${JSON.stringify(fire1)}`,
+    ).toBe(ownerCount);
+    expect(fire1.emailDeduped, "phase 1: nothing deduped under the 2h window").toBe(0);
+    expect(fire1.emailSent, "phase 1: every owner emailed").toBe(true);
+
+    // Reset between phases — we need the dedupe-gate input to be EXACTLY
+    // the pre-seeded 4h-old rows, not the fresh `attempted_at = NOW()`
+    // rows that fire #1 just appended (which would suppress the owners
+    // under dedupeHours=12 *regardless* of the per-workspace override
+    // and prove nothing). Same workspace, same owners, same fixture.
+    await resetAlertState();
+    await wipeRecipientsForSharedCompany();
+
+    // ---------------------------------------------------------------
+    // Phase 2 — dedupeHours=12. Pre-seeded sends are still 4h old,
+    // INSIDE the 12h window, so the dedupe gate must skip every owner.
+    // The alert row itself still gets written (the gate is per-email,
+    // not per-alert), but `emailRecipients` collapses to 0 and
+    // `emailDeduped` rises to ownerCount — that's how we prove the
+    // override value, not the env fallback, drove the outcome.
+    // ---------------------------------------------------------------
+    await writeSettings(request, {
+      absoluteThreshold: 3,
+      cooldownMinutes: 360,
+      emailEnabled: true,
+      dedupeHours: 12,
+    });
+    await seedEvents("bounced", 3);
+    for (const email of ownerEmails) {
+      await seedRecipientHistory({ email, hoursAgo: 4 });
+    }
+
+    const fire2 = (await evaluate(request)) as EvaluateOutcome & {
+      emailDeduped?: number;
+    };
+    expect(
+      fire2.fired,
+      `phase 2: evaluator still fires (alert row); only the email side is deduped — got ${JSON.stringify(fire2)}`,
+    ).toBe(true);
+    expect(
+      fire2.emailRecipients,
+      `dedupeHours=12 must skip a 4h-old send for every owner — got ${JSON.stringify(fire2)}`,
+    ).toBe(0);
+    expect(
+      fire2.emailDeduped,
+      "phase 2: every owner skipped by the 12h window",
+    ).toBe(ownerCount);
+    expect(
+      fire2.emailSent,
+      "phase 2: no successful sends because every owner was deduped",
+    ).toBe(false);
+  });
+});
+
+/**
+ * Insert a successful per-recipient outcome row with a controlled
+ * `attempted_at`, so the dedupe gate has a deterministic "previously
+ * alerted N hours ago" record to consult.
+ *
+ * The dedupe lookup (`listRecentlyAlertedRecipients`) hits the
+ * `(company_id, reason, email, attempted_at)` index and never joins back
+ * to the parent alert row, so the `alert_id` value is allowed to be a
+ * synthetic UUID with no matching `email_delivery_alerts` row — that's
+ * also why this seeder doesn't bother creating one.
+ */
+async function seedRecipientHistory(opts: {
+  email: string;
+  hoursAgo: number;
+  reason?: "absolute" | "ratio";
+}): Promise<void> {
+  const { companyId } = await getShared();
+  const reason = opts.reason ?? "absolute";
+  const client = new pg.Client({ connectionString: requiredDbUrl() });
+  await client.connect();
+  try {
+    await client.query(
+      `INSERT INTO email_delivery_alert_recipients
+         (alert_id, company_id, email, reason, status, error, attempted_at)
+       VALUES ($1, $2, $3, $4, 'sent', NULL,
+               NOW() - ($5::int * INTERVAL '1 hour'))`,
+      [
+        crypto.randomUUID(),
+        companyId,
+        opts.email.trim().toLowerCase(),
+        reason,
+        opts.hoursAgo,
+      ],
+    );
+  } finally {
+    await client.end();
+  }
+}
