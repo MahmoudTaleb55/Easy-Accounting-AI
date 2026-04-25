@@ -169,29 +169,88 @@ test.describe("database-level workspace isolation @db", () => {
       expect(rParentUpdate.ok).toBe(true);
 
       // ----- Cross-tenant asset_categories pointer ------------------------
-      // Eight account-id pointer columns; we test one (gain_loss_disposal)
-      // since they all share the same shape.
+      // asset_categories carries seven account-id pointer columns
+      // (asset_cost, accumulated_dep, dep_expense, accumulated_imp,
+      // imp_loss, reval_surplus, gain_loss_disposal). Migration 0005
+      // created a dedicated composite FK per pointer so an asset category
+      // in workspace A can never point any of those columns at an account
+      // in workspace B. Each constraint must be asserted by name —
+      // otherwise a future migration that drops one would silently let
+      // asset setup cross workspaces and every other case here would still
+      // pass. Stand up an in-workspace account to satisfy the six pointers
+      // we are *not* targeting on each attempt; only the pointer under
+      // test gets aidB so PG reports that specific constraint and nothing
+      // else.
       const acA2 = await client.query(
         `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype)
          VALUES ($1, $2, 'x', 'x', 'asset', 'current_asset') RETURNING id`,
         [cidA, `X-${tag}`],
       );
       const xidA: number = acA2.rows[0].id;
-      const r4 = await attempt(
-        `INSERT INTO asset_categories
-           (company_id, name,
-            asset_cost_account_id, accumulated_dep_account_id, dep_expense_account_id,
-            accumulated_imp_account_id, imp_loss_account_id, reval_surplus_account_id,
-            gain_loss_disposal_account_id)
-         VALUES ($1, 'cat', $2, $2, $2, $2, $2, $2, $3)`,
-        [cidA, xidA, aidB],
-      );
-      expect(r4.ok).toBe(false);
-      if (!r4.ok) {
-        expect(r4.code).toBe("23503");
-        expect(r4.constraint).toBe(
-          "asset_categories_gain_loss_disposal_company_fk",
+
+      // One sub-case per dedicated composite FK on asset_categories.
+      // The 7-tuple is (asset_cost, accum_dep, dep_expense, accum_imp,
+      // imp_loss, reval_surplus, gain_loss_disposal); we set the targeted
+      // slot to aidB and the rest to xidA.
+      const acPointerCases: Array<{
+        label: string;
+        constraint: string;
+        values: (number)[];
+      }> = [
+        {
+          label: "asset_cost",
+          constraint: "asset_categories_asset_cost_company_fk",
+          values: [aidB, xidA, xidA, xidA, xidA, xidA, xidA],
+        },
+        {
+          label: "accumulated_dep",
+          constraint: "asset_categories_accum_dep_company_fk",
+          values: [xidA, aidB, xidA, xidA, xidA, xidA, xidA],
+        },
+        {
+          label: "dep_expense",
+          constraint: "asset_categories_dep_expense_company_fk",
+          values: [xidA, xidA, aidB, xidA, xidA, xidA, xidA],
+        },
+        {
+          label: "accumulated_imp",
+          constraint: "asset_categories_accum_imp_company_fk",
+          values: [xidA, xidA, xidA, aidB, xidA, xidA, xidA],
+        },
+        {
+          label: "imp_loss",
+          constraint: "asset_categories_imp_loss_company_fk",
+          values: [xidA, xidA, xidA, xidA, aidB, xidA, xidA],
+        },
+        {
+          label: "reval_surplus",
+          constraint: "asset_categories_reval_surplus_company_fk",
+          values: [xidA, xidA, xidA, xidA, xidA, aidB, xidA],
+        },
+        {
+          label: "gain_loss_disposal",
+          constraint: "asset_categories_gain_loss_disposal_company_fk",
+          values: [xidA, xidA, xidA, xidA, xidA, xidA, aidB],
+        },
+      ];
+
+      for (const c of acPointerCases) {
+        const r = await attempt(
+          `INSERT INTO asset_categories
+             (company_id, name,
+              asset_cost_account_id, accumulated_dep_account_id, dep_expense_account_id,
+              accumulated_imp_account_id, imp_loss_account_id, reval_surplus_account_id,
+              gain_loss_disposal_account_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [cidA, `cat-${c.label}`, ...c.values],
         );
+        expect(r.ok, `pointer ${c.label} should be rejected`).toBe(false);
+        if (!r.ok) {
+          expect(r.code, `pointer ${c.label} expected 23503`).toBe("23503");
+          expect(r.constraint, `pointer ${c.label} constraint name`).toBe(
+            c.constraint,
+          );
+        }
       }
 
       // ----- Cross-tenant fixed_assets: category in B, asset claims A ------
