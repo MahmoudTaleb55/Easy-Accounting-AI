@@ -76,7 +76,11 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      // Match the queryKey used by `useAuth` (`/api/auth/user`) so the
+      // signed-in user record refetches and any UI bound to it (e.g. the
+      // assistant locale, settings page) immediately reflects the new
+      // `preferredLocale` without waiting for a full reload.
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
   });
 
