@@ -152,6 +152,12 @@ export function AuthShell({ title, subtitle, side, children, footer }: AuthShell
  * Replaces the prior binary "EN/ع" toggle which only let the user reach
  * Arabic and English even though the app supports German and French too.
  */
+// Auth pages (sign-in / sign-up / accept invite) use binary `ar ? "..." : "..."`
+// strings, so picking de/fr today silently falls back to English content. We
+// only expose the locales the auth shell actually ships in; the full app
+// supports all four after sign-in.
+const AUTH_AVAILABLE_LOCALES = ["ar", "en"] as const;
+
 function LocalePicker({ testId = "button-toggle-locale" }: { testId?: string } = {}) {
   const { locale, setLocale } = useLocale();
   const ar = locale === "ar";
@@ -170,7 +176,7 @@ function LocalePicker({ testId = "button-toggle-locale" }: { testId?: string } =
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="shadow-md min-w-[10rem]">
-        {(["ar", "en", "de", "fr"] as const).map((code) => (
+        {AUTH_AVAILABLE_LOCALES.map((code) => (
           <DropdownMenuItem
             key={code}
             onClick={() => setLocale(code)}

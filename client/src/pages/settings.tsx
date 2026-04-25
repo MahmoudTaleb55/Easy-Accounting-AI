@@ -13,6 +13,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight, MailCheck } from "lucide-react";
 import type { OrgSettings } from "@/lib/format";
+import { savePublicCurrency } from "@/lib/public-currency";
 import { CompaniesPanel, FxPanel } from "@/pages/fixed-assets";
 import { useCompany } from "@/contexts/company-context";
 import { SecurityCompliance } from "@/components/trust/security-compliance";
@@ -161,6 +162,10 @@ export default function SettingsPage() {
       // those so the new currency shows up everywhere immediately.
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/memberships"] });
+      // Mirror the saved currency to localStorage so the public landing page
+      // (which has no auth context and can't read /api/settings) reflects
+      // the user's choice next time they visit while signed out.
+      savePublicCurrency({ code: vals.currencyCode, symbol: vals.currencySymbol });
       toast({ title: "تم الحفظ", description: "تم تحديث الإعدادات بنجاح" });
     },
     onError: (e: any) => toast({ title: "خطأ", description: e?.message || "فشل الحفظ", variant: "destructive" }),

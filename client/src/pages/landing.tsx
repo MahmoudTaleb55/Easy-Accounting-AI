@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useLocale, type Locale } from "@/contexts/locale-context"
 import { useAuth } from "@/hooks/use-auth"
+import { usePublicCurrency } from "@/lib/public-currency"
 
 /* ============================================================================
    Landing page — محاسب ذكي / Smart Accountant
@@ -415,6 +416,10 @@ function getCopy(locale: Locale) {
         ? "ثلاثُ مواقفَ، لا ثلاثُ حِزَم. كلّ موقفٍ يفتحُ قدراً مختلفاً من السيطرة على رقمِك التالي."
         : "Three postures, not three plans. Each one unlocks a different degree of control over your next number.",
       billing: { monthly: ar ? "شهريّاً" : "Monthly", yearly: ar ? "سنويّاً · وفّر ٢٠٪" : "Yearly · save 20%" },
+      // Note: pricing-tier currency is rendered against this string. The
+      // Hero/LiveJournalTheatre theatres compute their own dynamic symbol
+      // from usePublicCurrency(). Pricing copy itself is denominated in
+      // SAR by the marketing team, so we keep the static SAR label here.
       currency: ar ? "ر.س" : "SAR",
       perMonth: ar ? "/شهريّاً" : "/mo",
       mostPopular: ar ? "الموقفُ الأمثل" : "Optimal posture",
@@ -1055,6 +1060,11 @@ export default function Landing() {
         secondaryHref="/demo"
         tertiaryLabel={t.nav.signIn}
         tertiaryHref={signInHref}
+        // Marketing copy below (and in getCopy()) is currently shipped only in
+        // Arabic + English. Listing de/fr in the public picker would silently
+        // fall back to the English branch and look like a broken control.
+        // German + French still work everywhere inside the app after sign-in.
+        availableLocales={["ar", "en"]}
       />
       {/* Editorial chrome removed for Bento layout */}
       <main className="overflow-x-clip">
@@ -1644,7 +1654,8 @@ function fmtAmount(n: number, ar: boolean) {
 
 function LiveJournalTheatre({ t }: { t: Dict }) {
   const ar = t.ar
-  const cur = ar ? "ر.س" : "SAR"
+  const { locale } = useLocale()
+  const cur = usePublicCurrency(locale).symbol
 
   const [idx, setIdx] = useState(0)
   const [phase, setPhase] = useState(0) // 0..4
@@ -2243,7 +2254,8 @@ function CompressionMoment({ t }: { t: Dict }) {
 
 function Hero({ t }: { t: Dict }) {
   const ar = t.ar
-  const cur = ar ? "ر.س" : "SAR"
+  const { locale } = useLocale()
+  const cur = usePublicCurrency(locale).symbol
 
   // Bento card primitive — clean white card on cream page
   const card = "rounded-3xl border border-card-border bg-card"

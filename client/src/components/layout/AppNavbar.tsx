@@ -28,7 +28,16 @@ interface AppNavbarProps {
   tertiaryLabel?: string
   tertiaryHref?: string
   className?: string
+  /**
+   * Locales to expose in the language picker. Defaults to all four.
+   * Public marketing pages should pass only the locales whose copy is
+   * actually translated (currently `["ar", "en"]`) — otherwise picking
+   * de/fr silently falls back to English content and looks broken.
+   */
+  availableLocales?: readonly Locale[]
 }
+
+const ALL_LOCALES: readonly Locale[] = ["ar", "en", "de", "fr"] as const
 
 const DEFAULT_LINKS: NavLink[] = [
   { label: "المنصة",   href: "#platform" },
@@ -53,6 +62,7 @@ export function AppNavbar({
   tertiaryLabel,
   tertiaryHref = "/app",
   className,
+  availableLocales = ALL_LOCALES,
 }: AppNavbarProps) {
   const [scrolled, setScrolled] = useState(false)
   const [isDark, setIsDark] = useState(false)
@@ -140,7 +150,7 @@ export function AppNavbar({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="shadow-md min-w-[10rem]">
-                {(["ar", "en", "de", "fr"] as const).map((code) => (
+                {availableLocales.map((code) => (
                   <DropdownMenuItem
                     key={code}
                     onClick={() => setLocale(code)}
