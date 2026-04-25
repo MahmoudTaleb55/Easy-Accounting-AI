@@ -1,13 +1,13 @@
 import { useEffect, useState, useMemo } from "react"
 import { useLocation, useSearch } from "wouter"
-import { format } from "date-fns"
+import { format, type Locale } from "date-fns"
 import { ar, enUS } from "date-fns/locale"
 import { useTransactions, useDeleteTransaction } from "@/hooks/use-transactions"
 import { TransactionForm } from "@/components/transactions/transaction-form"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,14 +35,13 @@ import {
   Trash2,
   Search,
   Inbox,
-  History,
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
 import { usePeriod } from "@/contexts/period-context"
 import { PeriodChip } from "@/components/dashboard/period-chip"
 import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { HistoryDrawer } from "@/components/audit/history-drawer"
+import { HistoryTimeline } from "@/components/audit/history-drawer"
 import { EmptyState } from "@/components/feedback/empty-state"
 import { ErrorState } from "@/components/feedback/error-state"
 import { ListSkeleton } from "@/components/feedback/list-skeleton"
@@ -60,7 +60,7 @@ export default function Transactions() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
-  const [historyTx, setHistoryTx] = useState<Transaction | null>(null)
+  const [detailTx, setDetailTx] = useState<Transaction | null>(null)
   const [, setLocation] = useLocation()
   const queryString = useSearch()
 
@@ -115,6 +115,19 @@ export default function Transactions() {
       delCancel: locale === "ar" ? "إلغاء" : "Cancel",
       delConfirm: locale === "ar" ? "نعم، احذف" : "Yes, delete",
       count: locale === "ar" ? "معاملة" : "transactions",
+      detailDesc:
+        locale === "ar"
+          ? "تفاصيل المعاملة وسجل التغييرات في مكان واحد."
+          : "Transaction details and change history in one place.",
+      tabSummary: locale === "ar" ? "الملخص" : "Summary",
+      tabChanges: locale === "ar" ? "التغييرات" : "Changes",
+      detailDate: locale === "ar" ? "التاريخ" : "Date",
+      detailCategory: locale === "ar" ? "الفئة" : "Category",
+      detailType: locale === "ar" ? "النوع" : "Type",
+      detailAmount: locale === "ar" ? "المبلغ" : "Amount",
+      typeIncome: locale === "ar" ? "إيراد" : "Revenue",
+      typeExpense: locale === "ar" ? "مصروف" : "Expense",
+      openDetailAria: locale === "ar" ? "فتح تفاصيل المعاملة" : "Open transaction details",
     }),
     [locale]
   )
@@ -283,9 +296,15 @@ export default function Transactions() {
                       )}
                     </span>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
+                      <button
+                        type="button"
+                        onClick={() => setDetailTx(tx)}
+                        aria-label={t.openDetailAria}
+                        className="text-start text-sm font-medium text-foreground truncate hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
+                        data-testid={`link-transaction-${tx.id}`}
+                      >
                         {tx.description}
-                      </p>
+                      </button>
                       <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
                         <span className="uppercase tracking-wider font-medium text-muted-foreground/80">
                           {tx.category}
@@ -307,17 +326,6 @@ export default function Transactions() {
                     >
                       {isIncome ? "+" : "−"} {fmt(Number(tx.amount))}
                     </div>
-
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-foreground"
-                      data-testid={`button-history-${tx.id}`}
-                      aria-label={locale === "ar" ? "السجل" : "History"}
-                      onClick={() => setHistoryTx(tx)}
-                    >
-                      <History className="w-3.5 h-3.5" />
-                    </Button>
 
                     {canWrite ? (
                     <AlertDialog>
@@ -372,14 +380,129 @@ export default function Transactions() {
         </Card>
       )}
 
-      <HistoryDrawer
-        open={!!historyTx}
-        onOpenChange={(o) => { if (!o) setHistoryTx(null) }}
-        title={historyTx?.description || ""}
-        reference={historyTx ? `TX-${historyTx.id}` : undefined}
-        entityType="transaction"
-        entityId={historyTx?.id}
-      />
+      {detailTx && (
+        <TransactionDetailDialog
+          tx={detailTx}
+          onClose={() => setDetailTx(null)}
+          labels={{
+            description: t.detailDesc,
+            tabSummary: t.tabSummary,
+            tabChanges: t.tabChanges,
+            date: t.detailDate,
+            category: t.detailCategory,
+            type: t.detailType,
+            amount: t.detailAmount,
+            typeIncome: t.typeIncome,
+            typeExpense: t.typeExpense,
+          }}
+          dfLocale={dfLocale}
+          fmt={fmt}
+        />
+      )}
     </div>
+  )
+}
+
+interface TransactionDetailDialogProps {
+  tx: Transaction
+  onClose: () => void
+  labels: {
+    description: string
+    tabSummary: string
+    tabChanges: string
+    date: string
+    category: string
+    type: string
+    amount: string
+    typeIncome: string
+    typeExpense: string
+  }
+  dfLocale: Locale
+  fmt: ReturnType<typeof useFormatMoney>
+}
+
+function TransactionDetailDialog({ tx, onClose, labels, dfLocale, fmt }: TransactionDetailDialogProps) {
+  const isIncome = tx.type === "income"
+  const typeLabel = isIncome ? labels.typeIncome : labels.typeExpense
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-transaction-detail">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
+              TX-{tx.id}
+            </span>
+            <span className="truncate">{tx.description}</span>
+          </DialogTitle>
+          <DialogDescription>{labels.description}</DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
+          <span className="font-numeric tabular-nums">
+            {format(new Date(tx.date || new Date()), "d MMM yyyy", { locale: dfLocale })}
+          </span>
+          <span className="text-muted-foreground/50">·</span>
+          <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4">
+            {typeLabel}
+          </Badge>
+        </div>
+        <Tabs defaultValue="summary" className="mt-3">
+          <TabsList className="grid grid-cols-2 w-full">
+            <TabsTrigger value="summary" data-testid="tab-transaction-summary">{labels.tabSummary}</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-transaction-changes">{labels.tabChanges}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="summary" className="mt-4">
+            <dl className="grid grid-cols-3 gap-y-3 gap-x-4 text-sm">
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+                {labels.date}
+              </dt>
+              <dd
+                className="col-span-2 text-foreground font-numeric tabular-nums"
+                data-testid="text-transaction-detail-date"
+              >
+                {format(new Date(tx.date || new Date()), "d MMM yyyy", { locale: dfLocale })}
+              </dd>
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+                {labels.category}
+              </dt>
+              <dd
+                className="col-span-2 text-foreground"
+                data-testid="text-transaction-detail-category"
+              >
+                {tx.category}
+              </dd>
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+                {labels.type}
+              </dt>
+              <dd className="col-span-2" data-testid="text-transaction-detail-type">
+                <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4">
+                  {typeLabel}
+                </Badge>
+              </dd>
+              <dt className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+                {labels.amount}
+              </dt>
+              <dd
+                className={cn(
+                  "col-span-2 font-semibold font-numeric tabular-nums",
+                  isIncome ? "text-success" : "text-foreground"
+                )}
+                data-testid="text-transaction-detail-amount"
+              >
+                {isIncome ? "+" : "−"} {fmt(Number(tx.amount))}
+              </dd>
+            </dl>
+          </TabsContent>
+          <TabsContent value="changes" className="mt-4" data-testid="tab-content-transaction-changes">
+            <div className="rounded-md border border-border max-h-96 overflow-hidden flex flex-col">
+              <HistoryTimeline
+                entityType="transaction"
+                entityId={tx.id}
+                className="flex-1 min-h-0"
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   )
 }
