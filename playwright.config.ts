@@ -42,6 +42,7 @@ export default defineConfig({
         /role-based-api\.spec\.ts/,
         /quick-actions\.spec\.ts/,
         /email-delivery-alerts\.spec\.ts/,
+        /email-delivery-csv-export\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
       ],
     },
@@ -135,6 +136,19 @@ export default defineConfig({
       // pipeline (see `email-delivery-alerts.spec.ts`).
       name: "email-delivery-alerts",
       testMatch: /email-delivery-alerts\.spec\.ts/,
+      dependencies: ["email-delivery-alerts-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
+      // Filename + header-injection-guard coverage for the
+      // /api/auth/email-deliveries?format=csv route. Reuses the same
+      // dedicated workspace + owner storage state as the delivery-alert
+      // spec (an authenticated owner is all the route needs — it does
+      // not depend on any seeded delivery rows).
+      name: "email-delivery-csv-export",
+      testMatch: /email-delivery-csv-export\.spec\.ts/,
       dependencies: ["email-delivery-alerts-setup"],
       use: {
         viewport: { width: 1280, height: 800 },
