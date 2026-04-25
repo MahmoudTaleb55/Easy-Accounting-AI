@@ -1710,7 +1710,10 @@ export class DatabaseStorage implements IStorage {
   async getCompanies(): Promise<Company[]> {
     return await db.select().from(companies).orderBy(companies.name);
   }
-  async createCompany(input: InsertCompany): Promise<Company> {
+  async createCompany(
+    input: InsertCompany,
+    opts?: { ownerMembership?: { userId: string; role?: "owner" | "accountant" | "viewer" } },
+  ): Promise<Company> {
     // Creating a new workspace inherently crosses the active workspace's
     // RLS boundary: the seed below writes accounts under the *new* company's
     // id, which never matches `app.current_company_id` when an owner is
@@ -1722,14 +1725,17 @@ export class DatabaseStorage implements IStorage {
     // every `insert(companies)` sits inside one of these blocks. See
     // docs/design/workspace-isolation-defense-in-depth.md → "Bypass paths".
     //
-    // The company write and the chart-of-accounts seed share a single
-    // transaction so the workspace cannot commit without a fully seeded
-    // chart of accounts — any failure rolls the whole bootstrap back rather
-    // than leaving a half-bootstrapped workspace whose first quick
-    // transaction would silently fail to resolve `1110`, `4010`, `6900`
-    // by code.
+    // The company write, the chart-of-accounts seed, AND the optional
+    // owner-membership wire-up all share a single transaction so the
+    // workspace cannot commit without a fully seeded chart of accounts and
+    // (when the caller asked for it) without its owner membership in
+    // place. Without this, a failed membership insert would leave the
+    // company + CoA committed but invisible to its creator (the
+    // `/api/companies` list is filtered by membership) and effectively
+    // orphan the accounts in the database. See task #218.
     const { withWorkspaceCreation } = await import("./db");
     const { seedDefaultCoaInTx } = await import("./init-coa");
+    const { memberships: membershipsTable } = await import("@shared/schema");
     return withWorkspaceCreation(async () => {
       if (input.isDefault) {
         await db.update(companies).set({ isDefault: false });
@@ -1737,6 +1743,13 @@ export class DatabaseStorage implements IStorage {
       return await db.transaction(async (tx) => {
         const [c] = await tx.insert(companies).values(input).returning();
         await seedDefaultCoaInTx(tx, c.id);
+        if (opts?.ownerMembership) {
+          await tx.insert(membershipsTable).values({
+            userId: opts.ownerMembership.userId,
+            companyId: c.id,
+            role: opts.ownerMembership.role ?? "owner",
+          });
+        }
         return c;
       });
     });

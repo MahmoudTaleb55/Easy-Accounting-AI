@@ -1721,11 +1721,22 @@ async function registerFixedAssetRoutes(app: Express) {
         if (ms.length > 0) return res.status(403).json({ message: "Owners only" });
       }
       const input = insertCompanySchema.parse(req.body);
-      const company = await storage.createCompany({ ...input, ownerUserId: userId ?? null });
-      if (userId) {
-        const { authBizStorage } = await import("./auth/storage");
-        await authBizStorage.createMembership({ userId, companyId: company.id, role: "owner" });
-      }
+      // Pull the owner-membership wire-up into `createCompany`'s
+      // single transaction (task #218). Previously this route committed
+      // the company + chart-of-accounts seed first and then issued a
+      // separate `createMembership` call; if that second write blew up
+      // (RLS regression, network blip, future unique constraint), the
+      // request 500'd but the company row + its CoA tree were already
+      // committed with no membership — which made the workspace
+      // invisible to its creator (the `/api/companies` list is filtered
+      // by membership) and orphaned the accounts. Passing
+      // `ownerMembership` here makes company + CoA + owner-link an all-
+      // or-nothing atomic write so a half-bootstrapped workspace can
+      // never be left behind.
+      const company = await storage.createCompany(
+        { ...input, ownerUserId: userId ?? null },
+        userId ? { ownerMembership: { userId, role: "owner" } } : undefined,
+      );
       res.status(201).json(company);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
