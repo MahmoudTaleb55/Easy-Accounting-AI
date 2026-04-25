@@ -49,6 +49,7 @@ export default defineConfig({
         /email-delivery-filters-persist\.spec\.ts/,
         /email-delivery-count-cache\.setup\.ts/,
         /email-delivery-count-cache\.spec\.ts/,
+        /email-delivery-count-chip-refresh\.spec\.ts/,
         /delivery-alert-audit\.setup\.ts/,
         /delivery-alert-audit\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
@@ -199,6 +200,26 @@ export default defineConfig({
       },
     },
     {
+      // UI-side companion to `email-delivery-count-cache`. Walks the
+      // status / recipient / date filters on
+      // /app/settings/email-delivery and asserts the row-count chip
+      // re-issues `GET /api/auth/email-deliveries/count` with the new
+      // query string after each change. A regression that drops one
+      // of the filter inputs from TanStack Query's queryKey would
+      // silently leave admins staring at a stale chip — this spec
+      // closes that gap. Reuses the dedicated workspace + owner
+      // storage state from `email-delivery-alerts-setup` (the spec
+      // anchors its seeds on the *accountant* user_id provisioned
+      // there to sidestep sibling specs that wipe owner-side
+      // password-reset events).
+      name: "email-delivery-count-chip-refresh",
+      testMatch: /email-delivery-count-chip-refresh\.spec\.ts/,
+      dependencies: ["email-delivery-alerts-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
       // One-time setup that provisions a *dedicated* workspace +
       // dedicated owner for the email-delivery-count-cache spec.
       // Sharing the workspace from `email-delivery-alerts-setup` would
@@ -281,6 +302,7 @@ export default defineConfig({
         "email-delivery-list-parity",
         "email-delivery-filters-persist",
         "email-delivery-count-cache",
+        "email-delivery-count-chip-refresh",
         "delivery-alert-audit",
       ],
     },
