@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import pg from "pg";
 
 /**
  * Regression net for the HR → Journal Entries deep-link bridge introduced
@@ -207,5 +208,131 @@ test.describe("payroll → journal-entry deep link", () => {
       "the admin-activity row must surface the same back-link badge",
     ).toBeVisible();
     await expect(adminBadge).toHaveAttribute("href", `/app/hr#pr-${fx.runId}`);
+  });
+
+  /**
+   * Other half of the source-link contract: when the upstream record (here a
+   * `payroll_runs` row) is deleted, `buildJournalSourceLinkMap` in
+   * `server/storage.ts` no longer finds a row for the JE id and returns
+   * `sourceLink: undefined`. The UI must then hide the "From: Payroll …"
+   * badge on every surface (`/app/journal` row + JE detail dialog + Recent
+   * admin activity feed on `/app/settings`) while keeping the JE itself
+   * visible. Without a regression test, a future change that starts
+   * emitting a stale link object — or a dangling href to `/app/hr#pr-<id>`
+   * for a run that no longer exists — would silently break the UX.
+   *
+   * IMPORTANT: this test mutates the seeded workspace (it deletes the
+   * payroll_runs row). It is intentionally declared LAST so the two
+   * preceding tests (which assume the run + badge are present) run first.
+   * The setup project re-seeds the workspace on every spec run so leaving
+   * the run deleted at test exit is safe.
+   */
+  test("badge disappears cleanly on every surface after the upstream payroll run is deleted", async ({
+    page,
+  }) => {
+    const fx = loadFixtures();
+
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      throw new Error(
+        "DATABASE_URL must be set so this spec can delete the seeded payroll_runs row.",
+      );
+    }
+
+    // ---- Sanity check: the seed is still wired (badge present on /app/journal) ----
+    // If this assertion fails, either the upstream-delete cleanup half of
+    // the contract is being exercised in the wrong order, or sibling tests
+    // have already mutated the seed — both are bugs the spec wants to catch
+    // before drawing conclusions from the post-delete assertions below.
+    await page.goto("/app/journal");
+    const cardBefore = page.locator(
+      `[data-testid="card-entry-${fx.journalEntryId}"]`,
+    );
+    await expect(
+      cardBefore,
+      "the seeded JE card must render before the upstream-delete step",
+    ).toBeVisible();
+    await expect(
+      cardBefore.locator(
+        `[data-testid="link-je-source-payroll_run-${fx.runId}"]`,
+      ),
+      "the source-link badge must be present before the upstream payroll_runs row is deleted",
+    ).toBeVisible();
+
+    // ---- Delete the upstream payroll_runs row ----
+    // The seeder did NOT insert any payroll_lines for this run (only the
+    // run + JE), so a single DELETE is sufficient — there are no child
+    // rows to cascade. We scope by both id and company_id to make the
+    // statement self-defending against a future widening of the seeded
+    // workspace.
+    const client = new pg.Client({ connectionString: dbUrl });
+    await client.connect();
+    try {
+      const res = await client.query(
+        `DELETE FROM payroll_runs WHERE id = $1 AND company_id = $2`,
+        [fx.runId, fx.companyId],
+      );
+      expect(
+        res.rowCount,
+        "deleting the seeded payroll_runs row must affect exactly one row",
+      ).toBe(1);
+    } finally {
+      await client.end();
+    }
+
+    // ---- (1) /app/journal: JE row stays, badge is gone ----
+    // A full reload guarantees we re-fetch the JE list (which is what
+    // computes `sourceLink` server-side via `buildJournalSourceLinkMap`).
+    // We assert the absence using `count(0)` rather than `not.toBeVisible`
+    // because the latter would also pass if the element were rendered but
+    // off-screen — we want to assert it does not exist in the DOM at all.
+    await page.goto("/app/journal");
+    const card = page.locator(`[data-testid="card-entry-${fx.journalEntryId}"]`);
+    await expect(
+      card,
+      "the JE row must remain visible after the upstream payroll_runs row is deleted",
+    ).toBeVisible();
+    await expect(
+      card.locator(
+        `[data-testid="link-je-source-payroll_run-${fx.runId}"]`,
+      ),
+      "the JE row badge must disappear once the upstream payroll_runs row is deleted",
+    ).toHaveCount(0);
+
+    // ---- (2) JE detail dialog: opens, but the badge is gone ----
+    // The dialog renders from the same JE prop the list card uses, so the
+    // surface-suffixed test id should also be absent.
+    await card.locator(`[data-testid="link-entry-${fx.journalEntryId}"]`).click();
+    const dialog = page.locator('[data-testid="dialog-entry-detail"]');
+    await expect(
+      dialog,
+      "the JE detail dialog must still open for the entry whose source row was deleted",
+    ).toBeVisible();
+    await expect(
+      dialog.locator(
+        `[data-testid="link-je-source-detail-payroll_run-${fx.runId}"]`,
+      ),
+      "the JE detail dialog must not surface a stale back-link badge",
+    ).toHaveCount(0);
+
+    // ---- (3) /app/settings Recent admin activity: row stays, badge is gone ----
+    // The admin-activity feed reuses the same JE rows through
+    // `SecurityCompliance`, so the same `sourceLink: undefined` should
+    // propagate here. We re-navigate (rather than go back via history)
+    // to guarantee a fresh fetch of the recent activity payload.
+    await page.goto("/app/settings");
+    const adminRow = page.locator(
+      `[data-testid="row-admin-activity-${fx.journalEntryId}"]`,
+    );
+    await expect(
+      adminRow,
+      "the JE must still appear in the Recent admin activity feed after the upstream delete",
+    ).toBeVisible();
+    await expect(
+      adminRow.locator(
+        `[data-testid="link-je-source-admin-activity-payroll_run-${fx.runId}"]`,
+      ),
+      "the admin-activity row must not surface a stale back-link badge",
+    ).toHaveCount(0);
   });
 });
