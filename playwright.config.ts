@@ -42,6 +42,7 @@ export default defineConfig({
         /role-based-api\.spec\.ts/,
         /quick-actions\.spec\.ts/,
         /email-delivery-alerts\.spec\.ts/,
+        /payroll-journal-link\.spec\.ts/,
       ],
     },
     {
@@ -137,6 +138,26 @@ export default defineConfig({
       dependencies: ["email-delivery-alerts-setup"],
       use: {
         viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
+      // One-time setup that provisions a dedicated workspace and seeds a
+      // posted payroll_run linked to a real journal_entry so the spec can
+      // exercise the HR → Journal Entries deep-link bridge end-to-end.
+      // See `payroll-journal-link.setup.ts`.
+      name: "payroll-journal-link-setup",
+      testMatch: /payroll-journal-link\.setup\.ts/,
+    },
+    {
+      // Locks down the past-payroll-runs JE deep link + the
+      // out-of-period banner / "Show entry" jump button on
+      // /app/journal. See `payroll-journal-link.spec.ts`.
+      name: "payroll-journal-link",
+      testMatch: /payroll-journal-link\.spec\.ts/,
+      dependencies: ["payroll-journal-link-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+        storageState: ".playwright/payroll-journal-link-state.json",
       },
     },
   ],
