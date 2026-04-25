@@ -198,6 +198,28 @@ export const api = {
       },
     },
   },
+  admin: {
+    // Owner-only recovery endpoint: posts a balanced double-entry JE for
+    // every transaction in the active workspace that has no matching
+    // `journal_entries.sourceTransactionId`. Re-running it is a no-op once
+    // the backlog is cleared. The boot path runs the same helper across
+    // every workspace; this route exists so a workspace owner can re-run it
+    // on demand if a future regression breaks `autoPostFromTransaction`
+    // again (the original incident this was authored for).
+    backfillJournalEntries: {
+      method: 'POST' as const,
+      path: '/api/admin/backfill-journal-entries' as const,
+      input: z.object({}).optional(),
+      responses: {
+        200: z.object({
+          created: z.number(),
+          skipped: z.number(),
+        }),
+        403: errorSchemas.notFound,
+        500: errorSchemas.internal,
+      },
+    },
+  },
   chat: {
     list: {
       method: 'GET' as const,

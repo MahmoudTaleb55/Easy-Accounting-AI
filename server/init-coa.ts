@@ -2,7 +2,7 @@ import { db } from "./db";
 import { accounts, journalEntries, journalLines, transactions } from "@shared/schema";
 import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode, PAYROLL_EXTRA_ACCOUNTS, FIXED_ASSETS_EXTRA_ACCOUNTS, FA_CATEGORY_DEFAULTS, FA_ACCUM_IMP_CODE, FA_DEP_EXPENSE_CODE, FA_IMP_LOSS_CODE, FA_REVAL_SURPLUS_CODE, FA_GAIN_LOSS_DISPOSAL_CODE } from "@shared/coa-seed";
 import { companies, assetCategories } from "@shared/schema";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 /**
  * Converge the chart of accounts to the canonical seed defined in
@@ -286,9 +286,31 @@ export async function initChartOfAccounts(): Promise<void> {
  * never paired with another workspace's account. This is enforced by the
  * composite (id, company_id) foreign keys on `journal_lines`, but doing it
  * explicitly here keeps the boot path noise-free.
+ *
+ * Two callers:
+ *   1. Boot path (`ensureIfrsBootstrap`) — passes no filter, sweeps every
+ *      workspace under `withRlsBypass`.
+ *   2. Admin route (`POST /api/admin/backfill-journal-entries`) — passes the
+ *      caller's active `companyId` so an owner can fix only their own
+ *      backlog after a future regression, without needing cross-tenant
+ *      privileges.
+ *
+ * JE references are numbered per-workspace (matching `nextJournalReference`
+ * in `storage.ts`), so a backfilled JE slots cleanly into the workspace's
+ * existing JE-NNNNN sequence instead of inheriting a global counter that
+ * would skip ahead by other workspaces' JE counts.
+ *
+ * Returns `{ created, skipped }` so callers can report how many orphan
+ * transactions were paired with a JE versus left untouched (workspace not
+ * seeded yet, or fallback account also missing).
  */
-export async function backfillJournalForLegacyTransactions(): Promise<void> {
-  const allAccounts = await db.select().from(accounts);
+export async function backfillJournalForLegacyTransactions(
+  companyIdFilter?: number,
+): Promise<{ created: number; skipped: number }> {
+  const allAccounts =
+    companyIdFilter !== undefined
+      ? await db.select().from(accounts).where(eq(accounts.companyId, companyIdFilter))
+      : await db.select().from(accounts);
   // companyId -> (code -> account.id), so we never cross workspace boundaries.
   const codeToIdByCompany = new Map<number, Map<string, number>>();
   for (const a of allAccounts) {
@@ -300,19 +322,49 @@ export async function backfillJournalForLegacyTransactions(): Promise<void> {
     m.set(a.code, a.id);
   }
 
-  const allTx = await db.select().from(transactions);
+  const allTx =
+    companyIdFilter !== undefined
+      ? await db
+          .select()
+          .from(transactions)
+          .where(eq(transactions.companyId, companyIdFilter))
+      : await db.select().from(transactions);
+
+  // Restrict the "already covered" set to the same scope so a per-workspace
+  // call doesn't scan global JE rows it has no reason to touch.
+  const coveredWhere =
+    companyIdFilter !== undefined
+      ? and(
+          sql`${journalEntries.sourceTransactionId} is not null`,
+          eq(journalEntries.companyId, companyIdFilter),
+        )
+      : sql`${journalEntries.sourceTransactionId} is not null`;
   const existingJEs = await db
     .select({ src: journalEntries.sourceTransactionId })
     .from(journalEntries)
-    .where(sql`${journalEntries.sourceTransactionId} is not null`);
+    .where(coveredWhere);
   const covered = new Set(existingJEs.map((j) => j.src));
 
-  let counter =
-    (
-      await db
+  // Per-workspace JE reference counter, lazily seeded from the existing
+  // JE count in that workspace so a backfilled JE continues the workspace's
+  // own JE-NNNNN sequence (mirrors `nextJournalReference` in storage.ts).
+  const counters = new Map<number, number>();
+  const nextRef = async (companyId: number): Promise<string> => {
+    let c = counters.get(companyId);
+    if (c === undefined) {
+      const [{ c: existing }] = await db
         .select({ c: sql<number>`count(*)::int` })
         .from(journalEntries)
-    )[0]?.c ?? 0;
+        .where(eq(journalEntries.companyId, companyId));
+      c = existing ?? 0;
+    }
+    c += 1;
+    counters.set(companyId, c);
+    return `JE-${String(c).padStart(5, "0")}`;
+  };
+
+  let created = 0;
+  let skipped = 0;
 
   for (const tx of allTx) {
     if (covered.has(tx.id)) continue;
@@ -321,7 +373,10 @@ export async function backfillJournalForLegacyTransactions(): Promise<void> {
     const cashId = codeToId?.get(CASH_ACCOUNT_CODE);
     // Skip transactions whose workspace has no chart of accounts seeded yet
     // rather than borrow another workspace's accounts.
-    if (!codeToId || !cashId) continue;
+    if (!codeToId || !cashId) {
+      skipped += 1;
+      continue;
+    }
 
     let dr: number | undefined;
     let cr: number | undefined;
@@ -332,10 +387,12 @@ export async function backfillJournalForLegacyTransactions(): Promise<void> {
       dr = codeToId.get(pickExpenseAccountCode(tx.category, tx.description)) ?? codeToId.get("6900");
       cr = cashId;
     }
-    if (!dr || !cr) continue;
+    if (!dr || !cr) {
+      skipped += 1;
+      continue;
+    }
 
-    counter += 1;
-    const ref = `JE-${String(counter).padStart(5, "0")}`;
+    const ref = await nextRef(tx.companyId);
     const amt = Number(tx.amount);
 
     const [je] = await db
@@ -354,7 +411,11 @@ export async function backfillJournalForLegacyTransactions(): Promise<void> {
       { companyId: tx.companyId, journalEntryId: je.id, accountId: dr, debit: amt.toFixed(2), credit: "0", description: tx.description },
       { companyId: tx.companyId, journalEntryId: je.id, accountId: cr, debit: "0", credit: amt.toFixed(2), description: tx.description },
     ]);
+
+    created += 1;
   }
+
+  return { created, skipped };
 }
 
 export async function ensureDefaultCompanyAndCategories(): Promise<void> {

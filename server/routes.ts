@@ -74,6 +74,7 @@ import type { PeriodKey } from "./fixed-assets";
 import {
   requireAuth,
   attachMembership,
+  requireRole,
   requireWriteRoleForMutations,
   type MembershipContext,
 } from "./auth/middleware";
@@ -471,6 +472,39 @@ export async function registerRoutes(
     await storage.deleteJournalEntry(cid(req), id, userCtx(req));
     res.status(204).send();
   });
+
+  // ----- Admin: backfill journal entries -----
+  //
+  // Owner-only recovery hatch for the original `ReferenceError: cash is not
+  // defined` regression that left a window of `transactions` rows without
+  // their auto-posted JE. Walks the active workspace's transactions, posts
+  // a balanced double-entry JE for every row missing one, and reports how
+  // many it created vs. skipped (skipped = workspace not yet seeded with a
+  // chart of accounts, or the cash/fallback account is somehow missing).
+  //
+  // The bootstrap path runs the same helper across every workspace at boot
+  // (see `server/index.ts → ensureIfrsBootstrap`), so the original backlog
+  // is healed automatically on the next deploy. This route exists so an
+  // owner can re-run it on demand if a future regression breaks
+  // `autoPostFromTransaction` again — without needing a redeploy or a
+  // shell on the server.
+  //
+  // Scope: per-workspace. The handler passes `cid(req)` to the helper, so
+  // the owner of company A can never trigger writes against company B.
+  app.post(
+    api.admin.backfillJournalEntries.path,
+    requireRole("owner"),
+    async (req, res) => {
+      try {
+        const { backfillJournalForLegacyTransactions } = await import("./init-coa");
+        const result = await backfillJournalForLegacyTransactions(cid(req));
+        res.json(result);
+      } catch (err) {
+        console.error("Admin backfill-journal-entries error", err);
+        res.status(500).json({ message: "تعذّر استكمال قيود اليومية" });
+      }
+    },
+  );
 
   // ----- Audit log -----
   app.get(api.audit.list.path, async (req, res) => {
