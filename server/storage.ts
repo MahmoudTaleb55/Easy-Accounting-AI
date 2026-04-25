@@ -969,8 +969,44 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async autoPostFromTransaction(companyId: number, tx: Transaction, ctx?: AuditContext): Promise<void> {
-    const cash = await this.getAccountByCode(companyId, CASH_ACCOUNT_CODE);
-    if (!cash) return;
+    let cash = await this.getAccountByCode(companyId, CASH_ACCOUNT_CODE);
+    if (!cash) {
+      // The workspace's `1110` cash account is gone. Today every workspace
+      // gets a CoA seeded in the same transaction as the company row, so
+      // this branch is mostly defensive — but a future migration, an admin
+      // import, or a soft-deleted account could leave it missing. If we
+      // silently returned (the previous behaviour), the transaction would
+      // post with no offsetting JE, and revenue / expense numbers would
+      // double-count exactly the way the regression test for task #97 was
+      // added to catch.
+      //
+      // Self-heal in place: re-running the canonical seed for this single
+      // workspace is idempotent (it only touches the rows it needs to), so
+      // it will re-create code 1110 without disturbing any other accounts
+      // or any prior bookings. Then re-fetch and proceed.
+      console.warn(
+        `[autoPostFromTransaction] workspace ${companyId} is missing cash account ` +
+          `code=${CASH_ACCOUNT_CODE}; re-seeding default chart of accounts before posting tx ${tx.id}`,
+      );
+      const { seedDefaultCoaForCompany } = await import("./init-coa");
+      await seedDefaultCoaForCompany(companyId);
+      cash = await this.getAccountByCode(companyId, CASH_ACCOUNT_CODE);
+      if (!cash) {
+        // Re-seed didn't restore it (e.g. the seed itself was somehow
+        // blocked). Surface a loud error instead of silently letting the
+        // books drift — `createTransaction` catches and `console.error`s
+        // it with the transaction id, which is the admin-visible signal.
+        // The admin recovery hatch (`POST /api/admin/backfill-journal-entries`)
+        // can be re-run once the cash account is back to balance the books.
+        throw new Error(
+          `[autoPostFromTransaction] workspace ${companyId} has no cash account ` +
+            `(code=${CASH_ACCOUNT_CODE}) even after re-seeding the default CoA; ` +
+            `transaction ${tx.id} created without an offsetting JE. Restore the ` +
+            `cash account, then re-run POST /api/admin/backfill-journal-entries ` +
+            `to balance the books.`,
+        );
+      }
+    }
     const amt = Number(tx.amount);
     let drId: number;
     let crId: number;
