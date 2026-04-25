@@ -139,6 +139,27 @@ app.use((req, res, next) => {
     console.error("Failed to apply extended composite FK migration:", err);
   }
 
+  // Re-apply migration 0010 on boot so the per-workspace `(company_id,
+  // code)` UNIQUE on `accounts` materialises on dev databases (and on any
+  // deploy that boots ahead of the migration runner). Without it the
+  // canonical chart of accounts can only be seeded into the first
+  // workspace; every subsequent company 23505s on the legacy global
+  // UNIQUE on `accounts.code`. Idempotent.
+  try {
+    const { applyAccountsCodePerWorkspaceOnStartup } = await import(
+      "./db-bootstrap-accounts-code-uq"
+    );
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:accounts-code-uq", () =>
+      applyAccountsCodePerWorkspaceOnStartup(),
+    );
+  } catch (err) {
+    console.error(
+      "Failed to apply accounts.code per-workspace UNIQUE migration:",
+      err,
+    );
+  }
+
   // Re-apply migration 0008 on boot so RLS policies materialise on dev
   // databases and on any deploy that boots ahead of the migration runner.
   // Must run BEFORE any bootstrap that writes to RLS-protected tables —

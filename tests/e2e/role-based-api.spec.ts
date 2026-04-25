@@ -47,6 +47,14 @@ const ROLE_FILES = {
 
 const RUN_TAG = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+// Per-process counter the payroll body factory uses to spread successive
+// invocations over distinct months. Without it the accountant's "not 403"
+// check (which actually posts payroll because workspace-write gates pass
+// for accountants) and the owner's success check would both target the
+// same year/month, and the second one would 400 with "already approved
+// for this month" instead of 200.
+let payrollBodyCounter = 0;
+
 /** Shared E2E company id, written by `role-based-buttons.setup.ts`. We
  *  read it lazily so an explicit error is thrown if the setup project
  *  did not run (instead of every call silently routing to a different
@@ -208,13 +216,15 @@ const GATED_ENDPOINTS: GatedEndpoint[] = [
     uiButton: "button-run-payroll",
     method: "POST",
     path: "/api/hr/payroll/run",
-    // Use a far-future month so successive owner runs in subsequent test
-    // re-runs don't trip the "already posted for this period" guard. The
-    // year is offset from the current year to make the choice obvious.
+    // Use a far-future year so successive owner runs in subsequent test
+    // re-runs don't collide with real data, and rotate the month per
+    // invocation so the accountant's "not 403" check (which actually
+    // posts payroll for workspace-write endpoints) and the owner's
+    // success check land on different months — otherwise the second
+    // call would 400 with "already approved for this month".
     body: () => {
-      const now = new Date();
-      const year = now.getFullYear() + 50;
-      const month = ((now.getMonth() + Number(RUN_TAG.slice(-1))) % 12) + 1;
+      const year = new Date().getFullYear() + 50;
+      const month = (payrollBodyCounter++ % 12) + 1;
       return { year, month };
     },
     gate: "workspace-write",
@@ -495,18 +505,15 @@ test.describe("API-side role gating @rbac-api", () => {
     //     migrations/0005_workspace_composite_fks.sql). The route 500s
     //     for everyone, owner included — independent of RBAC.
     //
-    //   • POST /api/hr/payroll/run — server/payroll.ts requires ~7
-    //     hard-coded accounts (6010, 2300, 2310, 1010, etc.) to live in
-    //     the company. The shared E2E workspace can't seed them in the
-    //     setup because `accounts.code` carries a *global* UNIQUE
-    //     constraint and those codes are already owned by the bootstrap
-    //     workspace (company_id=1). Re-pointing them would break that
-    //     workspace's chart of accounts, so the success path stays a
-    //     soft assertion until the unique constraint is scoped to the
-    //     workspace.
+    // POST /api/hr/payroll/run used to live here too: the shared E2E
+    // workspace couldn't seed the canonical payroll accounts because
+    // `accounts.code` carried a *global* UNIQUE constraint. That
+    // constraint was scoped per-workspace in
+    // migrations/0010_accounts_code_per_workspace.sql, the setup now
+    // seeds the full payroll account set, and the strong 2xx assertion
+    // is back on for that endpoint.
     const OWNER_SUCCESS_KNOWN_BLOCKED = new Set<string>([
       "POST /api/journal-entries (button-new-entry)",
-      "POST /api/hr/payroll/run (button-run-payroll)",
     ]);
 
     for (const ep of GATED_ENDPOINTS) {

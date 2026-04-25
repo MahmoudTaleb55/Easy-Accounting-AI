@@ -214,23 +214,58 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
       [companyId, revCode],
     );
 
-    // Salaries & Wages account (code 6010 — see shared/coa-seed.ts /
-    // SALARIES_EXPENSE_CODE). The HR payroll-run handler refuses to post
-    // when this account is missing, so seeding it here is what lets the
-    // owner-success path of POST /api/hr/payroll/run actually run.
-    await client.query(
-      `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, is_header, is_active)
-       VALUES ($1, '6010', 'الرواتب والأجور', 'Salaries & Wages', 'expense', 'operating_expense', false, true)
-       ON CONFLICT (company_id, code) DO NOTHING`,
-      [companyId],
-    );
+    // ---- (d.0a) Payroll accounts for POST /api/hr/payroll/run --------------
+    // The HR payroll-run handler hard-codes ~7 account-code lookups (see
+    // server/payroll.ts and the *_CODE constants in shared/coa-seed.ts) and
+    // refuses to post if any of them is missing from the active workspace.
+    // Now that `accounts.code` is unique *per workspace* (see
+    // migrations/0010_accounts_code_per_workspace.sql), we can seed the
+    // canonical numeric codes directly into this E2E company without
+    // colliding with the bootstrap workspace's chart of accounts. That in
+    // turn lets `role-based-api.spec.ts` assert the owner-success 2xx for
+    // POST /api/hr/payroll/run instead of the prior soft "not 403" check.
+    interface PayrollAccountSeed {
+      code: string;
+      nameAr: string;
+      nameEn: string;
+      type: "asset" | "liability" | "expense";
+      subtype: string;
+    }
+    const payrollAccounts: PayrollAccountSeed[] = [
+      // Cash (CASH_ACCOUNT_CODE) — net pay is credited here
+      { code: "1110", nameAr: "النقد بالصندوق", nameEn: "Cash on Hand", type: "asset", subtype: "current_asset" },
+      // Liabilities --------------------------------------------------------
+      // ACCRUED_SALARIES_CODE, SOCIAL_INSURANCE_PAYABLE_CODE,
+      // ACCRUED_LEAVE_LIABILITY_CODE — current liabilities
+      { code: "2140", nameAr: "رواتب مستحقة", nameEn: "Salaries Payable", type: "liability", subtype: "current_liability" },
+      { code: "2150", nameAr: "تأمينات اجتماعية مستحقة", nameEn: "Social Insurance Payable", type: "liability", subtype: "current_liability" },
+      { code: "2160", nameAr: "إجازات مستحقة للموظفين", nameEn: "Accrued Leave Liability", type: "liability", subtype: "current_liability" },
+      // EOS_LIABILITY_CODE — non-current liability
+      { code: "2220", nameAr: "التزامات نهاية الخدمة", nameEn: "End of Service Liability", type: "liability", subtype: "non_current_liability" },
+      // Expenses -----------------------------------------------------------
+      // SALARIES_EXPENSE_CODE, SOCIAL_INSURANCE_EXPENSE_CODE,
+      // EOS_EXPENSE_CODE — operating expenses
+      { code: "6100", nameAr: "رواتب وأجور", nameEn: "Salaries & Wages", type: "expense", subtype: "operating_expense" },
+      { code: "6110", nameAr: "اشتراكات التأمينات الاجتماعية", nameEn: "Social Insurance Expense", type: "expense", subtype: "operating_expense" },
+      { code: "6120", nameAr: "مصروف مكافأة نهاية الخدمة", nameEn: "End of Service Expense", type: "expense", subtype: "operating_expense" },
+    ];
+    for (const a of payrollAccounts) {
+      await client.query(
+        `INSERT INTO accounts (company_id, code, name_ar, name_en, type, subtype, is_header, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, false, true)
+         ON CONFLICT (company_id, code) DO NOTHING`,
+        [companyId, a.code, a.nameAr, a.nameEn, a.type, a.subtype],
+      );
+    }
 
     // ---- (d.1) Chart of accounts for the workspace ----
     // Per-row write buttons on Fixed Assets / Journal pages need real GL
     // accounts wired into an asset_category and into manual journal lines.
-    // The `accounts.code` column is GLOBALLY unique (see migration 0005),
-    // so codes are namespaced with an "E2EROL-" prefix to coexist with the
-    // numeric COA seeded for other workspaces.
+    // Although `accounts.code` is now unique *per workspace* (see
+    // migrations/0010_accounts_code_per_workspace.sql), the codes below
+    // keep their "E2EROL-" prefix so the existing fixed_asset / journal /
+    // asset_category seeded rows don't accidentally collide with the
+    // canonical numeric COA seeded above (1110/2140/...).
     interface AccountSeed {
       code: string;
       nameEn: string;
@@ -255,9 +290,13 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
         await client.query(`SELECT id, company_id FROM accounts WHERE code = $1 LIMIT 1`, [a.code])
       ).rows[0];
       if (existing) {
-        // The code is globally unique so a stray row from a previous test
-        // run (different company) would silently break our composite FKs;
-        // re-home it to this workspace so the seed is self-healing.
+        // The lookup is by `code` only (no company_id filter), so a stray
+        // row left behind by a previous test run in a different workspace
+        // would still be returned. Re-home it to this workspace so the
+        // composite FKs the asset_category / journal seeds rely on
+        // resolve correctly. With the per-workspace UNIQUE on
+        // (company_id, code) this UPDATE is safe — our workspace can't
+        // already own the same code (we just SELECTed for it).
         if (Number(existing.company_id) !== companyId) {
           await client.query(`UPDATE accounts SET company_id = $1 WHERE id = $2`, [companyId, existing.id]);
         }
@@ -396,8 +435,30 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
     }
 
     // ---- (d.7) One posted payroll run → renders the delete button ----
+    // Clear out any payroll runs from prior test sessions OTHER than the
+    // canonical 2024-06 fixture row before we assert that fixture exists.
+    // The owner-success assertion for POST /api/hr/payroll/run targets a
+    // far-future month (currentYear+50) keyed off RUN_TAG; without this
+    // sweep, a posted run left over from a previous session would trip
+    // the "already approved for this month" guard and flip the strong
+    // 2xx assertion to a 400.
+    await client.query(
+      `DELETE FROM payroll_lines WHERE payroll_run_id IN (
+         SELECT id FROM payroll_runs
+         WHERE company_id = $1 AND NOT (year = 2024 AND month = 6)
+       )`,
+      [companyId],
+    );
+    await client.query(
+      `DELETE FROM payroll_runs
+       WHERE company_id = $1 AND NOT (year = 2024 AND month = 6)`,
+      [companyId],
+    );
     const runExists = (
-      await client.query(`SELECT id FROM payroll_runs WHERE company_id = $1 LIMIT 1`, [companyId])
+      await client.query(
+        `SELECT id FROM payroll_runs WHERE company_id = $1 AND year = 2024 AND month = 6 LIMIT 1`,
+        [companyId],
+      )
     ).rows[0];
     if (!runExists) {
       await client.query(
