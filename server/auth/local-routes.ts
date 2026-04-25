@@ -33,6 +33,8 @@ import {
 import {
   evaluateEmailDeliveryAlertsForCompany,
   retryEmailDeliveryAlertRecipient,
+  getDedupeHours,
+  getRetryMinutes,
 } from "./email-delivery-alerts";
 import {
   requireAuth,
@@ -857,9 +859,14 @@ export function registerLocalAuthRoutes(app: Express) {
         // Null on legacy rows that pre-date the column — the client seeds
         // the form with the env-derived effective default in that case so
         // the displayed numbers match what the evaluator would actually
-        // use right now.
+        // use right now. We also surface the platform-wide effective value
+        // separately so the form can show an "inherited vs. custom" badge
+        // instead of silently substituting a default that looks identical
+        // to a saved override.
         dedupeHours: cfg.dedupeHours,
         retryMinutes: cfg.retryMinutes,
+        effectiveDedupeHours: getDedupeHours(cfg.dedupeHours ?? null),
+        effectiveRetryMinutes: getRetryMinutes(cfg.retryMinutes ?? null),
         updatedAt: cfg.updatedAt,
       });
     },
@@ -887,6 +894,8 @@ export function registerLocalAuthRoutes(app: Express) {
           cooldownMinutes: cfg.cooldownMinutes,
           dedupeHours: cfg.dedupeHours,
           retryMinutes: cfg.retryMinutes,
+          effectiveDedupeHours: getDedupeHours(cfg.dedupeHours ?? null),
+          effectiveRetryMinutes: getRetryMinutes(cfg.retryMinutes ?? null),
           updatedAt: cfg.updatedAt,
         });
       } catch (err) {

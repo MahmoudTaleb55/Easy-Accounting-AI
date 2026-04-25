@@ -1126,15 +1126,65 @@ interface AlertSettings {
   // so we seed the form with those numbers to mirror the live behavior.
   dedupeHours: number | null;
   retryMinutes: number | null;
+  // Server-computed effective values that include the env-var fallback
+  // when the column is null. Drives both the form's seeded value and the
+  // "platform default" badge so the displayed numbers always match the
+  // evaluator's actual behavior, even when ops has tuned the env vars
+  // away from the historical 12h / 60m.
+  effectiveDedupeHours: number;
+  effectiveRetryMinutes: number;
   updatedAt: string | null;
 }
 
-// Match the env-var defaults shipped in
-// server/auth/email-delivery-alerts.ts so the form preview reflects what
-// the evaluator would actually use right now on a workspace that has
-// never overridden these values.
+// Hard-coded fallback used only for the *initial* form render before the
+// settings query resolves. The server-supplied `effectiveDedupeHours` /
+// `effectiveRetryMinutes` take over on the first response, which means
+// the displayed numbers stay accurate even if the env vars have been
+// tuned. Kept in sync with the env-var defaults shipped in
+// server/auth/email-delivery-alerts.ts so an admin landing on the page
+// doesn't see numbers flicker between the constant and the real value.
 const DEFAULT_DEDUPE_HOURS = 12;
 const DEFAULT_RETRY_MINUTES = 60;
+
+/**
+ * Inline label badge that tells an owner whether the dedupe / retry value
+ * is the platform-wide env default (workspace column is null) or a saved
+ * per-workspace override. Without this, the two states render the same
+ * number, so an owner can't tell which value will follow the env if ops
+ * tunes the platform defaults vs. which value will hold steady.
+ */
+function OverrideBadge({
+  isOverride,
+  ar,
+  testid,
+}: {
+  isOverride: boolean;
+  ar: boolean;
+  testid: string;
+}) {
+  if (isOverride) {
+    return (
+      <Badge
+        variant="secondary"
+        className="shrink-0 text-[10px] uppercase tracking-wider"
+        data-testid={testid}
+        data-source="custom"
+      >
+        {ar ? "مخصّص" : "Custom"}
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground"
+      data-testid={testid}
+      data-source="platform-default"
+    >
+      {ar ? "افتراضي" : "Platform default"}
+    </Badge>
+  );
+}
 
 /**
  * Owner-only configuration block for the failure-rate alert. Lives below the
@@ -1171,11 +1221,13 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
     setRatioPercent(Number((data.ratioThreshold * 100).toFixed(2)));
     setMinSamplesForRatio(data.minSamplesForRatio);
     setCooldownMinutes(data.cooldownMinutes);
-    // Null = "never overridden" — surface the env-default so the displayed
-    // number matches the evaluator's effective behavior. The first save
-    // turns this into a concrete column value.
-    setDedupeHours(data.dedupeHours ?? DEFAULT_DEDUPE_HOURS);
-    setRetryMinutes(data.retryMinutes ?? DEFAULT_RETRY_MINUTES);
+    // Null = "never overridden" — fall back to the server-reported
+    // effective value (which already includes the env-var fallback) so
+    // the displayed number matches the evaluator's behavior even when
+    // ops has tuned the platform defaults away from 12h / 60m. The first
+    // save turns the column into a concrete value.
+    setDedupeHours(data.dedupeHours ?? data.effectiveDedupeHours);
+    setRetryMinutes(data.retryMinutes ?? data.effectiveRetryMinutes);
   }, [data]);
 
   const save = useMutation({
@@ -1280,11 +1332,13 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
   const dirty = useMemo(() => {
     if (!data) return false;
     // Treat null on the server (legacy row, never overridden) as equal to
-    // the env-default the form was seeded with — otherwise the Save button
-    // would always read as "dirty" on workspaces that pre-date the
-    // dedupe / retry columns, even when the admin hasn't touched them.
-    const serverDedupe = data.dedupeHours ?? DEFAULT_DEDUPE_HOURS;
-    const serverRetry = data.retryMinutes ?? DEFAULT_RETRY_MINUTES;
+    // the effective value the form was seeded with — otherwise the Save
+    // button would always read as "dirty" on workspaces that pre-date
+    // the dedupe / retry columns, even when the admin hasn't touched
+    // them. The effective value already folds in the env-var fallback,
+    // so this stays correct even when ops tunes the platform defaults.
+    const serverDedupe = data.dedupeHours ?? data.effectiveDedupeHours;
+    const serverRetry = data.retryMinutes ?? data.effectiveRetryMinutes;
     return (
       enabled !== data.enabled ||
       emailEnabled !== data.emailEnabled ||
@@ -1439,11 +1493,18 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
             </p>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="alert-dedupe-hours">
-              {ar
-                ? "مهلة عدم تكرار البريد لنفس المستلم (ساعات)"
-                : "Per-recipient email dedupe (hours)"}
-            </Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="alert-dedupe-hours">
+                {ar
+                  ? "مهلة عدم تكرار البريد لنفس المستلم (ساعات)"
+                  : "Per-recipient email dedupe (hours)"}
+              </Label>
+              <OverrideBadge
+                isOverride={data?.dedupeHours != null}
+                ar={ar}
+                testid="badge-alert-dedupe-source"
+              />
+            </div>
             <Input
               id="alert-dedupe-hours"
               type="number"
@@ -1464,11 +1525,18 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
             </p>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="alert-retry-minutes">
-              {ar
-                ? "نافذة إعادة محاولة الإرسال (دقائق)"
-                : "Failed-send retry window (minutes)"}
-            </Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="alert-retry-minutes">
+                {ar
+                  ? "نافذة إعادة محاولة الإرسال (دقائق)"
+                  : "Failed-send retry window (minutes)"}
+              </Label>
+              <OverrideBadge
+                isOverride={data?.retryMinutes != null}
+                ar={ar}
+                testid="badge-alert-retry-source"
+              />
+            </div>
             <Input
               id="alert-retry-minutes"
               type="number"

@@ -60,7 +60,7 @@ export type EvaluationOutcome =
  * workspaces that pre-date the column (`override === null`) so existing
  * environments keep working without a re-save.
  */
-function getDedupeHours(override?: number | null): number {
+export function getDedupeHours(override?: number | null): number {
   const value =
     typeof override === "number" && Number.isFinite(override) && override >= 0
       ? override
@@ -76,7 +76,7 @@ function getDedupeHours(override?: number | null): number {
  * next cooldown is likely to fire anyway and the original alert context
  * starts going stale. Per-workspace override wins; env var is the fallback.
  */
-function getRetryMinutes(override?: number | null): number {
+export function getRetryMinutes(override?: number | null): number {
   const value =
     typeof override === "number" && Number.isFinite(override) && override >= 0
       ? override
