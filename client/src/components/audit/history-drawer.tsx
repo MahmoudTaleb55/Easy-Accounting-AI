@@ -214,6 +214,56 @@ interface HistoryTimelineProps {
 
 type PeriodPreset = "all" | "entity" | "7d" | "30d" | "90d";
 
+const PERIOD_PRESETS: readonly PeriodPreset[] = [
+  "all",
+  "entity",
+  "7d",
+  "30d",
+  "90d",
+];
+
+// Per-entity-type localStorage key. Keeping the choice scoped to the entity
+// type (attendance vs leave vs payroll_run vs journal_entry, …) lets a user
+// who lives in "Last 30 days" on attendance keep that, while the JE drawer
+// remembers its own preference independently.
+function periodStorageKey(entityType: HistoryEntityType | undefined): string | null {
+  return entityType ? `history.periodFilter.${entityType}` : null;
+}
+
+function readPersistedPeriod(
+  entityType: HistoryEntityType | undefined,
+  hasEntityPeriod: boolean,
+): PeriodPreset {
+  const key = periodStorageKey(entityType);
+  if (!key || typeof window === "undefined") return "all";
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return "all";
+    if (!(PERIOD_PRESETS as readonly string[]).includes(raw)) return "all";
+    const preset = raw as PeriodPreset;
+    // The "entity period" preset only makes sense when the caller passed an
+    // entityPeriod range. Fall back to "all" so an attendance row with no
+    // dates doesn't get stuck filtered to an empty window.
+    if (preset === "entity" && !hasEntityPeriod) return "all";
+    return preset;
+  } catch {
+    return "all";
+  }
+}
+
+function writePersistedPeriod(
+  entityType: HistoryEntityType | undefined,
+  preset: PeriodPreset,
+): void {
+  const key = periodStorageKey(entityType);
+  if (!key || typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, preset);
+  } catch {
+    // Quota / disabled storage — silently ignore, the in-memory state still works.
+  }
+}
+
 function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -353,7 +403,20 @@ export function HistoryTimeline({
     entityPeriod.start !== undefined && entityPeriod.start !== null && entityPeriod.start !== "" ||
     entityPeriod.end !== undefined && entityPeriod.end !== null && entityPeriod.end !== ""
   );
-  const [periodFilter, setPeriodFilter] = React.useState<PeriodPreset>("all");
+  // Lazily seeded from localStorage so reopening the drawer (or returning in a
+  // later session) restores the user's last picked preset for this entity type.
+  // First-time users still land on "All time".
+  const [periodFilter, setPeriodFilterState] = React.useState<PeriodPreset>(
+    () => readPersistedPeriod(entityType, hasEntityPeriod),
+  );
+
+  const setPeriodFilter = React.useCallback(
+    (next: PeriodPreset) => {
+      setPeriodFilterState(next);
+      writePersistedPeriod(entityType, next);
+    },
+    [entityType],
+  );
 
   const periodWindow = React.useMemo<{ from: Date | null; to: Date | null }>(() => {
     if (periodFilter === "all") return { from: null, to: null };
@@ -413,12 +476,31 @@ export function HistoryTimeline({
   const resetFilters = React.useCallback(() => {
     setSourceFilter(new Set(SOURCE_KEYS));
     setActionFilter(new Set(ACTION_KEYS));
+    // Persist "all" so the Reset button is also a way to forget the
+    // remembered preset, not just a local-this-render-only override.
     setPeriodFilter("all");
-  }, []);
+  }, [setPeriodFilter]);
 
+  // When we move to a different entity (or different entity type), throw away
+  // the per-mount source/action chip selections so the next entity starts
+  // from a clean "all on" state. We deliberately do NOT include
+  // `hasEntityPeriod` here — if the parent later re-resolves an `entityPeriod`
+  // for the same entity, that should not silently reset the user's chip
+  // toggles mid-view.
   React.useEffect(() => {
-    resetFilters();
-  }, [entityType, entityId, resetFilters]);
+    setSourceFilter(new Set(SOURCE_KEYS));
+    setActionFilter(new Set(ACTION_KEYS));
+  }, [entityType, entityId]);
+
+  // Rehydrate the period preset from storage whenever the entity type
+  // changes (so each surface honours its own remembered choice) and also
+  // when `hasEntityPeriod` becomes available — that lets a previously-saved
+  // "entity" preset re-engage once the parent finishes resolving the range,
+  // and keeps an "entity" preset from sticking when the new entity has no
+  // dates (the helper falls back to "all" in that case).
+  React.useEffect(() => {
+    setPeriodFilterState(readPersistedPeriod(entityType, hasEntityPeriod));
+  }, [entityType, entityId, hasEntityPeriod]);
 
   return (
     <div className={`flex flex-col ${className ?? ""}`} data-testid="history-timeline">
