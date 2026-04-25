@@ -3,7 +3,10 @@ import pg from "pg";
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { runPendingMigrations } from "../../server/migrate";
+import {
+  reconcileRenamedMigrations,
+  runPendingMigrations,
+} from "../../server/migrate";
 
 /**
  * Catch a future migration that fails to apply cleanly (task #166).
@@ -238,6 +241,282 @@ test.describe("migration runner is idempotent end-to-end @migrate", () => {
       await pool.end().catch(() => {
         /* nothing else can use this pool now */
       });
+      await dropScratchDb(dbName);
+    }
+  });
+});
+
+/**
+ * Renames + the ledger (task #219).
+ *
+ * `schema_migrations` is keyed on the full filename, so renumbering a
+ * migration (e.g. `0014_foo.sql` -> `0016_foo.sql`, which task #164 had
+ * to do when two branches collided on prefix `0014`) used to leave the
+ * old filename in the ledger forever *and* re-apply the renamed file
+ * under its new name on the very next boot. Each migration is idempotent
+ * so the re-apply was harmless, but the ledger grew orphan rows that no
+ * longer corresponded to any file on disk and the `[migrate] applied X`
+ * log line lied about what actually shipped.
+ *
+ * The runner now reconciles by trailing-slug match: an orphan row whose
+ * filename minus the `NNNN_` prefix matches a current file is treated as
+ * the same migration that was simply renumbered, and the ledger entry is
+ * rewritten in place (or deleted, if a row for the new filename already
+ * exists). This block pins both halves of that contract.
+ */
+test.describe("migration runner reconciles renamed migrations @migrate", () => {
+  test.skip(
+    !DATABASE_URL,
+    "DATABASE_URL not set — migration runner regression test cannot run",
+  );
+
+  test.setTimeout(60_000);
+
+  test("rewrites a stale ledger row in place when its slug matches a current file", async () => {
+    const dbName = scratchDbName("rename");
+    await createScratchDb(dbName);
+    const url = scratchUrl(dbName);
+    const pool = new pg.Pool({ connectionString: url });
+    try {
+      // Pick a real, currently-shipped migration. Whatever it is, its
+      // slug is unique on disk (the migrations-prefix spec pins prefix
+      // uniqueness and slugs are 1:1 with prefixes by convention), so
+      // simulating a rename means inserting a ledger row for the same
+      // slug under a *different* prefix.
+      const files = (await listMigrationFiles());
+      const target = files[files.length - 1];
+      const slug = target.replace(/^\d{4}_/, "");
+      // Pick a prefix that doesn't collide with any current file.
+      const renamedFromPrefix = "9990";
+      const renamedFrom = `${renamedFromPrefix}_${slug}`;
+      expect(
+        files,
+        "test fixture must use a prefix that no current migration shares",
+      ).not.toContain(renamedFrom);
+
+      const client = await pool.connect();
+      try {
+        await client.query(`
+          CREATE TABLE schema_migrations (
+            filename text PRIMARY KEY,
+            applied_at timestamp NOT NULL DEFAULT now()
+          )
+        `);
+        // Pre-seed the ledger with the "old" name only — exactly the
+        // shape every dev/prod DB ends up in after a renumber lands.
+        const seededAt = new Date("2024-01-01T00:00:00.000Z");
+        await client.query(
+          `INSERT INTO schema_migrations (filename, applied_at) VALUES ($1, $2)`,
+          [renamedFrom, seededAt],
+        );
+
+        const outcomes = await reconcileRenamedMigrations(client, files);
+
+        // The orphan must be reported as renamed -> the current file.
+        expect(
+          outcomes,
+          "reconciliation must collapse the orphan into the renamed file",
+        ).toContainEqual({ kind: "renamed", from: renamedFrom, to: target });
+
+        const { rows } = await client.query<{
+          filename: string;
+          applied_at: Date;
+        }>(`SELECT filename, applied_at FROM schema_migrations ORDER BY filename`);
+        const filenames = rows.map((r) => r.filename);
+        expect(filenames, "the orphan row must be gone").not.toContain(renamedFrom);
+        expect(
+          filenames,
+          "a single ledger row for the current filename must remain",
+        ).toEqual([target]);
+
+        // Rewriting in place must preserve the original applied_at —
+        // otherwise the ledger would lie about when the migration first
+        // shipped.
+        expect(
+          rows[0].applied_at.toISOString(),
+          "applied_at must survive the in-place rename",
+        ).toBe(seededAt.toISOString());
+      } finally {
+        client.release();
+      }
+    } finally {
+      await pool.end().catch(() => {});
+      await dropScratchDb(dbName);
+    }
+  });
+
+  test("drops the orphan when both old and new names already sit in the ledger", async () => {
+    const dbName = scratchDbName("rename_dup");
+    await createScratchDb(dbName);
+    const url = scratchUrl(dbName);
+    const pool = new pg.Pool({ connectionString: url });
+    try {
+      const files = (await listMigrationFiles());
+      const target = files[files.length - 1];
+      const slug = target.replace(/^\d{4}_/, "");
+      const renamedFrom = `9990_${slug}`;
+
+      const client = await pool.connect();
+      try {
+        await client.query(`
+          CREATE TABLE schema_migrations (
+            filename text PRIMARY KEY,
+            applied_at timestamp NOT NULL DEFAULT now()
+          )
+        `);
+        // The state a DB lands in if a deploy that pre-dated the
+        // reconciliation logic re-applied the renamed file under its
+        // new name — both rows present.
+        const oldAppliedAt = new Date("2024-01-01T00:00:00.000Z");
+        const newAppliedAt = new Date("2024-06-01T00:00:00.000Z");
+        await client.query(
+          `INSERT INTO schema_migrations (filename, applied_at) VALUES ($1, $2), ($3, $4)`,
+          [renamedFrom, oldAppliedAt, target, newAppliedAt],
+        );
+
+        const outcomes = await reconcileRenamedMigrations(client, files);
+
+        expect(
+          outcomes,
+          "reconciliation must drop the orphan duplicate",
+        ).toContainEqual({
+          kind: "dropped-duplicate",
+          orphan: renamedFrom,
+          current: target,
+        });
+
+        const { rows } = await client.query<{
+          filename: string;
+          applied_at: Date;
+        }>(
+          `SELECT filename, applied_at FROM schema_migrations ORDER BY filename`,
+        );
+        expect(
+          rows.map((r) => r.filename),
+          "only the current-filename ledger row must survive",
+        ).toEqual([target]);
+        // The surviving row's applied_at is preserved exactly — the
+        // reconciliation must not rewrite the kept row.
+        expect(rows[0].applied_at.toISOString()).toBe(
+          newAppliedAt.toISOString(),
+        );
+      } finally {
+        client.release();
+      }
+    } finally {
+      await pool.end().catch(() => {});
+      await dropScratchDb(dbName);
+    }
+  });
+
+  test("a renumber + boot is a strict no-op for the apply loop", async () => {
+    // This is the integration shape of the contract: drizzle-push the
+    // canonical schema, run the runner once (so every checked-in
+    // migration is applied), then *simulate a renumber* by rewriting
+    // one ledger row to a stale prefix. A second runner pass must
+    // reconcile the rename and not log a confusing `[migrate] applied`
+    // line for the already-applied DDL — the surest proxy for which is
+    // that the apply-loop never executes (no new ledger row appears for
+    // the would-be-fresh filename, and `applied_at` is preserved).
+    const dbName = scratchDbName("rename_e2e");
+    await createScratchDb(dbName);
+    const url = scratchUrl(dbName);
+    const pool = new pg.Pool({ connectionString: url });
+    try {
+      await runDrizzlePush(url);
+      await runPendingMigrations(pool);
+
+      const files = await listMigrationFiles();
+      const target = files[files.length - 1];
+      const slug = target.replace(/^\d{4}_/, "");
+      const renamedFrom = `9990_${slug}`;
+
+      // Capture the original applied_at for the target so we can prove
+      // the second runner pass didn't touch the surviving ledger row.
+      const beforeRows = await pool.query<{ applied_at: Date }>(
+        `SELECT applied_at FROM schema_migrations WHERE filename = $1`,
+        [target],
+      );
+      expect(beforeRows.rowCount).toBe(1);
+      const originalAppliedAt = beforeRows.rows[0].applied_at;
+
+      // Simulate the rename: the file on disk is `target`, but the
+      // ledger thinks it shipped under `renamedFrom`.
+      await pool.query(
+        `UPDATE schema_migrations SET filename = $1 WHERE filename = $2`,
+        [renamedFrom, target],
+      );
+
+      await runPendingMigrations(pool);
+
+      const after = await pool.query<{
+        filename: string;
+        applied_at: Date;
+      }>(`SELECT filename, applied_at FROM schema_migrations ORDER BY filename`);
+
+      expect(
+        after.rows.map((r) => r.filename),
+        "every ledger row must correspond to a file currently on disk",
+      ).toEqual(files);
+
+      const restored = after.rows.find((r) => r.filename === target)!;
+      expect(
+        restored.applied_at.toISOString(),
+        "in-place rename must preserve the original applied_at; the " +
+          "apply loop must NOT have re-run the migration",
+      ).toBe(originalAppliedAt.toISOString());
+    } finally {
+      await pool.end().catch(() => {});
+      await dropScratchDb(dbName);
+    }
+  });
+});
+
+/**
+ * The orphan-row contract test the task description calls out: every
+ * row in `schema_migrations` after a runner pass must correspond to a
+ * file currently on disk. Lives next to the apply-loop contract above
+ * so anyone touching the runner sees both checks together.
+ */
+test.describe("schema_migrations stays in sync with migrations/ @migrate", () => {
+  test.skip(
+    !DATABASE_URL,
+    "DATABASE_URL not set — migration runner regression test cannot run",
+  );
+
+  test.setTimeout(120_000);
+
+  test("every ledger row points at a file currently on disk after a runner pass", async () => {
+    const dbName = scratchDbName("ledger_sync");
+    await createScratchDb(dbName);
+    const url = scratchUrl(dbName);
+    const pool = new pg.Pool({ connectionString: url });
+    try {
+      await runDrizzlePush(url);
+      await runPendingMigrations(pool);
+
+      const files = new Set(await listMigrationFiles());
+      const { rows } = await pool.query<{ filename: string }>(
+        `SELECT filename FROM schema_migrations ORDER BY filename`,
+      );
+      const orphans = rows
+        .map((r) => r.filename)
+        .filter((name) => !files.has(name));
+
+      expect(
+        orphans,
+        [
+          "schema_migrations contains row(s) with no matching file on disk:",
+          ...orphans.map((name) => `  - ${name}`),
+          "",
+          "If a migration was renumbered, the runner should have collapsed",
+          "the ledger entry by trailing-slug match. If it didn't, the slug",
+          "changed too — clean the row up by hand or pick a slug that",
+          "matches the renumbered file.",
+        ].join("\n"),
+      ).toEqual([]);
+    } finally {
+      await pool.end().catch(() => {});
       await dropScratchDb(dbName);
     }
   });
