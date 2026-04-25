@@ -27,6 +27,62 @@ const MIME_TO_EXT: Record<string, string> = {
 export const ALLOWED_AVATAR_MIME_TYPES = Object.keys(MIME_TO_EXT);
 export const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2 MB
 
+/**
+ * Inspect the first few bytes of an upload and return the canonical
+ * MIME type that those bytes describe, or `null` if the buffer does
+ * not match one of the four image formats we accept (PNG / JPEG /
+ * WEBP / GIF). The browser-supplied `Content-Type` is trivially
+ * forgeable, so this magic-bytes check is the real gate that decides
+ * whether bytes ever reach object storage. See task #146.
+ */
+export function detectAvatarMimeFromBuffer(buf: Buffer): string | null {
+  if (!buf || buf.length < 8) return null;
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47 &&
+    buf[4] === 0x0d &&
+    buf[5] === 0x0a &&
+    buf[6] === 0x1a &&
+    buf[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return "image/jpeg";
+  }
+
+  // GIF: "GIF87a" or "GIF89a"
+  if (buf.length >= 6) {
+    const head = buf.toString("ascii", 0, 6);
+    if (head === "GIF87a" || head === "GIF89a") return "image/gif";
+  }
+
+  // WEBP: "RIFF????WEBP" — 4-byte size in between is ignored.
+  if (
+    buf.length >= 12 &&
+    buf.toString("ascii", 0, 4) === "RIFF" &&
+    buf.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+
+  return null;
+}
+
+export class InvalidAvatarImageError extends Error {
+  readonly code = "INVALID_AVATAR_IMAGE";
+  constructor(message = "Only image uploads are supported (PNG, JPEG, WEBP, GIF).") {
+    super(message);
+    this.name = "InvalidAvatarImageError";
+  }
+}
+
 export interface SavedAvatarFile {
   /** Sha-hashed filename, e.g. "<sha256>.png". */
   filename: string;
@@ -87,9 +143,18 @@ export async function saveAvatarFile(opts: {
   buffer: Buffer;
   mimeType: string;
 }): Promise<SavedAvatarFile> {
-  const ext = MIME_TO_EXT[opts.mimeType.toLowerCase()];
+  // Sniff the actual file signature before we touch object storage. The
+  // browser-supplied `mimeType` is trivially forgeable (`curl -F
+  // file=@evil.sh;type=image/png` would otherwise be enough to land
+  // arbitrary bytes in the avatars bucket and serve them under a
+  // `Content-Type: image/png`). We trust the bytes, not the caller.
+  const detectedMime = detectAvatarMimeFromBuffer(opts.buffer);
+  if (!detectedMime) {
+    throw new InvalidAvatarImageError();
+  }
+  const ext = MIME_TO_EXT[detectedMime];
   if (!ext) {
-    throw new Error(`Unsupported avatar mime type: ${opts.mimeType}`);
+    throw new InvalidAvatarImageError();
   }
   const safeId = safeUserId(opts.userId);
 
@@ -112,9 +177,12 @@ export async function saveAvatarFile(opts: {
   };
 
   await file.save(opts.buffer, {
-    contentType: opts.mimeType,
+    // Use the sniffed MIME type, not the caller-supplied one — otherwise
+    // a forged Content-Type header would still leak through to the
+    // bucket metadata and the public /objects/<...> response.
+    contentType: detectedMime,
     metadata: {
-      contentType: opts.mimeType,
+      contentType: detectedMime,
       cacheControl: "public, max-age=86400, immutable",
       metadata: {
         "custom:aclPolicy": JSON.stringify(aclPolicy),

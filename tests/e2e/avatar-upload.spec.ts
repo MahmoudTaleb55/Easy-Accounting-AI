@@ -174,6 +174,44 @@ test.describe("profile avatar upload", () => {
     expect(txt.status()).toBe(400);
     expect((await txt.json()).message).toMatch(/image uploads/i);
 
+    // ── Server-side validation: forged Content-Type (task #146) ───────────
+    // A motivated user can rename a script `.png` and lie about the
+    // mimeType in the multipart envelope. The server must sniff the
+    // actual bytes and reject anything that isn't really one of our four
+    // accepted image formats — otherwise the bytes would land in object
+    // storage and be re-served as `Content-Type: image/png`.
+    const renamedText = await page.request.post("/api/auth/profile/avatar", {
+      multipart: {
+        file: {
+          name: "totally-an-image.png",
+          mimeType: "image/png",
+          buffer: Buffer.from("#!/bin/sh\necho not really a png\n", "utf8"),
+        },
+      },
+    });
+    expect(renamedText.status()).toBe(400);
+    expect((await renamedText.json()).message).toMatch(/image uploads/i);
+
+    // The forged upload must NOT have changed the stored avatar URL.
+    const stillSame = await page.request
+      .get("/api/auth/user")
+      .then((r) => r.json());
+    expect(stillSame.profileImageUrl).toBe(avatarUrl);
+
+    // Same idea but with the JPEG MIME claim and a text body — covers
+    // the second branch of the magic-bytes check.
+    const renamedJpeg = await page.request.post("/api/auth/profile/avatar", {
+      multipart: {
+        file: {
+          name: "selfie.jpg",
+          mimeType: "image/jpeg",
+          buffer: Buffer.from("not a jpeg either, just plain text", "utf8"),
+        },
+      },
+    });
+    expect(renamedJpeg.status()).toBe(400);
+    expect((await renamedJpeg.json()).message).toMatch(/image uploads/i);
+
     // ── Server-side validation: > 2 MB image ──────────────────────────────
     const huge = Buffer.alloc(2 * 1024 * 1024 + 1024, 0xff); // ~2.001 MB
     const big = await page.request.post("/api/auth/profile/avatar", {

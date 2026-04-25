@@ -5,6 +5,7 @@ import multer from "multer";
 import { z } from "zod";
 import {
   ALLOWED_AVATAR_MIME_TYPES,
+  InvalidAvatarImageError,
   MAX_AVATAR_BYTES,
   saveAvatarFile,
 } from "../services/avatar-storage";
@@ -471,6 +472,9 @@ export function registerLocalAuthRoutes(app: Express) {
         const u = await authBizStorage.updateUser(userId, { profileImageUrl: saved.publicUrl });
         res.json(u);
       } catch (err) {
+        if (err instanceof InvalidAvatarImageError) {
+          return res.status(400).json({ message: err.message });
+        }
         next(err);
       }
     },
@@ -487,6 +491,9 @@ export function registerLocalAuthRoutes(app: Express) {
             message: "Image is too large. Maximum size is 2 MB.",
           });
         }
+        return res.status(400).json({ message: err.message });
+      }
+      if (err instanceof InvalidAvatarImageError) {
         return res.status(400).json({ message: err.message });
       }
       if (err && /Only image uploads/.test(err.message)) {
