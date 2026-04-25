@@ -168,14 +168,20 @@ export default function AiAssistant() {
     // camera dialog uses, so uploaded receipts are OCR-friendlier and the
     // attached payload is smaller. Camera captures already came through
     // the shared pipeline inside the dialog, so skip re-processing in that
-    // case to avoid a redundant lossy recompression. Falls back to the
-    // original file if the browser cannot decode it.
-    const processed = opts.alreadyEnhanced
-      ? file
-      : await enhanceAndCompressImageFile(file)
-    const reader = new FileReader()
-    reader.onload = () => setImagePreview(reader.result as string)
-    reader.readAsDataURL(processed)
+    // case to avoid a redundant lossy recompression. The shared helper
+    // already swallows decode errors and falls back to the original file,
+    // but we still wrap the whole flow defensively so an unexpected
+    // failure can never become an unhandled promise rejection.
+    try {
+      const processed = opts.alreadyEnhanced
+        ? file
+        : await enhanceAndCompressImageFile(file)
+      const reader = new FileReader()
+      reader.onload = () => setImagePreview(reader.result as string)
+      reader.readAsDataURL(processed)
+    } catch {
+      toast({ title: t.typeError, description: t.typeErrorDesc, variant: "destructive" })
+    }
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
