@@ -55,26 +55,34 @@ export type EvaluationOutcome =
 
 /**
  * Dedupe window: skip an address that already received a successful alert
- * email for the same reason within this many hours. Configurable so the
- * env can dial it up/down without a deploy.
+ * email for the same reason within this many hours. The per-workspace
+ * column is the source of truth; the env var is the fallback for
+ * workspaces that pre-date the column (`override === null`) so existing
+ * environments keep working without a re-save.
  */
-function getDedupeHours(): number {
-  const raw = Number(process.env.EMAIL_DELIVERY_ALERT_DEDUPE_HOURS);
-  if (!Number.isFinite(raw) || raw < 0) return 12;
+function getDedupeHours(override?: number | null): number {
+  const value =
+    typeof override === "number" && Number.isFinite(override) && override >= 0
+      ? override
+      : Number(process.env.EMAIL_DELIVERY_ALERT_DEDUPE_HOURS);
+  if (!Number.isFinite(value) || value < 0) return 12;
   // Clamp at one week so a misconfigured value can't permanently mute alerts.
-  return Math.min(raw, 168);
+  return Math.min(value, 168);
 }
 
 /**
  * Retry window: re-attempt an address whose previous attempt failed within
  * this many minutes. Kept short (default 60min) because beyond that the
  * next cooldown is likely to fire anyway and the original alert context
- * starts going stale.
+ * starts going stale. Per-workspace override wins; env var is the fallback.
  */
-function getRetryMinutes(): number {
-  const raw = Number(process.env.EMAIL_DELIVERY_ALERT_RETRY_MINUTES);
-  if (!Number.isFinite(raw) || raw < 0) return 60;
-  return Math.min(raw, 24 * 60);
+function getRetryMinutes(override?: number | null): number {
+  const value =
+    typeof override === "number" && Number.isFinite(override) && override >= 0
+      ? override
+      : Number(process.env.EMAIL_DELIVERY_ALERT_RETRY_MINUTES);
+  if (!Number.isFinite(value) || value < 0) return 60;
+  return Math.min(value, 24 * 60);
 }
 
 /** First owner's locale, used as a heuristic for the email language. */
@@ -119,9 +127,9 @@ function buildAlertLink(opts: { alertLink?: string }): string {
  */
 async function runRetryPass(
   companyId: number,
-  opts: { alertLink?: string },
+  opts: { alertLink?: string; retryMinutes?: number | null },
 ): Promise<number> {
-  const retryMinutes = getRetryMinutes();
+  const retryMinutes = getRetryMinutes(opts.retryMinutes);
   if (retryMinutes === 0) return 0;
   const candidates = await authBizStorage.listEmailDeliveryAlertRetries(
     companyId,
@@ -340,7 +348,10 @@ export async function evaluateEmailDeliveryAlertsForCompany(
   let retried = 0;
   if (cfg.emailEnabled) {
     try {
-      retried = await runRetryPass(companyId, opts);
+      retried = await runRetryPass(companyId, {
+        alertLink: opts.alertLink,
+        retryMinutes: cfg.retryMinutes,
+      });
     } catch (err) {
       console.error(
         `[email-delivery-alert] retry pass failed for company ${companyId}:`,
@@ -448,7 +459,7 @@ export async function evaluateEmailDeliveryAlertsForCompany(
       // can't spam the same owner with multiple near-identical alerts in
       // a single day. The cooldown gates the *alert*; this gates the
       // *email* per address.
-      const dedupeHours = getDedupeHours();
+      const dedupeHours = getDedupeHours(cfg.dedupeHours);
       const recentlyAlerted =
         dedupeHours > 0
           ? await authBizStorage.listRecentlyAlertedRecipients(

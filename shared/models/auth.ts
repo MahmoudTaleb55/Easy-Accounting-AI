@@ -201,6 +201,18 @@ export const emailDeliveryAlertSettings = pgTable(
     minSamplesForRatio: integer("min_samples_for_ratio").notNull().default(20),
     // Suppress repeat alerts for this many minutes after the last fire.
     cooldownMinutes: integer("cooldown_minutes").notNull().default(360),
+    // Per-address dedupe window: skip emailing an address that already
+    // received a successful alert email for the same reason within this
+    // many hours. 0 disables the gate. Nullable on purpose — the
+    // evaluator falls back to EMAIL_DELIVERY_ALERT_DEDUPE_HOURS (12h
+    // default) when null so workspaces that pre-date this column keep
+    // working without an explicit save.
+    dedupeHours: integer("dedupe_hours"),
+    // Per-address retry window: re-attempt an address whose previous
+    // attempt failed within this many minutes. 0 disables the retry pass.
+    // Nullable for the same reason as `dedupeHours` — falls back to
+    // EMAIL_DELIVERY_ALERT_RETRY_MINUTES (60m default) when null.
+    retryMinutes: integer("retry_minutes"),
     // Timestamp at which an owner explicitly re-armed the alert evaluator.
     // The cooldown gate is bypassed on the next pass when this is newer than
     // the most recent alert's firedAt. Stored as a one-shot timestamp (not a
@@ -293,6 +305,15 @@ export const upsertEmailDeliveryAlertSettingsSchema = z.object({
   ratioThreshold: z.coerce.number().min(0).max(1),
   minSamplesForRatio: z.coerce.number().int().min(1).max(10000),
   cooldownMinutes: z.coerce.number().int().min(5).max(60 * 24 * 7),
+  // Per-address dedupe and retry windows. Both bounded the same way the
+  // evaluator already clamps the env-var fallback (dedupe at one week,
+  // retry at one day) so a misconfigured value can't permanently mute
+  // alerts or hammer the SMTP provider with retries.
+  // 0 explicitly disables each gate.
+  // Optional + nullable: omitting them (or sending null) preserves the
+  // existing column value / leaves the env fallback in effect.
+  dedupeHours: z.coerce.number().int().min(0).max(168).nullable().optional(),
+  retryMinutes: z.coerce.number().int().min(0).max(60 * 24).nullable().optional(),
 });
 export type UpsertEmailDeliveryAlertSettings = z.infer<
   typeof upsertEmailDeliveryAlertSettingsSchema

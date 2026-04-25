@@ -847,6 +847,12 @@ export function registerLocalAuthRoutes(app: Express) {
         ratioThreshold: Number(cfg.ratioThreshold),
         minSamplesForRatio: cfg.minSamplesForRatio,
         cooldownMinutes: cfg.cooldownMinutes,
+        // Null on legacy rows that pre-date the column — the client seeds
+        // the form with the env-derived effective default in that case so
+        // the displayed numbers match what the evaluator would actually
+        // use right now.
+        dedupeHours: cfg.dedupeHours,
+        retryMinutes: cfg.retryMinutes,
         updatedAt: cfg.updatedAt,
       });
     },
@@ -872,6 +878,8 @@ export function registerLocalAuthRoutes(app: Express) {
           ratioThreshold: Number(cfg.ratioThreshold),
           minSamplesForRatio: cfg.minSamplesForRatio,
           cooldownMinutes: cfg.cooldownMinutes,
+          dedupeHours: cfg.dedupeHours,
+          retryMinutes: cfg.retryMinutes,
           updatedAt: cfg.updatedAt,
         });
       } catch (err) {

@@ -996,6 +996,13 @@ export const authBizStorage = {
       ratioThreshold: "0.0200",
       minSamplesForRatio: 20,
       cooldownMinutes: 360,
+      // Defaults are intentionally null so the evaluator's env-var
+      // fallback path is the source of truth for workspaces that have
+      // never opened the settings form. Once an owner saves, the upsert
+      // writes concrete numbers (defaulting to the env defaults of
+      // 12h / 60m in the UI).
+      dedupeHours: null,
+      retryMinutes: null,
       cooldownClearedAt: null,
       updatedAt: null,
       updatedByUserId: null,
@@ -1021,11 +1028,23 @@ export const authBizStorage = {
       ratioThreshold: number;
       minSamplesForRatio: number;
       cooldownMinutes: number;
+      // Optional + nullable so callers that don't yet know about these
+      // (older API clients, existing tests) can omit them and keep the
+      // existing column value / env-fallback semantics intact. Explicit
+      // `null` resets the column back to the env fallback; a number is
+      // persisted as the per-workspace override.
+      dedupeHours?: number | null;
+      retryMinutes?: number | null;
       updatedByUserId?: string | null;
     },
   ): Promise<EmailDeliveryAlertSettings> {
     // Ratio is stored as a decimal string to keep numeric column precision.
     const ratioStr = patch.ratioThreshold.toFixed(4);
+    // For insert (first-time row) treat "undefined" the same as "null" so
+    // the column starts at the env fallback. For the update branch we only
+    // touch the column when the caller supplied a value (number or null).
+    const insertDedupe = patch.dedupeHours ?? null;
+    const insertRetry = patch.retryMinutes ?? null;
     const values = {
       companyId,
       enabled: patch.enabled,
@@ -1035,25 +1054,30 @@ export const authBizStorage = {
       ratioThreshold: ratioStr,
       minSamplesForRatio: patch.minSamplesForRatio,
       cooldownMinutes: patch.cooldownMinutes,
+      dedupeHours: insertDedupe,
+      retryMinutes: insertRetry,
       updatedAt: new Date(),
       updatedByUserId: patch.updatedByUserId ?? null,
     };
+    const updateSet: Record<string, unknown> = {
+      enabled: values.enabled,
+      emailEnabled: values.emailEnabled,
+      windowHours: values.windowHours,
+      absoluteThreshold: values.absoluteThreshold,
+      ratioThreshold: values.ratioThreshold,
+      minSamplesForRatio: values.minSamplesForRatio,
+      cooldownMinutes: values.cooldownMinutes,
+      updatedAt: values.updatedAt,
+      updatedByUserId: values.updatedByUserId,
+    };
+    if (patch.dedupeHours !== undefined) updateSet.dedupeHours = patch.dedupeHours;
+    if (patch.retryMinutes !== undefined) updateSet.retryMinutes = patch.retryMinutes;
     const [row] = await db
       .insert(emailDeliveryAlertSettings)
       .values(values)
       .onConflictDoUpdate({
         target: emailDeliveryAlertSettings.companyId,
-        set: {
-          enabled: values.enabled,
-          emailEnabled: values.emailEnabled,
-          windowHours: values.windowHours,
-          absoluteThreshold: values.absoluteThreshold,
-          ratioThreshold: values.ratioThreshold,
-          minSamplesForRatio: values.minSamplesForRatio,
-          cooldownMinutes: values.cooldownMinutes,
-          updatedAt: values.updatedAt,
-          updatedByUserId: values.updatedByUserId,
-        },
+        set: updateSet,
       })
       .returning();
     return row;

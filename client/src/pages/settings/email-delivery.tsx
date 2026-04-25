@@ -1119,8 +1119,22 @@ interface AlertSettings {
   ratioThreshold: number;
   minSamplesForRatio: number;
   cooldownMinutes: number;
+  // Per-address dedupe / retry windows. Null when the workspace pre-dates
+  // the columns and has never re-saved its alert settings; in that case
+  // the evaluator falls back to the EMAIL_DELIVERY_ALERT_DEDUPE_HOURS /
+  // EMAIL_DELIVERY_ALERT_RETRY_MINUTES env vars (12h / 60m by default),
+  // so we seed the form with those numbers to mirror the live behavior.
+  dedupeHours: number | null;
+  retryMinutes: number | null;
   updatedAt: string | null;
 }
+
+// Match the env-var defaults shipped in
+// server/auth/email-delivery-alerts.ts so the form preview reflects what
+// the evaluator would actually use right now on a workspace that has
+// never overridden these values.
+const DEFAULT_DEDUPE_HOURS = 12;
+const DEFAULT_RETRY_MINUTES = 60;
 
 /**
  * Owner-only configuration block for the failure-rate alert. Lives below the
@@ -1145,6 +1159,8 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
   const [ratioPercent, setRatioPercent] = useState(2);
   const [minSamplesForRatio, setMinSamplesForRatio] = useState(20);
   const [cooldownMinutes, setCooldownMinutes] = useState(360);
+  const [dedupeHours, setDedupeHours] = useState(DEFAULT_DEDUPE_HOURS);
+  const [retryMinutes, setRetryMinutes] = useState(DEFAULT_RETRY_MINUTES);
 
   useEffect(() => {
     if (!data) return;
@@ -1155,6 +1171,11 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
     setRatioPercent(Number((data.ratioThreshold * 100).toFixed(2)));
     setMinSamplesForRatio(data.minSamplesForRatio);
     setCooldownMinutes(data.cooldownMinutes);
+    // Null = "never overridden" — surface the env-default so the displayed
+    // number matches the evaluator's effective behavior. The first save
+    // turns this into a concrete column value.
+    setDedupeHours(data.dedupeHours ?? DEFAULT_DEDUPE_HOURS);
+    setRetryMinutes(data.retryMinutes ?? DEFAULT_RETRY_MINUTES);
   }, [data]);
 
   const save = useMutation({
@@ -1168,6 +1189,8 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
         ratioThreshold: Number((ratioPercent / 100).toFixed(4)),
         minSamplesForRatio,
         cooldownMinutes,
+        dedupeHours,
+        retryMinutes,
       });
     },
     onSuccess: () => {
@@ -1256,6 +1279,12 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
 
   const dirty = useMemo(() => {
     if (!data) return false;
+    // Treat null on the server (legacy row, never overridden) as equal to
+    // the env-default the form was seeded with — otherwise the Save button
+    // would always read as "dirty" on workspaces that pre-date the
+    // dedupe / retry columns, even when the admin hasn't touched them.
+    const serverDedupe = data.dedupeHours ?? DEFAULT_DEDUPE_HOURS;
+    const serverRetry = data.retryMinutes ?? DEFAULT_RETRY_MINUTES;
     return (
       enabled !== data.enabled ||
       emailEnabled !== data.emailEnabled ||
@@ -1263,9 +1292,11 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
       absoluteThreshold !== data.absoluteThreshold ||
       Number((ratioPercent / 100).toFixed(4)) !== Number(data.ratioThreshold.toFixed(4)) ||
       minSamplesForRatio !== data.minSamplesForRatio ||
-      cooldownMinutes !== data.cooldownMinutes
+      cooldownMinutes !== data.cooldownMinutes ||
+      dedupeHours !== serverDedupe ||
+      retryMinutes !== serverRetry
     );
-  }, [data, enabled, emailEnabled, windowHours, absoluteThreshold, ratioPercent, minSamplesForRatio, cooldownMinutes]);
+  }, [data, enabled, emailEnabled, windowHours, absoluteThreshold, ratioPercent, minSamplesForRatio, cooldownMinutes, dedupeHours, retryMinutes]);
 
   return (
     <Card data-testid="card-email-delivery-alerts">
@@ -1405,6 +1436,56 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
               {ar
                 ? "أقل فاصل بين تنبيهين متتاليين."
                 : "Minimum gap between consecutive alerts."}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="alert-dedupe-hours">
+              {ar
+                ? "مهلة عدم تكرار البريد لنفس المستلم (ساعات)"
+                : "Per-recipient email dedupe (hours)"}
+            </Label>
+            <Input
+              id="alert-dedupe-hours"
+              type="number"
+              min={0}
+              max={168}
+              value={dedupeHours}
+              onChange={(e) =>
+                setDedupeHours(
+                  Math.max(0, Math.min(168, Number(e.target.value) || 0)),
+                )
+              }
+              data-testid="input-alert-dedupe-hours"
+            />
+            <p className="text-xs text-muted-foreground">
+              {ar
+                ? "تخطّي إعادة بريد لنفس المالك لنفس السبب خلال هذه المدة. ارفعه لقوائم بريدية مزعجة، أو اضبط 0 للتعطيل."
+                : "Skip emailing the same owner about the same reason within this many hours. Raise it for chatty distribution lists, or set to 0 to disable."}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="alert-retry-minutes">
+              {ar
+                ? "نافذة إعادة محاولة الإرسال (دقائق)"
+                : "Failed-send retry window (minutes)"}
+            </Label>
+            <Input
+              id="alert-retry-minutes"
+              type="number"
+              min={0}
+              max={60 * 24}
+              value={retryMinutes}
+              onChange={(e) =>
+                setRetryMinutes(
+                  Math.max(0, Math.min(60 * 24, Number(e.target.value) || 0)),
+                )
+              }
+              data-testid="input-alert-retry-minutes"
+            />
+            <p className="text-xs text-muted-foreground">
+              {ar
+                ? "إعادة محاولة المستلمين الذين فشل بريدهم خلال هذه المدة. اضبط 0 لإيقاف إعادة المحاولة."
+                : "Re-attempt recipients whose previous send failed within this many minutes. Set to 0 to skip retries entirely."}
             </p>
           </div>
         </div>
