@@ -118,6 +118,14 @@ export const invitationEmailEvents = pgTable(
   (t) => [
     index("invitation_email_events_inv_idx").on(t.invitationId),
     index("invitation_email_events_msg_idx").on(t.messageId),
+    // Companion to the unified email-delivery feed's DISTINCT ON
+    // (transport, dedup_key) collapse. The count endpoint scans both
+    // event tables on every (debounced) keystroke in the recipient
+    // filter, and on workspaces with months of history this can do
+    // tens of thousands of row reads. A composite (message_id,
+    // created_at) index lets the planner satisfy the inner ORDER BY
+    // in the DISTINCT ON without resorting the whole UNION.
+    index("invitation_email_events_msg_created_idx").on(t.messageId, t.createdAt),
   ]
 );
 export type InvitationEmailEvent = typeof invitationEmailEvents.$inferSelect;
@@ -164,6 +172,10 @@ export const passwordResetEmailEvents = pgTable(
     index("prt_email_events_token_idx").on(t.tokenId),
     index("prt_email_events_user_idx").on(t.userId),
     index("prt_email_events_msg_idx").on(t.messageId),
+    // See `invitation_email_events_msg_created_idx` — same speed-up
+    // for the password-reset transport's branch of the unified
+    // email-delivery feed's DISTINCT ON (transport, dedup_key) collapse.
+    index("prt_email_events_msg_created_idx").on(t.messageId, t.createdAt),
   ]
 );
 export type PasswordResetEmailEvent = typeof passwordResetEmailEvents.$inferSelect;

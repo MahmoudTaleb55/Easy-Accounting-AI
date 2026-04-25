@@ -64,6 +64,46 @@ function parseDateOnly(value: string): Date | null {
   return Number.isFinite(dt.getTime()) ? dt : null;
 }
 
+// In-memory TTL cache for the email-delivery count endpoint.
+//
+// /settings/email-delivery refetches the count on every (debounced)
+// keystroke in the recipient filter, plus on tab focus and from
+// sibling browser tabs. The underlying CTE — UNION across both
+// transports' event tables, DISTINCT ON to collapse to one row per
+// send attempt — does tens of thousands of row reads on workspaces
+// with months of history. A short TTL keyed by company + the
+// normalized filter signature collapses repeated probes for the same
+// filter combo into one query while keeping the chip within a few
+// seconds of fresh.
+//
+// 5s is short enough that we don't need explicit invalidation when a
+// new event is appended; the cap on entries keeps memory bounded
+// when admins page through many filter combos.
+const EMAIL_DELIVERY_COUNT_TTL_MS = 5_000;
+const EMAIL_DELIVERY_COUNT_CACHE_MAX = 256;
+type EmailDeliveryCountEntry = { value: number; expiresAt: number };
+const emailDeliveryCountCache = new Map<string, EmailDeliveryCountEntry>();
+
+function emailDeliveryCountCacheKey(
+  companyId: number,
+  status: string | null,
+  emailLike: string | null,
+  from: string | null,
+  to: string | null,
+): string {
+  return JSON.stringify([companyId, status, emailLike, from, to]);
+}
+
+/**
+ * Test-only escape hatch: drop every entry from the count cache.
+ * Real call sites shouldn't need this — the TTL is short enough that
+ * any staleness is bounded — but tests that assert "the count
+ * reflects the row I just inserted" need to bypass the cache.
+ */
+export function clearEmailDeliveryCountCache(): void {
+  emailDeliveryCountCache.clear();
+}
+
 export const authBizStorage = {
   // ---------- users ----------
   async getUserByEmail(email: string): Promise<User | undefined> {
@@ -584,6 +624,22 @@ export const authBizStorage = {
     const from = normalizeFromBound(opts.from);
     const to = normalizeToBound(opts.to);
 
+    // Short TTL cache: collapse the keystroke-rate of probes for the
+    // same filter combo into a single query, but stay fresh enough
+    // that a newly arrived event shows up within a few seconds.
+    const cacheKey = emailDeliveryCountCacheKey(
+      companyId,
+      status,
+      emailLike,
+      from,
+      to,
+    );
+    const now = Date.now();
+    const cached = emailDeliveryCountCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.value;
+    }
+
     const rows = await db.execute(sql`
       WITH all_events AS (
         SELECT
@@ -630,7 +686,20 @@ export const authBizStorage = {
     `);
     const list = (rows as any).rows ?? (rows as any);
     const n = list?.[0]?.n;
-    return typeof n === "bigint" ? Number(n) : Number(n ?? 0);
+    const count = typeof n === "bigint" ? Number(n) : Number(n ?? 0);
+
+    // Bound memory: when the cap is reached, drop the oldest entry.
+    // Map preserves insertion order so this is effectively FIFO,
+    // which is fine — entries expire on a short TTL anyway.
+    if (emailDeliveryCountCache.size >= EMAIL_DELIVERY_COUNT_CACHE_MAX) {
+      const oldest = emailDeliveryCountCache.keys().next().value;
+      if (oldest !== undefined) emailDeliveryCountCache.delete(oldest);
+    }
+    emailDeliveryCountCache.set(cacheKey, {
+      value: count,
+      expiresAt: now + EMAIL_DELIVERY_COUNT_TTL_MS,
+    });
+    return count;
   },
 
   /**
@@ -1508,6 +1577,27 @@ export async function applyEmailDeliveryAlertRecipientsOnStartup(): Promise<void
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS email_delivery_alert_recipients_dedupe_idx
       ON email_delivery_alert_recipients (company_id, reason, email, attempted_at)
+  `);
+}
+
+/**
+ * Idempotent re-apply of migrations/0010_email_delivery_event_count_indexes.sql.
+ *
+ * Same pattern as the other 000X bootstrappers: dev databases and
+ * any deploy that boots ahead of the migration runner end up with
+ * the composite (message_id, created_at) indexes the email-delivery
+ * count endpoint relies on. Without these the count query falls back
+ * to a full UNION + sort and blows past the ~50ms target on
+ * workspaces with months of history.
+ */
+export async function applyEmailDeliveryEventCountIndexesOnStartup(): Promise<void> {
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS invitation_email_events_msg_created_idx
+      ON invitation_email_events (message_id, created_at)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS prt_email_events_msg_created_idx
+      ON password_reset_email_events (message_id, created_at)
   `);
 }
 

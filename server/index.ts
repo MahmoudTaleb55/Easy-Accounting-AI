@@ -207,6 +207,22 @@ app.use((req, res, next) => {
     );
   }
 
+  // Re-apply migration 0010 on boot so the (message_id, created_at)
+  // indexes that keep the /api/auth/email-deliveries/count endpoint
+  // snappy on long histories materialise on dev databases and on any
+  // deploy that boots ahead of the migration runner. Idempotent.
+  try {
+    const { applyEmailDeliveryEventCountIndexesOnStartup } = await import(
+      "./auth/storage"
+    );
+    await applyEmailDeliveryEventCountIndexesOnStartup();
+  } catch (err) {
+    console.error(
+      "Failed to apply email-delivery event count indexes migration:",
+      err,
+    );
+  }
+
 
   // Background sweep that turns the failure-class delivery trends into a
   // banner / email when a workspace's threshold trips. Disabled in test runs
