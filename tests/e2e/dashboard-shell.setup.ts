@@ -1,13 +1,8 @@
 import { test as setup } from "@playwright/test";
+import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
-import {
-  ensureCompany,
-  ensureUser,
-  forgeSession,
-  requireCookieSecret,
-  requireDbUrl,
-} from "./_helpers/forge-session";
+import { ensureCompany, ensureUser, requireDbUrl } from "./_helpers/forge-session";
 
 /**
  * One-time auth + seed setup for the dashboard-shell spec.
@@ -24,17 +19,18 @@ import {
  *   2. Ensures the user owns a workspace via a `memberships` row — that
  *      single canonical row is what the server reads to derive role on
  *      every request (the legacy `workspace_members` mirror was retired).
- *   3. Forges a passport session row + signs the connect.sid cookie so the
- *      browser context is "logged in" without ever calling /api/auth/signin.
+ *   3. POSTs /api/auth/signin against the dev server to populate the real
+ *      passport session cookie. The server now only sets the Secure flag
+ *      when the request is genuinely HTTPS (task #66), so the browser
+ *      keeps the cookie over plain HTTP — no need to forge a session row.
  *   4. Seeds a small set of transactions so the KPI strip + Recent Activity
  *      have data to render.
  *   5. Saves the resulting cookies to `.playwright/dashboard-state.json`,
  *      which the dashboard-shell spec then reuses via `storageState`.
  *
- * The auth-cookie + session-row machinery in steps (2)/(3)/(5) lives in
- * `tests/e2e/_helpers/forge-session.ts` and is shared with other e2e
- * setups so cookie-name / secret-rotation / schema changes only need to
- * be made in one place.
+ * The user/workspace seed helpers in steps (1)/(2) live in
+ * `tests/e2e/_helpers/forge-session.ts` and are shared with other e2e
+ * setups so schema changes only need to be made in one place.
  */
 
 const TEST_EMAIL = "e2e-dashboard@example.test";
@@ -43,7 +39,6 @@ const STORAGE_PATH = path.resolve(".playwright/dashboard-state.json");
 
 setup("authenticate + seed dashboard fixtures", async ({ page }) => {
   const dbUrl = requireDbUrl("the dashboard-shell setup");
-  requireCookieSecret("the dashboard-shell setup");
 
   const client = new pg.Client({ connectionString: dbUrl });
   await client.connect();
@@ -86,14 +81,31 @@ setup("authenticate + seed dashboard fixtures", async ({ page }) => {
     await client.end();
   }
 
-  // ---- (d) Forge a passport session + plant the cookie + persist state ----
-  await forgeSession({
-    page,
-    dbUrl,
-    userId,
-    email: TEST_EMAIL,
-    firstName: "E2E",
-    lastName: "Dashboard",
-    storagePath: STORAGE_PATH,
+  // ---- (d) Sign in via the real endpoint so the browser stores connect.sid ----
+  // The session cookie is no longer hard-coded `Secure` (task #66), so the
+  // browser keeps it on the plain-HTTP test server. No need to forge a
+  // session row or sign the cookie ourselves.
+  const signin = await page.request.post("/api/auth/signin", {
+    data: { email: TEST_EMAIL, password: TEST_PASSWORD },
   });
+  if (signin.status() !== 200) {
+    throw new Error(
+      `Expected POST /api/auth/signin to return 200 but got ${signin.status()}: ${await signin.text()}`,
+    );
+  }
+
+  // ---- (e) Confirm the session is real before saving storageState ----
+  const me = await page.request.get("/api/auth/user");
+  if (me.status() !== 200) {
+    const cookies = await page.context().cookies();
+    throw new Error(
+      `Expected /api/auth/user to be 200 after sign-in but got ${me.status()}.\n` +
+        `userId=${userId}\n` +
+        `Context cookies: ${JSON.stringify(cookies)}\n` +
+        `Body: ${await me.text()}`,
+    );
+  }
+
+  fs.mkdirSync(path.dirname(STORAGE_PATH), { recursive: true });
+  await page.context().storageState({ path: STORAGE_PATH });
 });

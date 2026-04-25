@@ -27,6 +27,15 @@ export function getSession() {
     ttl: sessionTtl,
     tableName: "sessions",
   });
+  // The cookie must only be flagged `Secure` when the response actually
+  // travels over HTTPS. Hard-coding `secure: true` means a browser hitting
+  // the dev server over plain HTTP silently drops the Set-Cookie, so a
+  // successful POST /api/auth/signin still leaves the user logged out.
+  // We trust the proxy (`app.set('trust proxy', 1)` below), so when the
+  // upstream request was HTTPS, express-session sees req.secure === true
+  // and emits Secure regardless of NODE_ENV. In production we additionally
+  // force Secure as a safety net in case the proxy header is missing.
+  const isProduction = process.env.NODE_ENV === "production";
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
@@ -34,7 +43,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: isProduction ? true : "auto",
       maxAge: sessionTtl,
     },
   });

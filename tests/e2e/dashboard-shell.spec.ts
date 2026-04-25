@@ -34,6 +34,23 @@ const COMBOS: { locale: Locale; theme: Theme }[] = [
 ];
 
 async function gotoDashboard(page: Page, locale: Locale, theme: Theme) {
+  // Pin the signed-in user's stored preferred locale to the variant under
+  // test. Without this, `LocaleSync` (in
+  // `client/src/components/layout/main-layout.tsx`) would read the user's
+  // stored `preferredLocale` from `/api/auth/user` and call `setLocale()`
+  // with it, overriding whatever we seed into `localStorage["app.locale"]`
+  // below. Same workaround as `tests/e2e/topbar-profile.spec.ts` — see
+  // task #152 for the full rationale.
+  const profileRes = await page.request.patch("/api/auth/profile", {
+    data: { preferredLocale: locale },
+  });
+  if (profileRes.status() !== 200) {
+    throw new Error(
+      `Failed to pin preferredLocale=${locale} on the dashboard test user: ` +
+        `${profileRes.status()} ${await profileRes.text()}`,
+    );
+  }
+
   // Set locale + theme before the SPA mounts so the very first paint is correct.
   await page.addInitScript(
     ({ locale, theme }) => {
