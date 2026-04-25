@@ -166,6 +166,25 @@ app.use((req, res, next) => {
     console.error("Failed to apply extended composite FK migration:", err);
   }
 
+  // Re-apply migration 0005 on boot so the email-delivery-alert tables
+  // (`email_delivery_alert_settings`, `email_delivery_alerts`, and the two
+  // per-company indexes) materialise on dev databases and on any deploy
+  // that boots ahead of the migration runner. Without this a fresh dev DB
+  // — and the e2e suite at `tests/e2e/email-delivery-alerts.spec.ts` —
+  // blows up on the first read with `relation "email_delivery_alerts"
+  // does not exist`. Idempotent.
+  try {
+    const { ensureEmailDeliveryAlertTablesOnStartup } = await import(
+      "./auth/storage"
+    );
+    await ensureEmailDeliveryAlertTablesOnStartup();
+  } catch (err) {
+    console.error(
+      "Failed to apply email_delivery_alerts (migration 0005) tables:",
+      err,
+    );
+  }
+
   // Re-apply migration 0010 on boot so the per-workspace `(company_id,
   // code)` UNIQUE on `accounts` materialises on dev databases (and on any
   // deploy that boots ahead of the migration runner). Without it the

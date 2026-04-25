@@ -1505,6 +1505,59 @@ export async function dropWorkspaceMembersMirrorOnStartup(): Promise<void> {
 }
 
 /**
+ * Idempotent re-apply of migrations/0005_email_delivery_alerts.sql — the
+ * parent `email_delivery_alert_settings` + `email_delivery_alerts` tables
+ * (and their two indexes) the alert evaluator and the
+ * `tests/e2e/email-delivery-alerts.spec.ts` suite both depend on.
+ *
+ * Same belt-and-suspenders pattern as the other 000X bootstrappers: every
+ * statement is guarded with IF NOT EXISTS so re-runs are a no-op. Without
+ * this helper a fresh dev DB (or any deploy that boots ahead of the
+ * migration runner) blows up on the first read with `relation
+ * "email_delivery_alerts" does not exist`.
+ */
+export async function ensureEmailDeliveryAlertTablesOnStartup(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS email_delivery_alert_settings (
+      company_id integer PRIMARY KEY,
+      enabled boolean NOT NULL DEFAULT true,
+      email_enabled boolean NOT NULL DEFAULT false,
+      window_hours integer NOT NULL DEFAULT 24,
+      absolute_threshold integer NOT NULL DEFAULT 5,
+      ratio_threshold numeric(5,4) NOT NULL DEFAULT 0.0200,
+      min_samples_for_ratio integer NOT NULL DEFAULT 20,
+      cooldown_minutes integer NOT NULL DEFAULT 360,
+      updated_at timestamp DEFAULT now(),
+      updated_by_user_id varchar
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS email_delivery_alerts (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id integer NOT NULL,
+      fired_at timestamp NOT NULL DEFAULT now(),
+      window_hours integer NOT NULL,
+      failure_count integer NOT NULL,
+      send_count integer NOT NULL,
+      reason text NOT NULL,
+      snapshot jsonb,
+      email_sent boolean NOT NULL DEFAULT false,
+      email_recipients integer NOT NULL DEFAULT 0,
+      dismissed_at timestamp,
+      dismissed_by_user_id varchar
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS email_delivery_alerts_company_idx
+      ON email_delivery_alerts (company_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS email_delivery_alerts_company_fired_idx
+      ON email_delivery_alerts (company_id, fired_at)
+  `);
+}
+
+/**
  * Idempotent re-apply of the email-delivery-alert tables — both the parent
  * `email_delivery_alerts` / `email_delivery_alert_settings` from migration
  * 0009 and the per-recipient outcome table from migration 0011.
