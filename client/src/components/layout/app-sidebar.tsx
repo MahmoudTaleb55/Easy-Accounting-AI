@@ -194,7 +194,7 @@ function UserBadge({ collapsed }: { collapsed: boolean }) {
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut()} data-testid="menu-signout">
+        <DropdownMenuItem onClick={() => signOut()} data-testid="menu-sidebar-signout">
           <LogOut className="size-3.5 mr-2" /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
