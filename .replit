@@ -37,6 +37,10 @@ args = "Start application"
 task = "workflow.run"
 args = "mobile-overflow"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "migrations-prefix"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -53,6 +57,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test --reporter=line"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "migrations-prefix"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test tests/e2e/migrations-prefix.spec.ts --reporter=line"
 
 [workflows.workflow.metadata]
 isValidation = true
