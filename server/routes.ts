@@ -438,6 +438,53 @@ export async function registerRoutes(
     }
   });
 
+  // ----- Accounts: per-account balances -----
+  //
+  // Powers the trailing balance column on the chart-of-accounts tree. The
+  // `period` query param scopes the aggregation:
+  //   - `month`: current calendar month (server-local clock)
+  //   - `year`:  current calendar year
+  //   - `all` (default): no date filter
+  //
+  // Aggregation runs server-side (SUM/GROUP BY) and is workspace-scoped via
+  // `cid(req)`, so cross-tenant leakage is impossible. Header rows are
+  // rolled-up client-side from descendant leaves so the response stays a
+  // flat list keyed by accountId.
+  app.get(api.accounts.balances.path, async (req, res) => {
+    const periodParam = String(req.query.period ?? "all").toLowerCase();
+    const period: "month" | "year" | "all" =
+      periodParam === "month" || periodParam === "year" ? periodParam : "all";
+
+    let range: { from?: Date; to?: Date } | undefined;
+    if (period !== "all") {
+      const now = new Date();
+      const from =
+        period === "month"
+          ? new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+          : new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      const to =
+        period === "month"
+          ? new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+          : new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+      range = { from, to };
+    }
+
+    const [allAccounts, totals] = await Promise.all([
+      storage.getAccounts(cid(req)),
+      storage.getAccountBalances(cid(req), range),
+    ]);
+    const typeById = new Map(allAccounts.map((a) => [a.id, a.type]));
+
+    const rows = Array.from(totals.entries()).map(([accountId, t]) => {
+      const type = typeById.get(accountId);
+      const isDebitNormal = type === "asset" || type === "expense";
+      const balance = isDebitNormal ? t.debit - t.credit : t.credit - t.debit;
+      return { accountId, debit: t.debit, credit: t.credit, balance };
+    });
+
+    res.json({ period, rows });
+  });
+
   // ----- Journal Entries -----
   app.get(api.journal.list.path, async (req, res) => {
     const entries = await storage.getJournalEntries(cid(req));

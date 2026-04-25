@@ -41,6 +41,7 @@ import { useLocale } from "@/contexts/locale-context"
 import { useAuth } from "@/hooks/use-auth"
 import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 
 /* ------------------------------------------------------------------ */
 /* Account ledger drawer types                                         */
@@ -92,6 +93,21 @@ interface TreeNode {
 }
 
 const STORAGE_KEY_PREFIX = "coa-expanded-v1"
+const PERIOD_STORAGE_KEY_PREFIX = "coa-balance-period-v1"
+
+type BalancePeriod = "month" | "year" | "all"
+const BALANCE_PERIODS: BalancePeriod[] = ["month", "year", "all"]
+
+interface BalanceRow {
+  accountId: number
+  debit: number
+  credit: number
+  balance: number
+}
+interface BalancesResponse {
+  period: BalancePeriod
+  rows: BalanceRow[]
+}
 
 export default function ChartOfAccountsPage() {
   const { locale } = useLocale()
@@ -190,6 +206,11 @@ export default function ChartOfAccountsPage() {
       ledgerTotalDebit: locale === "ar" ? "إجمالي المدين" : "Total debit",
       ledgerTotalCredit: locale === "ar" ? "إجمالي الدائن" : "Total credit",
       ledgerBalance: locale === "ar" ? "الرصيد" : "Balance",
+      periodLabel: locale === "ar" ? "نطاق الأرصدة" : "Balances scope",
+      periodMonth: locale === "ar" ? "هذا الشهر" : "This month",
+      periodYear: locale === "ar" ? "هذه السنة" : "This year",
+      periodAll: locale === "ar" ? "كل الفترات" : "All time",
+      balanceAria: locale === "ar" ? "الرصيد الحالي" : "Current balance",
     }),
     [locale]
   )
@@ -202,6 +223,99 @@ export default function ChartOfAccountsPage() {
   const { data: accounts, isLoading } = useQuery<Account[]>({
     queryKey: ["/api/accounts"],
   })
+
+  /* ------------------------------------------------------------------ */
+  /* Period selector — scopes the trailing balance column. Persisted     */
+  /* per-workspace in localStorage so flipping back to this page (or to  */
+  /* another workspace) restores the owner's last choice. We hydrate     */
+  /* lazily once the active workspace id is known to avoid clobbering    */
+  /* the saved value on first paint.                                      */
+  /* ------------------------------------------------------------------ */
+  const periodStorageKey = activeCompanyId
+    ? `${PERIOD_STORAGE_KEY_PREFIX}:${activeCompanyId}`
+    : null
+  const [period, setPeriod] = useState<BalancePeriod>("all")
+  const [periodHydratedFor, setPeriodHydratedFor] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!periodStorageKey) return
+    if (periodHydratedFor === periodStorageKey) return
+    try {
+      const raw = localStorage.getItem(periodStorageKey)
+      if (raw && (BALANCE_PERIODS as string[]).includes(raw)) {
+        setPeriod(raw as BalancePeriod)
+      } else {
+        setPeriod("all")
+      }
+    } catch {
+      setPeriod("all")
+    }
+    setPeriodHydratedFor(periodStorageKey)
+  }, [periodStorageKey, periodHydratedFor])
+
+  useEffect(() => {
+    if (!periodStorageKey || periodHydratedFor !== periodStorageKey) return
+    try {
+      localStorage.setItem(periodStorageKey, period)
+    } catch {
+      /* ignore quota / private-mode errors */
+    }
+  }, [period, periodStorageKey, periodHydratedFor])
+
+  // Custom queryFn here because the default fetcher in lib/queryClient.ts
+  // builds the URL by joining the queryKey segments with "/" — for a
+  // querystring-driven endpoint like this one we'd otherwise hit
+  // /api/accounts/balances/<period> (404) instead of the documented
+  // /api/accounts/balances?period=<period>. The queryKey still includes the
+  // period so cache + invalidation are scoped correctly.
+  const { data: balances, isLoading: balancesLoading, isError: balancesError } =
+    useQuery<BalancesResponse>({
+      queryKey: ["/api/accounts/balances", period],
+      queryFn: async () => {
+        const res = await apiRequest(
+          "GET",
+          `/api/accounts/balances?period=${encodeURIComponent(period)}`,
+        )
+        return res.json()
+      },
+    })
+
+  const fmt = useFormatMoney()
+
+  /* ------------------------------------------------------------------ */
+  /* Roll up balances onto header rows. The `/api/accounts/balances`     */
+  /* endpoint returns one row per posting account; header rows aren't    */
+  /* posted to directly, so their displayed balance is the sum of every  */
+  /* descendant leaf in their subtree (computed once per balances/data   */
+  /* change).                                                             */
+  /* ------------------------------------------------------------------ */
+  const balanceByAccountId = useMemo(() => {
+    const map = new Map<number, number>()
+    if (!accounts || !balances) return map
+    const byId = new Map<number, Account>(accounts.map((a) => [a.id, a]))
+    const childrenByParent = new Map<number, Account[]>()
+    for (const a of accounts) {
+      if (a.parentId == null) continue
+      const arr = childrenByParent.get(a.parentId) ?? []
+      arr.push(a)
+      childrenByParent.set(a.parentId, arr)
+    }
+    const leafBalance = new Map<number, number>(
+      balances.rows.map((r) => [r.accountId, r.balance])
+    )
+    function compute(a: Account): number {
+      const direct = leafBalance.get(a.id) ?? 0
+      const kids = childrenByParent.get(a.id) ?? []
+      let sum = direct
+      for (const k of kids) sum += compute(k)
+      map.set(a.id, sum)
+      return sum
+    }
+    for (const a of accounts) {
+      if (a.parentId == null || !byId.has(a.parentId)) compute(a)
+    }
+    return map
+  }, [accounts, balances])
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -385,7 +499,36 @@ export default function ChartOfAccountsPage() {
           <p className="text-sm text-muted-foreground">{t.subtitle}</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <ToggleGroup
+            type="single"
+            value={period}
+            onValueChange={(v) => {
+              // Radix's single-mode ToggleGroup emits "" when the user clicks
+              // the currently active item (toggling it off). We don't want a
+              // null/empty scope, so we ignore that case and keep the prior
+              // selection — there's always a defined period.
+              if (v && (BALANCE_PERIODS as string[]).includes(v)) {
+                setPeriod(v as BalancePeriod)
+              }
+            }}
+            size="sm"
+            variant="outline"
+            aria-label={t.periodLabel}
+            className="bg-card rounded-md p-0.5 border border-border"
+            data-testid="toggle-balance-period"
+          >
+            <ToggleGroupItem value="month" data-testid="toggle-balance-period-month" className="text-xs px-2.5 h-7">
+              {t.periodMonth}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="year" data-testid="toggle-balance-period-year" className="text-xs px-2.5 h-7">
+              {t.periodYear}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="all" data-testid="toggle-balance-period-all" className="text-xs px-2.5 h-7">
+              {t.periodAll}
+            </ToggleGroupItem>
+          </ToggleGroup>
+
           <div className="relative w-full sm:w-64">
             <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <Input
@@ -551,6 +694,11 @@ export default function ChartOfAccountsPage() {
                     onToggle={toggle}
                     onOpenLedger={setLedgerAccount}
                     openLedgerAria={t.ledgerOpenAria}
+                    balanceByAccountId={balanceByAccountId}
+                    balancesLoading={balancesLoading}
+                    balancesError={balancesError}
+                    formatMoney={fmt}
+                    balanceAria={t.balanceAria}
                   />
                 ))}
               </ul>
@@ -598,6 +746,11 @@ interface TreeRowProps {
   onToggle: (code: string) => void
   onOpenLedger: (account: Account) => void
   openLedgerAria: string
+  balanceByAccountId: Map<number, number>
+  balancesLoading: boolean
+  balancesError: boolean
+  formatMoney: (n: number | string | null | undefined) => string
+  balanceAria: string
 }
 
 function TreeRow({
@@ -608,6 +761,11 @@ function TreeRow({
   onToggle,
   onOpenLedger,
   openLedgerAria,
+  balanceByAccountId,
+  balancesLoading,
+  balancesError,
+  formatMoney,
+  balanceAria,
 }: TreeRowProps) {
   const { account } = node
   const hasChildren = node.children.length > 0
@@ -624,6 +782,14 @@ function TreeRow({
   // suppress the ledger affordance on them. Postable accounts open the
   // ledger drawer on click.
   const openable = !account.isHeader
+
+  // Trailing balance: leaves show their own posted balance; headers show the
+  // sum of every descendant leaf in their subtree (rolled up by the parent).
+  // A leaf with no postings still has a current balance — zero — so we render
+  // the formatted zero rather than blanking the cell, matching the trial
+  // balance view. Header rows render the rolled-up total with a muted weight
+  // so they read as totals rather than primary values.
+  const balance = balanceByAccountId.get(account.id) ?? 0
 
   return (
     <>
@@ -693,9 +859,43 @@ function TreeRow({
             <span className="truncate text-foreground">{account.nameAr}</span>
           </div>
         )}
-        <span className="text-[11px] text-muted-foreground hidden sm:block truncate max-w-[40%]">
+        <span className="text-[11px] text-muted-foreground hidden sm:block truncate max-w-[30%]">
           {account.nameEn}
         </span>
+        {balancesLoading ? (
+          <Skeleton
+            className="h-4 w-20 ms-auto shrink-0"
+            data-testid={`skeleton-balance-${account.code}`}
+          />
+        ) : balancesError ? (
+          // If the balances request failed, surface a single muted "·" rather
+          // than rendering "0" / "—" — those would silently look like a real
+          // computed balance and mislead the owner about what's in the bucket.
+          <span
+            className="ms-auto shrink-0 text-muted-foreground/60 text-[12.5px]"
+            data-testid={`text-balance-${account.code}-error`}
+            title={
+              locale === "ar"
+                ? "تعذّر تحميل الأرصدة"
+                : "Could not load balances"
+            }
+          >
+            ·
+          </span>
+        ) : (
+          <span
+            className={cn(
+              "ms-auto shrink-0 font-numeric tabular-nums text-[12.5px]",
+              account.isHeader
+                ? "text-muted-foreground font-normal"
+                : "text-foreground"
+            )}
+            aria-label={`${balanceAria} — ${formatMoney(balance)}`}
+            data-testid={`text-balance-${account.code}`}
+          >
+            {formatMoney(balance)}
+          </span>
+        )}
       </li>
       {expanded &&
         node.children.map((child) => (
@@ -708,6 +908,11 @@ function TreeRow({
             onToggle={onToggle}
             onOpenLedger={onOpenLedger}
             openLedgerAria={openLedgerAria}
+            balanceByAccountId={balanceByAccountId}
+            balancesLoading={balancesLoading}
+            balancesError={balancesError}
+            formatMoney={formatMoney}
+            balanceAria={balanceAria}
           />
         ))}
     </>

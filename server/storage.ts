@@ -75,7 +75,7 @@ import {
   pickExpenseAccountCode,
   pickRevenueAccountCode,
 } from "@shared/coa-seed";
-import { eq, sql, desc, and, inArray } from "drizzle-orm";
+import { eq, sql, desc, and, inArray, gte, lte } from "drizzle-orm";
 import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
 
 export interface JournalEntryWithLines extends JournalEntry {
@@ -136,6 +136,10 @@ export interface IStorage {
   getJournalEntries(companyId: number): Promise<JournalEntryWithLines[]>;
   createJournalEntry(companyId: number, input: CreateJournalEntryInput, ctx?: AuditContext): Promise<JournalEntryWithLines>;
   deleteJournalEntry(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
+  getAccountBalances(
+    companyId: number,
+    range?: { from?: Date; to?: Date },
+  ): Promise<Map<number, { debit: number; credit: number }>>;
 
   // Budgets
   getBudgets(companyId: number, year?: number, month?: number): Promise<Budget[]>;
@@ -1156,6 +1160,46 @@ export class DatabaseStorage implements IStorage {
         ctx,
       });
     }
+  }
+
+  // Aggregate posted debits/credits per account for the active workspace,
+  // optionally scoped to a date range. Powers the chart-of-accounts trailing
+  // balance column without us pulling every JE + line into JS like
+  // `getJournalEntries` does. Filtering on `journalLines.companyId` (the
+  // de-normalized stamp) keeps the join workspace-scoped even before the
+  // entry-side filter, so cross-tenant leaks are impossible.
+  async getAccountBalances(
+    companyId: number,
+    range?: { from?: Date; to?: Date },
+  ): Promise<Map<number, { debit: number; credit: number }>> {
+    // Belt-and-braces: filter on both the line-level and entry-level
+    // companyId. journalLines stamps companyId on insert (defense-in-depth),
+    // and the inner join to journalEntries already constrains by entry, but
+    // adding the entry-side filter too keeps the query consistent with the
+    // rest of storage and survives any future schema drift on either table.
+    const conditions = [
+      eq(journalLines.companyId, companyId),
+      eq(journalEntries.companyId, companyId),
+    ];
+    if (range?.from) conditions.push(gte(journalEntries.entryDate, range.from));
+    if (range?.to) conditions.push(lte(journalEntries.entryDate, range.to));
+
+    const rows = await db
+      .select({
+        accountId: journalLines.accountId,
+        debit: sql<string>`COALESCE(SUM(${journalLines.debit}), 0)`,
+        credit: sql<string>`COALESCE(SUM(${journalLines.credit}), 0)`,
+      })
+      .from(journalLines)
+      .innerJoin(journalEntries, eq(journalLines.journalEntryId, journalEntries.id))
+      .where(and(...conditions))
+      .groupBy(journalLines.accountId);
+
+    const out = new Map<number, { debit: number; credit: number }>();
+    for (const r of rows) {
+      out.set(r.accountId, { debit: Number(r.debit), credit: Number(r.credit) });
+    }
+    return out;
   }
 
   // ----- Budgets -----

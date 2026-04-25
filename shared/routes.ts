@@ -88,6 +88,30 @@ export const api = {
         500: errorSchemas.internal,
       },
     },
+    // Per-account aggregated debit/credit/balance for the chart-of-accounts
+    // tree. The `period` query param scopes the aggregation to a date range:
+    //   - `month`: current calendar month
+    //   - `year`:  current calendar year
+    //   - `all`:   no date filter (default)
+    // The handler aggregates server-side, scoped to the active workspace, so
+    // there is no cross-tenant leakage.
+    balances: {
+      method: 'GET' as const,
+      path: '/api/accounts/balances' as const,
+      responses: {
+        200: z.object({
+          period: z.enum(['month', 'year', 'all']),
+          rows: z.array(
+            z.object({
+              accountId: z.number(),
+              debit: z.number(),
+              credit: z.number(),
+              balance: z.number(),
+            })
+          ),
+        }),
+      },
+    },
   },
   journal: {
     list: {
