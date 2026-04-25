@@ -190,7 +190,12 @@ export interface IStorage {
   // Audit log — scoped: only returns history when the underlying entity
   // belongs to the caller's active workspace. Cross-workspace lookups return
   // an empty array (the route layer turns that into a 404).
-  getAuditLog(companyId: number, entityType: AuditEntityType, entityId: number): Promise<AuditLogEntry[]>;
+  getAuditLog(
+    companyId: number,
+    entityType: AuditEntityType,
+    entityId: number,
+    bounds?: { from?: Date; to?: Date },
+  ): Promise<AuditLogEntry[]>;
   entityBelongsToCompany(entityType: AuditEntityType, entityId: number, companyId: number): Promise<boolean>;
   /**
    * Reversal-aware variant for journal entries: returns the audit log even
@@ -2318,6 +2323,7 @@ export class DatabaseStorage implements IStorage {
     companyId: number,
     entityType: AuditEntityType,
     entityId: number,
+    bounds?: { from?: Date; to?: Date },
   ): Promise<AuditLogEntry[]> {
     const owned = await this.entityBelongsToCompany(entityType, entityId, companyId);
     if (!owned) return [];
@@ -2325,16 +2331,22 @@ export class DatabaseStorage implements IStorage {
     // RLS policy on `audit_log` (task #169) — but it is left in place as
     // defense-in-depth and as a planner hint for the
     // `audit_log_company_entity_idx` composite index.
+    //
+    // Optional `bounds.from` / `bounds.to` push the period filter (rendered
+    // by `HistoryTimeline`'s preset dropdown) down to the database so very
+    // large per-entity histories don't have to be paged into the client and
+    // discarded after the fact. With no bounds the query is unchanged.
+    const predicates = [
+      eq(auditLog.companyId, companyId),
+      eq(auditLog.entityType, entityType),
+      eq(auditLog.entityId, entityId),
+    ];
+    if (bounds?.from) predicates.push(gte(auditLog.occurredAt, bounds.from));
+    if (bounds?.to) predicates.push(lte(auditLog.occurredAt, bounds.to));
     return await db
       .select()
       .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.companyId, companyId),
-          eq(auditLog.entityType, entityType),
-          eq(auditLog.entityId, entityId),
-        ),
-      )
+      .where(and(...predicates))
       .orderBy(desc(auditLog.occurredAt));
   }
 

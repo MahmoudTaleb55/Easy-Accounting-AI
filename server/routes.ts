@@ -567,9 +567,26 @@ export async function registerRoutes(
     if (!Number.isFinite(id) || id <= 0) {
       return res.status(400).json({ message: "Invalid id" });
     }
+    // Optional `from` / `to` ISO timestamp params let the period dropdown
+    // in `HistoryTimeline` push the window down to the database for very
+    // large entity histories, instead of fetching everything and filtering
+    // client-side. Bad input (non-ISO, NaN) is rejected with 400 rather
+    // than silently ignored so the client can't accidentally over-fetch.
+    const parseBound = (v: unknown): Date | "invalid" | undefined => {
+      if (v === undefined || v === null || v === "") return undefined;
+      if (typeof v !== "string") return "invalid";
+      const d = new Date(v);
+      return Number.isNaN(d.getTime()) ? "invalid" : d;
+    };
+    const from = parseBound(req.query.from);
+    const to = parseBound(req.query.to);
+    if (from === "invalid" || to === "invalid") {
+      return res.status(400).json({ message: "Invalid date range" });
+    }
     const owned = await storage.entityBelongsToCompany(entityType, id, cid(req));
     if (!owned) return res.status(404).json({ message: "Not found" });
-    const events = await storage.getAuditLog(cid(req), entityType, id);
+    const bounds = from || to ? { from, to } : undefined;
+    const events = await storage.getAuditLog(cid(req), entityType, id, bounds);
     res.json(events);
   });
 

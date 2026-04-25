@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -329,13 +330,85 @@ export function HistoryTimeline({
   const useReversalEndpoint =
     includeReversal && entityType === "journal_entry";
   const enabled = enabledProp && !!entityType && !!entityId && entityId > 0;
+
+  // Period filter state has to be declared before the query because we want
+  // changing presets to refetch with a narrower window — the bounds become
+  // part of the query key and a `from` / `to` query string on the request.
+  const [sourceFilter, setSourceFilter] = React.useState<Set<HistorySource>>(
+    () => new Set(SOURCE_KEYS),
+  );
+  const [actionFilter, setActionFilter] = React.useState<Set<HistoryAction>>(
+    () => new Set(ACTION_KEYS),
+  );
+  const hasEntityPeriod = !!entityPeriod && (
+    entityPeriod.start !== undefined && entityPeriod.start !== null && entityPeriod.start !== "" ||
+    entityPeriod.end !== undefined && entityPeriod.end !== null && entityPeriod.end !== ""
+  );
+  // Lazily seeded from localStorage so reopening the drawer (or returning in a
+  // later session) restores the user's last picked preset for this entity type.
+  // First-time users still land on "All time".
+  const [periodFilter, setPeriodFilterState] = React.useState<PeriodPreset>(
+    () => readPersistedPeriod(entityType, hasEntityPeriod),
+  );
+
+  const setPeriodFilter = React.useCallback(
+    (next: PeriodPreset) => {
+      setPeriodFilterState(next);
+      writePersistedPeriod(entityType, next);
+    },
+    [entityType],
+  );
+
+  const periodWindow = React.useMemo<{ from: Date | null; to: Date | null }>(() => {
+    if (periodFilter === "all") return { from: null, to: null };
+    if (periodFilter === "entity") {
+      const start = toDate(entityPeriod?.start);
+      const end = toDate(entityPeriod?.end);
+      return {
+        from: start ? startOfDay(start) : null,
+        to: end ? endOfDay(end) : null,
+      };
+    }
+    const days = periodFilter === "7d" ? 7 : periodFilter === "30d" ? 30 : 90;
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - days);
+    return { from: startOfDay(from), to: endOfDay(now) };
+  }, [periodFilter, entityPeriod?.start, entityPeriod?.end]);
+
+  // Push the period window down to the audit endpoint via `?from=&to=` so
+  // very large per-entity histories don't force the browser to download
+  // (and discard) thousands of rows that fall outside the active preset.
+  // The reversal-aware endpoint always returns the full trail because the
+  // whole point of that view is to surface deletions and their cause.
+  const fromIso = periodWindow.from?.toISOString();
+  const toIso = periodWindow.to?.toISOString();
+  const auditUrl = React.useMemo(() => {
+    if (!entityType || !entityId) return null;
+    if (useReversalEndpoint) {
+      return `/api/audit/journal_entry/${entityId}/with-reversal`;
+    }
+    const base = `/api/audit/${entityType}/${entityId}`;
+    const qs = new URLSearchParams();
+    if (fromIso) qs.set("from", fromIso);
+    if (toIso) qs.set("to", toIso);
+    const qsStr = qs.toString();
+    return qsStr ? `${base}?${qsStr}` : base;
+  }, [useReversalEndpoint, entityType, entityId, fromIso, toIso]);
+
   const { data, isLoading, isError } = useQuery<AuditRow[]>({
     // Two distinct cache keys so a normal lookup and the reversal-aware
     // lookup do not stomp on each other when both surfaces are visited.
+    // The period bounds are part of the standard-lookup key so flipping
+    // the preset triggers a refetch with the narrower window.
     queryKey: useReversalEndpoint
       ? ["/api/audit/journal_entry", entityId, "with-reversal"]
-      : ["/api/audit", entityType, entityId],
-    enabled,
+      : ["/api/audit", entityType, entityId, fromIso ?? null, toIso ?? null],
+    queryFn: async () => {
+      const res = await apiRequest("GET", auditUrl!);
+      return (await res.json()) as AuditRow[];
+    },
+    enabled: enabled && !!auditUrl,
   });
 
   const events: HistoryEvent[] = React.useMemo(() => {
@@ -392,48 +465,6 @@ export function HistoryTimeline({
     labels.post,
     labels.reversed,
   ]);
-
-  const [sourceFilter, setSourceFilter] = React.useState<Set<HistorySource>>(
-    () => new Set(SOURCE_KEYS),
-  );
-  const [actionFilter, setActionFilter] = React.useState<Set<HistoryAction>>(
-    () => new Set(ACTION_KEYS),
-  );
-  const hasEntityPeriod = !!entityPeriod && (
-    entityPeriod.start !== undefined && entityPeriod.start !== null && entityPeriod.start !== "" ||
-    entityPeriod.end !== undefined && entityPeriod.end !== null && entityPeriod.end !== ""
-  );
-  // Lazily seeded from localStorage so reopening the drawer (or returning in a
-  // later session) restores the user's last picked preset for this entity type.
-  // First-time users still land on "All time".
-  const [periodFilter, setPeriodFilterState] = React.useState<PeriodPreset>(
-    () => readPersistedPeriod(entityType, hasEntityPeriod),
-  );
-
-  const setPeriodFilter = React.useCallback(
-    (next: PeriodPreset) => {
-      setPeriodFilterState(next);
-      writePersistedPeriod(entityType, next);
-    },
-    [entityType],
-  );
-
-  const periodWindow = React.useMemo<{ from: Date | null; to: Date | null }>(() => {
-    if (periodFilter === "all") return { from: null, to: null };
-    if (periodFilter === "entity") {
-      const start = toDate(entityPeriod?.start);
-      const end = toDate(entityPeriod?.end);
-      return {
-        from: start ? startOfDay(start) : null,
-        to: end ? endOfDay(end) : null,
-      };
-    }
-    const days = periodFilter === "7d" ? 7 : periodFilter === "30d" ? 30 : 90;
-    const now = new Date();
-    const from = new Date(now);
-    from.setDate(from.getDate() - days);
-    return { from: startOfDay(from), to: endOfDay(now) };
-  }, [periodFilter, entityPeriod?.start, entityPeriod?.end]);
 
   const sourceCounts = React.useMemo(() => {
     const m: Record<HistorySource, number> = { user: 0, ai: 0, system: 0, integration: 0 };
