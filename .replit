@@ -53,6 +53,10 @@ args = "role-guard-coverage"
 task = "workflow.run"
 args = "dev-only-routes-production-gate"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "unit-tests"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -116,6 +120,17 @@ args = "PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test tests/e2e/dev-only-routes-
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "unit-tests"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx vitest run --reporter=verbose"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [agent]
 integrations = ["javascript_database:1.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_log_in_with_replit:2.0.0", "javascript_object_storage:2.0.0"]
