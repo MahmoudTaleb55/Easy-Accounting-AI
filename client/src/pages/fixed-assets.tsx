@@ -17,10 +17,10 @@ import {
 } from "@/components/ui/dialog";
 import { WriteGuard, OwnerGuard, useCanManageWorkspace } from "@/components/auth/write-guard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck, History } from "lucide-react";
+import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck } from "lucide-react";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { HistoryDrawer, HistoryTimeline } from "@/components/audit/history-drawer";
+import { HistoryTimeline } from "@/components/audit/history-drawer";
 import { PeriodChip } from "@/components/dashboard/period-chip";
 import { usePeriod } from "@/contexts/period-context";
 import type { Account, AssetCategory, AssetComponent, Company, FixedAsset, FxRate, DepreciationMethod } from "@shared/schema";
@@ -201,7 +201,6 @@ function AssetRegister({ company }: { company: Company }) {
   const [detailId, setDetailId] = useState<number | null>(null);
   const [opAssetId, setOpAssetId] = useState<number | null>(null);
   const [opType, setOpType] = useState<"impairment" | "revaluation" | "dispose" | null>(null);
-  const [historyAsset, setHistoryAsset] = useState<FixedAssetWithCarrying | null>(null);
 
   const { data: assets, isLoading } = useQuery<FixedAssetWithCarrying[]>({
     queryKey: ["/api/fixed-assets", company.id],
@@ -369,10 +368,6 @@ function AssetRegister({ company }: { company: Company }) {
                         <td className="py-2 px-2"><Badge variant="secondary">{STATUS_LABEL[a.status] || a.status}</Badge></td>
                         <td className="py-2 px-2">
                           <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" title="السجل"
-                              onClick={() => setHistoryAsset(a)} data-testid={`button-history-asset-${a.id}`}>
-                              <History className="w-4 h-4" />
-                            </Button>
                             <WriteGuard forceDisabled={a.status !== "active"}>
                               <Button size="sm" variant="ghost" title="انخفاض القيمة"
                                 onClick={() => { setOpAssetId(a.id); setOpType("impairment"); }} data-testid={`button-impairment-${a.id}`}>
@@ -444,14 +439,6 @@ function AssetRegister({ company }: { company: Company }) {
       {opAssetId && opType && (
         <OperationDialog assetId={opAssetId} type={opType} company={company} onClose={() => { setOpAssetId(null); setOpType(null); }} />
       )}
-      <HistoryDrawer
-        open={!!historyAsset}
-        onOpenChange={(o) => { if (!o) setHistoryAsset(null); }}
-        title={historyAsset?.name || ""}
-        reference={historyAsset?.code}
-        entityType="fixed_asset"
-        entityId={historyAsset?.id}
-      />
     </div>
   );
 }

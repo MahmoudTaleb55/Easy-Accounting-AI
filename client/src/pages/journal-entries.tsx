@@ -28,8 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Scale, History } from "lucide-react"
-import { HistoryDrawer, HistoryTimeline } from "@/components/audit/history-drawer"
+import { Plus, Trash2, Scale } from "lucide-react"
+import { HistoryTimeline } from "@/components/audit/history-drawer"
 import { EmptyState } from "@/components/feedback/empty-state"
 import { ErrorState } from "@/components/feedback/error-state"
 import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
@@ -64,7 +64,6 @@ export default function JournalEntriesPage() {
   const dfLocale = locale === "ar" ? ar : enUS
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
-  const [historyEntry, setHistoryEntry] = useState<JE | null>(null)
   const [detailEntry, setDetailEntry] = useState<JE | null>(null)
   const [location] = useLocation()
   const [highlightId, setHighlightId] = useState<number | null>(null)
@@ -558,16 +557,6 @@ export default function JournalEntriesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => setHistoryEntry(je)}
-                      data-testid={`button-history-entry-${je.id}`}
-                      aria-label={locale === "ar" ? "السجل" : "History"}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <History className="w-3.5 h-3.5" />
-                    </Button>
                     {je.source !== "transaction" && (
                       <WriteGuard>
                         <Button
@@ -621,14 +610,6 @@ export default function JournalEntriesPage() {
         </div>
       )}
 
-      <HistoryDrawer
-        open={!!historyEntry}
-        onOpenChange={(o) => { if (!o) setHistoryEntry(null) }}
-        title={historyEntry?.description || ""}
-        reference={historyEntry?.reference}
-        entityType="journal_entry"
-        entityId={historyEntry?.id}
-      />
       {detailEntry && (
         <JournalEntryDetailDialog
           entry={detailEntry}

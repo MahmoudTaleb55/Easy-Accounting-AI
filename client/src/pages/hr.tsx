@@ -111,7 +111,6 @@ function EmployeesTab() {
   const { toast } = useToast();
   const fmt = useFormatMoney();
   const [open, setOpen] = useState(false);
-  const [historyEmp, setHistoryEmp] = useState<Employee | null>(null);
   const [detailEmp, setDetailEmp] = useState<Employee | null>(null);
   const { data: employees = [], isLoading } = useQuery<Employee[]>({ queryKey: ["/api/hr/employees"] });
 
@@ -230,9 +229,6 @@ function EmployeesTab() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => setHistoryEmp(e)} aria-label="السجل" data-testid={`button-history-employee-${e.id}`}>
-                        <History className="w-4 h-4" />
-                      </Button>
                       <WriteGuard>
                         <Button variant="ghost" size="icon" onClick={() => remove.mutate(e.id)} data-testid={`button-delete-employee-${e.id}`}>
                           <Trash2 className="w-4 h-4 text-destructive" />
@@ -246,14 +242,6 @@ function EmployeesTab() {
           </Table>
         )}
       </CardContent>
-      <HistoryDrawer
-        open={!!historyEmp}
-        onOpenChange={(o) => { if (!o) setHistoryEmp(null); }}
-        title={historyEmp?.fullName || ""}
-        reference={historyEmp ? `EMP-${historyEmp.id}` : undefined}
-        entityType="employee"
-        entityId={historyEmp?.id}
-      />
       {detailEmp && (
         <EmployeeDetailDialog
           employee={detailEmp}
