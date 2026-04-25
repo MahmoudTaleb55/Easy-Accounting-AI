@@ -27,12 +27,20 @@ import uidSafe from "uid-safe";
  *      counter of GETs to `/api/auth/user`. Under the bug this counter
  *      would not advance past the initial mount fetch.
  *   4. The server row is updated to `preferredLocale: 'de'`.
- *   5. After a full page reload, `/api/auth/user` still returns
- *      `preferredLocale: 'de'` — proving the choice survives reload at
- *      the source-of-truth level. (The visible RTL/LTR + sidebar copy
- *      on the dashboard is driven separately by `LocaleSync` reading
- *      org settings, so we deliberately do not assert on `<html lang>`
- *      after reload — that would be testing a different system.)
+ *   5. After a full page reload:
+ *        a. `/api/auth/user` still returns `preferredLocale: 'de'` —
+ *           proving the choice survives reload at the source-of-truth
+ *           level.
+ *        b. The dashboard *renders* in German — `<html lang="de">`,
+ *           `<html dir="ltr">`, and the sidebar's "Dashboard" link
+ *           reads "Übersicht". This locks in the visual side of the
+ *           contract, which previously regressed because `LocaleSync`
+ *           used to re-apply the workspace `settings.locale` (Arabic
+ *           by default) on top of the user's preference. The current
+ *           `LocaleSync` prefers `useAuth().user.preferredLocale` over
+ *           the org setting, and `LocaleProvider` seeds itself from
+ *           `localStorage` so the German UI is visible from the very
+ *           first paint after reload.
  */
 
 const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
@@ -252,10 +260,11 @@ test.describe("topbar language switcher persists the user choice", () => {
     expect(userAfter.status()).toBe(200);
     expect((await userAfter.json())?.preferredLocale).toBe("de");
 
-    // Reload — the choice must still be applied at the source of truth.
-    // The topbar persists the user's locale preference into the user
-    // row; that is what survives the reload regardless of whatever
-    // workspace-level locale fallback `LocaleSync` later applies on top.
+    // Reload — the choice must still be applied at the source of truth
+    // *and* visible in the rendered dashboard. The topbar persists the
+    // user's locale preference into the user row, and `LocaleSync`
+    // honours that preference over the workspace-level fallback so the
+    // German UI stays put across reloads.
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator('[data-testid="app-topbar"]')).toBeVisible({
       timeout: 15_000,
@@ -263,5 +272,28 @@ test.describe("topbar language switcher persists the user choice", () => {
     const userAfterReload = await page.request.get("/api/auth/user");
     expect(userAfterReload.status()).toBe(200);
     expect((await userAfterReload.json())?.preferredLocale).toBe("de");
+
+    // The visible UI must also reflect the user's choice, not the
+    // workspace's `settings.locale` (which defaults to Arabic). We
+    // assert three independent surfaces so a regression in any one of
+    // them — the document attributes, the i18n dictionary lookup, or
+    // the localStorage seeding inside `LocaleProvider` — fails the
+    // test loudly:
+    //
+    //   1. `<html lang="de">` and `<html dir="ltr">` — driven by the
+    //      `LocaleProvider` effect that mirrors the in-memory locale
+    //      onto the document.
+    //   2. The sidebar's "Dashboard" entry renders the German label
+    //      "Übersicht" — driven by the `useT()` translator. This is
+    //      the key signal the original bug regressed: the document
+    //      attributes might have flipped to German briefly, but the
+    //      sidebar copy then snapped back to Arabic when `LocaleSync`
+    //      re-applied the org default.
+    const html = page.locator("html");
+    await expect(html).toHaveAttribute("lang", "de", { timeout: 10_000 });
+    await expect(html).toHaveAttribute("dir", "ltr");
+    await expect(
+      page.locator('[data-testid="sidebar-link-nav_dashboard"]'),
+    ).toContainText("Übersicht", { timeout: 10_000 });
   });
 });
