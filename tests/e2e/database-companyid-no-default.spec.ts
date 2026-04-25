@@ -83,6 +83,11 @@ const KNOWN_WORKSPACE_SCOPED = new Set<string>([
   "revaluation_events",
   "disposals",
   "documents",
+  // Hardened by migration 0016 (task #169) — gained a `company_id`
+  // column and was brought under workspace_isolation RLS at the same
+  // time. The migration adds the column nullably, backfills, then
+  // SET NOT NULL — no DEFAULT, same shape as every other table above.
+  "audit_log",
   // Auth / membership / invitations / email-delivery alerts. These
   // also carry `company_id` and have always been default-free.
   "memberships",

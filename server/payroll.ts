@@ -248,6 +248,7 @@ export async function runPayroll(
   // posted + linked to a journal entry) so the History drawer can show the
   // full story even though they happen in the same transaction today.
   await storage.recordPayrollRunAudit({
+    companyId,
     payrollRunId: run.id,
     action: "create",
     changes: [
@@ -260,6 +261,7 @@ export async function runPayroll(
     ctx,
   });
   await storage.recordPayrollRunAudit({
+    companyId,
     payrollRunId: run.id,
     action: "post",
     changes: [

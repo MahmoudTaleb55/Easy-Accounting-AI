@@ -85,6 +85,10 @@ const KNOWN_RLS_PROTECTED = new Set<string>([
   "disposals",
   "chat_messages",
   "documents",
+  // Brought under RLS by task #169 (migration 0016) once `audit_log`
+  // gained a `company_id` column. See
+  // `docs/design/workspace-isolation-defense-in-depth.md`.
+  "audit_log",
 ]);
 
 // Tables that carry `company_id` but are deliberately *not* under RLS,

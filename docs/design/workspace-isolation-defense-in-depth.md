@@ -385,7 +385,17 @@ The full set of workspace-scoped business tables: `accounts`,
 `fx_rates`, `asset_categories`, `fixed_assets`, `asset_components`,
 `depreciation_runs`, `depreciation_schedule`, `depreciation_postings`,
 `asset_usage_periods`, `impairment_events`, `revaluation_events`,
-`disposals`, `chat_messages`, `documents`.
+`disposals`, `chat_messages`, `documents`, `audit_log`.
+
+`audit_log` was added to the in-scope set by task #169 (migration 0016).
+It originally had no `company_id` column and tenant ownership was
+implicit through the entity row each audit pointed at — a model that
+broke down on "delete" audits whose entity was already gone, and forced
+`getJournalEntryAuditWithReversal` to fall back on a `companyId` stamp
+inside the `changes` JSON. Migration 0016 adds the column, backfills
+from each entity table + the legacy stamp, drops unverifiable orphan
+rows, and brings the table under the same `workspace_isolation` policy
+as every other table above.
 
 ### Tables intentionally out of scope
 
@@ -397,8 +407,6 @@ The full set of workspace-scoped business tables: `accounts`,
   them under RLS would either force every auth lookup through bypass or
   reject legitimate cross-workspace reads.
 - **`companies`**. The "workspace" itself; not workspace-scoped.
-- **`audit_log`**. No `company_id` column; tenant ownership is implicit
-  through the entity row it points at.
 
 ### Bypass paths (audited)
 
@@ -417,6 +425,12 @@ on completion. Audited bypass call sites (with `reason` strings):
 - `bootstrap:composite-fks` — re-runs migrations 0005 / 0007.
 - `bootstrap:accounts-code-uq` — re-runs migration 0010.
 - `bootstrap:companyid-defaults` — re-runs migration 0014.
+- `bootstrap:audit-log-companyid` — re-runs migration 0016 (adds the
+  `company_id` column to `audit_log`, backfills it from each entity
+  table + the legacy `companyId` change-set stamp, and pins it NOT NULL).
+  Wrapped in bypass because the backfill UPDATE walks every workspace's
+  audit rows and runs before the matching `workspace_isolation` policy
+  is installed.
 - `bootstrap:rls` — re-runs migration 0008 itself.
 - `bootstrap:email-delivery-alert-tables` —
   `ensureEmailDeliveryAlertTablesOnStartup` re-stages the parent

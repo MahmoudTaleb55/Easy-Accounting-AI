@@ -167,6 +167,11 @@ export interface IStorage {
   getPayrollRunLines(companyId: number, runId: number): Promise<PayrollLineWithEmployee[]>;
   deletePayrollRun(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
   recordPayrollRunAudit(input: {
+    /**
+     * Workspace owning the payroll run. Required since task #169 brought
+     * `audit_log` under workspace_isolation RLS.
+     */
+    companyId: number;
     payrollRunId: number;
     action: "create" | "update" | "delete" | "post";
     changes?: AuditChange[];
@@ -280,6 +285,15 @@ function diffChanges(before: Record<string, any>, after: Record<string, any>): A
 }
 
 async function recordAudit(input: {
+  /**
+   * The workspace the audited entity belongs to. Required since task #169
+   * brought `audit_log` under the same workspace_isolation RLS policy as
+   * every other workspace-scoped table — an INSERT with the wrong
+   * `companyId` would now be rejected by the policy instead of silently
+   * leaking. Every call site already has the workspace in scope (it's the
+   * same value the caller used to filter the entity row).
+   */
+  companyId: number;
   entityType: AuditEntityType;
   entityId: number;
   action: "create" | "update" | "delete" | "post";
@@ -290,6 +304,7 @@ async function recordAudit(input: {
   // so the calling mutation rolls back / errors out. Auditability is a
   // first-class success criterion, not best-effort.
   await db.insert(auditLog).values({
+    companyId: input.companyId,
     entityType: input.entityType,
     entityId: input.entityId,
     action: input.action,
@@ -585,12 +600,14 @@ async function reverseAutoPostedJournalEntry(opts: {
     // the journal entry shows the reversal even though it was triggered by
     // a source-row delete.
     //
-    // The `companyId` field is recorded in the change set itself (the
-    // audit_log table predates per-row tenancy) so that the "include
-    // reversals" lookup can later verify ownership of an audit row whose
-    // owning entity is gone — without it, both the JE and the source row
-    // would be unverifiable after a reversal.
+    // Since task #169 the audit row carries `companyId` as a first-class
+    // column under workspace_isolation RLS, so the reversal lookup can be
+    // a single workspace-filtered SELECT. The `companyId` field is also
+    // kept in the change set as a self-documenting trail of who reversed
+    // what (and to remain compatible with audit rows that pre-date the
+    // column).
     await recordAudit({
+      companyId: opts.companyId,
       entityType: "journal_entry",
       entityId: linkedJournal.id,
       action: "delete",
@@ -892,6 +909,7 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     await recordAudit({
+      companyId,
       entityType: "transaction",
       entityId: transaction.id,
       action: "create",
@@ -926,6 +944,7 @@ export class DatabaseStorage implements IStorage {
     });
     if (before) {
       await recordAudit({
+        companyId,
         entityType: "transaction",
         entityId: id,
         action: "delete",
@@ -935,6 +954,7 @@ export class DatabaseStorage implements IStorage {
     }
     for (const jeId of linkedIds) {
       await recordAudit({
+        companyId,
         entityType: "journal_entry",
         entityId: jeId,
         action: "delete",
@@ -982,6 +1002,7 @@ export class DatabaseStorage implements IStorage {
       { companyId, journalEntryId: je.id, accountId: crId, debit: "0", credit: amt.toFixed(2), description: tx.description },
     ]);
     await recordAudit({
+      companyId,
       entityType: "journal_entry",
       entityId: je.id,
       action: "create",
@@ -1028,7 +1049,7 @@ export class DatabaseStorage implements IStorage {
 
   async createAccount(companyId: number, input: InsertAccount, ctx?: AuditContext): Promise<Account> {
     const [created] = await db.insert(accounts).values({ ...input, companyId }).returning();
-    await recordAudit({ entityType: "account", entityId: created.id, action: "create", changes: snapshotChanges(created), ctx });
+    await recordAudit({ companyId, entityType: "account", entityId: created.id, action: "create", changes: snapshotChanges(created), ctx });
     return created;
   }
 
@@ -1101,6 +1122,7 @@ export class DatabaseStorage implements IStorage {
       return { field: label, to: value };
     });
     await recordAudit({
+      companyId,
       entityType: "journal_entry",
       entityId: je.id,
       action: "create",
@@ -1126,6 +1148,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(journalEntries).where(eq(journalEntries.id, id));
     if (before) {
       await recordAudit({
+        companyId,
         entityType: "journal_entry",
         entityId: id,
         action: "delete",
@@ -1224,6 +1247,7 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     await recordAudit({
+      companyId,
       entityType: "employee",
       entityId: created.id,
       action: "create",
@@ -1242,7 +1266,7 @@ export class DatabaseStorage implements IStorage {
     if (before && updated) {
       const changes = diffChanges(before, updated);
       if (changes.length > 0) {
-        await recordAudit({ entityType: "employee", entityId: id, action: "update", changes, ctx });
+        await recordAudit({ companyId, entityType: "employee", entityId: id, action: "update", changes, ctx });
       }
     }
     return updated;
@@ -1252,7 +1276,7 @@ export class DatabaseStorage implements IStorage {
     const [before] = await db.select().from(employees).where(and(eq(employees.id, id), eq(employees.companyId, companyId)));
     await db.delete(employees).where(and(eq(employees.id, id), eq(employees.companyId, companyId)));
     if (before) {
-      await recordAudit({ entityType: "employee", entityId: id, action: "delete", changes: snapshotChanges(before), ctx });
+      await recordAudit({ companyId, entityType: "employee", entityId: id, action: "delete", changes: snapshotChanges(before), ctx });
     }
   }
 
@@ -1288,7 +1312,7 @@ export class DatabaseStorage implements IStorage {
         .returning();
       const changes = diffChanges(before, u);
       if (changes.length > 0) {
-        await recordAudit({ entityType: "attendance", entityId: u.id, action: "update", changes, ctx });
+        await recordAudit({ companyId, entityType: "attendance", entityId: u.id, action: "update", changes, ctx });
       }
       return u;
     }
@@ -1297,6 +1321,7 @@ export class DatabaseStorage implements IStorage {
       .values({ ...input, companyId, overtimeHours: String(input.overtimeHours ?? 0) })
       .returning();
     await recordAudit({
+      companyId,
       entityType: "attendance",
       entityId: c.id,
       action: "create",
@@ -1317,7 +1342,7 @@ export class DatabaseStorage implements IStorage {
 
   async createLeave(companyId: number, input: InsertLeave, ctx?: AuditContext): Promise<Leave> {
     const [c] = await db.insert(leaves).values({ ...input, companyId }).returning();
-    await recordAudit({ entityType: "leave", entityId: c.id, action: "create", changes: snapshotChanges(c), ctx });
+    await recordAudit({ companyId, entityType: "leave", entityId: c.id, action: "create", changes: snapshotChanges(c), ctx });
     return c;
   }
 
@@ -1325,7 +1350,7 @@ export class DatabaseStorage implements IStorage {
     const [before] = await db.select().from(leaves).where(and(eq(leaves.id, id), eq(leaves.companyId, companyId)));
     await db.delete(leaves).where(and(eq(leaves.id, id), eq(leaves.companyId, companyId)));
     if (before) {
-      await recordAudit({ entityType: "leave", entityId: id, action: "delete", changes: snapshotChanges(before), ctx });
+      await recordAudit({ companyId, entityType: "leave", entityId: id, action: "delete", changes: snapshotChanges(before), ctx });
     }
   }
 
@@ -1428,6 +1453,7 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     await recordAudit({
+      companyId: c.companyId,
       entityType: "fixed_asset",
       entityId: c.id,
       action: "create",
@@ -1464,7 +1490,7 @@ export class DatabaseStorage implements IStorage {
     if (before && u) {
       const changes = diffChanges(before, u).filter((c) => set[c.field as string] !== undefined);
       if (changes.length > 0) {
-        await recordAudit({ entityType: "fixed_asset", entityId: id, action: "update", changes, ctx });
+        await recordAudit({ companyId: before.companyId, entityType: "fixed_asset", entityId: id, action: "update", changes, ctx });
       }
     }
     return u;
@@ -1480,6 +1506,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(fixedAssets).where(eq(fixedAssets.id, id));
     if (before) {
       await recordAudit({
+        companyId: before.companyId,
         entityType: "fixed_asset",
         entityId: id,
         action: "delete",
@@ -2014,6 +2041,7 @@ export class DatabaseStorage implements IStorage {
     });
 
     await recordAudit({
+      companyId,
       entityType: "payroll_run",
       entityId: id,
       action: "delete",
@@ -2023,12 +2051,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async recordPayrollRunAudit(input: {
+    /**
+     * Workspace owning the payroll run. Required since task #169 brought
+     * `audit_log` under workspace_isolation RLS — see the `recordAudit`
+     * doc-comment for the full rationale.
+     */
+    companyId: number;
     payrollRunId: number;
     action: "create" | "update" | "delete" | "post";
     changes?: AuditChange[];
     ctx?: AuditContext;
   }): Promise<void> {
     await recordAudit({
+      companyId: input.companyId,
       entityType: "payroll_run",
       entityId: input.payrollRunId,
       action: input.action,
@@ -2126,10 +2161,20 @@ export class DatabaseStorage implements IStorage {
   ): Promise<AuditLogEntry[]> {
     const owned = await this.entityBelongsToCompany(entityType, entityId, companyId);
     if (!owned) return [];
+    // The `companyId` predicate is redundant given the workspace_isolation
+    // RLS policy on `audit_log` (task #169) — but it is left in place as
+    // defense-in-depth and as a planner hint for the
+    // `audit_log_company_entity_idx` composite index.
     return await db
       .select()
       .from(auditLog)
-      .where(and(eq(auditLog.entityType, entityType), eq(auditLog.entityId, entityId)))
+      .where(
+        and(
+          eq(auditLog.companyId, companyId),
+          eq(auditLog.entityType, entityType),
+          eq(auditLog.entityId, entityId),
+        ),
+      )
       .orderBy(desc(auditLog.occurredAt));
   }
 
@@ -2137,48 +2182,42 @@ export class DatabaseStorage implements IStorage {
     companyId: number,
     entityId: number,
   ): Promise<AuditLogEntry[] | null> {
-    // Live JE: defer to the standard ownership-checked path.
-    const owned = await this.entityBelongsToCompany(
-      "journal_entry",
-      entityId,
-      companyId,
-    );
-    if (owned) {
-      return await db
-        .select()
-        .from(auditLog)
-        .where(
-          and(
-            eq(auditLog.entityType, "journal_entry"),
-            eq(auditLog.entityId, entityId),
-          ),
-        )
-        .orderBy(desc(auditLog.occurredAt));
-    }
-
-    // Deleted JE: pull every audit row for this id and verify ownership via
-    // the `companyId` change stamp written by `reverseAutoPostedJournalEntry`.
-    // Old reversal rows (predating that stamp) and cross-tenant probes both
-    // fall through to `null`, which the route layer turns into a 404.
+    // Single workspace-scoped SELECT covers both the live and the
+    // cascade-deleted JE cases since task #169 brought `audit_log` under
+    // the workspace_isolation RLS policy with a first-class `company_id`
+    // column. Before that, the deleted-JE branch had to walk the
+    // `companyId` stamp inside the `changes` JSON to verify ownership of
+    // an audit row whose owning entity was already gone — that fallback
+    // is no longer needed because the column itself carries the answer.
+    //
+    // The `companyId` predicate is redundant under RLS but is left in
+    // place as defense-in-depth and to let the planner use the
+    // `audit_log_company_entity_idx` composite index.
     const rows = await db
       .select()
       .from(auditLog)
       .where(
         and(
+          eq(auditLog.companyId, companyId),
           eq(auditLog.entityType, "journal_entry"),
           eq(auditLog.entityId, entityId),
         ),
       )
       .orderBy(desc(auditLog.occurredAt));
-    if (rows.length === 0) return null;
-    const ownsAtLeastOneRow = rows.some((r) => {
-      const changes = (r.changes ?? []) as AuditChange[];
-      return changes.some(
-        (c) => c.field === "companyId" && Number(c.to) === companyId,
-      );
-    });
-    if (!ownsAtLeastOneRow) return null;
-    return rows;
+    if (rows.length > 0) return rows;
+
+    // No audit rows visible to this workspace. Distinguish "live JE in
+    // this workspace that somehow has no audit history" (200 with `[]`)
+    // from "JE never existed here / belonged to another tenant" (404).
+    // The first case is essentially unreachable in production — every
+    // JE create writes an audit row in the same transaction — but the
+    // distinction is worth preserving for parity with `getAuditLog`.
+    const owned = await this.entityBelongsToCompany(
+      "journal_entry",
+      entityId,
+      companyId,
+    );
+    return owned ? [] : null;
   }
 
   // ----- AI Document Inbox -----

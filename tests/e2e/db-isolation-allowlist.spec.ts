@@ -135,6 +135,15 @@ const DB_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "inside withRlsBypass('bootstrap:companyid-defaults').",
   },
   {
+    file: "server/db-bootstrap-audit-log-companyid.ts",
+    rationale:
+      "applyAuditLogCompanyIdOnStartup is called from server/index.ts " +
+      "inside withRlsBypass('bootstrap:audit-log-companyid'). Adds + " +
+      "backfills audit_log.company_id; runs before the RLS bootstrap " +
+      "so the workspace_isolation policy install can reference the " +
+      "new column. See task #169 / migration 0016.",
+  },
+  {
     file: "server/replit_integrations/auth/storage.ts",
     rationale:
       "Replit-OIDC user upsert. Runs from the OIDC callback before any " +

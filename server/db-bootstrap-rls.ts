@@ -40,6 +40,12 @@ const RLS_TABLES = [
   "disposals",
   "chat_messages",
   "documents",
+  // Brought under RLS by task #169 (migration 0016) once `audit_log`
+  // gained a `company_id` column. The matching boot helper at
+  // `db-bootstrap-audit-log-companyid.ts` adds + backfills the column
+  // BEFORE this list is iterated, so the policy install below succeeds
+  // on the first boot after the migration too.
+  "audit_log",
 ];
 
 export async function applyWorkspaceRlsOnStartup(): Promise<void> {

@@ -963,10 +963,21 @@ export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 // entityType: transaction|journal_entry|account|fixed_asset|employee|attendance|leave
 // action: create|update|delete|post
 // source: user|ai|integration|system
+//
+// The `companyId` column was backfilled and made NOT NULL by migration
+// 0016 so the audit log can come under the same workspace_isolation RLS
+// policy as every other workspace-scoped table. Before that, tenant
+// ownership of an audit row was implicit through the entity row it
+// pointed at — which broke down on "delete" audits whose entity was
+// gone, and forced `getJournalEntryAuditWithReversal` to fall back on a
+// `companyId` stamp inside the `changes` JSON. See
+// docs/design/workspace-isolation-defense-in-depth.md.
 export const auditLog = pgTable(
   "audit_log",
   {
     id: serial("id").primaryKey(),
+    // No column default — see `accounts.companyId` for the rationale.
+    companyId: integer("company_id").notNull(),
     entityType: text("entity_type").notNull(),
     entityId: integer("entity_id").notNull(),
     action: text("action").notNull(),
@@ -977,6 +988,15 @@ export const auditLog = pgTable(
   },
   (t) => ({
     entityIdx: index("audit_log_entity_idx").on(t.entityType, t.entityId),
+    // Workspace-scoped lookup: the RLS policy already filters to the
+    // active workspace, so the `getAuditLog` query (which scans by
+    // entity_type + entity_id) benefits from a leading `company_id`
+    // index column for the planner.
+    companyEntityIdx: index("audit_log_company_entity_idx").on(
+      t.companyId,
+      t.entityType,
+      t.entityId,
+    ),
   }),
 );
 

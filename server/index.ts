@@ -237,6 +237,29 @@ app.use((req, res, next) => {
     );
   }
 
+  // Re-apply migration 0016 on boot — adds the `company_id` column to
+  // `audit_log`, backfills it from each entity table + the legacy
+  // `companyId` change-set stamp, and pins it NOT NULL. MUST run BEFORE
+  // `applyWorkspaceRlsOnStartup` because the audit_log table is now in
+  // its `RLS_TABLES` list and the policy install would fail without the
+  // column. Wrapped in `withRlsBypass` because the backfill UPDATE walks
+  // every workspace's audit rows. Idempotent. See task #169 and
+  // docs/design/workspace-isolation-defense-in-depth.md.
+  try {
+    const { applyAuditLogCompanyIdOnStartup } = await import(
+      "./db-bootstrap-audit-log-companyid"
+    );
+    const { withRlsBypass } = await import("./db");
+    await withRlsBypass("bootstrap:audit-log-companyid", () =>
+      applyAuditLogCompanyIdOnStartup(),
+    );
+  } catch (err) {
+    console.error(
+      "Failed to bootstrap audit_log.company_id:",
+      err,
+    );
+  }
+
   // Re-apply migration 0008 on boot so RLS policies materialise on dev
   // databases and on any deploy that boots ahead of the migration runner.
   // Must run BEFORE any bootstrap that writes to RLS-protected tables —
