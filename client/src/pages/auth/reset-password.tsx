@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { useLocale } from "@/contexts/locale-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,8 +35,11 @@ export default function ResetPasswordPage() {
       (await apiRequest("POST", "/api/auth/reset-password", { token, password: v.password })).json(),
     onSuccess: () => navigate("/signin?reset=ok"),
     onError: (err: Error) => {
-      try { setServerError(JSON.parse(err.message.replace(/^\d+:\s*/, "")).message); }
-      catch { setServerError(err.message); }
+      const bodyMessage =
+        err instanceof ApiError && err.body && typeof err.body === "object"
+          ? (err.body as { message?: unknown }).message
+          : undefined;
+      setServerError(typeof bodyMessage === "string" ? bodyMessage : err.message);
     },
   });
 

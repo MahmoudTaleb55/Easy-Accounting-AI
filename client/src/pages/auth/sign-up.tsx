@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signUpSchema, type SignUpInput } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ApiError, apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocale } from "@/contexts/locale-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,13 +86,11 @@ export default function SignUpPage() {
       navigate("/app");
     },
     onError: (err: Error) => {
-      const msg = err.message.replace(/^\d+:\s*/, "");
-      try {
-        const j = JSON.parse(msg);
-        setServerError(j.message ?? msg);
-      } catch {
-        setServerError(msg);
-      }
+      const bodyMessage =
+        err instanceof ApiError && err.body && typeof err.body === "object"
+          ? (err.body as { message?: unknown }).message
+          : undefined;
+      setServerError(typeof bodyMessage === "string" ? bodyMessage : err.message);
     },
   });
 

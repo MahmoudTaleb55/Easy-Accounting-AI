@@ -1,4 +1,7 @@
+import { ApiError } from "@/lib/queryClient";
+
 export function isUnauthorizedError(error: Error): boolean {
+  if (error instanceof ApiError) return error.status === 401;
   return /^401: .*Unauthorized/.test(error.message);
 }
 
