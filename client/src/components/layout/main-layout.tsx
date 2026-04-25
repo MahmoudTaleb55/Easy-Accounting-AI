@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar, MobileHeader } from "./app-sidebar";
 import { CompanyProvider } from "@/contexts/company-context";
-import { useLocale, type Locale } from "@/contexts/locale-context";
+import { getUrlLocaleOverride, useLocale, type Locale } from "@/contexts/locale-context";
 import { PeriodProvider } from "@/contexts/period-context";
 import { TopBar } from "./topbar";
 import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
@@ -43,6 +43,13 @@ function LocaleSync() {
   const { data: settings } = useQuery<{ locale?: string }>({ queryKey: ["/api/settings"] });
   const lastAppliedRef = useRef<string | null>(null);
   useEffect(() => {
+    // A `?lang=<locale>` URL override is the explicit, deep-link signal that
+    // the caller wants this locale for the lifetime of the page. Honour it by
+    // skipping server-side reconciliation entirely — otherwise the user's
+    // stored `preferredLocale` (default `'ar'`) would clobber the override
+    // moments after `/api/auth/user` resolves. Used by e2e tests that need
+    // a known language for headline/text assertions.
+    if (getUrlLocaleOverride()) return;
     // Wait for the auth query to settle before deciding which source to honour,
     // otherwise we can briefly apply the org locale and then flip to the user's
     // personal locale a render later.

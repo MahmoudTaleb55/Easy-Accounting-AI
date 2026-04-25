@@ -665,12 +665,20 @@ test.describe("delivery-alert banner @alerts", () => {
   }
 
   async function gotoOwnerShell(page: Page): Promise<void> {
-    // Pin locale so the headline assertion is in English.
+    // Pin locale via the `?lang=en` URL override so the headline assertion
+    // is in English. We can't rely on `localStorage["app.locale"]` alone:
+    // `LocaleSync` (in `client/src/components/layout/main-layout.tsx`) reads
+    // the signed-in user's `preferredLocale` from `/api/auth/user` once the
+    // auth query resolves and calls `setLocale()` with it, which would
+    // clobber any `addInitScript`-seeded value moments after first paint.
+    // The URL override is honoured by both `LocaleProvider`'s initializer
+    // AND `LocaleSync`'s early-return guard, so the locale stays English
+    // for the lifetime of the page. Theme is still safe to seed via
+    // localStorage because nothing reconciles it from the server.
     await page.addInitScript(() => {
-      window.localStorage.setItem("app.locale", "en");
       window.localStorage.setItem("app.theme", "light");
     });
-    await page.goto("/app", { waitUntil: "domcontentloaded" });
+    await page.goto("/app?lang=en", { waitUntil: "domcontentloaded" });
   }
 
   test("renders for owners and dismisses cleanly", async ({ page }) => {

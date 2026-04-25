@@ -32,9 +32,38 @@ function isLocale(v: unknown): v is Locale {
   return v === "ar" || v === "en" || v === "de" || v === "fr";
 }
 
+/**
+ * Read a `?lang=<locale>` override out of the current URL.
+ *
+ * The override exists so e2e tests (and any deep-link that needs a known
+ * language) can pin the locale in a way that survives LocaleProvider
+ * initialization AND `LocaleSync`'s subsequent server-preference sync.
+ * `addInitScript`-style localStorage seeding does not survive the second
+ * step — once `/api/auth/user` resolves, `LocaleSync` would otherwise
+ * call `setLocale(user.preferredLocale)` and clobber the seeded value.
+ *
+ * Returning a Locale here is the signal the rest of the system uses to
+ * skip server-side reconciliation (see `getUrlLocaleOverride` consumers
+ * in `main-layout.tsx`).
+ */
+export function getUrlLocaleOverride(): Locale | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const v = new URLSearchParams(window.location.search).get("lang");
+    return isLocale(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export function LocaleProvider({ children, defaultLocale = "ar" as Locale }: { children: React.ReactNode; defaultLocale?: Locale }) {
   const [locale, setLocaleState] = useState<Locale>(() => {
     if (typeof window === "undefined") return defaultLocale;
+    // URL override wins over everything: it's the only signal that's
+    // present from the very first paint AND can't be overwritten by a
+    // later server-preference sync. See `getUrlLocaleOverride` above.
+    const urlOverride = getUrlLocaleOverride();
+    if (urlOverride) return urlOverride;
     const stored = window.localStorage.getItem(STORAGE_KEY);
     return isLocale(stored) ? stored : defaultLocale;
   });
