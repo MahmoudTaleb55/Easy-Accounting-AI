@@ -634,6 +634,35 @@ export const authBizStorage = {
   },
 
   /**
+   * Cheap "has the workspace ever produced any email-delivery event?"
+   * probe used by the Recent sends card to distinguish "empty because
+   * filters" from "empty because nothing has ever been sent". Avoids
+   * the full count CTE — a pair of `EXISTS` subselects across the two
+   * event tables is enough to answer truthy/falsy and lets the planner
+   * stop at the first matching row.
+   */
+  async hasAnyEmailDeliveryForCompany(companyId: number): Promise<boolean> {
+    const rows = await db.execute(sql`
+      SELECT (
+        EXISTS (
+          SELECT 1
+          FROM invitation_email_events e
+          INNER JOIN invitations i ON i.id = e.invitation_id
+          WHERE i.company_id = ${companyId}
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM password_reset_email_events e
+          INNER JOIN memberships m
+            ON m.user_id = e.user_id AND m.company_id = ${companyId}
+        )
+      ) AS has_any
+    `);
+    const list = (rows as any).rows ?? (rows as any);
+    return list?.[0]?.has_any === true;
+  },
+
+  /**
    * Per-message lifecycle log for the unified delivery feed. Returns
    * every event for a single send attempt (one provider message id, or
    * one local attempt id when the send failed pre-dispatch), scoped to

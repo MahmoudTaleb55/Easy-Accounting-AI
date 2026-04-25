@@ -357,6 +357,20 @@ export default function EmailDeliveryPage() {
   const exportAtCap = exportRowCount >= exportCap;
   const exportRowsDisplayed = Math.min(exportRowCount, exportCap);
 
+  // Workspace-scoped "has anything ever been sent?" probe. Drives the
+  // tailored empty-state message on the Recent sends card so a brand-new
+  // workspace sees a friendly explanation instead of the generic
+  // "no rows match these filters" line. We block the empty-state render
+  // until the probe resolves so brand-new workspaces don't briefly see
+  // the wrong (filter-empty) message.
+  const { data: hasAnyData, isLoading: hasAnyLoading } = useQuery<{
+    hasAny: boolean;
+  }>({
+    queryKey: ["/api/auth/email-deliveries/has-any"],
+    enabled: isAdmin,
+  });
+  const workspaceHasAnySends = hasAnyData?.hasAny ?? true;
+
   const summary = useMemo(() => {
     const totals = { all: deliveries.length, delivered: 0, failed: 0, pending: 0 };
     for (const d of deliveries) {
@@ -727,16 +741,38 @@ export default function EmailDeliveryPage() {
             )}
           </div>
 
-          {isLoading ? (
+          {isLoading || (deliveries.length === 0 && hasAnyLoading) ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground" data-testid="state-loading">
               <Loader2 className="h-4 w-4 animate-spin" />
             </div>
           ) : deliveries.length === 0 ? (
-            <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground" data-testid="state-empty">
-              {ar
-                ? "لا توجد رسائل تطابق هذه المرشحات."
-                : "No messages match these filters yet."}
-            </div>
+            workspaceHasAnySends ? (
+              <div
+                className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground"
+                data-testid="state-empty"
+              >
+                {ar
+                  ? "لا توجد رسائل تطابق هذه المرشحات."
+                  : "No messages match these filters yet."}
+              </div>
+            ) : (
+              <div
+                className="rounded-md border border-dashed px-6 py-10 text-center"
+                data-testid="state-empty-never-sent"
+              >
+                <Mail className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden />
+                <div className="mt-3 text-sm font-medium">
+                  {ar
+                    ? "لم تُرسَل أي دعوات أو رسائل استعادة كلمة المرور بعد."
+                    : "You haven't sent any invitations or password resets yet."}
+                </div>
+                <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
+                  {ar
+                    ? "بمجرد دعوة زميل في الفريق أو طلب أحد المستخدمين استعادة كلمة المرور، ستظهر سجلات التسليم هنا."
+                    : "Once your team invites a teammate or someone resets their password, the delivery records will show up here."}
+                </p>
+              </div>
+            )
           ) : (
             <ul className="divide-y divide-border rounded-md border" data-testid="list-deliveries">
               {deliveries.map((d) => {

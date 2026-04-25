@@ -785,6 +785,24 @@ export function registerLocalAuthRoutes(app: Express) {
     },
   );
 
+  // "Has this workspace ever produced any email-delivery event?" probe.
+  // Lets the Recent sends card on /settings/email-delivery distinguish
+  // "no rows because filters" from "no rows because nothing has ever
+  // been sent" so brand-new workspaces get a tailored explanation
+  // instead of the generic filter-empty line.
+  app.get(
+    "/api/auth/email-deliveries/has-any",
+    requireAuth,
+    requireRole("owner"),
+    async (req, res) => {
+      const ctx = (req as any).membership!;
+      const hasAny = await authBizStorage.hasAnyEmailDeliveryForCompany(
+        ctx.companyId,
+      );
+      res.json({ hasAny });
+    },
+  );
+
   // 7-day (or N-day) failure-class trend for the delivery-health header.
   // Returns densified daily counts for bounced / complained / send_failed
   // across both invitation and password-reset transports, scoped to the
