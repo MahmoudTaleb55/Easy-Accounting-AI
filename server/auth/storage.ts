@@ -942,9 +942,13 @@ export const authBizStorage = {
     // reject these "across-workspace" inserts. See
     // docs/design/workspace-isolation-defense-in-depth.md → "Bypass paths".
     const { withRlsBypass } = await import("../db");
+    const { seedDefaultCoaInTx } = await import("../init-coa");
     return withRlsBypass("workspace:create", async () => {
-      // All-or-nothing: a company without its settings row would leave the
-      // workspace bootstrap half-complete, so wrap both writes in a tx.
+      // All-or-nothing: a workspace without its settings row OR without its
+      // chart of accounts would leave the bootstrap half-complete and let
+      // the first quick transaction silently fail to auto-post a journal
+      // entry. Wrap company + settings + CoA seed in a single transaction
+      // so the workspace either appears fully bootstrapped or not at all.
       const created = await db.transaction(async (tx) => {
         const [c] = await tx
           .insert(companies)
@@ -964,16 +968,13 @@ export const authBizStorage = {
           currencySymbol,
         });
 
+        // Seed the IFRS-aligned default chart of accounts inside the same
+        // transaction so the workspace cannot commit without one. Any
+        // failure here rolls the entire bootstrap back.
+        await seedDefaultCoaInTx(tx, c.id);
+
         return c;
       });
-      // Seed the default chart of accounts for the new workspace so the
-      // first quick transaction (auto-posted JE) and payroll run can
-      // immediately resolve cash/revenue/expense accounts by code. Done
-      // outside the tx because the seed touches a separate code path and is
-      // idempotent if re-run, while a failure here should not roll back the
-      // company itself.
-      const { seedDefaultCoaForCompany } = await import("../init-coa");
-      await seedDefaultCoaForCompany(created.id);
       return created;
     });
   },

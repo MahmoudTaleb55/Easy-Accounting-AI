@@ -1,11 +1,10 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { apiRequest, queryClient } from "@/lib/queryClient"
 import { useToast } from "@/hooks/use-toast"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { CardGridSkeleton } from "@/components/feedback/list-skeleton"
 import { EmptyState } from "@/components/feedback/empty-state"
 import {
@@ -16,7 +15,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { WriteGuard } from "@/components/auth/write-guard"
+import { WriteGuard, useCanWrite } from "@/components/auth/write-guard"
 import {
   Select,
   SelectContent,
@@ -25,9 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Plus, Search } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search, Sparkles } from "lucide-react"
 import type { Account } from "@shared/schema"
 import { useLocale } from "@/contexts/locale-context"
+import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 
 /* ------------------------------------------------------------------ */
@@ -54,9 +54,18 @@ const typeAccent: Record<AccountType, string> = {
   expense: "bg-[hsl(var(--chart-4))]",
 }
 
+interface TreeNode {
+  account: Account
+  children: TreeNode[]
+}
+
+const STORAGE_KEY_PREFIX = "coa-expanded-v1"
+
 export default function ChartOfAccountsPage() {
   const { locale } = useLocale()
   const { toast } = useToast()
+  const { activeCompanyId } = useAuth()
+  const canWrite = useCanWrite()
   const [search, setSearch] = useState("")
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({
@@ -94,6 +103,24 @@ export default function ChartOfAccountsPage() {
       created: locale === "ar" ? "تم إضافة الحساب" : "Account added",
       createFailed: locale === "ar" ? "فشل الإنشاء" : "Could not create account",
       empty: locale === "ar" ? "لا حسابات مطابقة" : "No matching accounts",
+      noAccounts:
+        locale === "ar"
+          ? "لا يوجد دليل حسابات بعد"
+          : "No chart of accounts yet",
+      noAccountsDesc:
+        locale === "ar"
+          ? "ابدأ بإضافة حساب يدوياً، أو استعد الدليل الافتراضي المتوافق مع IFRS لتنطلق فوراً."
+          : "Add an account manually, or restore the default IFRS-ready chart to start in one click.",
+      restoreDefaults:
+        locale === "ar" ? "استعادة الدليل الافتراضي" : "Restore default chart",
+      restoredOk:
+        locale === "ar"
+          ? "تم زرع الدليل الافتراضي"
+          : "Default chart of accounts seeded",
+      restoreFailed:
+        locale === "ar"
+          ? "تعذّر استعادة الدليل الافتراضي"
+          : "Could not restore the default chart",
     }),
     [locale]
   )
@@ -123,20 +150,151 @@ export default function ChartOfAccountsPage() {
       toast({ title: t.createFailed, description: err.message, variant: "destructive" }),
   })
 
-  const grouped = useMemo(() => {
-    if (!accounts) return {} as Record<AccountType, Account[]>
-    const filt = accounts.filter(
-      (a) =>
-        !search ||
-        a.code.includes(search) ||
-        a.nameAr.includes(search) ||
-        a.nameEn.toLowerCase().includes(search.toLowerCase())
-    )
-    return filt.reduce<Record<string, Account[]>>((acc, a) => {
-      ;(acc[a.type] ||= []).push(a)
-      return acc
-    }, {}) as Record<AccountType, Account[]>
+  const restoreMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/accounts/restore-defaults", {})
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] })
+      toast({ title: t.restoredOk })
+    },
+    onError: (err: any) =>
+      toast({
+        title: t.restoreFailed,
+        description: err.message,
+        variant: "destructive",
+      }),
+  })
+
+  /* ------------------------------------------------------------------ */
+  /* Tree build — group by type, link parent → children via parentId.    */
+  /* When searching, only matching accounts (and all their ancestors)    */
+  /* survive the visibility filter, and the ancestors auto-expand so the */
+  /* match is actually reachable in the rendered tree.                   */
+  /* ------------------------------------------------------------------ */
+  const tree = useMemo(() => {
+    if (!accounts) return null
+    const byId = new Map<number, Account>(accounts.map((a) => [a.id, a]))
+
+    const q = search.trim().toLowerCase()
+    const matches = (a: Account) =>
+      !q ||
+      a.code.toLowerCase().includes(q) ||
+      a.nameAr.toLowerCase().includes(q) ||
+      a.nameEn.toLowerCase().includes(q)
+
+    let visibleIds: Set<number> | null = null
+    const autoExpand = new Set<string>()
+    if (q) {
+      visibleIds = new Set<number>()
+      for (const a of accounts) {
+        if (!matches(a)) continue
+        visibleIds.add(a.id)
+        let p = a.parentId != null ? byId.get(a.parentId) : undefined
+        while (p) {
+          visibleIds.add(p.id)
+          autoExpand.add(p.code)
+          p = p.parentId != null ? byId.get(p.parentId) : undefined
+        }
+      }
+    }
+    const isVisible = (a: Account) => visibleIds === null || visibleIds.has(a.id)
+
+    const kidsByParentId = new Map<number, Account[]>()
+    const roots: Account[] = []
+    for (const a of accounts) {
+      if (!isVisible(a)) continue
+      const parent = a.parentId != null ? byId.get(a.parentId) : undefined
+      // A "root within a type card" is anything whose parent is missing,
+      // hidden by the search filter, or sits in a different type bucket.
+      if (!parent || !isVisible(parent) || parent.type !== a.type) {
+        roots.push(a)
+        continue
+      }
+      const arr = kidsByParentId.get(parent.id) ?? []
+      arr.push(a)
+      kidsByParentId.set(parent.id, arr)
+    }
+
+    function build(a: Account): TreeNode {
+      const kids = (kidsByParentId.get(a.id) ?? [])
+        .slice()
+        .sort((x, y) => x.code.localeCompare(y.code))
+        .map(build)
+      return { account: a, children: kids }
+    }
+
+    const byType: Record<AccountType, TreeNode[]> = {
+      asset: [],
+      liability: [],
+      equity: [],
+      revenue: [],
+      expense: [],
+    }
+    roots.sort((x, y) => x.code.localeCompare(y.code))
+    for (const r of roots) {
+      byType[r.type as AccountType].push(build(r))
+    }
+    const visibleCount = visibleIds === null ? accounts.length : visibleIds.size
+    return { byType, autoExpand, visibleCount, totalCount: accounts.length }
   }, [accounts, search])
+
+  /* ------------------------------------------------------------------ */
+  /* Expansion state — persisted per-workspace in localStorage.          */
+  /* Default (no saved value): expand the top-level header in each type. */
+  /* ------------------------------------------------------------------ */
+  const storageKey = activeCompanyId
+    ? `${STORAGE_KEY_PREFIX}:${activeCompanyId}`
+    : null
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [hydratedFor, setHydratedFor] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!storageKey || !tree) return
+    if (hydratedFor === storageKey) return
+    let initial: Set<string>
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (raw) {
+        const arr = JSON.parse(raw) as unknown
+        initial = new Set(Array.isArray(arr) ? arr.map(String) : [])
+      } else {
+        initial = new Set<string>()
+        for (const type of TYPE_ORDER) {
+          for (const r of tree.byType[type]) initial.add(r.account.code)
+        }
+      }
+    } catch {
+      initial = new Set<string>()
+      for (const type of TYPE_ORDER) {
+        for (const r of tree.byType[type]) initial.add(r.account.code)
+      }
+    }
+    setExpanded(initial)
+    setHydratedFor(storageKey)
+  }, [storageKey, tree, hydratedFor])
+
+  useEffect(() => {
+    if (!storageKey || hydratedFor !== storageKey) return
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(Array.from(expanded)))
+    } catch {
+      /* ignore quota / private-mode errors */
+    }
+  }, [expanded, storageKey, hydratedFor])
+
+  function toggle(code: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }
+
+  const isExpanded = (code: string) =>
+    expanded.has(code) || tree?.autoExpand.has(code) === true
 
   return (
     <div className="space-y-8" data-testid="page-chart-of-accounts">
@@ -254,21 +412,37 @@ export default function ChartOfAccountsPage() {
       </header>
 
       {/* Grid */}
-      {isLoading ? (
+      {isLoading || !tree ? (
         <CardGridSkeleton count={4} cols={2} height="h-56" />
-      ) : TYPE_ORDER.filter((tt) => grouped[tt]?.length).length === 0 ? (
+      ) : tree.totalCount === 0 ? (
+        <EmptyState
+          title={t.noAccounts}
+          description={t.noAccountsDesc}
+          icon={<Sparkles className="w-5 h-5" />}
+          action={
+            canWrite
+              ? {
+                  label: t.restoreDefaults,
+                  onClick: () => restoreMutation.mutate(),
+                  testId: "button-restore-default-coa",
+                }
+              : undefined
+          }
+          testId="empty-coa-no-accounts"
+        />
+      ) : TYPE_ORDER.filter((tt) => tree.byType[tt].length).length === 0 ? (
         <EmptyState
           title={t.empty}
           description={
             locale === "ar"
-              ? "ابدأ بإضافة حساب أو استورد دليلاً جاهزاً متوافقاً مع IFRS."
-              : "Add an account to begin, or import an IFRS-ready chart."
+              ? "جرّب كلمة بحث أخرى أو امسح المرشّح للعودة إلى كامل الدليل."
+              : "Try a different search term or clear the filter to see the full chart."
           }
           testId="empty-coa"
         />
       ) : (
         <div className="grid gap-5 md:grid-cols-2">
-          {TYPE_ORDER.filter((tt) => grouped[tt]?.length).map((type) => (
+          {TYPE_ORDER.filter((tt) => tree.byType[tt].length).map((type) => (
             <Card
               key={type}
               variant="default"
@@ -286,30 +460,22 @@ export default function ChartOfAccountsPage() {
                   </h3>
                 </div>
                 <span className="text-xs font-numeric tabular-nums text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border">
-                  {grouped[type].length}
+                  {countNodes(tree.byType[type])}
                 </span>
               </div>
-              <ul className="divide-y divide-border">
-                {grouped[type].map((a) => (
-                  <li
-                    key={a.id}
-                    className={cn(
-                      "px-5 py-2.5 flex items-center justify-between gap-3 text-sm",
-                      a.isHeader ? "bg-muted/30 font-medium" : "hover:bg-muted/30 transition-colors"
-                    )}
-                    style={{ paddingInlineStart: a.isHeader ? "1.25rem" : "2rem" }}
-                    data-testid={`row-account-${a.code}`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <span className="font-numeric text-[11px] text-muted-foreground tabular-nums w-12 shrink-0">
-                        {a.code}
-                      </span>
-                      <span className="truncate text-foreground">{a.nameAr}</span>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground hidden sm:block truncate max-w-[40%]">
-                      {a.nameEn}
-                    </span>
-                  </li>
+              <ul
+                className="divide-y divide-border"
+                data-testid={`tree-type-${type}`}
+              >
+                {tree.byType[type].map((node) => (
+                  <TreeRow
+                    key={node.account.id}
+                    node={node}
+                    depth={0}
+                    locale={locale}
+                    isExpanded={isExpanded}
+                    onToggle={toggle}
+                  />
                 ))}
               </ul>
             </Card>
@@ -317,5 +483,96 @@ export default function ChartOfAccountsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function countNodes(nodes: TreeNode[]): number {
+  let n = 0
+  for (const node of nodes) {
+    n += 1 + countNodes(node.children)
+  }
+  return n
+}
+
+interface TreeRowProps {
+  node: TreeNode
+  depth: number
+  locale: string
+  isExpanded: (code: string) => boolean
+  onToggle: (code: string) => void
+}
+
+function TreeRow({ node, depth, locale, isExpanded, onToggle }: TreeRowProps) {
+  const { account } = node
+  const hasChildren = node.children.length > 0
+  const expanded = hasChildren && isExpanded(account.code)
+  // RTL-aware caret: when collapsed, point in the natural reading direction
+  // ("forward" — right in LTR, left in RTL); when expanded, point down.
+  const Caret = expanded ? ChevronDown : locale === "ar" ? ChevronLeft : ChevronRight
+
+  // Indent by depth using logical inline-start so RTL mirrors automatically.
+  // Base is 1.25rem (matches the previous flat layout) plus 1rem per level.
+  const inlineStart = `${1.25 + depth * 1}rem`
+
+  return (
+    <>
+      <li
+        className={cn(
+          "px-5 py-2.5 flex items-center gap-3 text-sm",
+          account.isHeader ? "bg-muted/30 font-medium" : "hover:bg-muted/30 transition-colors"
+        )}
+        style={{ paddingInlineStart: inlineStart }}
+        data-testid={`row-account-${account.code}`}
+        data-depth={depth}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => onToggle(account.code)}
+            aria-expanded={expanded}
+            aria-label={
+              locale === "ar"
+                ? expanded
+                  ? "طيّ الفرع"
+                  : "فتح الفرع"
+                : expanded
+                ? "Collapse"
+                : "Expand"
+            }
+            className={cn(
+              "shrink-0 inline-flex items-center justify-center w-5 h-5 -m-0.5 rounded",
+              "text-muted-foreground hover:text-foreground hover:bg-muted",
+              "transition-colors"
+            )}
+            data-testid={`toggle-account-${account.code}`}
+          >
+            <Caret className="w-4 h-4" />
+          </button>
+        ) : (
+          <span aria-hidden className="shrink-0 inline-block w-5 h-5" />
+        )}
+
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="font-numeric text-[11px] text-muted-foreground tabular-nums w-12 shrink-0">
+            {account.code}
+          </span>
+          <span className="truncate text-foreground">{account.nameAr}</span>
+        </div>
+        <span className="text-[11px] text-muted-foreground hidden sm:block truncate max-w-[40%]">
+          {account.nameEn}
+        </span>
+      </li>
+      {expanded &&
+        node.children.map((child) => (
+          <TreeRow
+            key={child.account.id}
+            node={child}
+            depth={depth + 1}
+            locale={locale}
+            isExpanded={isExpanded}
+            onToggle={onToggle}
+          />
+        ))}
+    </>
   )
 }

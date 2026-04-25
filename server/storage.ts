@@ -1174,32 +1174,30 @@ export class DatabaseStorage implements IStorage {
   }
   async createCompany(input: InsertCompany): Promise<Company> {
     // Creating a new workspace inherently crosses the active workspace's
-    // RLS boundary: the seed below writes accounts (and the settings insert
-    // inside `createCompanyForOwner`) under the *new* company's id, which
-    // never matches `app.current_company_id` when an owner is calling this
-    // from inside their existing workspace's scope. Wrap the whole flow in
-    // `withRlsBypass` so the seed/settings inserts are not rejected by the
-    // workspace_isolation policy. Audited reason: see
+    // RLS boundary: the seed below writes accounts under the *new* company's
+    // id, which never matches `app.current_company_id` when an owner is
+    // calling this from inside their existing workspace's scope. Wrap the
+    // whole flow in `withRlsBypass` so the seed inserts are not rejected by
+    // the workspace_isolation policy. Audited reason: see
     // docs/design/workspace-isolation-defense-in-depth.md → "Bypass paths".
     //
-    // Note: an alternative pattern (HEAD pre-rebase) wrapped only the seed
-    // in `withCompanyScope(c.id, …)` so the GUC matched the new workspace.
-    // We keep the bypass here for symmetry with `createCompanyForOwner`,
-    // which has to write `companies` + `settings` in one transaction and
-    // therefore cannot rely on the per-call scope override.
+    // The company write and the chart-of-accounts seed share a single
+    // transaction so the workspace cannot commit without a fully seeded
+    // chart of accounts — any failure rolls the whole bootstrap back rather
+    // than leaving a half-bootstrapped workspace whose first quick
+    // transaction would silently fail to resolve `1110`, `4010`, `6900`
+    // by code.
     const { withRlsBypass } = await import("./db");
+    const { seedDefaultCoaInTx } = await import("./init-coa");
     return withRlsBypass("workspace:create", async () => {
       if (input.isDefault) {
         await db.update(companies).set({ isDefault: false });
       }
-      const [c] = await db.insert(companies).values(input).returning();
-      // Every workspace needs its own chart of accounts so that downstream
-      // postings (auto-posted JEs from quick transactions, payroll runs,
-      // fixed-asset events, etc.) can resolve `1110` cash, `4010` revenue,
-      // `6900` other-expense by code without falling back to silent no-ops.
-      const { seedDefaultCoaForCompany } = await import("./init-coa");
-      await seedDefaultCoaForCompany(c.id);
-      return c;
+      return await db.transaction(async (tx) => {
+        const [c] = await tx.insert(companies).values(input).returning();
+        await seedDefaultCoaInTx(tx, c.id);
+        return c;
+      });
     });
   }
   async updateCompany(id: number, input: Partial<InsertCompany>): Promise<Company> {

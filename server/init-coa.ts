@@ -66,35 +66,24 @@ async function rowIsReferenced(
 }
 
 /**
- * Seed (or top up) the IFRS-aligned default chart of accounts for a single
- * workspace, while reconciling drift on any seed code that already exists
- * with a stale name / type / subtype / header flag.
+ * Seed body for the IFRS-aligned default chart of accounts. Runs against an
+ * already-open transaction so a caller (workspace creation) can compose it
+ * with `companies` + `settings` writes inside one atomic unit — meaning a
+ * workspace either commits with its full chart of accounts or commits with
+ * nothing, never half-bootstrapped.
  *
- * Idempotent and non-destructive to real data:
- *
- *   1. Any row in this workspace whose `code` is in the canonical seed but
- *      whose name / type / subtype / header flag drifted is UPDATED in
- *      place when nothing references it. If it IS referenced (journal
- *      lines, asset_category FKs, child accounts), the row is renumbered
- *      out of the canonical band (suffixing its code with `_legacy`) so a
- *      fresh insert in step (3) can take over the canonical code without
- *      touching prior bookings.
- *   2. Any row in this workspace whose `code` is NOT in the canonical seed
- *      is dropped — but only if nothing references it.
- *   3. Any canonical code missing from this workspace is inserted, with
- *      `companyId` set so the composite (company_id, code) UNIQUE
- *      constraint is satisfied. Parent → child links are kept correct
- *      because each insert immediately registers its new id in `codeToId`
- *      before any later seed row references it as a parent.
- *
- * Everything runs inside a single transaction so a partial converge can't
- * leave the workspace's chart of accounts in a half-migrated state.
+ * See `seedDefaultCoaForCompany` below for the high-level idempotency
+ * contract. The two share the exact same body; the only difference is who
+ * owns the transaction.
  */
-export async function seedDefaultCoaForCompany(companyId: number): Promise<void> {
+export async function seedDefaultCoaInTx(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  companyId: number,
+): Promise<void> {
   const allSeed = [...DEFAULT_COA, ...PAYROLL_EXTRA_ACCOUNTS, ...FIXED_ASSETS_EXTRA_ACCOUNTS];
   const seedByCode = new Map(allSeed.map((s) => [s.code, s]));
 
-  await db.transaction(async (tx) => {
+  {
     const fullExisting = await tx
       .select()
       .from(accounts)
@@ -242,7 +231,37 @@ export async function seedDefaultCoaForCompany(companyId: number): Promise<void>
         .returning();
       codeToId.set(created.code, created.id);
     }
-  });
+  }
+}
+
+/**
+ * Seed (or top up) the IFRS-aligned default chart of accounts for a single
+ * workspace, while reconciling drift on any seed code that already exists
+ * with a stale name / type / subtype / header flag.
+ *
+ * Idempotent and non-destructive to real data:
+ *
+ *   1. Any row in this workspace whose `code` is in the canonical seed but
+ *      whose name / type / subtype / header flag drifted is UPDATED in
+ *      place when nothing references it. If it IS referenced (journal
+ *      lines, asset_category FKs, child accounts), the row is renumbered
+ *      out of the canonical band (suffixing its code with `_legacy`) so a
+ *      fresh insert in step (3) can take over the canonical code without
+ *      touching prior bookings.
+ *   2. Any row in this workspace whose `code` is NOT in the canonical seed
+ *      is dropped — but only if nothing references it.
+ *   3. Any canonical code missing from this workspace is inserted, with
+ *      `companyId` set so the composite (company_id, code) UNIQUE
+ *      constraint is satisfied. Parent → child links are kept correct
+ *      because each insert immediately registers its new id in `codeToId`
+ *      before any later seed row references it as a parent.
+ *
+ * Standalone wrapper that opens its own transaction. New-workspace flows
+ * compose `seedDefaultCoaInTx` directly into the workspace-creation
+ * transaction so the workspace + its CoA commit (or roll back) together.
+ */
+export async function seedDefaultCoaForCompany(companyId: number): Promise<void> {
+  await db.transaction((tx) => seedDefaultCoaInTx(tx, companyId));
 }
 
 export async function initChartOfAccounts(): Promise<void> {

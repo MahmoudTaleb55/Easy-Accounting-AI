@@ -78,6 +78,16 @@ export const api = {
         400: errorSchemas.validation,
       },
     },
+    restoreDefaults: {
+      method: 'POST' as const,
+      path: '/api/accounts/restore-defaults' as const,
+      input: z.object({}).optional(),
+      responses: {
+        200: z.object({ seeded: z.number() }),
+        409: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
   },
   journal: {
     list: {

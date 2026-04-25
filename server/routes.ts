@@ -69,7 +69,7 @@ import {
 import { postDocumentSchema } from "@shared/schema";
 import { db, withCompanyScope } from "./db";
 import { assetComponents, type AssetComponent } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PeriodKey } from "./fixed-assets";
 import {
   requireAuth,
@@ -391,6 +391,49 @@ export async function registerRoutes(
         });
       }
       res.status(500).json({ message: "تعذّر إنشاء الحساب" });
+    }
+  });
+
+  // Restore the default IFRS chart of accounts for a workspace whose chart
+  // is completely empty. Refuses with 409 the moment any account already
+  // exists in the workspace, so this can never silently merge into / muddle
+  // a real chart of accounts. Auto-seeding at signup also calls
+  // `seedDefaultCoaForCompany`; this endpoint is the recovery path for an
+  // older workspace that pre-dates auto-seeding.
+  app.post(api.accounts.restoreDefaults.path, async (req, res) => {
+    const cId = cid(req);
+    // Sentinel thrown to abort the transaction with a typed reason so the
+    // catch below can distinguish "workspace already had accounts" (409)
+    // from a genuine seed failure (500).
+    const ALREADY_POPULATED = Symbol("CoA already populated");
+    try {
+      await db.transaction(async (tx) => {
+        // Per-workspace advisory lock so two concurrent restore-defaults
+        // (or a restore-defaults racing with the first user-initiated
+        // account write) serialize on this id. Released automatically on
+        // COMMIT/ROLLBACK.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${cId})`);
+        const [{ c }] = await tx
+          .select({ c: sql<number>`count(*)::int` })
+          .from(accountsTable)
+          .where(eq(accountsTable.companyId, cId));
+        if (c > 0) {
+          throw ALREADY_POPULATED;
+        }
+        const { seedDefaultCoaInTx } = await import("./init-coa");
+        await seedDefaultCoaInTx(tx, cId);
+      });
+      const after = await storage.getAccounts(cId);
+      res.json({ seeded: after.length });
+    } catch (err) {
+      if (err === ALREADY_POPULATED) {
+        return res.status(409).json({
+          message:
+            "لا يمكن استعادة الدليل الافتراضي عندما توجد حسابات قائمة في هذه المساحة",
+        });
+      }
+      console.error("CoA restore-defaults error", err);
+      res.status(500).json({ message: "تعذّر استعادة الدليل الافتراضي" });
     }
   });
 
