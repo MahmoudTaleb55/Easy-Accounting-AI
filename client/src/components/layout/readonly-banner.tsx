@@ -1,29 +1,21 @@
-import { useEffect, useState } from "react";
 import { X, Eye } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useT } from "@/i18n/dict";
+import { useSessionStorageState } from "@/hooks/use-session-storage-state";
 
 const SESSION_KEY = "app.readonly_banner.dismissed";
+
+const isBoolean = (value: unknown): value is boolean =>
+  typeof value === "boolean";
 
 export function ReadOnlyBanner() {
   const { role } = useAuth();
   const t = useT();
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.sessionStorage.getItem(SESSION_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    if (dismissed) {
-      try {
-        window.sessionStorage.setItem(SESSION_KEY, "1");
-      } catch {}
-    }
-  }, [dismissed]);
+  const [dismissed, setDismissed] = useSessionStorageState<boolean>(
+    SESSION_KEY,
+    false,
+    isBoolean,
+  );
 
   if (dismissed) return null;
   if (role !== "viewer") return null;
