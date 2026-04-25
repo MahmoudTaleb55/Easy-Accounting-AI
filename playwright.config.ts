@@ -45,6 +45,7 @@ export default defineConfig({
         /email-delivery-alerts-side-channel\.spec\.ts/,
         /email-delivery-csv-export\.spec\.ts/,
         /email-delivery-list-parity\.spec\.ts/,
+        /email-delivery-filters-persist\.spec\.ts/,
         /delivery-alert-audit\.setup\.ts/,
         /delivery-alert-audit\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
@@ -168,6 +169,25 @@ export default defineConfig({
       // the deferred recipient JOIN can be exercised in isolation.
       name: "email-delivery-list-parity",
       testMatch: /email-delivery-list-parity\.spec\.ts/,
+      dependencies: ["email-delivery-alerts-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
+      // Regression coverage for the five sticky filters on the email
+      // delivery health page (recipient search, status drop-down,
+      // trend-window toggle, date-range preset, custom From/To inputs).
+      // All round-trip through `useSessionStorageState` — this spec
+      // walks every control, reloads, and asserts they rehydrate, plus
+      // exercises the helper's validator-rejects-stale-storage branch.
+      // Reuses the dedicated owner storage state from
+      // `email-delivery-alerts-setup` because the page is owner-only
+      // and the dedicated owner has exactly one membership, which is
+      // what lets the page mount without us synthesizing
+      // `x-company-id` for the browser-side fetches.
+      name: "email-delivery-filters-persist",
+      testMatch: /email-delivery-filters-persist\.spec\.ts/,
       dependencies: ["email-delivery-alerts-setup"],
       use: {
         viewport: { width: 1280, height: 800 },
