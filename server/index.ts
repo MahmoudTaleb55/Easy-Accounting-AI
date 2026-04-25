@@ -37,26 +37,70 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+// Baseline security headers. We deliberately don't ship a full CSP yet — it
+// needs a careful audit of Vite HMR, OpenAI image hosts, and the public
+// /objects/avatars proxy — but the headers below are safe everywhere.
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(self), geolocation=(), payment=()",
+  );
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    );
+  }
+  next();
+});
+
+// API access log. Intentionally does NOT capture response bodies — earlier
+// versions echoed the full JSON payload (employee rows, balance sheets,
+// chat messages, etc.) into the process log, which is a real PII / financial
+// data leakage channel. We log the response shape (size + content type) so
+// debugging timeouts/empty responses is still possible.
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  let bodyByteLength = 0;
+  let bodyKind: "json" | "text" | "buffer" | "stream" | "none" = "none";
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
+    bodyKind = "json";
+    try {
+      bodyByteLength = Buffer.byteLength(JSON.stringify(bodyJson) ?? "", "utf8");
+    } catch {
+      bodyByteLength = -1;
+    }
     return originalResJson.apply(res, [bodyJson, ...args]);
+  };
+
+  const originalResSend = res.send;
+  res.send = function (body, ...args) {
+    if (bodyKind === "none") {
+      if (Buffer.isBuffer(body)) {
+        bodyKind = "buffer";
+        bodyByteLength = body.length;
+      } else if (typeof body === "string") {
+        bodyKind = "text";
+        bodyByteLength = Buffer.byteLength(body, "utf8");
+      }
+    }
+    return originalResSend.apply(res, [body, ...args]);
   };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
+      const bodyTag =
+        bodyKind === "none"
+          ? ""
+          : ` :: ${bodyKind}=${bodyByteLength >= 0 ? bodyByteLength + "b" : "?"}`;
+      log(`${req.method} ${path} ${res.statusCode} in ${duration}ms${bodyTag}`);
     }
   });
 
