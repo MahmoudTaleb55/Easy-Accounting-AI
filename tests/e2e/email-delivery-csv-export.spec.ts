@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import pg from "pg";
 
 /**
  * End-to-end coverage for the /api/auth/email-deliveries?format=csv
@@ -163,5 +165,221 @@ test.describe("email-delivery CSV export filename @csv-export", () => {
     // a smuggled CRLF would let the attacker append response headers
     // that weren't on our allow-list.
     expect(res.headers()["x-evil"]).toBeUndefined();
+  });
+});
+
+/**
+ * Body-level coverage for the same CSV export route. The filename block
+ * above pins the Content-Disposition contract; this block pins what
+ * compliance reviewers actually open in Excel:
+ *
+ *   * a leading UTF-8 BOM so non-ASCII recipient names (Arabic, etc.)
+ *     decode correctly when Excel double-clicks the file,
+ *   * CRLF row separators (so Windows spreadsheet apps don't see one
+ *     mile-long line),
+ *   * the strict 7-column header row in the documented order, and
+ *   * `csvCell` quoting per RFC 4180 — a recipient containing a quote,
+ *     a comma, and a newline must round-trip without splitting the row.
+ *
+ * Without this block a regression in any of those (someone strips the
+ * BOM, switches to LF, reorders the header, or replaces csvCell with a
+ * naive `String(v)`) would silently break a downloaded report and would
+ * not be caught by the existing filename-only assertions.
+ *
+ * To stay deterministic alongside the sibling `email-delivery-alerts`
+ * spec — which shares this dedicated workspace and resets all
+ * `invitation_email_events` for it in `beforeEach` — we anchor every
+ * seed row at a far-future date (year 2099) and pin every CSV pull to
+ * the same far-future window. That guarantees:
+ *   (a) our seeded row is the *only* row in the response body, no
+ *       matter what other tests have planted in this workspace, and
+ *   (b) our seeds never land in the alert evaluator's 24h failure
+ *       window, so they can't disturb the alerts spec's count
+ *       assertions if Playwright happens to run the two projects on
+ *       different workers in parallel.
+ *
+ * Each test still cleans up the rows it inserted, so a re-run starts
+ * from a known floor even if a prior run was interrupted.
+ */
+
+const SEED_WINDOW = { from: "2099-01-01", to: "2099-12-31" };
+const SEED_EVENT_AT = "2099-06-15 12:00:00+00";
+const EMPTY_WINDOW = { from: "2098-01-01", to: "2098-12-31" };
+
+const CSV_HEADER =
+  "transport,recipient,status,error,last_event_at,message_id,created_at";
+
+function requiredDbUrl(): string {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL must be set for the email-delivery-csv-export spec.",
+    );
+  }
+  return url;
+}
+
+interface SeededInvitation {
+  invitationId: string;
+}
+
+async function seedInvitationFailureRow(args: {
+  companyId: number;
+  ownerUserId: string;
+  recipient: string;
+  error: string;
+}): Promise<SeededInvitation> {
+  const client = new pg.Client({ connectionString: requiredDbUrl() });
+  await client.connect();
+  try {
+    const invitationId = crypto.randomUUID();
+    // Token must be unique per the schema and is unrelated to anything
+    // we assert on. Use a UUID prefix to make the row trivially
+    // identifiable in a manual DB inspection if a seed leaks.
+    const token = `csv-export-test-${crypto.randomUUID()}`;
+    await client.query(
+      `INSERT INTO invitations
+         (id, company_id, invited_by_user_id, email, role, token, status, expires_at)
+       VALUES ($1, $2, $3, $4, 'viewer', $5, 'pending', NOW() + INTERVAL '7 days')`,
+      [invitationId, args.companyId, args.ownerUserId, args.recipient, token],
+    );
+    // Backdate the event into the 2099 window so the GET below can pin
+    // its date filter to a window no other spec uses.
+    await client.query(
+      `INSERT INTO invitation_email_events
+         (invitation_id, message_id, type, error, created_at)
+       VALUES ($1, $2, 'send_failed', $3, $4::timestamptz)`,
+      [
+        invitationId,
+        `csv-export-msg-${crypto.randomUUID()}`,
+        args.error,
+        SEED_EVENT_AT,
+      ],
+    );
+    return { invitationId };
+  } finally {
+    await client.end();
+  }
+}
+
+async function deleteSeededInvitation(invitationId: string): Promise<void> {
+  const client = new pg.Client({ connectionString: requiredDbUrl() });
+  await client.connect();
+  try {
+    // Delete the events first to satisfy any FK consistency, then the
+    // parent invitation row.
+    await client.query(
+      `DELETE FROM invitation_email_events WHERE invitation_id = $1`,
+      [invitationId],
+    );
+    await client.query(`DELETE FROM invitations WHERE id = $1`, [invitationId]);
+  } finally {
+    await client.end();
+  }
+}
+
+test.describe("email-delivery CSV export body @csv-export", () => {
+  test.use({ storageState: OWNER_STORAGE });
+
+  let companyId: number;
+  let ownerUserId: string;
+  test.beforeAll(() => {
+    const fx = readSharedFixture();
+    companyId = fx.companyId;
+    ownerUserId = fx.ownerUserId;
+  });
+
+  function headers(): Record<string, string> {
+    return { "x-company-id": String(companyId) };
+  }
+
+  test("body has BOM, CRLF separators, the documented header, and RFC4180-quotes a troublesome recipient", async ({
+    request,
+  }) => {
+    // Recipient packs all three of csvCell's escape triggers into one
+    // value: a comma (would split the row if not quoted), a double
+    // quote (must be doubled inside the wrapping quotes), and a
+    // newline (would split the row across CRLF-separated lines if
+    // not quoted). Starts with `H` to dodge csvCell's leading
+    // formula-injection guard (`'` prefix for `=+-@`-prefixed cells)
+    // — that guard has its own coverage path and isn't what this
+    // test is about.
+    const recipient = 'Hello, "World"\nNewline';
+    const expectedRecipientCell = '"Hello, ""World""\nNewline"';
+    const seed = await seedInvitationFailureRow({
+      companyId,
+      ownerUserId,
+      recipient,
+      error: "smtp 550 mailbox unavailable",
+    });
+    try {
+      const res = await request.get(
+        `/api/auth/email-deliveries?format=csv` +
+          `&from=${SEED_WINDOW.from}&to=${SEED_WINDOW.to}`,
+        { headers: headers() },
+      );
+      expect(res.status()).toBe(200);
+      expect(res.headers()["content-type"]).toMatch(/^text\/csv/);
+
+      // Pull the body as raw bytes and decode as UTF-8 so the BOM
+      // survives — `res.text()` is also fine in practice but going
+      // through Buffer makes the byte-level intent obvious.
+      const body = (await res.body()).toString("utf8");
+
+      // (a) UTF-8 BOM. Excel uses this to auto-detect encoding so
+      //     non-ASCII recipient names (Arabic, etc.) render correctly.
+      expect(body.charCodeAt(0)).toBe(0xfeff);
+
+      // (b) CRLF row separators. Splitting on \r\n must produce more
+      //     than one line, and there must be no bare LF row separator
+      //     *between* rows. (The troublesome cell legitimately
+      //     contains a bare \n, but it's wrapped inside quotes and
+      //     therefore doesn't count as a row break.)
+      const lines = body.slice(1).split("\r\n"); // strip BOM
+      // The route always trails the body with a CRLF, so the final
+      // split yields an empty string. Header + 1 data row + trailing
+      // empty = 3 entries.
+      expect(lines.length).toBe(3);
+      expect(lines[lines.length - 1]).toBe("");
+
+      // (c) Documented 7-column header in the documented order.
+      expect(lines[0]).toBe(CSV_HEADER);
+
+      // (d) The data row exists and quotes the troublesome recipient
+      //     correctly. We assert on the substring rather than the
+      //     whole line because the other six cells (transport, status,
+      //     error, last_event_at, message_id, created_at) carry
+      //     volatile values (timestamps, UUIDs) that aren't what this
+      //     test is pinning.
+      const dataRow = lines[1];
+      expect(dataRow.startsWith("invitation,")).toBe(true);
+      expect(dataRow).toContain(expectedRecipientCell);
+      // The `,send_failed,` cell sits immediately after the recipient
+      // — i.e. the quoted recipient actually closed correctly and
+      // didn't bleed into the status column.
+      expect(dataRow).toContain(`${expectedRecipientCell},send_failed,`);
+    } finally {
+      await deleteSeededInvitation(seed.invitationId);
+    }
+  });
+
+  test("empty result set still returns the header row + trailing CRLF", async ({
+    request,
+  }) => {
+    // A window we never seed into — guarantees an empty result set
+    // even if the workspace accumulates other rows in real time.
+    const res = await request.get(
+      `/api/auth/email-deliveries?format=csv` +
+        `&from=${EMPTY_WINDOW.from}&to=${EMPTY_WINDOW.to}`,
+      { headers: headers() },
+    );
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toMatch(/^text\/csv/);
+    const body = (await res.body()).toString("utf8");
+
+    // Spreadsheet apps (and naive CSV parsers) choke on a zero-byte
+    // body — they expect at least the header row. The route guarantees
+    // BOM + header + trailing CRLF even with zero data rows.
+    expect(body).toBe(`\uFEFF${CSV_HEADER}\r\n`);
   });
 });
