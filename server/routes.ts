@@ -66,6 +66,10 @@ import {
   readDocumentFile,
   deleteDocumentFileIfOrphaned,
 } from "./services/document-storage";
+import {
+  detectImageMimeFromBuffer,
+  InvalidImageError,
+} from "./services/image-mime";
 import { postDocumentSchema } from "@shared/schema";
 import { db, withCompanyScope } from "./db";
 import { assetComponents, type AssetComponent } from "@shared/schema";
@@ -1416,6 +1420,18 @@ function registerDocumentRoutes(app: Express) {
       const file = req.file;
       if (!file) return res.status(400).json({ message: "No file uploaded" });
 
+      // The multer fileFilter above only checks the caller-supplied
+      // `Content-Type`, which is trivially forgeable (`curl -F
+      // file=@evil.sh;type=image/png` would otherwise be enough to feed
+      // arbitrary bytes into the AI vision extractor and persist them as
+      // an "ingested invoice"). Sniff the actual file signature here, BEFORE
+      // any extraction or storage write, and trust the bytes — not the
+      // caller. Mirrors the avatar route's defence; see task #196.
+      const detectedMime = detectImageMimeFromBuffer(file.buffer);
+      if (!detectedMime) {
+        throw new InvalidImageError();
+      }
+
       const saved = await saveDocumentFile({
         companyId,
         buffer: file.buffer,
@@ -1425,7 +1441,10 @@ function registerDocumentRoutes(app: Express) {
       const created = await storage.createDocument(companyId, {
         companyId,
         fileName: file.originalname,
-        mimeType: file.mimetype,
+        // Persist the sniffed MIME, not the caller-supplied one — otherwise
+        // a forged `Content-Type` would still leak through to the row's
+        // `mimeType` and the GET /api/documents/:id/file response header.
+        mimeType: detectedMime,
         sizeBytes: saved.sizeBytes,
         storagePath: saved.storagePath,
         status: "extracting",
@@ -1435,7 +1454,7 @@ function registerDocumentRoutes(app: Express) {
       // Kick off extraction. We await so the response carries the result
       // (and any errors are surfaced to the user immediately).
       try {
-        const extracted = await extractDocument(file.buffer, file.mimetype);
+        const extracted = await extractDocument(file.buffer, detectedMime);
         const accounts = await storage.getAccounts(companyId);
         const settings = await storage.getSettings(companyId);
         const suggestion = await suggestJournalForDocument(extracted, accounts, settings);
@@ -1595,8 +1614,14 @@ function registerDocumentRoutes(app: Express) {
     }
   });
 
-  // Multer / fileFilter errors → 400 instead of 500.
+  // Multer / fileFilter errors → 400 instead of 500. The `InvalidImageError`
+  // branch is the magic-bytes gate from task #196 — a renamed text file with
+  // a forged `image/png` Content-Type passes the multer filter but fails the
+  // signature sniff in the route handler.
   app.use("/api/documents", (err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof InvalidImageError) {
+      return res.status(400).json({ message: err.message });
+    }
     if (err && (err instanceof multer.MulterError || /Only image uploads/.test(err.message))) {
       return res.status(400).json({ message: err.message });
     }

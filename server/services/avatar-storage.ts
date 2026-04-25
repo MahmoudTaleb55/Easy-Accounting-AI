@@ -15,73 +15,31 @@ import {
   objectStorageClient,
   ObjectStorageService,
 } from "../replit_integrations/object_storage";
+import {
+  ALLOWED_IMAGE_MIME_TYPES,
+  InvalidImageError,
+  detectImageMimeFromBuffer,
+  imageMimeToExt,
+} from "./image-mime";
 
-const MIME_TO_EXT: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/jpg": ".jpg",
-  "image/webp": ".webp",
-  "image/gif": ".gif",
-};
-
-export const ALLOWED_AVATAR_MIME_TYPES = Object.keys(MIME_TO_EXT);
+export const ALLOWED_AVATAR_MIME_TYPES = ALLOWED_IMAGE_MIME_TYPES;
 export const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2 MB
 
 /**
- * Inspect the first few bytes of an upload and return the canonical
- * MIME type that those bytes describe, or `null` if the buffer does
- * not match one of the four image formats we accept (PNG / JPEG /
- * WEBP / GIF). The browser-supplied `Content-Type` is trivially
- * forgeable, so this magic-bytes check is the real gate that decides
- * whether bytes ever reach object storage. See task #146.
+ * Backwards-compatible alias for `detectImageMimeFromBuffer`. The avatar
+ * route was the original caller — see task #146 for the magic-bytes
+ * rationale, and task #196 for the consolidation into a shared helper.
  */
-export function detectAvatarMimeFromBuffer(buf: Buffer): string | null {
-  if (!buf || buf.length < 8) return null;
+export const detectAvatarMimeFromBuffer = detectImageMimeFromBuffer;
 
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (
-    buf[0] === 0x89 &&
-    buf[1] === 0x50 &&
-    buf[2] === 0x4e &&
-    buf[3] === 0x47 &&
-    buf[4] === 0x0d &&
-    buf[5] === 0x0a &&
-    buf[6] === 0x1a &&
-    buf[7] === 0x0a
-  ) {
-    return "image/png";
-  }
-
-  // JPEG: FF D8 FF
-  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-    return "image/jpeg";
-  }
-
-  // GIF: "GIF87a" or "GIF89a"
-  if (buf.length >= 6) {
-    const head = buf.toString("ascii", 0, 6);
-    if (head === "GIF87a" || head === "GIF89a") return "image/gif";
-  }
-
-  // WEBP: "RIFF????WEBP" — 4-byte size in between is ignored.
-  if (
-    buf.length >= 12 &&
-    buf.toString("ascii", 0, 4) === "RIFF" &&
-    buf.toString("ascii", 8, 12) === "WEBP"
-  ) {
-    return "image/webp";
-  }
-
-  return null;
-}
-
-export class InvalidAvatarImageError extends Error {
-  readonly code = "INVALID_AVATAR_IMAGE";
-  constructor(message = "Only image uploads are supported (PNG, JPEG, WEBP, GIF).") {
-    super(message);
-    this.name = "InvalidAvatarImageError";
-  }
-}
+/**
+ * Backwards-compatible alias for `InvalidImageError`. Existing callers
+ * (server/auth/local-routes.ts, the avatar e2e spec) check `instanceof
+ * InvalidAvatarImageError`, so we keep the symbol exported even though
+ * the class itself now lives in the shared image-mime module.
+ */
+export const InvalidAvatarImageError = InvalidImageError;
+export type InvalidAvatarImageError = InvalidImageError;
 
 export interface SavedAvatarFile {
   /** Sha-hashed filename, e.g. "<sha256>.png". */
@@ -148,13 +106,13 @@ export async function saveAvatarFile(opts: {
   // file=@evil.sh;type=image/png` would otherwise be enough to land
   // arbitrary bytes in the avatars bucket and serve them under a
   // `Content-Type: image/png`). We trust the bytes, not the caller.
-  const detectedMime = detectAvatarMimeFromBuffer(opts.buffer);
+  const detectedMime = detectImageMimeFromBuffer(opts.buffer);
   if (!detectedMime) {
-    throw new InvalidAvatarImageError();
+    throw new InvalidImageError();
   }
-  const ext = MIME_TO_EXT[detectedMime];
+  const ext = imageMimeToExt(detectedMime);
   if (!ext) {
-    throw new InvalidAvatarImageError();
+    throw new InvalidImageError();
   }
   const safeId = safeUserId(opts.userId);
 
