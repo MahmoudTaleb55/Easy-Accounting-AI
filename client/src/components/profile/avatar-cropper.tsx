@@ -53,11 +53,16 @@ export function AvatarCropper({ file, ar, onCancel, onCropped }: Props) {
   }, []);
 
   async function handleConfirm() {
-    if (!imageSrc || !croppedAreaPixels) return;
+    if (!imageSrc || !croppedAreaPixels || !file) return;
     setIsProcessing(true);
     setError(null);
     try {
-      const blob = await getCroppedPng(imageSrc, croppedAreaPixels);
+      const usePng = shouldEncodeAsPng(file.type);
+      const { blob, mimeType, extension } = await getCroppedImage(
+        imageSrc,
+        croppedAreaPixels,
+        usePng,
+      );
       if (blob.size > MAX_OUTPUT_BYTES) {
         setError(
           ar
@@ -67,9 +72,11 @@ export function AvatarCropper({ file, ar, onCancel, onCropped }: Props) {
         setIsProcessing(false);
         return;
       }
-      const cropped = new File([blob], renameToPng(file?.name ?? "avatar.png"), {
-        type: "image/png",
-      });
+      const cropped = new File(
+        [blob],
+        renameWithExtension(file.name, extension),
+        { type: mimeType },
+      );
       setIsProcessing(false);
       onCropped(cropped);
     } catch (e: unknown) {
@@ -162,10 +169,17 @@ export function AvatarCropper({ file, ar, onCancel, onCropped }: Props) {
   );
 }
 
-function renameToPng(name: string): string {
+const JPEG_QUALITY = 0.9;
+
+function shouldEncodeAsPng(sourceType: string): boolean {
+  const t = sourceType.toLowerCase();
+  return t === "image/png" || t === "image/gif" || !t.startsWith("image/");
+}
+
+function renameWithExtension(name: string, extension: string): string {
   const dot = name.lastIndexOf(".");
   const base = dot > 0 ? name.slice(0, dot) : name;
-  return `${base}.png`;
+  return `${base}.${extension}`;
 }
 
 async function loadImage(src: string): Promise<HTMLImageElement> {
@@ -177,13 +191,21 @@ async function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-async function getCroppedPng(imageSrc: string, area: Area): Promise<Blob> {
+async function getCroppedImage(
+  imageSrc: string,
+  area: Area,
+  usePng: boolean,
+): Promise<{ blob: Blob; mimeType: string; extension: string }> {
   const image = await loadImage(imageSrc);
   const canvas = document.createElement("canvas");
   canvas.width = OUTPUT_SIZE;
   canvas.height = OUTPUT_SIZE;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas is not supported in this browser");
+  if (!usePng) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+  }
   ctx.drawImage(
     image,
     area.x,
@@ -195,13 +217,17 @@ async function getCroppedPng(imageSrc: string, area: Area): Promise<Blob> {
     OUTPUT_SIZE,
     OUTPUT_SIZE,
   );
-  return new Promise<Blob>((resolve, reject) => {
+  const mimeType = usePng ? "image/png" : "image/jpeg";
+  const extension = usePng ? "png" : "jpg";
+  const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
-      (blob) => {
-        if (blob) resolve(blob);
+      (b) => {
+        if (b) resolve(b);
         else reject(new Error("Could not encode cropped image"));
       },
-      "image/png",
+      mimeType,
+      usePng ? undefined : JPEG_QUALITY,
     );
   });
+  return { blob, mimeType, extension };
 }
