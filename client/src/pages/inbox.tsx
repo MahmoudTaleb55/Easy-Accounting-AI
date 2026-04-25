@@ -679,7 +679,16 @@ function ZeroInboxState({ ar, docs }: { ar: boolean; docs: DocumentRow[] }) {
                       {ext?.vendor || d.fileName}
                     </div>
                     <div className="text-[10px] text-muted-foreground font-mono">
-                      JE #{d.journalEntryId} · {timeAgo(d.postedAt!, ar)}
+                      {d.journalEntryId ? (
+                        <Link
+                          href={`/app/journal#je-${d.journalEntryId}`}
+                          className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
+                          data-testid={`link-journal-entry-recent-${d.id}`}
+                          title={ar ? `فتح قيد اليومية JE #${d.journalEntryId}` : `Open journal entry JE #${d.journalEntryId}`}
+                        >
+                          JE #{d.journalEntryId}
+                        </Link>
+                      ) : "—"} · {timeAgo(d.postedAt!, ar)}
                     </div>
                   </div>
                   <span className="font-mono tabular-nums text-foreground/70 shrink-0">
@@ -1029,13 +1038,21 @@ function DocumentDetail({
                     <div className="flex items-center gap-2.5 text-sm">
                       <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       <span className="text-emerald-700 dark:text-emerald-400">
-                        {ar
-                          ? `تم الترحيل كقيد رقم ${doc.journalEntryId}`
-                          : `Posted as journal entry #${doc.journalEntryId}`}
+                        {ar ? "تم الترحيل كقيد رقم " : "Posted as journal entry "}
+                        {doc.journalEntryId ? (
+                          <Link
+                            href={`/app/journal#je-${doc.journalEntryId}`}
+                            className="underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm font-medium"
+                            data-testid={`link-journal-entry-posted-${doc.id}`}
+                            title={ar ? `فتح قيد اليومية ${doc.journalEntryId}` : `Open journal entry #${doc.journalEntryId}`}
+                          >
+                            {ar ? doc.journalEntryId : `#${doc.journalEntryId}`}
+                          </Link>
+                        ) : <span className="text-muted-foreground">—</span>}
                       </span>
                     </div>
                     <Link
-                      href="/app/journal"
+                      href={doc.journalEntryId ? `/app/journal#je-${doc.journalEntryId}` : "/app/journal"}
                       className="text-xs underline-offset-4 hover:underline text-foreground/70 inline-flex items-center gap-1"
                       data-testid="link-view-journal"
                     >
