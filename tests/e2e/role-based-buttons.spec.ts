@@ -359,6 +359,53 @@ test.describe("role-based button gating @rbac", () => {
       ).toBeEnabled();
     });
 
+    test("settings: TeamPanel submit-invite + remove-member + revoke-invite are enabled", async ({ page }) => {
+      // <TeamPanel> hides three more WriteGuards behind its `isOwner`
+      // branches: the invite-form submit button, the per-member remove
+      // button (rendered for every non-self member), and the per-invite
+      // revoke button (rendered for every pending invite). The shared
+      // setup seeds two non-owner members + one pending invite so all
+      // three controls render here for the owner role. We exercise each
+      // through `expectUnguarded` so a regression that drops any of
+      // those <WriteGuard>s fails loudly — the accountant/viewer
+      // counterparts in this file already cover the banner +
+      // `toHaveCount(0)` half of the contract.
+      await gotoApp(page, "/app/settings");
+      await expect(page.locator('[data-testid="card-team-roles"]')).toBeVisible();
+
+      // Open the invite form so its submit button renders, then assert
+      // the WriteGuard around it resolves to the unwrapped, enabled
+      // control. We close the form after the assertion so it doesn't
+      // shift the rest of the page layout for the assertions below.
+      await page.locator('[data-testid="button-toggle-invite"]').click();
+      await expect(page.locator('[data-testid="form-invite"]')).toBeVisible();
+      await expectUnguarded(page, "button-submit-invite");
+      await expect(
+        page.locator('[data-testid="button-submit-invite"]').first(),
+      ).toBeEnabled();
+      await page.locator('[data-testid="button-cancel-invite"]').click();
+
+      // The member list filters out the current user, so the seed's
+      // accountant + viewer rows each render a remove-member button.
+      const removeBtn = page
+        .locator('[data-testid^="button-remove-member-"]')
+        .first();
+      await expect(removeBtn).toBeVisible();
+      const removeId = await removeBtn.getAttribute("data-testid");
+      await expectUnguarded(page, removeId!);
+      await expect(removeBtn).toBeEnabled();
+
+      // The seed creates exactly one pending invitation so the
+      // pending-invites section shows a revoke-invite button per row.
+      const revokeBtn = page
+        .locator('[data-testid^="button-revoke-invite-"]')
+        .first();
+      await expect(revokeBtn).toBeVisible();
+      const revokeId = await revokeBtn.getAttribute("data-testid");
+      await expectUnguarded(page, revokeId!);
+      await expect(revokeBtn).toBeEnabled();
+    });
+
     test("chart of accounts: 'New account' is enabled", async ({ page }) => {
       await gotoApp(page, "/app/accounts");
       await expectUnguarded(page, "button-add-account");
@@ -478,13 +525,18 @@ test.describe("role-based button gating @rbac", () => {
     });
 
     test("settings members: page is forbidden for accountants", async ({ page }) => {
-      // Members management is hard-gated on isAdmin, so non-owners get the
-      // forbidden notice instead of the (otherwise WriteGuard-protected)
-      // invite + remove buttons.
+      // Members management is hard-gated on isAdmin, so non-owners get
+      // the forbidden notice instead of the (otherwise
+      // WriteGuard-protected) invite + remove + per-invite resend +
+      // per-invite revoke buttons. We assert the absence of all four
+      // surfaces so the role-guard-coverage check sees this block
+      // exercise every WriteGuard the page renders for owners.
       await gotoApp(page, "/app/settings/members");
       await expect(page.locator('[data-testid="members-forbidden"]')).toBeVisible();
       await expect(page.locator('[data-testid="button-send-invite"]')).toHaveCount(0);
       await expect(page.locator('[data-testid^="button-remove-"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-resend-"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-revoke-"]')).toHaveCount(0);
     });
 
     test("settings: save is owner-guarded; companies + fx panels are hidden", async ({ page }) => {
@@ -690,10 +742,16 @@ test.describe("role-based button gating @rbac", () => {
     });
 
     test("settings members: page is forbidden for viewers", async ({ page }) => {
+      // Same contract as accountants — viewers also fail isAdmin, so
+      // the page renders the forbidden notice and none of the four
+      // WriteGuard-protected controls (send / remove / resend / revoke)
+      // ever reach the DOM.
       await gotoApp(page, "/app/settings/members");
       await expect(page.locator('[data-testid="members-forbidden"]')).toBeVisible();
       await expect(page.locator('[data-testid="button-send-invite"]')).toHaveCount(0);
       await expect(page.locator('[data-testid^="button-remove-"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-resend-"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid^="button-revoke-"]')).toHaveCount(0);
     });
 
     test("settings: save is owner-guarded; companies + fx panels are hidden", async ({ page }) => {

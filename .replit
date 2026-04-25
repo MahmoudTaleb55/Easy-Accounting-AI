@@ -45,6 +45,10 @@ args = "migrations-prefix"
 task = "workflow.run"
 args = "migrations-runner"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "role-guard-coverage"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -83,6 +87,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test tests/e2e/migrations-runner.spec.ts --reporter=line"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "role-guard-coverage"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test tests/e2e/role-guard-coverage.spec.ts --reporter=line"
 
 [workflows.workflow.metadata]
 isValidation = true
