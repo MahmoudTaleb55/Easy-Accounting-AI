@@ -44,6 +44,7 @@ export default defineConfig({
         /email-delivery-alerts\.spec\.ts/,
         /email-delivery-alerts-side-channel\.spec\.ts/,
         /email-delivery-csv-export\.spec\.ts/,
+        /email-delivery-list-parity\.spec\.ts/,
         /delivery-alert-audit\.setup\.ts/,
         /delivery-alert-audit\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
@@ -153,6 +154,20 @@ export default defineConfig({
       // not depend on any seeded delivery rows).
       name: "email-delivery-csv-export",
       testMatch: /email-delivery-csv-export\.spec\.ts/,
+      dependencies: ["email-delivery-alerts-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
+      // Recipient/role + list/count parity coverage for the rewritten
+      // /api/auth/email-deliveries list query (see
+      // `email-delivery-list-parity.spec.ts`). Reuses the same
+      // dedicated workspace + owner storage state as the delivery-alert
+      // spec, then seeds invitation + password-reset events directly so
+      // the deferred recipient JOIN can be exercised in isolation.
+      name: "email-delivery-list-parity",
+      testMatch: /email-delivery-list-parity\.spec\.ts/,
       dependencies: ["email-delivery-alerts-setup"],
       use: {
         viewport: { width: 1280, height: 800 },

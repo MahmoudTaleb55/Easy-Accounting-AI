@@ -94,6 +94,39 @@ function emailDeliveryCountCacheKey(
   return JSON.stringify([companyId, status, emailLike, from, to]);
 }
 
+// Shared normalization for the four user-facing filters on the unified
+// email-delivery feed (date window, status, recipient substring). The
+// list and count endpoints both consume this so a future tweak (e.g.
+// trimming, locale-folding, status whitelist) lands in one place and
+// can't silently drift between "what the table shows" and "what the
+// chip / CSV claims is in the table".
+export interface EmailDeliveryFilterInput {
+  status?: string | null;
+  email?: string | null;
+  from?: string | null;
+  to?: string | null;
+}
+
+export interface NormalizedEmailDeliveryFilters {
+  status: string | null;
+  emailLike: string | null;
+  from: string | null;
+  to: string | null;
+}
+
+export function parseEmailDeliveryFilters(
+  opts: EmailDeliveryFilterInput,
+): NormalizedEmailDeliveryFilters {
+  return {
+    status: opts.status?.trim() || null,
+    emailLike: opts.email?.trim()
+      ? `%${opts.email.trim().toLowerCase()}%`
+      : null,
+    from: normalizeFromBound(opts.from),
+    to: normalizeToBound(opts.to),
+  };
+}
+
 /**
  * Test-only escape hatch: drop every entry from the count cache.
  * Real call sites shouldn't need this — the TTL is short enough that
@@ -465,15 +498,8 @@ export const authBizStorage = {
    */
   async listEmailDeliveriesForCompany(
     companyId: number,
-    opts: {
-      status?: string | null;
-      email?: string | null;
+    opts: EmailDeliveryFilterInput & {
       limit?: number;
-      // ISO timestamps (or YYYY-MM-DD). Filter the union by event
-      // `created_at`. `from` is inclusive; `to` is inclusive of the
-      // whole calendar day when only a date is supplied.
-      from?: string | null;
-      to?: string | null;
       // CSV exports for a date window can legitimately be much larger
       // than the on-screen list, so callers can opt in to a higher cap.
       maxLimit?: number;
@@ -494,18 +520,32 @@ export const authBizStorage = {
   > {
     const hardCap = Math.max(1, Math.min(opts.maxLimit ?? 500, 10000));
     const limit = Math.max(1, Math.min(opts.limit ?? 200, hardCap));
-    const status = opts.status?.trim() || null;
-    const emailLike = opts.email?.trim() ? `%${opts.email.trim().toLowerCase()}%` : null;
-    // Normalize date bounds. A bare `YYYY-MM-DD` for `to` should cover
-    // the entire day, so bump it to the next midnight and use a `<`
-    // comparison in SQL.
-    const from = normalizeFromBound(opts.from);
-    const to = normalizeToBound(opts.to);
+    // Reuse the same normalization the count endpoint runs so the two
+    // surfaces can't disagree on what "the same filter" means. (See
+    // parseEmailDeliveryFilters above.)
+    const { status, emailLike, from, to } = parseEmailDeliveryFilters(opts);
 
-    // Inner query: every event projected to a uniform shape, with a
-    // `dedup_key` so resends/retries become distinct rows. Outer query
-    // collapses to the most recent event per (transport, key) using
-    // DISTINCT ON, then applies user filters.
+    // Two-stage shape:
+    //
+    //   1. `all_events`: scope each transport's event log to the
+    //      workspace via EXISTS (cheap to evaluate, cannot inflate row
+    //      counts the way an INNER JOIN to invitations / memberships
+    //      can). Project ONLY the columns DISTINCT ON needs to dedupe
+    //      and rank — no recipient / role yet. Resends and retries
+    //      become distinct rows via `dedup_key`. The MIN() window
+    //      function computes first_at in the same scan, replacing the
+    //      second CTE + JOIN that the previous shape needed.
+    //
+    //   2. `collapsed`: collapse to one row per send attempt, then
+    //      LEFT JOIN back to invitations / password_reset_tokens +
+    //      users to attach recipient + role. Deferring the join until
+    //      after the dedup means we materialize the recipient string
+    //      once per surviving row instead of once per event.
+    //
+    // Status / recipient filters are applied post-collapse — recipient
+    // is a function of parent_id, which is constant for a given
+    // dedup_key, so this is semantically equivalent to the old
+    // pre-collapse filter while being cheaper to evaluate.
     const rows = await db.execute(sql`
       WITH all_events AS (
         SELECT
@@ -513,14 +553,15 @@ export const authBizStorage = {
           COALESCE(e.message_id, 'attempt:' || e.id)                  AS dedup_key,
           e.message_id                                                AS message_id,
           e.invitation_id                                             AS parent_id,
-          i.email                                                     AS recipient,
-          i.role                                                      AS role,
+          NULL::varchar                                               AS recipient_user_id,
           e.type                                                      AS type,
           e.error                                                     AS error,
           e.created_at                                                AS created_at
         FROM invitation_email_events e
-        INNER JOIN invitations i ON i.id = e.invitation_id
-        WHERE i.company_id = ${companyId}
+        WHERE EXISTS (
+          SELECT 1 FROM invitations i
+          WHERE i.id = e.invitation_id AND i.company_id = ${companyId}
+        )
           AND (${from}::timestamptz IS NULL OR e.created_at >= ${from}::timestamptz)
           AND (${to}::timestamptz   IS NULL OR e.created_at <  ${to}::timestamptz)
 
@@ -531,55 +572,69 @@ export const authBizStorage = {
           COALESCE(e.message_id, 'attempt:' || e.id)                  AS dedup_key,
           e.message_id                                                AS message_id,
           e.token_id                                                  AS parent_id,
-          COALESCE(u.email, '')                                       AS recipient,
-          NULL::text                                                  AS role,
+          -- Carry the event's own user_id so the recipient join can hit
+          -- users directly. Going via password_reset_tokens would silently
+          -- erase the recipient when an expired/used token row is later
+          -- pruned but the event log is still around.
+          e.user_id                                                   AS recipient_user_id,
           e.type                                                      AS type,
           e.error                                                     AS error,
           e.created_at                                                AS created_at
         FROM password_reset_email_events e
-        INNER JOIN memberships m ON m.user_id = e.user_id AND m.company_id = ${companyId}
-        LEFT JOIN users u ON u.id = e.user_id
-        WHERE
-          (${from}::timestamptz IS NULL OR e.created_at >= ${from}::timestamptz)
-          AND (${to}::timestamptz IS NULL OR e.created_at <  ${to}::timestamptz)
+        WHERE EXISTS (
+          SELECT 1 FROM memberships m
+          WHERE m.user_id = e.user_id AND m.company_id = ${companyId}
+        )
+          AND (${from}::timestamptz IS NULL OR e.created_at >= ${from}::timestamptz)
+          AND (${to}::timestamptz   IS NULL OR e.created_at <  ${to}::timestamptz)
       ),
-      latest_per_message AS (
+      collapsed AS (
         SELECT DISTINCT ON (transport, dedup_key)
           transport,
           dedup_key,
           message_id,
           parent_id,
-          recipient,
-          role,
-          type        AS latest_status,
-          error       AS latest_error,
-          created_at  AS latest_at
+          recipient_user_id,
+          type       AS latest_status,
+          error      AS latest_error,
+          created_at AS latest_at,
+          MIN(created_at) OVER (PARTITION BY transport, dedup_key) AS first_at
         FROM all_events
         ORDER BY transport, dedup_key, created_at DESC
-      ),
-      first_per_message AS (
-        SELECT transport, dedup_key, MIN(created_at) AS first_at
-        FROM all_events
-        GROUP BY transport, dedup_key
       )
       SELECT
-        l.transport,
-        l.dedup_key,
-        l.message_id,
-        l.parent_id,
-        l.recipient,
-        l.role,
-        l.latest_status,
-        l.latest_error,
-        l.latest_at,
-        f.first_at
-      FROM latest_per_message l
-      JOIN first_per_message f
-        ON f.transport = l.transport AND f.dedup_key = l.dedup_key
+        c.transport,
+        c.dedup_key,
+        c.message_id,
+        c.parent_id,
+        CASE
+          WHEN c.transport = 'invitation'     THEN i.email
+          WHEN c.transport = 'password_reset' THEN COALESCE(u.email, '')
+          ELSE ''
+        END AS recipient,
+        CASE
+          WHEN c.transport = 'invitation' THEN i.role
+          ELSE NULL
+        END AS role,
+        c.latest_status,
+        c.latest_error,
+        c.latest_at,
+        c.first_at
+      FROM collapsed c
+      LEFT JOIN invitations i
+        ON c.transport = 'invitation' AND i.id = c.parent_id
+      LEFT JOIN users u
+        ON c.transport = 'password_reset' AND u.id = c.recipient_user_id
       WHERE
-        (${status}::text IS NULL OR l.latest_status = ${status}::text)
-        AND (${emailLike}::text IS NULL OR LOWER(l.recipient) LIKE ${emailLike}::text)
-      ORDER BY l.latest_at DESC NULLS LAST
+        (${status}::text IS NULL OR c.latest_status = ${status}::text)
+        AND (${emailLike}::text IS NULL OR LOWER(
+          CASE
+            WHEN c.transport = 'invitation'     THEN i.email
+            WHEN c.transport = 'password_reset' THEN COALESCE(u.email, '')
+            ELSE ''
+          END
+        ) LIKE ${emailLike}::text)
+      ORDER BY c.latest_at DESC NULLS LAST
       LIMIT ${limit}
     `);
     const list = (rows as any).rows ?? (rows as any);
@@ -612,17 +667,10 @@ export const authBizStorage = {
    */
   async countEmailDeliveriesForCompany(
     companyId: number,
-    opts: {
-      status?: string | null;
-      email?: string | null;
-      from?: string | null;
-      to?: string | null;
-    } = {},
+    opts: EmailDeliveryFilterInput = {},
   ): Promise<number> {
-    const status = opts.status?.trim() || null;
-    const emailLike = opts.email?.trim() ? `%${opts.email.trim().toLowerCase()}%` : null;
-    const from = normalizeFromBound(opts.from);
-    const to = normalizeToBound(opts.to);
+    // Same normalization as the list query — see parseEmailDeliveryFilters.
+    const { status, emailLike, from, to } = parseEmailDeliveryFilters(opts);
 
     // Short TTL cache: collapse the keystroke-rate of probes for the
     // same filter combo into a single query, but stay fresh enough
