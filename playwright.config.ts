@@ -42,6 +42,7 @@ export default defineConfig({
         /role-based-api\.spec\.ts/,
         /quick-actions\.spec\.ts/,
         /email-delivery-alerts\.spec\.ts/,
+        /email-delivery-alerts-side-channel\.spec\.ts/,
         /email-delivery-csv-export\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
       ],
@@ -153,6 +154,20 @@ export default defineConfig({
       use: {
         viewport: { width: 1280, height: 800 },
       },
+    },
+    {
+      // In-process integration coverage for the email side-channel block
+      // inside `evaluateEmailDeliveryAlertsForCompany`. The spec stubs
+      // `globalThis.fetch` and runs the evaluator directly (no browser, no
+      // dev-server route) so it can assert that `emailEnabled=true`
+      // produces one Resend call per owner, persists `emailSent` /
+      // `emailRecipients` on the alert row, gracefully tolerates
+      // transport failures, and renders the locale-correct subject. Owns
+      // its own dedicated workspace + owners (created in `beforeAll`) so
+      // it never collides with the e2e `email-delivery-alerts` suite or
+      // its setup project.
+      name: "email-delivery-alerts-side-channel",
+      testMatch: /email-delivery-alerts-side-channel\.spec\.ts/,
     },
     {
       // One-time setup that provisions a dedicated workspace and seeds a
