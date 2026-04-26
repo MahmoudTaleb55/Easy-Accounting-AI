@@ -46,8 +46,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { BookOpen, ChevronDown, ChevronLeft, ChevronRight, Plus, Search, Sparkles } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronLeft, ChevronRight, Download, Plus, Search, Sparkles } from "lucide-react"
 import type { Account } from "@shared/schema"
+import {
+  buildLedgerCsv,
+  buildLedgerCsvFilename,
+} from "@/pages/chart-of-accounts-ledger-csv"
 import {
   computeBalanceByAccountId,
   type BalanceBreakdown,
@@ -233,6 +237,12 @@ export default function ChartOfAccountsPage() {
       ledgerBalance: locale === "ar" ? "الرصيد" : "Balance",
       ledgerOpening: locale === "ar" ? "الرصيد الافتتاحي" : "Opening balance",
       ledgerClosing: locale === "ar" ? "الرصيد الختامي" : "Closing balance",
+      ledgerDownload: locale === "ar" ? "تنزيل CSV" : "Download CSV",
+      ledgerDownloadAria:
+        locale === "ar"
+          ? "تنزيل حركة الحساب كملف CSV"
+          : "Download account ledger as CSV",
+      ledgerCsvFilenamePrefix: locale === "ar" ? "حركة-حساب" : "ledger",
       periodLabel: locale === "ar" ? "نطاق الأرصدة" : "Balances scope",
       periodMonth: locale === "ar" ? "هذا الشهر" : "This month",
       periodYear: locale === "ar" ? "هذه السنة" : "This year",
@@ -754,6 +764,9 @@ export default function ChartOfAccountsPage() {
           balance: t.ledgerBalance,
           opening: t.ledgerOpening,
           closing: t.ledgerClosing,
+          download: t.ledgerDownload,
+          downloadAria: t.ledgerDownloadAria,
+          csvFilenamePrefix: t.ledgerCsvFilenamePrefix,
         }}
       />
     </div>
@@ -1089,6 +1102,13 @@ interface AccountLedgerSheetLabels {
   balance: string
   opening: string
   closing: string
+  download: string
+  downloadAria: string
+  // Localized prefix for the exported CSV filename (e.g. "ledger" or
+  // "حركة-حساب"). The full name is built as `<prefix>-<code>-<timestamp>.csv`
+  // so finance users can keep multiple exports straight in their downloads
+  // folder without renaming each one.
+  csvFilenamePrefix: string
 }
 
 interface AccountLedgerSheetProps {
@@ -1239,6 +1259,43 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
   // period, we want a different message than "no postings ever".
   const hasAnyHistory = allPostings.length > 0
 
+  // Trigger a CSV download of the visible postings (same columns and
+  // newest-first order as the on-screen table, plus the opening/closing
+  // subtotal block). Format details — RFC-4180 quoting, BOM, ISO dates,
+  // bare numeric cells — live in `chart-of-accounts-ledger-csv.ts` so
+  // they can be unit-tested without spinning up the drawer.
+  const handleDownloadCsv = () => {
+    if (!account || postings.length === 0) return
+    const csv = buildLedgerCsv(
+      postings,
+      { openingBalance, closingBalance, totalDebit, totalCredit },
+      {
+        date: labels.date,
+        memo: labels.memo,
+        debit: labels.debit,
+        credit: labels.credit,
+        balance: labels.balance,
+        je: labels.je,
+        opening: labels.opening,
+        closing: labels.closing,
+      },
+    )
+    const filename = buildLedgerCsvFilename(
+      labels.csvFilenamePrefix,
+      account.code,
+      new Date(),
+    )
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <Sheet open={!!account} onOpenChange={(o) => !o && onClose()}>
       <SheetContent
@@ -1255,9 +1312,27 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
               </SheetTitle>
               <SheetDescription>{labels.description}</SheetDescription>
             </div>
-            {/* Mirrors other surfaces (reports, insights) — keeping the chip
-                inline lets users re-scope the ledger without leaving the drawer. */}
-            <PeriodChip showCompare={false} className="shrink-0" />
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Mirrors other surfaces (reports, insights) — keeping the chip
+                  inline lets users re-scope the ledger without leaving the drawer. */}
+              <PeriodChip showCompare={false} className="shrink-0" />
+              {/* Disabled until there's something to export — exporting an
+                  empty window would just produce header-only noise. */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadCsv}
+                disabled={postings.length === 0}
+                aria-label={labels.downloadAria}
+                title={labels.downloadAria}
+                className="gap-2 shrink-0"
+                data-testid="button-ledger-download-csv"
+              >
+                <Download className="w-4 h-4" aria-hidden />
+                <span>{labels.download}</span>
+              </Button>
+            </div>
           </div>
         </SheetHeader>
 
