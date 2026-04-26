@@ -62,6 +62,7 @@ setup("authenticate + seed delivery-alert-audit fixtures", async ({ page }) => {
       password: OWNER_PASSWORD,
       firstName: OWNER_FIRST_NAME,
       lastName: OWNER_LAST_NAME,
+      preferredLocale: "en",
     });
 
     // (b) Ensure the dedicated workspace exists, owned by this owner.

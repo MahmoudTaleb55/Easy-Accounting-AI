@@ -63,6 +63,7 @@ setup("authenticate + seed email-delivery-count-cache fixtures", async ({ page }
       password: OWNER_PASSWORD,
       firstName: OWNER_FIRST_NAME,
       lastName: OWNER_LAST_NAME,
+      preferredLocale: "en",
     });
 
     // (b) Ensure the dedicated company exists, owned by the dedicated
