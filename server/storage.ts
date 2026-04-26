@@ -697,6 +697,20 @@ export interface DisposalBalanceDelta {
  * Each delete path passes its own kind+id so the guard knows which row to
  * exclude (otherwise the row would always self-reference and every delete
  * would 409).
+ *
+ * Backfill coverage contract (task #265)
+ * --------------------------------------
+ * Every member of this union must either:
+ *   (a) have a per-source UPDATE branch in some
+ *       `migrations/*backfill_reversal_company_stamps*.sql` file, or
+ *   (b) carry an inline `// reversal-backfill-opt-out: <reason>` comment
+ *       on the same line, justifying why the kind has no historical
+ *       unstamped reversal rows that need backfilling.
+ *
+ * The static check in `scripts/check-reversal-stamp-backfill-coverage.ts`
+ * (wrapped by the `reversal-stamp-backfill-coverage` workflow) enforces
+ * this so a future module that starts auto-posting JEs cannot silently
+ * fall through to the audit-log fallback in 0018.
  */
 export type JournalEntrySourceKind =
   | "payroll_run"
@@ -705,7 +719,7 @@ export type JournalEntrySourceKind =
   | "revaluation_event"
   | "disposal"
   | "document"
-  | "sales_invoice";
+  | "sales_invoice"; // reversal-backfill-opt-out: introduced in 0019_sales_portal.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
 
 /**
  * Returns the human-readable list of modules that point at `journalEntryId`

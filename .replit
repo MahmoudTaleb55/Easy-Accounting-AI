@@ -61,6 +61,10 @@ args = "unit-tests"
 task = "workflow.run"
 args = "migrations-fk-coverage"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "reversal-stamp-backfill"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -146,6 +150,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test tests/e2e/database-fk-declared-vs-live.spec.ts --reporter=line"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "reversal-stamp-backfill"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PLAYWRIGHT_NO_WEBSERVER=1 npx playwright test tests/e2e/reversal-stamp-backfill-coverage.spec.ts --reporter=line"
 
 [workflows.workflow.metadata]
 isValidation = true
