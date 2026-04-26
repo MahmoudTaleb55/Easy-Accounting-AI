@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook: block accidental write-button regressions.
+#
+# Runs the role-guard-coverage static check (the same one that powers the
+# `role-guard-coverage` validation workflow and `tests/e2e/role-guard-
+# coverage.spec.ts`). Catches a missing role assertion before the change
+# ever leaves the developer's machine, instead of waiting for the
+# validation pipeline to fail.
+#
+# Wired into git via `core.hooksPath = .husky` (set by
+# `scripts/post-merge.sh` so every clone picks it up automatically after
+# the first task merge). Run that script once locally to enable the hook
+# on a fresh checkout, or set it manually:
+#
+#   git config core.hooksPath .husky
+#
+# Bypass with `git commit --no-verify` if you absolutely have to — the
+# validation pipeline will still catch the regression, just later.
+
+set -e
+
+# Prefer the local tsx binary (~0.5s) over `npx tsx` (~1.5s of resolver
+# overhead on a cold cache). Fall back to plain `npx tsx` only as a
+# last-ditch path for an environment where the binary isn't installed —
+# in practice that means `npm install` hasn't been run yet, in which
+# case nothing else in the project works either, so failing loudly is
+# fine.
+if [ -x "./node_modules/.bin/tsx" ]; then
+  exec ./node_modules/.bin/tsx scripts/check-role-guard-coverage.ts
+else
+  exec npx tsx scripts/check-role-guard-coverage.ts
+fi
