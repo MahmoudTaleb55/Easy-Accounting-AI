@@ -245,6 +245,14 @@ export default function ChartOfAccountsPage() {
         locale === "ar"
           ? "عرض منذ بداية السنة"
           : "Switch to year-to-date",
+      ledgerJumpPast: (date: string) =>
+        locale === "ar"
+          ? `الانتقال إلى أحدث حركة سابقة (${date})`
+          : `Jump to latest earlier posting (${date})`,
+      ledgerJumpFuture: (date: string) =>
+        locale === "ar"
+          ? `الانتقال إلى أقرب حركة قادمة (${date})`
+          : `Jump to nearest upcoming posting (${date})`,
       ledgerOpenAria: locale === "ar" ? "فتح حركة الحساب" : "Open account ledger",
       ledgerJEAria:
         locale === "ar" ? "فتح قيد اليومية" : "Open journal entry",
@@ -775,6 +783,8 @@ export default function ChartOfAccountsPage() {
           emptyPeriodRange: t.ledgerEmptyPeriodRange,
           emptyPeriodHint: t.ledgerEmptyPeriodHint,
           emptyPeriodSwitchYtd: t.ledgerEmptyPeriodSwitchYtd,
+          jumpPast: t.ledgerJumpPast,
+          jumpFuture: t.ledgerJumpFuture,
           jeAria: t.ledgerJEAria,
           totalDebit: t.ledgerTotalDebit,
           totalCredit: t.ledgerTotalCredit,
@@ -1116,6 +1126,12 @@ interface AccountLedgerSheetLabels {
   emptyPeriodRange: string
   emptyPeriodHint: string
   emptyPeriodSwitchYtd: string
+  /** Localised "Jump to latest earlier posting (<date>)" — receives the
+      formatted nearest-posting date so the button can name it explicitly. */
+  jumpPast: (date: string) => string
+  /** Localised "Jump to nearest upcoming posting (<date>)" — same shape
+      as `jumpPast` but for postings dated after the current period. */
+  jumpFuture: (date: string) => string
   jeAria: string
   totalDebit: string
   totalCredit: string
@@ -1157,7 +1173,7 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
   const { locale } = useLocale()
   const fmt = useFormatMoney()
   const dfLocale = locale === "ar" ? ar : enUS
-  const { period, setPeriodKey } = usePeriod()
+  const { period, setPeriodKey, setPeriodToInclude } = usePeriod()
 
   // Reuse the journal-entries cache so flipping between this drawer and the
   // /app/journal page is instantaneous. Only fetch when the drawer opens to
@@ -1298,6 +1314,30 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
     URL.revokeObjectURL(url)
   }
 
+  // For the period-empty state, surface a one-click "jump to nearest
+  // posting" affordance so users don't have to guess which window will
+  // surface activity. Closest is measured as absolute ms distance from
+  // either period boundary — so for a posting before the window we
+  // measure to `period.start`, and for one after we measure to
+  // `period.end`. Returning the side ("past"/"future") lets the button
+  // copy itself reflect the direction of the jump.
+  const nearestPosting = useMemo(() => {
+    if (!hasAnyHistory) return null
+    const startMs = period.start.getTime()
+    const endMs = period.end.getTime()
+    let best: { date: Date; side: "past" | "future"; distance: number } | null = null
+    for (const p of allPostings) {
+      const ms = new Date(p.entryDate).getTime()
+      if (ms >= startMs && ms <= endMs) continue // shouldn't happen — we're in the empty state
+      const side: "past" | "future" = ms < startMs ? "past" : "future"
+      const distance = side === "past" ? startMs - ms : ms - endMs
+      if (!best || distance < best.distance) {
+        best = { date: new Date(p.entryDate), side, distance }
+      }
+    }
+    return best
+  }, [allPostings, hasAnyHistory, period.start, period.end])
+
   return (
     <Sheet open={!!account} onOpenChange={(o) => !o && onClose()}>
       <SheetContent
@@ -1408,6 +1448,28 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
                     >
                       {labels.emptyPeriodSwitchYtd}
                     </Button>
+                  )}
+                  {/* Jump-to-nearest is the more direct "snap to a window
+                      that actually contains a posting" affordance — kept
+                      alongside the YTD shortcut because the two solve
+                      different problems: YTD broadens the window, while
+                      jump-to-nearest hops to a date the YTD window may
+                      still miss (e.g. postings >1 year away). Only renders
+                      when nearestPosting resolved to a real out-of-window
+                      posting. */}
+                  {nearestPosting && (
+                    <div className="mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPeriodToInclude(nearestPosting.date)}
+                        data-testid="button-ledger-jump-nearest"
+                      >
+                        {nearestPosting.side === "past"
+                          ? labels.jumpPast(format(nearestPosting.date, "d MMM yyyy", { locale: dfLocale }))
+                          : labels.jumpFuture(format(nearestPosting.date, "d MMM yyyy", { locale: dfLocale }))}
+                      </Button>
+                    </div>
                   )}
                 </>
               ) : (

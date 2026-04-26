@@ -103,7 +103,16 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
     { key: "30d", label: t("period_30d") },
   ];
 
-  const periodLabel = PERIODS.find((p) => p.key === period.key)?.label || period.key;
+  // For preset keys, show the localised label. When the period was set
+  // programmatically to a custom calendar-month window (e.g. via
+  // `setPeriodToInclude` from the account-ledger empty-state jump), the
+  // key is "custom" and there is no PERIODS entry — render the actual
+  // start–end range instead so the chip still tells the user what
+  // window they're looking at.
+  const intl = locale === "ar" ? "ar-SA" : "en-US";
+  const presetLabel = PERIODS.find((p) => p.key === period.key)?.label;
+  const periodLabel = presetLabel
+    ?? `${period.start.toLocaleDateString(intl, { month: "short", day: "numeric" })} – ${period.end.toLocaleDateString(intl, { month: "short", day: "numeric", year: "numeric" })}`;
 
   // Notifications: pull alert count from insights
   const { data: alertsData } = useDashboardAlerts<{

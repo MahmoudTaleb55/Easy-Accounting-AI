@@ -38,6 +38,17 @@ export function PeriodChip({ showCompare = true, className = "" }: PeriodChipPro
         <option value="quarter">{t("period_quarter")}</option>
         <option value="ytd">{t("period_ytd")}</option>
         <option value="30d">{t("period_30d")}</option>
+        {/* "custom" is set programmatically by setPeriodToInclude when
+            no preset window covers the target date (e.g. jumping to a
+            posting in a different calendar year). The option is hidden
+            from the dropdown — selecting any visible preset clears it
+            again — but kept in the option list so React doesn't warn
+            about an unknown <select value>. */}
+        {period.key === "custom" && (
+          <option value="custom" hidden>
+            {locale === "ar" ? "نطاق مخصص" : "Custom range"}
+          </option>
+        )}
       </select>
       <span className="hairline-v hidden sm:inline-block h-4" />
       <span
