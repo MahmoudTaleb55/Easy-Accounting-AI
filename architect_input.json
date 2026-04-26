@@ -1,0 +1,17 @@
+{
+  "task": "Review the locale-aware PDF rendering changes that:\n1. Make all 4 generated PDFs (sales invoice + Trial Balance + P&L + Balance Sheet) honour the user's selected UI language (ar/en/de/fr) via ?lang= or ctx.locale instead of hardcoded ar+en bilingual strings.\n2. Fix Arabic shaping defects: strip U+200E/F, U+061C, U+202A-E, U+2066-9 bidi controls before shaping; pass lineBreak: false on every .text() drawing pre-shaped Arabic; bypass bidi-js with a literal reverse for pure-Arabic strings (preserves the inter-word space in 'النقد بالصندوق').\n\nFocus areas:\n- Locale plumbing correctness (parseLangParam fallback chain ?lang -> body.locale -> 'ar')\n- Arabic shaping: pure-Arabic fast path correctness vs bidi-js path for digits/brackets\n- Coverage of all 4 PDF generators\n- pdfkit lineBreak:false invariant is applied consistently",
+  "relevantFiles": [
+    "server/i18n/pdf-strings.ts",
+    "server/lib/locale.ts",
+    "server/services/pdf-arabic.ts",
+    "server/services/assistant-files.ts",
+    "server/services/assistant-tools.ts",
+    "server/routes.ts",
+    "client/src/pages/sales/invoice-detail.tsx",
+    "server/i18n/__tests__/pdf-strings.test.ts",
+    "server/services/__tests__/pdf-arabic.test.ts",
+    "tests/e2e/sales-invoice-pdf-locale.spec.ts"
+  ],
+  "responsibility": "evaluate_task",
+  "includeGitDiff": true
+}
