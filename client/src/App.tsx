@@ -27,6 +27,12 @@ import FixedAssets from "@/pages/fixed-assets";
 import SalesInvoices from "@/pages/sales/invoices";
 import SalesInvoiceDetail from "@/pages/sales/invoice-detail";
 import SalesCustomers from "@/pages/sales/customers";
+import InventoryItems from "@/pages/inventory/items";
+import InventoryCategories from "@/pages/inventory/categories";
+import InventoryLocations from "@/pages/inventory/locations";
+import InventoryTransactions from "@/pages/inventory/transactions";
+import InventoryAlerts from "@/pages/inventory/alerts";
+import InventoryValuation from "@/pages/inventory/valuation";
 import SettingsPage from "@/pages/settings";
 import Styleguide from "@/pages/styleguide";
 
@@ -80,6 +86,12 @@ function AppShellRoutes() {
       <Route path="/app/sales/invoices" component={SalesInvoices} />
       <Route path="/app/sales/invoices/:id" component={SalesInvoiceDetail} />
       <Route path="/app/sales/customers" component={SalesCustomers} />
+      <Route path="/app/inventory/items" component={InventoryItems} />
+      <Route path="/app/inventory/categories" component={InventoryCategories} />
+      <Route path="/app/inventory/locations" component={InventoryLocations} />
+      <Route path="/app/inventory/transactions" component={InventoryTransactions} />
+      <Route path="/app/inventory/alerts" component={InventoryAlerts} />
+      <Route path="/app/inventory/valuation" component={InventoryValuation} />
       <Route path="/app/settings" component={SettingsPage} />
       <Route path="/app/settings/members" component={MembersPage} />
       <Route path="/app/settings/profile" component={ProfilePage} />

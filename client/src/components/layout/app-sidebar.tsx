@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   Home, ListOrdered, Bot, Wallet, Menu, BarChart3, BookOpen, BookText,
   Activity, Users, Building2, Inbox, Settings as SettingsIcon, ChevronLeft, ChevronRight,
-  LogOut, User as UserIcon, FileText, UserCog, type LucideIcon,
+  LogOut, User as UserIcon, FileText, UserCog, Boxes, Tag, MapPin, ArrowLeftRight, AlertTriangle, ClipboardList, type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -45,6 +45,17 @@ const GROUPS: NavGroup[] = [
     items: [
       { key: "nav_sales_invoices",  url: "/app/sales/invoices",  icon: FileText },
       { key: "nav_sales_customers", url: "/app/sales/customers", icon: UserCog },
+    ],
+  },
+  {
+    label: "group_inventory",
+    items: [
+      { key: "nav_inv_items",        url: "/app/inventory/items",        icon: Boxes },
+      { key: "nav_inv_categories",   url: "/app/inventory/categories",   icon: Tag },
+      { key: "nav_inv_locations",    url: "/app/inventory/locations",    icon: MapPin },
+      { key: "nav_inv_transactions", url: "/app/inventory/transactions", icon: ArrowLeftRight },
+      { key: "nav_inv_alerts",       url: "/app/inventory/alerts",       icon: AlertTriangle },
+      { key: "nav_inv_valuation",    url: "/app/inventory/valuation",    icon: ClipboardList },
     ],
   },
   {
