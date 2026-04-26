@@ -105,38 +105,46 @@ function hdrs(companyId: number): Record<string, string> {
 }
 
 /**
- * pdfkit serializes the `/Info` Title in one of two ways:
+ * pdfkit serializes string entries (including the `/Info` Title that
+ * lives in its own indirect object) one of two ways:
  *
- *  - Pure ASCII: parenthesised literal, e.g. `/Title (Sales Invoice 1001)`.
- *  - Anything else (including French diacritics, Arabic, …): a UTF-16BE
- *    hex string with a leading FEFF BOM, e.g.
- *    `/Title <FEFF00460061…>`.
+ *  - Pure ASCII: parenthesised literal, e.g. `(Sales Invoice INV-0001)`.
+ *  - Anything else (Arabic, German diacritics, …): also parenthesised,
+ *    but the contents are raw UTF-16BE bytes with a leading FEFF byte-
+ *    order mark, e.g. `(þÿ\x06A\x06'…)` when read as latin1.
+ *    NOTE: pdfkit does NOT emit `<FEFF…>` hex strings here — observed
+ *    via direct inspection of the output bytes.
  *
- * For the test we look for whichever form is appropriate.
+ * For the test we look for whichever form is appropriate. The PDF body
+ * is binary, so we read it as latin1 (1-byte-per-codepoint round-trip)
+ * and search byte-for-byte.
  */
-function utf16BeHex(s: string): string {
-  let hex = "feff"; // BOM
+function utf16BeBytesAsLatin1(s: string): string {
+  let out = "";
   for (const ch of s) {
     const cp = ch.codePointAt(0)!;
     if (cp <= 0xffff) {
-      hex += cp.toString(16).padStart(4, "0");
+      out += String.fromCharCode((cp >> 8) & 0xff, cp & 0xff);
     } else {
-      // Surrogate pair — unlikely for our titles but covered for completeness.
+      // Surrogate pair — unlikely for our titles, included for completeness.
       const v = cp - 0x10000;
       const hi = 0xd800 + (v >> 10);
       const lo = 0xdc00 + (v & 0x3ff);
-      hex += hi.toString(16).padStart(4, "0") + lo.toString(16).padStart(4, "0");
+      out += String.fromCharCode((hi >> 8) & 0xff, hi & 0xff,
+                                 (lo >> 8) & 0xff, lo & 0xff);
     }
   }
-  return hex;
+  return out;
 }
 
 function bodyContainsTitle(buf: Buffer, expectedTitle: string): boolean {
   const ascii = buf.toString("latin1");
+  // Pure-ASCII parenthesised literal — pdfkit's path for Latin-only titles.
   if (ascii.includes(`(${expectedTitle}`)) return true;
-  // Hex strings in PDF can be upper- or lower-case; pdfkit emits lowercase.
-  const hex = utf16BeHex(expectedTitle);
-  return ascii.toLowerCase().includes(`<${hex}`);
+  // UTF-16BE bytes inside parens, with the FEFF BOM prefix.
+  // BOM as latin1 = "\xFE\xFF".
+  const utf16Bytes = "\xFE\xFF" + utf16BeBytesAsLatin1(expectedTitle);
+  return ascii.includes(`(${utf16Bytes}`);
 }
 
 test.describe("sales invoice PDF — locale", () => {
