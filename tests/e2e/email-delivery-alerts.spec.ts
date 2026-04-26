@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
+import { gotoWithPinnedLocale } from "./_helpers/pin-locale";
 
 /**
  * End-to-end coverage for the delivery-alert evaluator and its routes.
@@ -673,24 +674,14 @@ test.describe("delivery-alert banner @alerts", () => {
 
   async function gotoOwnerShell(page: Page): Promise<void> {
     // Pin locale via the `?lang=en` URL override so the headline assertion
-    // is in English. We can't rely on `localStorage["app.locale"]` alone:
-    // `LocaleSync` (in `client/src/components/layout/main-layout.tsx`) reads
-    // the signed-in user's `preferredLocale` from `/api/auth/user` once the
-    // auth query resolves and calls `setLocale()` with it, which would
-    // clobber any `addInitScript`-seeded value moments after first paint.
-    // The URL override is honoured by both `LocaleProvider`'s initializer
-    // AND `LocaleSync`'s early-return guard, so the locale stays English
-    // for the lifetime of the page. Theme is still safe to seed via
-    // localStorage because nothing reconciles it from the server.
-    //
-    // The dedicated owner's stored `preferred_locale` is forced to 'ar' by
-    // `email-delivery-alerts.setup.ts` precisely so this URL override is
-    // the load-bearing piece for the English headline assertion. Don't
-    // change either side in isolation — they're paired guardrails.
-    await page.addInitScript(() => {
-      window.localStorage.setItem("app.theme", "light");
-    });
-    await page.goto("/app?lang=en", { waitUntil: "domcontentloaded" });
+    // is in English. The dedicated owner's stored `preferred_locale` is
+    // forced to 'ar' by `email-delivery-alerts.setup.ts` precisely so the
+    // URL override is the load-bearing piece for the English headline
+    // assertion — don't change either side in isolation, they're paired
+    // guardrails. See `gotoWithPinnedLocale` for why the URL override is
+    // the only locale-pinning trick that survives `LocaleSync`'s
+    // server-preference reconciliation.
+    await gotoWithPinnedLocale(page, "/app");
   }
 
   test("renders for owners and dismisses cleanly", async ({ page }) => {

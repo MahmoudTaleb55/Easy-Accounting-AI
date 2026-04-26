@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { gotoWithPinnedLocale } from "./_helpers/pin-locale";
 
 /**
  * Regression coverage for the five sticky filters on the email delivery
@@ -55,18 +56,22 @@ const FROM_DATE = "2025-01-01";
 const TO_DATE = "2025-12-31";
 
 /**
- * Pin locale to English + theme to light *before* the React tree mounts,
- * then navigate. The status / range labels we assert on are locale-
- * specific ("Bounced", "Custom range"), so a missed locale pin would
- * produce confusing Arabic-vs-English diffs on failure. Mirrors the
- * `gotoOwnerShell` helper in `delivery-alert-audit.spec.ts`.
+ * Pin locale to English (via the `?lang=en` URL override) + theme to
+ * light *before* the React tree mounts, then navigate. The status /
+ * range labels we assert on are locale-specific ("Bounced", "Custom
+ * range"), so a missed locale pin would produce confusing
+ * Arabic-vs-English diffs on failure.
+ *
+ * The dedicated owner that backs `OWNER_STORAGE` has
+ * `preferred_locale='ar'`, so the older `addInitScript("app.locale",
+ * "en")` pattern would be clobbered by `LocaleSync`'s server-preference
+ * reconciliation moments after first paint. The shared
+ * `gotoWithPinnedLocale` helper uses the URL override that survives
+ * both `LocaleProvider` initialization AND `LocaleSync`'s early-return
+ * guard — see that helper for the full rationale.
  */
 async function gotoEnglishOwnerShell(page: Page, route: string): Promise<void> {
-  await page.addInitScript(() => {
-    window.localStorage.setItem("app.locale", "en");
-    window.localStorage.setItem("app.theme", "light");
-  });
-  await page.goto(route, { waitUntil: "domcontentloaded" });
+  await gotoWithPinnedLocale(page, route);
 }
 
 async function readStorage(page: Page, key: string): Promise<string | null> {

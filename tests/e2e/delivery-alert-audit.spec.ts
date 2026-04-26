@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
+import { gotoWithPinnedLocale } from "./_helpers/pin-locale";
 
 /**
  * End-to-end coverage for the "Dismissed by" attribution column on the
@@ -130,24 +131,19 @@ async function seedAlert(): Promise<{ id: string }> {
 }
 
 async function gotoOwnerShell(page: Page, route: string): Promise<void> {
-  // Pin English via the `?lang=` URL override so the audit-table
-  // headings render in English and the "Removed user" fallback string
-  // is unambiguous if our assertion happens to fall back. Seeding
-  // `localStorage["app.locale"]` alone isn't enough: the signed-in
-  // owner's stored `preferredLocale` may be Arabic, and `LocaleSync`
-  // (in `client/src/components/layout/main-layout.tsx`) reads it off
-  // `/api/auth/user` once the auth query resolves and would call
-  // `setLocale()` with it, clobbering any localStorage-seeded value
-  // moments after first paint. The URL override is honoured by both
-  // `LocaleProvider`'s initializer AND `LocaleSync`'s early-return
-  // guard, so the locale stays English for the lifetime of the page.
-  // Theme is still safe to seed via localStorage because nothing
-  // reconciles it from the server.
-  await page.addInitScript(() => {
-    window.localStorage.setItem("app.theme", "light");
-  });
-  const sep = route.includes("?") ? "&" : "?";
-  await page.goto(`${route}${sep}lang=en`, { waitUntil: "domcontentloaded" });
+  // Pin locale (via the `?lang=en` URL override) + theme so the audit-
+  // table headings render in English and the "Removed user" fallback
+  // string (Arabic vs English) is unambiguous if our assertion happens
+  // to fall back.
+  //
+  // The dedicated owner that backs `OWNER_STORAGE` has
+  // `preferred_locale='ar'`, so the older `addInitScript("app.locale",
+  // "en")` pattern would be clobbered by `LocaleSync`'s server-
+  // preference reconciliation moments after first paint. The shared
+  // `gotoWithPinnedLocale` helper uses the URL override that survives
+  // both `LocaleProvider` initialization AND `LocaleSync`'s early-
+  // return guard — see that helper for the full rationale.
+  await gotoWithPinnedLocale(page, route);
 }
 
 test.describe("delivery-alert audit attribution @alerts", () => {
