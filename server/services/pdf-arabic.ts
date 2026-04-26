@@ -21,6 +21,15 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import bidiFactory from "bidi-js";
+import {
+  type Locale,
+  t,
+  dirFor,
+  pickName,
+  formatLocaleDate,
+  invoiceStatus,
+  paymentMethod,
+} from "../i18n/pdf-strings";
 
 const bidi = bidiFactory();
 
