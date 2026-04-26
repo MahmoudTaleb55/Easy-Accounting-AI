@@ -1012,6 +1012,26 @@ export const auditLog = pgTable(
       t.entityType,
       t.entityId,
     ),
+    // Date-aware sibling for the bounded `getAuditLog` (task #251). The
+    // `from` / `to` ISO date params on the audit-history endpoint push a
+    // `occurred_at >= ? AND occurred_at <= ?` predicate into the SQL on
+    // top of the (company_id, entity_type, entity_id) tuple. With only
+    // the 3-column composite above, the planner has to read every row
+    // matching the entity tuple and filter by `occurred_at` after the
+    // fact — fine for a handful of rows, painful for entities with
+    // thousands of audit rows. This 4-column variant lets the bounded
+    // case do a true index range scan, and because `occurred_at` is
+    // indexed DESC the unbounded `ORDER BY occurred_at DESC` is
+    // satisfied directly off the index without a sort step. The 3-column
+    // sibling is left in place so the planner still has the narrower
+    // index for the no-bounds path; either index can serve it and the
+    // observable cost should be unchanged.
+    companyEntityOccurredIdx: index("audit_log_company_entity_occurred_idx").on(
+      t.companyId,
+      t.entityType,
+      t.entityId,
+      t.occurredAt.desc(),
+    ),
   }),
 );
 

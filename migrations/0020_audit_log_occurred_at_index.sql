@@ -1,0 +1,48 @@
+-- Task #251 — date-aware index for the bounded `getAuditLog` lookup.
+--
+-- Background
+-- ----------
+-- The audit-history endpoint (`server/storage.ts::getAuditLog`) gained
+-- optional `from` / `to` ISO date params, which the period-preset dropdown
+-- in `HistoryTimeline` uses to push the period filter down into SQL:
+--
+--     WHERE company_id   = $1
+--       AND entity_type  = $2
+--       AND entity_id    = $3
+--       AND occurred_at >= $4   -- optional
+--       AND occurred_at <= $5   -- optional
+--     ORDER BY occurred_at DESC
+--
+-- The composite index installed by migration 0016
+-- (`audit_log_company_entity_idx (company_id, entity_type, entity_id)`)
+-- handles the equality predicates fine, but for entities with thousands
+-- of audit rows the planner still has to read every row matching the
+-- entity tuple before filtering by `occurred_at` — a Bitmap Heap Scan +
+-- Filter, not the Index Scan the period filter is supposed to enable.
+--
+-- This migration adds a sibling 4-column index that trails the entity
+-- tuple with `occurred_at DESC`. The DESC matches the query's ORDER BY
+-- so the unbounded read can also walk the index in order without a
+-- separate sort. The bounded read becomes a true index range scan over
+-- (company_id = $1, entity_type = $2, entity_id = $3, occurred_at
+-- BETWEEN $4 AND $5).
+--
+-- Why a sibling and not a replacement
+-- -----------------------------------
+-- The 3-column index from migration 0016 is the strict prefix of this
+-- one, so the planner can in principle use either for the no-bounds
+-- path. Leaving the narrower index in place keeps the no-bounds plan
+-- under control while we add the bounded fast path — the task's "default
+-- (no-bounds) lookup performance is unchanged" acceptance criterion. A
+-- future cleanup pass can drop the 3-column sibling once the 4-column
+-- variant is proven not to regress any planner choice in production.
+--
+-- Idempotency
+-- -----------
+-- `CREATE INDEX IF NOT EXISTS` is the same guard used by every other
+-- index DDL in this folder; re-running the migration (or running it
+-- after `drizzle-kit push` has already materialised the index from
+-- `shared/schema.ts`) is a no-op.
+
+CREATE INDEX IF NOT EXISTS "audit_log_company_entity_occurred_idx"
+  ON "audit_log" ("company_id", "entity_type", "entity_id", "occurred_at" DESC);
