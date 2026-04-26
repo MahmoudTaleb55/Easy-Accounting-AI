@@ -63,6 +63,11 @@ import { cn } from "@/lib/utils"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { PeriodChip } from "@/components/dashboard/period-chip"
 import { usePeriod } from "@/contexts/period-context"
+import {
+  computeLedgerRunningBalances,
+  isDebitNormalAccountType,
+  type LedgerAccountType,
+} from "@/pages/chart-of-accounts-ledger"
 
 /* ------------------------------------------------------------------ */
 /* Account ledger drawer types                                         */
@@ -1149,11 +1154,13 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
 
   // The running-balance column needs to know which side of the ledger this
   // account "lives" on. Mirrors the trial-balance endpoint in
-  // server/routes.ts (~line 480 / 606): asset/expense are debit-normal, the
-  // rest are credit-normal. Keeping the rule colocated with the only other
-  // place we sign a balance avoids the two ever drifting apart.
-  const isDebitNormal =
-    account?.type === "asset" || account?.type === "expense"
+  // server/routes.ts (~line 487): asset/expense are debit-normal, the
+  // rest are credit-normal. Both sides delegate to the same helper in
+  // chart-of-accounts-ledger.ts so the rule (and the dedicated unit test
+  // around it) can't silently drift between the drawer and the report.
+  const isDebitNormal = account
+    ? isDebitNormalAccountType(account.type as LedgerAccountType)
+    : false
 
   // Full history for the account, regardless of period. Two reasons to keep
   // it around:
@@ -1165,7 +1172,7 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
   //      be read off the postings immediately before period.start.
   const allPostings = useMemo<LedgerPosting[]>(() => {
     if (!account || !entries) return []
-    const rows: LedgerPosting[] = []
+    const raw: Array<Omit<LedgerPosting, "balance">> = []
     for (const je of entries) {
       let lineIndex = 0
       for (const l of je.lines) {
@@ -1179,7 +1186,7 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
           lineIndex++
           continue
         }
-        rows.push({
+        raw.push({
           jeId: je.id,
           reference: je.reference,
           entryDate: je.entryDate,
@@ -1188,36 +1195,16 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
           debit,
           credit,
           lineIndex,
-          balance: 0,
         })
         lineIndex++
       }
     }
-    // Compute running balance oldest-first so each row sees every prior
-    // posting accumulated against it. Tie-break by jeId then lineIndex so
-    // the order is deterministic when several entries share an entryDate.
-    rows.sort((a, b) =>
-      a.entryDate < b.entryDate ? -1 :
-      a.entryDate > b.entryDate ? 1 :
-      a.jeId !== b.jeId ? a.jeId - b.jeId :
-      a.lineIndex - b.lineIndex,
-    )
-    let running = 0
-    for (const r of rows) {
-      running += isDebitNormal ? r.debit - r.credit : r.credit - r.debit
-      r.balance = running
-    }
-    // Display newest postings first — matches how users scan a ledger most
-    // of the time. The running balance was already baked in above, so the
-    // resort doesn't recompute anything.
-    rows.sort((a, b) =>
-      a.entryDate < b.entryDate ? 1 :
-      a.entryDate > b.entryDate ? -1 :
-      a.jeId !== b.jeId ? b.jeId - a.jeId :
-      b.lineIndex - a.lineIndex,
-    )
-    return rows
-  }, [account, entries, isDebitNormal])
+    // Sign convention + oldest-first accumulation + newest-first display
+    // order all live in the helper — keep the page free of arithmetic so
+    // the trial-balance route stays the only other place that signs a
+    // running total.
+    return computeLedgerRunningBalances(raw, account.type as LedgerAccountType)
+  }, [account, entries])
 
   // Apply the global period filter. Compare on millisecond timestamps so a
   // posting on the very last day of the range (e.g. end-of-month) is included.
