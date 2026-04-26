@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useLocale, type Locale } from "@/contexts/locale-context";
+import { detectedLanguageLabel } from "@/lib/inbox-error-i18n";
 import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -590,6 +591,23 @@ export default function InboxPage() {
                             <span className="text-sm font-medium truncate">
                               {ext?.vendor || d.fileName}
                             </span>
+                            {/* Detected document language — task #345.
+                             * Rendered only when the extractor returned a
+                             * recognised language; legacy/pre-feature rows
+                             * silently render no badge. */}
+                            {(() => {
+                              const langLabel = detectedLanguageLabel(ext?.language, locale);
+                              if (!langLabel) return null;
+                              return (
+                                <span
+                                  className="ms-auto shrink-0 rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground"
+                                  data-testid={`badge-language-${d.id}`}
+                                  title={langLabel}
+                                >
+                                  {ext!.language}
+                                </span>
+                              );
+                            })()}
                           </div>
                           <div className="text-[11px] text-muted-foreground font-mono truncate">
                             {ext?.invoiceNumber ? `#${ext.invoiceNumber} · ` : ""}

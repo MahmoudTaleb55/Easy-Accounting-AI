@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isKnownInboxErrorCode,
   resolveInboxError,
+  detectedLanguageLabel,
 } from "../inbox-error-i18n";
 
 /**
@@ -13,6 +14,34 @@ import {
  * when the persisted `errorMessage` is free-form text from a generic
  * extraction failure.
  */
+describe("detectedLanguageLabel", () => {
+  it.each([
+    ["ar", "ar", "العربية"],
+    ["ar", "en", "Arabic"],
+    ["ar", "de", "Arabisch"],
+    ["ar", "fr", "Arabe"],
+    ["en", "en", "English"],
+    ["de", "de", "Deutsch"],
+    ["fr", "fr", "Français"],
+    ["mixed", "en", "Mixed"],
+    ["mixed", "ar", "مختلط"],
+  ] as const)("language=%s in locale=%s renders %s", (lang, locale, expected) => {
+    expect(detectedLanguageLabel(lang, locale)).toBe(expected);
+  });
+
+  it.each(["unsupported", "es", "zh", "ar-SA", "EN", ""])(
+    "returns null for non-conforming language %s (so the badge is hidden)",
+    (lang) => {
+      expect(detectedLanguageLabel(lang, "en")).toBeNull();
+    },
+  );
+
+  it("returns null for null/undefined", () => {
+    expect(detectedLanguageLabel(null, "en")).toBeNull();
+    expect(detectedLanguageLabel(undefined, "en")).toBeNull();
+  });
+});
+
 describe("isKnownInboxErrorCode", () => {
   it("recognises documented codes", () => {
     expect(isKnownInboxErrorCode("unsupported_language")).toBe(true);

@@ -80,6 +80,36 @@ export function isKnownInboxErrorCode(value: string): value is InboxErrorCode {
 }
 
 /**
+ * Detected document language values that the inbox can render as a badge.
+ * Mirrors `extractedDocumentSchema.language` in `shared/schema.ts` plus a
+ * permissive `unknown` fallback for legacy rows without a language field.
+ */
+export type DetectedLanguage = "ar" | "en" | "de" | "fr" | "mixed";
+
+const LANGUAGE_LABELS: Record<DetectedLanguage, Record<Locale, string>> = {
+  ar: { ar: "العربية", en: "Arabic", de: "Arabisch", fr: "Arabe" },
+  en: { ar: "الإنجليزية", en: "English", de: "Englisch", fr: "Anglais" },
+  de: { ar: "الألمانية", en: "German", de: "Deutsch", fr: "Allemand" },
+  fr: { ar: "الفرنسية", en: "French", de: "Französisch", fr: "Français" },
+  mixed: { ar: "مختلط", en: "Mixed", de: "Gemischt", fr: "Mixte" },
+};
+
+/**
+ * Localised human label for a detected document language. Returns `null`
+ * for missing / non-conforming inputs so callers can simply hide the
+ * badge for legacy rows that predate task #345.
+ */
+export function detectedLanguageLabel(
+  language: string | null | undefined,
+  locale: Locale,
+): string | null {
+  if (!language) return null;
+  if (!(language in LANGUAGE_LABELS)) return null;
+  const key = language as DetectedLanguage;
+  return LANGUAGE_LABELS[key][locale] ?? LANGUAGE_LABELS[key].en;
+}
+
+/**
  * Resolve the error block copy for a given persisted `errorMessage`
  * value and UI locale. Falls back to a generic localized message with
  * the raw server text shown verbatim underneath.

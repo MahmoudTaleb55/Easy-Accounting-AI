@@ -234,10 +234,20 @@ export async function extractDocument(
   // outside the schema enum) when the document isn't in one of the four
   // officially supported languages. Detect that BEFORE handing the
   // payload to Zod, so the user sees a clear "we don't speak this
-  // language" message instead of a generic schema-parse failure. See
-  // task #345.
-  if (typeof parsed === "object" && parsed && parsed.language === "unsupported") {
-    throw new DocumentExtractionError("unsupported_language");
+  // language" message instead of a generic schema-parse failure.
+  //
+  // Belt-and-braces: even when the model ignores the prompt and returns
+  // some other ISO code (`es`, `it`, `zh`, `tr`, …) we still treat the
+  // document as out-of-set rather than letting the call degrade to a
+  // generic schema-parse failure. The five accepted values come from
+  // `extractedDocumentSchema.language` — keep this list in sync if that
+  // enum is ever widened. See task #345.
+  const SUPPORTED_LANGUAGES = new Set(["ar", "en", "de", "fr", "mixed"]);
+  if (typeof parsed === "object" && parsed) {
+    const lang = (parsed as { language?: unknown }).language;
+    if (typeof lang === "string" && lang.length > 0 && !SUPPORTED_LANGUAGES.has(lang)) {
+      throw new DocumentExtractionError("unsupported_language");
+    }
   }
 
   return extractedDocumentSchema.parse(parsed);

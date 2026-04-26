@@ -23,6 +23,14 @@
  */
 
 const OPENCV_CDN_URL = "https://docs.opencv.org/4.10.0/opencv.js";
+// Subresource Integrity hash (SHA-384) for the pinned OpenCV.js build.
+// Computed from the upstream artefact at OPENCV_CDN_URL — recompute and
+// update this constant if (and only if) the pinned URL is ever changed.
+// This is the supply-chain guard: the browser refuses to execute the
+// downloaded script if the bytes don't hash to this exact value, so a
+// CDN compromise can't silently inject code into the camera pipeline.
+const OPENCV_CDN_SRI =
+  "sha384-VZ75HIsZdBZqbKCiCOX/HR/1GH5mxbz/2SNXc5FBjK9MsOagud59+jw4pBMpaMH7";
 
 type CvWindow = typeof window & {
   cv?: { onRuntimeInitialized?: () => void } & Record<string, unknown>;
@@ -56,6 +64,11 @@ function loadOpenCv(): Promise<unknown> {
     const script = document.createElement("script");
     script.src = OPENCV_CDN_URL;
     script.async = true;
+    // SRI requires CORS for cross-origin scripts. Together they let the
+    // browser fetch the bundle, hash it, and refuse to execute on any
+    // mismatch — even if the CDN is later compromised.
+    script.crossOrigin = "anonymous";
+    script.integrity = OPENCV_CDN_SRI;
     script.onerror = () => {
       // Reset the single-flight promise so a later retry (e.g. after the
       // user's network comes back) can re-attempt without permanently
