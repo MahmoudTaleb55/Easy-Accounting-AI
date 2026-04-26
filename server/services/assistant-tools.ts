@@ -605,7 +605,7 @@ function slugify(s: string): string {
 export async function executeTool(
   name: string,
   rawArgs: any,
-  ctx: { companyId: number; currency: string; actor?: string | null }
+  ctx: { companyId: number; currency: string; actor?: string | null; locale?: "ar" | "en" | "de" | "fr" }
 ): Promise<ToolExecutionResult> {
   // The assistant is just a channel — record the human who told it to act so
   // the History drawer shows "Sara" with an AI source badge instead of an
@@ -800,21 +800,26 @@ export async function executeTool(
         const entries = await storage.getJournalEntries(ctx.companyId);
         let buffer: Buffer; let filename: string; let mime: string;
         const stamp = new Date().toISOString().slice(0, 10);
+        // The chat surface threads the user's UI locale into ctx — fall back
+        // to Arabic for legacy callers that hadn't been updated yet. Only
+        // PDF generators are localized in this slice; Excel localization is
+        // tracked separately.
+        const reportLocale = ctx.locale ?? "ar";
 
         if (a.report === "trial_balance") {
           buffer = a.format === "excel"
             ? await generateTrialBalanceExcel(accounts, entries, ctx.currency)
-            : await generateTrialBalancePdf(accounts, entries, ctx.currency);
+            : await generateTrialBalancePdf(accounts, entries, ctx.currency, reportLocale);
           filename = `trial-balance-${stamp}.${a.format === "excel" ? "xlsx" : "pdf"}`;
         } else if (a.report === "profit_loss") {
           buffer = a.format === "excel"
             ? await generateProfitLossExcel(accounts, entries, ctx.currency)
-            : await generateProfitLossPdf(accounts, entries, ctx.currency);
+            : await generateProfitLossPdf(accounts, entries, ctx.currency, reportLocale);
           filename = `profit-loss-${stamp}.${a.format === "excel" ? "xlsx" : "pdf"}`;
         } else {
           buffer = a.format === "excel"
             ? await generateBalanceSheetExcel(accounts, entries, ctx.currency)
-            : await generateBalanceSheetPdf(accounts, entries, ctx.currency);
+            : await generateBalanceSheetPdf(accounts, entries, ctx.currency, reportLocale);
           filename = `balance-sheet-${stamp}.${a.format === "excel" ? "xlsx" : "pdf"}`;
         }
         mime = a.format === "excel"

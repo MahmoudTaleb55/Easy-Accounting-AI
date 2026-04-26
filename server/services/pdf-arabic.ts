@@ -35,9 +35,63 @@ export const ARABIC_FONT = {
 };
 
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/;
+// Anything that bidi-js considers "strong LTR" — Latin letters, digits in the
+// ASCII range, or the basic-multilingual-plane LTR scripts we actually see in
+// MENA invoices (mostly Latin product codes and Western digits).
+const LATIN_RE = /[A-Za-z0-9]/;
+
+/** Bidi formatting controls that customers' source data sometimes contains
+ *  ("RLE/PDF" pairs around legacy account names, etc.). They confuse both
+ *  the joining algorithm (treating them as letters) and bidi-js (forcing
+ *  weird embedding levels), so we strip them before shaping. */
+const BIDI_CONTROL_RE = /[\u200E\u200F\u061C\u202A-\u202E\u2066-\u2069]/g;
+
+export function stripBidiControls(s: string): string {
+  return typeof s === "string" ? s.replace(BIDI_CONTROL_RE, "") : s;
+}
 
 export function containsArabic(s: string): boolean {
   return typeof s === "string" && ARABIC_RE.test(s);
+}
+
+/** True when `s` is "Arabic-only" for shaping purposes — every codepoint is
+ *  either Arabic, an Arabic Presentation Form, a combining diacritic, a
+ *  space, or a punctuation neutral. This is the safe fast path: such
+ *  strings don't need bidi-js (whose neutral-handling has been observed to
+ *  collapse the visual position of the inter-word space on short cell
+ *  strings — that's the "النقدبالصندوق" bug). For these strings we just
+ *  reverse the reshaped character array, which is exactly what the
+ *  Unicode Bidirectional Algorithm produces for a pure-RTL paragraph. */
+function isPureArabic(s: string): boolean {
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!;
+    // Arabic-Indic digits ٠-٩ (U+0660..U+0669) and Eastern Arabic-Indic
+    // digits ۰-۹ (U+06F0..U+06F9) are LTR runs inside an RTL paragraph —
+    // the Unicode Bidirectional Algorithm keeps them in logical order.
+    // A naive `reverse()` would print "١٢٣" as "٣٢١", which is wrong, so
+    // we kick the string back to bidi-js.
+    if (cp >= 0x0660 && cp <= 0x0669) return false;
+    if (cp >= 0x06F0 && cp <= 0x06F9) return false;
+    // Arabic block + extended block + presentation forms + diacritics
+    // (now that the digit ranges above are excluded).
+    if (cp >= 0x0600 && cp <= 0x06FF) continue;
+    if (cp >= 0x0750 && cp <= 0x077F) continue;
+    if (cp >= 0xFB50 && cp <= 0xFDFF) continue;
+    if (cp >= 0xFE70 && cp <= 0xFEFF) continue;
+    // Plain ASCII space + the few neutrals that don't get mirrored or
+    // re-ordered by the bidi algorithm.
+    if (cp === 0x20 || cp === 0x09 || cp === 0xA0) continue;
+    if (cp === 0x060C || cp === 0x061B || cp === 0x061F) continue; // ، ؛ ؟
+    if (cp === 0x002E || cp === 0x002C || cp === 0x003A) continue; // . , :
+    if (cp === 0x002D || cp === 0x005F) continue;                  // - _
+    // Paired/mirrored bracket characters (`(` `)` `[` `]` `{` `}` `<` `>`)
+    // are mirrored AND swap positions when bidi runs over an RTL string —
+    // a literal reverse would print "(نص)" as ")صن(" which is doubly
+    // wrong (open/close swapped, glyph not mirrored). Fall through to
+    // bidi-js which knows the mirror table.
+    return false;
+  }
+  return true;
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -246,9 +300,38 @@ function toVisualOrder(s: string): string {
 /** Public entry point: convert a logical-order Arabic-or-mixed string into
  *  the form pdfkit needs to render it correctly. */
 export function prepareArabicForPdf(s: string): string {
-  if (!containsArabic(s)) return s;
-  const reshaped = reshape(s);
+  if (typeof s !== "string" || s.length === 0) return s;
+  // Source data sometimes carries embedded RLE/PDF or LRM/RLM marks (legacy
+  // chart-of-accounts imports do this). They must go before shaping so the
+  // joining algorithm doesn't see them as letters and the bidi pass doesn't
+  // anchor weird embedding levels around them.
+  const cleaned = stripBidiControls(s);
+  if (!containsArabic(cleaned)) return cleaned;
+  const reshaped = reshape(cleaned);
+  // Pure-Arabic strings get a simple character reverse — that's exactly the
+  // visual order the Unicode Bidirectional Algorithm produces for an all-RTL
+  // paragraph, and it sidesteps a bidi-js neutral-handling defect that drops
+  // the inter-word space on short cell strings (the "النقد بالصندوق" →
+  // "النقدبالصندوق" bug). For mixed Arabic+Latin/digit strings we still
+  // need the full bidi algorithm because the LTR runs need their own
+  // embedding levels.
+  if (isPureArabic(cleaned)) {
+    return Array.from(reshaped).reverse().join("");
+  }
   return toVisualOrder(reshaped);
+}
+
+/** pdfkit text() options that disable word-wrap. We pass these on every
+ *  call that draws a *pre-shaped* Arabic string: the shaping pipeline
+ *  already produced visual-order glyphs sized for the cell, and pdfkit's
+ *  internal word wrapper would otherwise re-tokenise the visual-order
+ *  output on whitespace and re-flow it as if it were logical-order LTR
+ *  text — that's what eats the inter-word space on cells whose content
+ *  is exactly the cell width. Callers that need real wrap (e.g. the
+ *  notes paragraph at the bottom of an invoice) have to pre-wrap the
+ *  *logical* text into lines and shape each line separately.  */
+export function arabicTextOptions<T extends Record<string, unknown>>(opts: T): T & { lineBreak: false } {
+  return { ...opts, lineBreak: false as const };
 }
 
 /** Register Amiri once on a freshly created PDFKit document. Safe to call
@@ -291,34 +374,6 @@ function fmtQty(v: string | number): string {
   });
 }
 
-// Status → bilingual badge. We render the Arabic + English side-by-side so
-// a non-Arabic reader still understands the invoice state at a glance.
-function statusLabel(status: string): string {
-  switch (status) {
-    case "draft":
-      return "مسودة Draft";
-    case "posted":
-      return "مُرحَّلة Posted";
-    case "cancelled":
-      return "ملغاة Cancelled";
-    default:
-      return status;
-  }
-}
-
-function paymentLabel(method: string): string {
-  switch (method) {
-    case "cash":
-      return "نقد Cash";
-    case "credit":
-      return "آجل Credit";
-    case "bank":
-      return "بنك Bank";
-    default:
-      return method;
-  }
-}
-
 // Draw a single cell — same shape/bidi pipeline as the report PDFs but kept
 // local to this file so the sales template stays self-contained and we don't
 // pull on `assistant-files.ts` (which would create a circular dependency).
@@ -331,9 +386,15 @@ function cell(
   align: "left" | "right" | "center",
   bold: boolean,
 ): void {
-  const text = containsArabic(value) ? prepareArabicForPdf(value) : value;
+  const isArabic = containsArabic(value);
+  const text = isArabic ? prepareArabicForPdf(value) : value;
   const font = fontFor(value, bold, bold ? "Helvetica-Bold" : "Helvetica");
-  doc.font(font).text(text, x, y, { width, align });
+  // For pre-shaped Arabic strings disable pdfkit's word-wrap to preserve
+  // the inter-word space — see `arabicTextOptions` in this module.
+  const opts = isArabic
+    ? arabicTextOptions({ width, align })
+    : { width, align };
+  doc.font(font).text(text, x, y, opts);
 }
 
 async function streamToBuffer(doc: any): Promise<Buffer> {
@@ -347,19 +408,24 @@ async function streamToBuffer(doc: any): Promise<Buffer> {
 }
 
 /**
- * Render a sales invoice to a PDF Buffer. The layout mirrors a standard
- * Saudi VAT invoice: workspace branding at top-right (RTL reading order),
- * customer block on the right, invoice meta on the left, then a bordered
- * line-items table, totals, and a notes/footer block.
+ * Render a sales invoice to a PDF Buffer in the requested locale.
  *
- * The implementation lives here (rather than in `assistant-files.ts`)
- * because every text string passes through Amiri shaping + bidi reordering
- * — the same pipeline this module already provides for report PDFs.
+ * The whole layout flips with the locale's natural reading direction:
+ *  - Arabic (RTL): customer block on the right, meta block on the left,
+ *    "where the eye starts" headers right-aligned. This matches the
+ *    Saudi VAT invoice convention.
+ *  - English / German / French (LTR): customer block on the left, meta
+ *    block on the right, headers left-aligned.
+ *
+ * Every label is pulled from `@/server/i18n/pdf-strings`; data values
+ * (customer name, product description, notes) prefer the locale-native
+ * field when available and fall back gracefully.
  */
 export async function renderSalesInvoicePdf(
   companyId: number,
   invoice: any, // SalesInvoiceWithLines — typed loosely to avoid pulling
                 // shared/schema into this server-side helper module.
+  locale: Locale = "ar",
 ): Promise<Buffer> {
   // Lazy-load to avoid pulling pdfkit / storage / drizzle into the import
   // graph for callers (e.g. unit tests) that don't actually render PDFs.
@@ -372,6 +438,7 @@ export async function renderSalesInvoicePdf(
   const settings = await storage.getSettings(companyId);
   const currency = settings.currencySymbol || settings.currencyCode || "";
   const orgName = settings.orgName || "";
+  const isRtl = dirFor(locale) === "rtl";
 
   // Resolve product names so the line table can show "Product · description"
   // even when the user only supplied a productId. Issue a single bulk query
@@ -405,7 +472,7 @@ export async function renderSalesInvoicePdf(
     size: "A4",
     margin: 40,
     info: {
-      Title: `Invoice ${invoice.number}`,
+      Title: `${t(locale, "invoice.title")} ${invoice.number}`,
       Producer: "Mohaseb",
     },
   });
@@ -415,10 +482,17 @@ export async function renderSalesInvoicePdf(
   const pageM = 40;
   const innerW = pageW - pageM * 2;
 
+  // Default cell alignment for "primary content" cells — labels, customer
+  // names, etc. Numeric columns always stay right-aligned regardless of
+  // direction (accountants read totals on the right in both LTR and RTL
+  // ledgers).
+  const startAlign: "left" | "right" = isRtl ? "right" : "left";
+  const endAlign:   "left" | "right" = isRtl ? "left"  : "right";
+
   // -------- Header band --------
   doc.rect(pageM, pageM, innerW, 56).fill("#065F46");
   doc.fillColor("#ffffff").fontSize(18);
-  cell(doc, "فاتورة مبيعات / Sales Invoice", pageM + 12, pageM + 10, innerW - 24, "right", true);
+  cell(doc, t(locale, "invoice.title"), pageM + 12, pageM + 10, innerW - 24, startAlign, true);
   doc.fontSize(10);
   cell(
     doc,
@@ -426,49 +500,67 @@ export async function renderSalesInvoicePdf(
     pageM + 12,
     pageM + 36,
     innerW - 24,
-    containsArabic(orgName) ? "right" : "left",
+    // Org name follows its content's natural direction: an Arabic name
+    // sits on the right whatever the active UI locale is.
+    containsArabic(orgName) ? "right" : startAlign,
     false,
   );
 
   doc.fillColor("#111").fontSize(10).font("Helvetica");
   let y = pageM + 78;
 
-  // -------- Meta block (left) + Customer block (right) --------
-  // We treat Arabic readers' eyes as starting on the right, so the customer
-  // block (the human entity) is on the right; the invoice meta (numbers) is
-  // on the left where Latin numerals naturally sit.
+  // -------- Customer block + Meta block --------
+  // For RTL: customer card on the RIGHT (where Arabic readers' eyes start),
+  //          meta card on the LEFT.
+  // For LTR: customer card on the LEFT (Western convention), meta on RIGHT.
   const colW = (innerW - 16) / 2;
   const leftX = pageM;
   const rightX = pageM + colW + 16;
+  const customerX = isRtl ? rightX : leftX;
+  const metaX     = isRtl ? leftX  : rightX;
 
-  // Customer card (right column)
-  doc.rect(rightX, y, colW, 96).strokeColor("#E5E7EB").lineWidth(1).stroke();
-  cell(doc, "بيانات العميل / Bill To", rightX + 10, y + 8, colW - 20, "right", true);
+  // Customer card
+  doc.rect(customerX, y, colW, 96).strokeColor("#E5E7EB").lineWidth(1).stroke();
+  cell(doc, t(locale, "invoice.billTo"), customerX + 10, y + 8, colW - 20, startAlign, true);
   const cust = invoice.customer;
-  const custName = cust ? cust.nameAr || cust.nameEn || `#${cust.id}` : "-";
-  cell(doc, custName, rightX + 10, y + 28, colW - 20, "right", true);
+  const custName = cust
+    ? pickName(locale, cust.nameAr, cust.nameEn) || `#${cust.id}`
+    : "-";
+  cell(doc, custName, customerX + 10, y + 28, colW - 20, startAlign, true);
   if (cust?.code) {
-    cell(doc, `كود: ${cust.code}`, rightX + 10, y + 46, colW - 20, "right", false);
+    cell(
+      doc,
+      `${t(locale, "invoice.customerCode")}: ${cust.code}`,
+      customerX + 10,
+      y + 46,
+      colW - 20,
+      startAlign,
+      false,
+    );
   }
 
-  // Meta card (left column)
-  doc.rect(leftX, y, colW, 96).strokeColor("#E5E7EB").lineWidth(1).stroke();
+  // Meta card
+  doc.rect(metaX, y, colW, 96).strokeColor("#E5E7EB").lineWidth(1).stroke();
   const metaRows: Array<[string, string]> = [
-    ["رقم الفاتورة / Invoice #", invoice.number],
-    ["التاريخ / Date", invoice.invoiceDate],
-    ["الاستحقاق / Due", invoice.dueDate || "-"],
-    ["الحالة / Status", statusLabel(invoice.status)],
-    ["طريقة الدفع / Payment", paymentLabel(invoice.paymentMethod)],
+    [t(locale, "invoice.number"),  invoice.number],
+    [t(locale, "invoice.date"),    formatLocaleDate(locale, invoice.invoiceDate)],
+    [t(locale, "invoice.due"),     invoice.dueDate ? formatLocaleDate(locale, invoice.dueDate) : "-"],
+    [t(locale, "invoice.status"),  invoiceStatus(locale, invoice.status)],
+    [t(locale, "invoice.payment"), paymentMethod(locale, invoice.paymentMethod)],
   ];
   metaRows.forEach(([label, value], i) => {
     const ry = y + 10 + i * 16;
-    cell(doc, label, leftX + 10, ry, colW * 0.55 - 10, "left", false);
-    cell(doc, String(value), leftX + colW * 0.55, ry, colW * 0.45 - 10, "right", true);
+    // Label sits on the "starting" side of the cell, value on the other,
+    // mirroring the typical "label: value" reading flow.
+    cell(doc, label, metaX + 10, ry, colW * 0.55 - 10, startAlign, false);
+    cell(doc, String(value), metaX + colW * 0.55, ry, colW * 0.45 - 10, endAlign, true);
   });
 
   y += 96 + 16;
 
   // -------- Lines table --------
+  // Column geometry stays the same (pdfkit is LTR-positioned), but each
+  // header/cell's text alignment follows the locale direction.
   const colXs = {
     idx: leftX,
     desc: leftX + 30,
@@ -490,11 +582,11 @@ export async function renderSalesInvoicePdf(
   doc.rect(leftX, y, innerW, 22).fill("#065F46");
   doc.fillColor("#ffffff").fontSize(9);
   cell(doc, "#", colXs.idx, y + 6, colWs.idx, "center", true);
-  cell(doc, "الوصف Description", colXs.desc, y + 6, colWs.desc, "right", true);
-  cell(doc, "الكمية Qty", colXs.qty, y + 6, colWs.qty, "right", true);
-  cell(doc, "السعر Price", colXs.price, y + 6, colWs.price, "right", true);
-  cell(doc, "ض.ق.م VAT", colXs.vat, y + 6, colWs.vat, "right", true);
-  cell(doc, "الإجمالي Total", colXs.total, y + 6, colWs.total, "right", true);
+  cell(doc, t(locale, "invoice.col.description"), colXs.desc,  y + 6, colWs.desc,  startAlign, true);
+  cell(doc, t(locale, "invoice.col.qty"),         colXs.qty,   y + 6, colWs.qty,   "right", true);
+  cell(doc, t(locale, "invoice.col.price"),       colXs.price, y + 6, colWs.price, "right", true);
+  cell(doc, t(locale, "invoice.col.vat"),         colXs.vat,   y + 6, colWs.vat,   "right", true);
+  cell(doc, t(locale, "invoice.col.total"),       colXs.total, y + 6, colWs.total, "right", true);
   y += 22;
 
   doc.fillColor("#111").fontSize(9);
@@ -507,36 +599,40 @@ export async function renderSalesInvoicePdf(
     if (alt) doc.rect(leftX, y, innerW, 22).fill("#F9FAFB");
     doc.fillColor("#111");
     const product = line.productId ? productById.get(line.productId) : null;
-    const productName = product?.nameAr || product?.nameEn || "";
+    const productName = product ? pickName(locale, product.nameAr, product.nameEn) : "";
     const desc =
       productName && line.description
         ? `${productName} — ${line.description}`
         : productName || line.description || "";
     cell(doc, String(i + 1), colXs.idx, y + 6, colWs.idx, "center", false);
-    cell(doc, desc, colXs.desc, y + 6, colWs.desc, "right", false);
-    cell(doc, fmtQty(line.quantity), colXs.qty, y + 6, colWs.qty, "right", false);
-    cell(doc, fmtMoney(line.unitPrice), colXs.price, y + 6, colWs.price, "right", false);
-    cell(doc, fmtMoney(line.lineVat), colXs.vat, y + 6, colWs.vat, "right", false);
-    cell(doc, fmtMoney(line.lineTotal), colXs.total, y + 6, colWs.total, "right", true);
+    cell(doc, desc,                                    colXs.desc,  y + 6, colWs.desc,  startAlign, false);
+    cell(doc, fmtQty(line.quantity),                   colXs.qty,   y + 6, colWs.qty,   "right",    false);
+    cell(doc, fmtMoney(line.unitPrice),                colXs.price, y + 6, colWs.price, "right",    false);
+    cell(doc, fmtMoney(line.lineVat),                  colXs.vat,   y + 6, colWs.vat,   "right",    false);
+    cell(doc, fmtMoney(line.lineTotal),                colXs.total, y + 6, colWs.total, "right",    true);
     y += 22;
     alt = !alt;
   });
 
-  // -------- Totals box (right-aligned) --------
+  // -------- Totals box --------
+  // Stays anchored to the side where numbers naturally settle: in RTL
+  // that's the LEFT side of the page (the visual end of an Arabic line);
+  // in LTR it's the RIGHT side. Inside the box, label is on the start
+  // side and the amount on the end side.
   y += 10;
   const totalsW = 260;
-  const totalsX = leftX + innerW - totalsW;
+  const totalsX = isRtl ? leftX : leftX + innerW - totalsW;
   const totalsRows: Array<[string, string, boolean]> = [
-    ["الإجمالي قبل الضريبة / Subtotal", `${fmtMoney(invoice.subtotal)} ${currency}`, false],
-    ["ضريبة القيمة المضافة / VAT", `${fmtMoney(invoice.vatAmount)} ${currency}`, false],
-    ["الإجمالي / Total", `${fmtMoney(invoice.totalAmount)} ${currency}`, true],
+    [t(locale, "invoice.subtotal"),  `${fmtMoney(invoice.subtotal)} ${currency}`,    false],
+    [t(locale, "invoice.vatAmount"), `${fmtMoney(invoice.vatAmount)} ${currency}`,   false],
+    [t(locale, "invoice.total"),     `${fmtMoney(invoice.totalAmount)} ${currency}`, true],
   ];
   totalsRows.forEach(([label, value, bold], i) => {
     const ry = y + i * 22;
     if (bold) doc.rect(totalsX, ry - 2, totalsW, 22).fill("#D1FAE5");
     doc.fillColor("#111").fontSize(bold ? 11 : 10);
-    cell(doc, label, totalsX + 8, ry + 4, totalsW * 0.55 - 8, "right", bold);
-    cell(doc, value, totalsX + totalsW * 0.55, ry + 4, totalsW * 0.45 - 8, "left", bold);
+    cell(doc, label, totalsX + 8,             ry + 4, totalsW * 0.55 - 8, startAlign, bold);
+    cell(doc, value, totalsX + totalsW * 0.55, ry + 4, totalsW * 0.45 - 8, endAlign,   bold);
   });
   y += totalsRows.length * 22 + 16;
 
@@ -547,20 +643,20 @@ export async function renderSalesInvoicePdf(
       y = pageM;
     }
     doc.fillColor("#111").fontSize(10);
-    cell(doc, "ملاحظات / Notes", leftX, y, innerW, "right", true);
+    cell(doc, t(locale, "invoice.notes"), leftX, y, innerW, startAlign, true);
     y += 16;
-    cell(doc, String(invoice.notes), leftX, y, innerW, "right", false);
+    cell(doc, String(invoice.notes), leftX, y, innerW, startAlign, false);
     y += 24;
   }
   if (invoice.journalEntryReference) {
     doc.fillColor("#6B7280").fontSize(9);
     cell(
       doc,
-      `قيد اليومية المرتبط / Linked JE: ${invoice.journalEntryReference}`,
+      `${t(locale, "invoice.linkedJE")}: ${invoice.journalEntryReference}`,
       leftX,
       y,
       innerW,
-      "right",
+      startAlign,
       false,
     );
   }

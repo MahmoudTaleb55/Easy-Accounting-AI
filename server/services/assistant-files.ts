@@ -1,5 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import PDFDocument from "pdfkit";
+import {
+  type Locale,
+  t,
+  dirFor,
+  accountType,
+  pickName,
+  formatLocaleDate,
+} from "../i18n/pdf-strings";
 import ExcelJS from "exceljs";
 import { randomUUID } from "crypto";
 import type { Account } from "@shared/schema";
@@ -328,16 +336,32 @@ export async function generateBalanceSheetExcel(
 
 const num = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function pdfBase(title: string, subtitle: string): PDFKit.PDFDocument {
+function pdfBase(title: string, subtitle: string, locale: Locale): PDFKit.PDFDocument {
   const doc = new PDFDocument({ size: "A4", margin: 48, info: { Title: title, Producer: "Mohaseb" } });
   // Register Amiri once so any later cell with Arabic can switch to it
   // without re-registering. Fonts are streamed from disk by pdfkit, so the
   // file IO cost is paid only when an Arabic glyph is actually drawn.
   registerArabicFonts(doc);
-  doc.fillColor("#065F46").fontSize(20).font("Helvetica-Bold").text(title, { align: "center" });
+  // Title is rendered through the same shaping pipeline so an Arabic title
+  // (the standard case) lays out correctly. We pick the title font based
+  // on whether the title contains Arabic — Helvetica-Bold for the three
+  // Latin-script locales, Amiri-Bold for ar.
+  const titleHasArabic = containsArabic(title);
+  const titleText = titleHasArabic ? prepareArabicForPdf(title) : title;
+  const titleFont = titleHasArabic ? "Amiri-Bold" : "Helvetica-Bold";
+  doc.fillColor("#065F46").fontSize(20).font(titleFont).text(titleText, { align: "center", lineBreak: !titleHasArabic });
+
   doc.moveDown(0.2);
-  doc.fillColor("#6B7280").fontSize(10).font("Helvetica").text(subtitle, { align: "center" });
+
+  const subHasArabic = containsArabic(subtitle);
+  const subText = subHasArabic ? prepareArabicForPdf(subtitle) : subtitle;
+  const subFont = subHasArabic ? "Amiri" : "Helvetica";
+  doc.fillColor("#6B7280").fontSize(10).font(subFont).text(subText, { align: "center", lineBreak: !subHasArabic });
+
   doc.moveDown(1);
+  // Stash the locale on the doc so downstream helpers can flip alignment
+  // defaults without each call site having to re-thread the parameter.
+  (doc as any).__locale = locale;
   return doc;
 }
 
@@ -358,15 +382,13 @@ function drawCell(
   const text = isArabic ? prepareArabicForPdf(value) : value;
   const font = fontFor(value, bold, bold ? "Helvetica-Bold" : "Helvetica");
   doc.font(font);
-  // For pure-Arabic cells we right-align by default — that's the natural
-  // RTL "where the eye starts" position. Mixed AR/EN strings keep the
-  // caller-supplied alignment so they slot in cleanly next to numeric
-  // columns.
-  const effectiveAlign: "left" | "right" =
-    isArabic && /^[\s\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF\d.,/-]+$/.test(value) && align === "left"
-      ? "right"
-      : align;
-  doc.text(text, x, y, { width, align: effectiveAlign });
+  // Pre-shaped Arabic cells get `lineBreak: false` to defeat pdfkit's
+  // word-wrap on the visual-order glyph stream — same fix as the sales
+  // invoice template uses, and the reason the inter-word space in
+  // "النقد بالصندوق" is no longer dropped.
+  const opts: any = { width, align };
+  if (isArabic) opts.lineBreak = false;
+  doc.text(text, x, y, opts);
 }
 
 function tableHeader(doc: PDFKit.PDFDocument, cols: { label: string; x: number; w: number; align?: "left"|"right" }[]) {
@@ -397,28 +419,62 @@ async function streamToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   });
 }
 
+/** Build the standardised "As of <date>  ·  Currency: <code>" subtitle in
+ *  the user's locale. Uses Intl.DateTimeFormat for native month names. */
+function reportSubtitle(locale: Locale, currency: string): string {
+  return `${t(locale, "report.asOf")} ${formatLocaleDate(locale, new Date())}  ·  ${t(locale, "report.currency")}: ${currency}`;
+}
+
+/** Render a heading line for a section ("Revenue", "Aktiva", etc.) using the
+ *  Arabic shaping pipeline when needed. We can't rely on `doc.text(...)` to
+ *  shape Arabic on its own — it would draw disconnected glyphs. */
+function sectionHeading(doc: PDFKit.PDFDocument, label: string, color: string) {
+  const isArabic = containsArabic(label);
+  const text = isArabic ? prepareArabicForPdf(label) : label;
+  const font = isArabic ? "Amiri-Bold" : "Helvetica-Bold";
+  doc.fillColor(color).font(font).fontSize(12).text(text, { lineBreak: !isArabic });
+  doc.moveDown(0.4);
+}
+
+/** Render a footer banner (e.g. NET INCOME / Balanced ✓) with the same
+ *  shaping awareness as `sectionHeading`. */
+function footerBanner(
+  doc: PDFKit.PDFDocument, text: string, x: number, width: number, align: "left"|"right"|"center", fontSize = 11,
+) {
+  const isArabic = containsArabic(text);
+  const shaped = isArabic ? prepareArabicForPdf(text) : text;
+  const font = isArabic ? "Amiri-Bold" : "Helvetica-Bold";
+  doc.fillColor("#111").font(font).fontSize(fontSize);
+  const opts: any = { width, align };
+  if (isArabic) opts.lineBreak = false;
+  doc.text(shaped, x, doc.y, opts);
+}
+
 export async function generateTrialBalancePdf(
-  accounts: Account[], entries: JournalEntryWithLines[], currency = "USD"
+  accounts: Account[], entries: JournalEntryWithLines[], currency = "USD",
+  locale: Locale = "ar",
 ): Promise<Buffer> {
   const tb = buildTrialBalance(accounts, entries);
-  const doc = pdfBase("Trial Balance", `As of ${new Date().toLocaleDateString("en-US")}  ·  Currency: ${currency}`);
+  const doc = pdfBase(t(locale, "report.tb.title"), reportSubtitle(locale, currency), locale);
+  const isRtl = dirFor(locale) === "rtl";
+  const startAlign: "left"|"right" = isRtl ? "right" : "left";
 
   const cols = [
-    { label: "Code",            x: 56,  w: 50 },
-    { label: "Account / الحساب", x: 110, w: 170 },
-    { label: "Type",            x: 285, w: 70 },
-    { label: "Debit",           x: 360, w: 85, align: "right" as const },
-    { label: "Credit",          x: 450, w: 95, align: "right" as const },
+    { label: t(locale, "report.code"),    x: 56,  w: 50,  align: startAlign },
+    { label: t(locale, "report.account"), x: 110, w: 170, align: startAlign },
+    { label: t(locale, "report.type"),    x: 285, w: 70,  align: startAlign },
+    { label: t(locale, "report.debit"),   x: 360, w: 85,  align: "right" as const },
+    { label: t(locale, "report.credit"),  x: 450, w: 95,  align: "right" as const },
   ];
   tableHeader(doc, cols);
   let alt = false;
   for (const r of tb.rows) {
     tableRow(doc, [
-      { value: r.code,                 x: 56,  w: 50 },
-      { value: r.nameAr.slice(0, 36),  x: 110, w: 170 },
-      { value: r.type,                 x: 285, w: 70 },
-      { value: num(r.debit),           x: 360, w: 85, align: "right" },
-      { value: num(r.credit),          x: 450, w: 95, align: "right" },
+      { value: r.code,                                                    x: 56,  w: 50,  align: startAlign },
+      { value: pickName(locale, r.nameAr, r.nameEn).slice(0, 36),         x: 110, w: 170, align: startAlign },
+      { value: accountType(locale, r.type),                               x: 285, w: 70,  align: startAlign },
+      { value: num(r.debit),                                              x: 360, w: 85,  align: "right" },
+      { value: num(r.credit),                                             x: 450, w: 95,  align: "right" },
     ], { bg: alt ? "#F9FAFB" : undefined });
     alt = !alt;
   }
@@ -426,97 +482,102 @@ export async function generateTrialBalancePdf(
   doc.strokeColor("#065F46").lineWidth(1).moveTo(48, doc.y).lineTo(doc.page.width - 48, doc.y).stroke();
   doc.moveDown(0.3);
   tableRow(doc, [
-    { value: "TOTAL",                 x: 56,  w: 304 },
-    { value: num(tb.totalDebit),       x: 360, w: 85, align: "right" },
-    { value: num(tb.totalCredit),      x: 450, w: 95, align: "right" },
+    { value: t(locale, "report.total"),  x: 56,  w: 304, align: startAlign },
+    { value: num(tb.totalDebit),         x: 360, w: 85,  align: "right" },
+    { value: num(tb.totalCredit),        x: 450, w: 95,  align: "right" },
   ], { bold: true });
 
   return streamToBuffer(doc);
 }
 
 export async function generateProfitLossPdf(
-  accounts: Account[], entries: JournalEntryWithLines[], currency = "USD"
+  accounts: Account[], entries: JournalEntryWithLines[], currency = "USD",
+  locale: Locale = "ar",
 ): Promise<Buffer> {
   const pl = buildProfitLoss(accounts, entries);
-  const doc = pdfBase("Profit & Loss Statement", `As of ${new Date().toLocaleDateString("en-US")}  ·  Currency: ${currency}`);
+  const doc = pdfBase(t(locale, "report.pl.title"), reportSubtitle(locale, currency), locale);
+  const isRtl = dirFor(locale) === "rtl";
+  const startAlign: "left"|"right" = isRtl ? "right" : "left";
 
   const section = (title: string, items: Row[], total: number, totalLabel: string, color: string) => {
-    doc.fillColor(color).font("Helvetica-Bold").fontSize(12).text(title);
-    doc.moveDown(0.4);
+    sectionHeading(doc, title, color);
     doc.fillColor("#111").font("Helvetica").fontSize(10);
     for (const r of items) {
       tableRow(doc, [
-        { value: r.code,           x: 56,  w: 70 },
-        { value: r.nameAr.slice(0, 40), x: 130, w: 240 },
-        { value: num(r.balance),   x: 380, w: 130, align: "right" },
+        { value: r.code,                                                  x: 56,  w: 70,  align: startAlign },
+        { value: pickName(locale, r.nameAr, r.nameEn).slice(0, 40),       x: 130, w: 240, align: startAlign },
+        { value: num(r.balance),                                          x: 380, w: 130, align: "right" },
       ]);
     }
     doc.strokeColor(color).lineWidth(0.8).moveTo(48, doc.y).lineTo(doc.page.width - 48, doc.y).stroke();
     doc.moveDown(0.2);
     tableRow(doc, [
-      { value: totalLabel,  x: 56,  w: 314 },
-      { value: num(total),  x: 380, w: 130, align: "right" },
-    ], { bold: true });
-    doc.moveDown(0.6);
-  };
-
-  section("Revenue",  pl.revenue,  pl.totalRevenue,  "Total Revenue",  "#065F46");
-  section("Expenses", pl.expenses, pl.totalExpenses, "Total Expenses", "#991B1B");
-
-  doc.moveDown(0.4);
-  doc.rect(48, doc.y - 4, doc.page.width - 96, 28).fill(pl.netIncome >= 0 ? "#D1FAE5" : "#FEE2E2");
-  doc.fillColor("#111").font("Helvetica-Bold").fontSize(13);
-  doc.text(`NET INCOME: ${num(pl.netIncome)} ${currency}`, 56, doc.y, { width: doc.page.width - 112, align: "right" });
-
-  return streamToBuffer(doc);
-}
-
-export async function generateBalanceSheetPdf(
-  accounts: Account[], entries: JournalEntryWithLines[], currency = "USD"
-): Promise<Buffer> {
-  const bs = buildBalanceSheet(accounts, entries);
-  const doc = pdfBase("Balance Sheet", `As of ${new Date().toLocaleDateString("en-US")}  ·  Currency: ${currency}`);
-
-  const section = (title: string, items: Row[], total: number, totalLabel: string, color: string, includeNetIncome = false) => {
-    doc.fillColor(color).font("Helvetica-Bold").fontSize(12).text(title);
-    doc.moveDown(0.4);
-    for (const r of items) {
-      tableRow(doc, [
-        { value: r.code,            x: 56,  w: 70 },
-        { value: r.nameAr.slice(0, 40), x: 130, w: 240 },
-        { value: num(r.balance),    x: 380, w: 130, align: "right" },
-      ]);
-    }
-    if (includeNetIncome) {
-      tableRow(doc, [
-        { value: "—",                 x: 56,  w: 70 },
-        { value: "Net Income (period)", x: 130, w: 240 },
-        { value: num(bs.netIncome),    x: 380, w: 130, align: "right" },
-      ]);
-    }
-    doc.strokeColor(color).lineWidth(0.8).moveTo(48, doc.y).lineTo(doc.page.width - 48, doc.y).stroke();
-    doc.moveDown(0.2);
-    tableRow(doc, [
-      { value: totalLabel, x: 56,  w: 314 },
+      { value: totalLabel, x: 56,  w: 314, align: startAlign },
       { value: num(total), x: 380, w: 130, align: "right" },
     ], { bold: true });
     doc.moveDown(0.6);
   };
 
-  section("Assets",      bs.assets,      bs.totalAssets,      "Total Assets",      "#065F46");
-  section("Liabilities", bs.liabilities, bs.totalLiabilities, "Total Liabilities", "#991B1B");
-  section("Equity",      bs.equity,      bs.totalEquity,      "Total Equity",      "#1E40AF", true);
+  section(t(locale, "report.pl.revenue"),  pl.revenue,  pl.totalRevenue,  t(locale, "report.pl.totalRevenue"),  "#065F46");
+  section(t(locale, "report.pl.expenses"), pl.expenses, pl.totalExpenses, t(locale, "report.pl.totalExpenses"), "#991B1B");
+
+  doc.moveDown(0.4);
+  doc.rect(48, doc.y - 4, doc.page.width - 96, 28).fill(pl.netIncome >= 0 ? "#D1FAE5" : "#FEE2E2");
+  footerBanner(
+    doc,
+    `${t(locale, "report.pl.netIncome")}: ${num(pl.netIncome)} ${currency}`,
+    56, doc.page.width - 112,
+    isRtl ? "left" : "right", 13,
+  );
+
+  return streamToBuffer(doc);
+}
+
+export async function generateBalanceSheetPdf(
+  accounts: Account[], entries: JournalEntryWithLines[], currency = "USD",
+  locale: Locale = "ar",
+): Promise<Buffer> {
+  const bs = buildBalanceSheet(accounts, entries);
+  const doc = pdfBase(t(locale, "report.bs.title"), reportSubtitle(locale, currency), locale);
+  const isRtl = dirFor(locale) === "rtl";
+  const startAlign: "left"|"right" = isRtl ? "right" : "left";
+
+  const section = (title: string, items: Row[], total: number, totalLabel: string, color: string, includeNetIncome = false) => {
+    sectionHeading(doc, title, color);
+    for (const r of items) {
+      tableRow(doc, [
+        { value: r.code,                                                  x: 56,  w: 70,  align: startAlign },
+        { value: pickName(locale, r.nameAr, r.nameEn).slice(0, 40),       x: 130, w: 240, align: startAlign },
+        { value: num(r.balance),                                          x: 380, w: 130, align: "right" },
+      ]);
+    }
+    if (includeNetIncome) {
+      tableRow(doc, [
+        { value: "—",                                  x: 56,  w: 70,  align: startAlign },
+        { value: t(locale, "report.bs.netIncomePeriod"), x: 130, w: 240, align: startAlign },
+        { value: num(bs.netIncome),                    x: 380, w: 130, align: "right" },
+      ]);
+    }
+    doc.strokeColor(color).lineWidth(0.8).moveTo(48, doc.y).lineTo(doc.page.width - 48, doc.y).stroke();
+    doc.moveDown(0.2);
+    tableRow(doc, [
+      { value: totalLabel, x: 56,  w: 314, align: startAlign },
+      { value: num(total), x: 380, w: 130, align: "right" },
+    ], { bold: true });
+    doc.moveDown(0.6);
+  };
+
+  section(t(locale, "report.bs.assets"),      bs.assets,      bs.totalAssets,      t(locale, "report.bs.totalAssets"),  "#065F46");
+  section(t(locale, "report.bs.liabilities"), bs.liabilities, bs.totalLiabilities, t(locale, "report.bs.totalLiab"),    "#991B1B");
+  section(t(locale, "report.bs.equity"),      bs.equity,      bs.totalEquity,      t(locale, "report.bs.totalEquity"),  "#1E40AF", true);
 
   doc.moveDown(0.4);
   const balanced = Math.abs(bs.totalAssets - (bs.totalLiabilities + bs.totalEquity)) < 0.01;
   doc.rect(48, doc.y - 4, doc.page.width - 96, 28).fill(balanced ? "#D1FAE5" : "#FEE2E2");
-  doc.fillColor("#111").font("Helvetica-Bold").fontSize(11);
-  doc.text(
-    balanced
-      ? `Balanced ✓   Assets ${num(bs.totalAssets)} = Liabilities + Equity ${num(bs.totalLiabilities + bs.totalEquity)}`
-      : `Imbalance ✗  Diff ${num(bs.totalAssets - (bs.totalLiabilities + bs.totalEquity))}`,
-    56, doc.y, { width: doc.page.width - 112, align: "center" }
-  );
+  const banner = balanced
+    ? `${t(locale, "report.bs.balanced")} ✓   ${t(locale, "report.bs.totalAssets")} ${num(bs.totalAssets)} = ${t(locale, "report.bs.totalLiab")} + ${t(locale, "report.bs.totalEquity")} ${num(bs.totalLiabilities + bs.totalEquity)}`
+    : `${t(locale, "report.bs.imbalance")} ✗  ${t(locale, "report.bs.diff")} ${num(bs.totalAssets - (bs.totalLiabilities + bs.totalEquity))}`;
+  footerBanner(doc, banner, 56, doc.page.width - 112, "center", 11);
 
   return streamToBuffer(doc);
 }

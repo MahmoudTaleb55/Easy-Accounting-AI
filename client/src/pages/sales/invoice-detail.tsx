@@ -105,7 +105,10 @@ export default function SalesInvoiceDetailPage() {
 
   const downloadPdf = async () => {
     try {
-      const res = await fetch(`/api/sales/invoices/${invoiceId}/pdf`, {
+      // Forward the active UI locale so the server renders the PDF in the
+      // same language the user is currently viewing the app in. Default
+      // (no `?lang=`) is Arabic on the server side.
+      const res = await fetch(`/api/sales/invoices/${invoiceId}/pdf?lang=${encodeURIComponent(locale)}`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error(await res.text());

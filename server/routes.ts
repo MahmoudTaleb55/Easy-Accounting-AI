@@ -1362,15 +1362,17 @@ export async function registerRoutes(
       }
     });
 
-    // PDF route — implementation lands in T5 (`pdf-arabic.ts`). For now
-    // the route is wired so the API contract (and the chat tool that
-    // returns a download link) doesn't 404.
+    // PDF route — renders a sales invoice in whatever locale the caller asks
+    // for via `?lang=ar|en|de|fr`. The frontend reads the active locale from
+    // `useLocale()` and tacks it on; if absent we fall back to Arabic.
     app.get("/api/sales/invoices/:id/pdf", async (req, res) => {
       try {
         const inv = await storage.getSalesInvoice(cid(req), Number(req.params.id));
         if (!inv) return res.status(404).json({ message: "الفاتورة غير موجودة" });
         const { renderSalesInvoicePdf } = await import("./services/pdf-arabic");
-        const buf = await renderSalesInvoicePdf(cid(req), inv);
+        const { parseLangParam } = await import("./lib/locale");
+        const locale = parseLangParam(req);
+        const buf = await renderSalesInvoicePdf(cid(req), inv, locale);
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader(
           "Content-Disposition",
@@ -1709,6 +1711,10 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
             companyId,
             currency,
             actor: actorName(req),
+            // Forward the user's UI locale so locale-aware tools (currently
+            // `generate_report` for PDF output) render in the same language
+            // the rest of the app is showing.
+            locale: uiLocale,
           });
           if (result.artifact) artifacts.push(result.artifact);
           toolsCalled.add(tc.function.name);
