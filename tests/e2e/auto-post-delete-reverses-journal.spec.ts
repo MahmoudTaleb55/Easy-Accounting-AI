@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 import pg from "pg";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 
 /**
  * Regression net for task 111 — apply the JE-orphan guard from payroll-run
@@ -1294,6 +1296,323 @@ test.describe("DELETE legacy fixed-asset events refuses with 409 @api", () => {
       expect(await rowExists(client, "disposals", eventId, user.companyId)).toBe(true);
       expect(await journalEntryExists(user, seeded.journalEntryId)).toBe(true);
       expect(await snapshotAsset(client, assetId)).toEqual(before);
+    } finally {
+      await client.end();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task #257 — best-effort migration backfill so legacy NULL-snapshot rows
+// can flow through the standard delete path again.
+//
+// Each scenario below mirrors the legacy "row inserted before migration 0015"
+// shape (NULL `asset_balance_delta`), then runs the backfill SQL inline (the
+// same statements migration 0021 ships, executed against the live test DB so
+// no re-deploy is required), then issues DELETE through the public API.
+//
+// Documented post-rollback states (see the comment block at the top of
+// `migrations/0021_backfill_asset_event_balance_delta.sql` for the
+// reasoning):
+//
+//   - impairment: `accumImpairment` rolls back to its pre-event value;
+//     per-component `accumImpairment` is left untouched (the per-component
+//     split is not recoverable from the row).
+//   - revaluation: `revalSurplus` and `accumRevalLoss` roll back; cost,
+//     accumDepreciation, and accumImpairment are left untouched (those
+//     deltas were derived from the pre-event asset state and aren't on the
+//     row).
+//   - disposal: status flips back from `disposed` to `active` and the
+//     transferred `revalSurplus` is refunded; cost / depreciation / etc are
+//     not touched.
+// ---------------------------------------------------------------------------
+
+const BACKFILL_MIGRATION_PATH = path.resolve(
+  process.cwd(),
+  "migrations",
+  "0021_backfill_asset_event_balance_delta.sql",
+);
+
+async function runBackfillMigration(client: pg.Client): Promise<void> {
+  const sql = await fs.readFile(BACKFILL_MIGRATION_PATH, "utf8");
+  // The runner splits on `--> statement-breakpoint`; for a direct in-test
+  // exec we just need each chunk to run individually so a syntax issue in
+  // one doesn't mask another. Postgres tolerates the in-chunk SQL comments
+  // so no extra stripping is needed.
+  const statements = sql
+    .split(/-->\s*statement-breakpoint/g)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 0);
+  for (const stmt of statements) {
+    await client.query(stmt);
+  }
+}
+
+test.describe("DELETE legacy fixed-asset events after backfill (task #257) @api", () => {
+  test("impairment_events: backfilled NULL snapshot now allows delete to roll asset.accumImpairment back", async () => {
+    const user = await bootstrapUser("imp-bf");
+    const seeded = await seedAccountsAndJournalEntry(user, `imp-bf-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `imp-bf-${user.companyId}`);
+      const before = await snapshotAsset(client, assetId);
+
+      // Simulate a legacy 700-loss impairment that wrote the asset balance
+      // but never recorded a snapshot (pre-migration-0015 shape).
+      const lossAmount = 700;
+      await client.query(
+        `UPDATE fixed_assets SET accum_impairment = $1 WHERE id = $2`,
+        [String(Number(before.accumImpairment) + lossAmount), assetId],
+      );
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO impairment_events
+           (company_id, asset_id, event_date, recoverable_amount,
+            loss_amount, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-06-30', '5000.00', $3, $4, NULL)
+         RETURNING id`,
+        [user.companyId, assetId, String(lossAmount), seeded.journalEntryId],
+      );
+      const eventId = ins.rows[0].id;
+
+      // Sanity: the legacy guard refuses the delete BEFORE the backfill.
+      const refused = await call(
+        "DELETE",
+        `/api/impairment-events/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(refused.status, `pre-backfill expected 409, got ${refused.text}`).toBe(409);
+
+      // Run the backfill and confirm the snapshot now matches the loss amount.
+      await runBackfillMigration(client);
+      const filled = await client.query<{ asset_balance_delta: unknown }>(
+        `SELECT asset_balance_delta FROM impairment_events WHERE id = $1`,
+        [eventId],
+      );
+      expect(filled.rows[0].asset_balance_delta).toEqual({
+        asset: { accumImpairment: lossAmount },
+        components: [],
+      });
+
+      // Delete now succeeds and the asset row rolls back to its pre-event state.
+      const del = await call(
+        "DELETE",
+        `/api/impairment-events/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `post-backfill delete: ${del.text}`).toBe(204);
+
+      expect(await rowExists(client, "impairment_events", eventId, user.companyId)).toBe(false);
+      expect(await journalEntryExists(user, seeded.journalEntryId)).toBe(false);
+      expect(await snapshotAsset(client, assetId)).toEqual(before);
+    } finally {
+      await client.end();
+    }
+  });
+
+  test("revaluation_events: backfilled NULL snapshot rolls revalSurplus + accumRevalLoss back", async () => {
+    const user = await bootstrapUser("rev-bf");
+    const seeded = await seedAccountsAndJournalEntry(user, `rev-bf-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `rev-bf-${user.companyId}`);
+      // Seed an existing accumRevalLoss so we can prove the recovered
+      // delta restores the prior value (not just zero).
+      await client.query(
+        `UPDATE fixed_assets
+            SET reval_surplus = '100.00',
+                accum_reval_loss = '50.00'
+          WHERE id = $1`,
+        [assetId],
+      );
+      const before = await snapshotAsset(client, assetId);
+
+      // Simulate a downward revaluation that pushed `pl_impact = -200` into
+      // accum_reval_loss and left `surplus_delta = 0`. The on-row state
+      // post-event reflects that.
+      const surplusDelta = 0;
+      const plImpact = -200;
+      await client.query(
+        `UPDATE fixed_assets
+            SET reval_surplus = $1,
+                accum_reval_loss = $2
+          WHERE id = $3`,
+        [
+          String(Number(before.revalSurplus) + surplusDelta),
+          String(Number(before.accumRevalLoss) + Math.max(0, -plImpact) - Math.max(0, plImpact)),
+          assetId,
+        ],
+      );
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO revaluation_events
+           (company_id, asset_id, event_date, fair_value, method,
+            surplus_delta, pl_impact, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-12-31', '9000.00', 'elimination',
+                 $3, $4, $5, NULL)
+         RETURNING id`,
+        [
+          user.companyId,
+          assetId,
+          String(surplusDelta),
+          String(plImpact),
+          seeded.journalEntryId,
+        ],
+      );
+      const eventId = ins.rows[0].id;
+
+      // Pre-backfill: refused.
+      const refused = await call(
+        "DELETE",
+        `/api/revaluation-events/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(refused.status, `pre-backfill expected 409, got ${refused.text}`).toBe(409);
+
+      await runBackfillMigration(client);
+      const filled = await client.query<{ asset_balance_delta: unknown }>(
+        `SELECT asset_balance_delta FROM revaluation_events WHERE id = $1`,
+        [eventId],
+      );
+      expect(filled.rows[0].asset_balance_delta).toEqual({
+        asset: { revalSurplus: surplusDelta, accumRevalLoss: 200 },
+      });
+
+      const del = await call(
+        "DELETE",
+        `/api/revaluation-events/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `post-backfill delete: ${del.text}`).toBe(204);
+      expect(await rowExists(client, "revaluation_events", eventId, user.companyId)).toBe(false);
+      expect(await journalEntryExists(user, seeded.journalEntryId)).toBe(false);
+
+      // Documented post-rollback state: revalSurplus + accumRevalLoss are
+      // back to their pre-event values; cost / accumDep / accumImp are
+      // intentionally untouched (no snapshot for them — backfill omits the
+      // keys, rollback skips them).
+      const after = await snapshotAsset(client, assetId);
+      expect(after.revalSurplus).toBe(before.revalSurplus);
+      expect(after.accumRevalLoss).toBe(before.accumRevalLoss);
+      expect(after.cost).toBe(before.cost);
+      expect(after.accumDepreciation).toBe(before.accumDepreciation);
+      expect(after.accumImpairment).toBe(before.accumImpairment);
+    } finally {
+      await client.end();
+    }
+  });
+
+  test("disposals: backfilled NULL snapshot brings asset back from 'disposed' and refunds the surplus", async () => {
+    const user = await bootstrapUser("dis-bf");
+    const seeded = await seedAccountsAndJournalEntry(user, `dis-bf-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `dis-bf-${user.companyId}`);
+      await client.query(
+        `UPDATE fixed_assets SET reval_surplus = '900.00' WHERE id = $1`,
+        [assetId],
+      );
+      const before = await snapshotAsset(client, assetId);
+      expect(before.status).toBe("active");
+
+      const surplusTransferred = 900;
+      await client.query(
+        `UPDATE fixed_assets
+            SET status = 'disposed',
+                reval_surplus = $1
+          WHERE id = $2`,
+        [String(Number(before.revalSurplus) - surplusTransferred), assetId],
+      );
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO disposals
+           (company_id, asset_id, event_date, proceeds, method,
+            gain_loss, surplus_transferred, journal_entry_id,
+            asset_balance_delta)
+         VALUES ($1, $2, '2099-12-31', '8000.00', 'sale',
+                 '-2000.00', $3, $4, NULL)
+         RETURNING id`,
+        [
+          user.companyId,
+          assetId,
+          String(surplusTransferred),
+          seeded.journalEntryId,
+        ],
+      );
+      const eventId = ins.rows[0].id;
+
+      const refused = await call(
+        "DELETE",
+        `/api/disposals/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(refused.status, `pre-backfill expected 409, got ${refused.text}`).toBe(409);
+
+      await runBackfillMigration(client);
+      const filled = await client.query<{ asset_balance_delta: unknown }>(
+        `SELECT asset_balance_delta FROM disposals WHERE id = $1`,
+        [eventId],
+      );
+      expect(filled.rows[0].asset_balance_delta).toEqual({
+        asset: {
+          revalSurplus: -surplusTransferred,
+          statusBefore: "active",
+          statusAfter: "disposed",
+        },
+      });
+
+      const del = await call(
+        "DELETE",
+        `/api/disposals/${eventId}`,
+        user.jar,
+        { headers: user.headers },
+      );
+      expect(del.status, `post-backfill delete: ${del.text}`).toBe(204);
+
+      const after = await snapshotAsset(client, assetId);
+      expect(after).toEqual(before);
+    } finally {
+      await client.end();
+    }
+  });
+
+  test("backfill is idempotent: a second pass does not overwrite already-populated snapshots", async () => {
+    // Defence-in-depth: rows posted AFTER migration 0015 already carry a
+    // snapshot, and re-running the backfill must not clobber them. The
+    // `asset_balance_delta IS NULL` gate is what makes the migration safe to
+    // re-apply on every boot.
+    const user = await bootstrapUser("imp-idem");
+    const seeded = await seedAccountsAndJournalEntry(user, `imp-idem-${user.companyId}`);
+    const client = await pgConnect();
+    try {
+      const assetId = await seedFixedAsset(client, user, `imp-idem-${user.companyId}`);
+      const populated = JSON.stringify({
+        asset: { accumImpairment: 123 },
+        components: [{ id: 9999, accumImpairment: 7 }],
+      });
+      const ins = await client.query<{ id: number }>(
+        `INSERT INTO impairment_events
+           (company_id, asset_id, event_date, recoverable_amount,
+            loss_amount, journal_entry_id, asset_balance_delta)
+         VALUES ($1, $2, '2099-06-30', '5000.00', '500.00', $3, $4)
+         RETURNING id`,
+        [user.companyId, assetId, seeded.journalEntryId, populated],
+      );
+      const eventId = ins.rows[0].id;
+
+      await runBackfillMigration(client);
+      await runBackfillMigration(client);
+
+      const after = await client.query<{ asset_balance_delta: unknown }>(
+        `SELECT asset_balance_delta FROM impairment_events WHERE id = $1`,
+        [eventId],
+      );
+      expect(after.rows[0].asset_balance_delta).toEqual({
+        asset: { accumImpairment: 123 },
+        components: [{ id: 9999, accumImpairment: 7 }],
+      });
     } finally {
       await client.end();
     }
