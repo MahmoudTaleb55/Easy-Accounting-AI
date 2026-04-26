@@ -231,12 +231,23 @@ const PERIOD_PRESETS: readonly PeriodPreset[] = [
   "90d",
 ];
 
-// Per-entity-type localStorage key. Keeping the choice scoped to the entity
+// Per-entity-type localStorage keys. Keeping the choice scoped to the entity
 // type (attendance vs leave vs payroll_run vs journal_entry, …) lets a user
 // who lives in "Last 30 days" on attendance keep that, while the JE drawer
-// remembers its own preference independently.
+// remembers its own preference independently. The same per-type scoping
+// applies to the source-chip and action-chip selections so a user who only
+// cares about, say, AI-driven Updates on attendance rows doesn't have to
+// re-toggle those chips on every reopen.
 function periodStorageKey(entityType: HistoryEntityType | undefined): string | null {
   return entityType ? `history.periodFilter.${entityType}` : null;
+}
+
+function sourceStorageKey(entityType: HistoryEntityType | undefined): string | null {
+  return entityType ? `history.sourceFilter.${entityType}` : null;
+}
+
+function actionStorageKey(entityType: HistoryEntityType | undefined): string | null {
+  return entityType ? `history.actionFilter.${entityType}` : null;
 }
 
 function readPersistedPeriod(
@@ -270,6 +281,60 @@ function writePersistedPeriod(
     window.localStorage.setItem(key, preset);
   } catch {
     // Quota / disabled storage — silently ignore, the in-memory state still works.
+  }
+}
+
+// Generic chip-set persistence. Stored as a JSON array of valid keys; an
+// absent or unparseable entry returns the full default set so first-time
+// users (and users on browsers with disabled storage) still see every chip
+// lit. Reset clears the entry so the next open re-hydrates to the defaults.
+function readPersistedChipSet<T extends string>(
+  key: string | null,
+  allKeys: readonly T[],
+): Set<T> {
+  if (!key || typeof window === "undefined") return new Set(allKeys);
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return new Set(allKeys);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set(allKeys);
+    const valid = parsed.filter((v): v is T =>
+      typeof v === "string" && (allKeys as readonly string[]).includes(v),
+    );
+    // An empty persisted set is legitimate: the user explicitly turned every
+    // chip off in that row. Honour it instead of silently re-lighting.
+    return new Set(valid);
+  } catch {
+    return new Set(allKeys);
+  }
+}
+
+function writePersistedChipSet<T extends string>(
+  key: string | null,
+  allKeys: readonly T[],
+  value: Set<T>,
+): void {
+  if (!key || typeof window === "undefined") return;
+  try {
+    // When every chip is on, drop the key entirely — that way Reset and a
+    // fresh-from-default state look the same on disk and a future change
+    // to the default chip set automatically applies to existing users.
+    if (value.size === allKeys.length && allKeys.every((k) => value.has(k))) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    window.localStorage.setItem(key, JSON.stringify(Array.from(value)));
+  } catch {
+    // Quota / disabled storage — silently ignore, the in-memory state still works.
+  }
+}
+
+function clearPersistedChipSet(key: string | null): void {
+  if (!key || typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore
   }
 }
 
@@ -342,11 +407,14 @@ export function HistoryTimeline({
   // Period filter state has to be declared before the query because we want
   // changing presets to refetch with a narrower window — the bounds become
   // part of the query key and a `from` / `to` query string on the request.
-  const [sourceFilter, setSourceFilter] = React.useState<Set<HistorySource>>(
-    () => new Set(SOURCE_KEYS),
+  // Source and action chip selections are also lazily seeded from localStorage
+  // (per entity type) so a user who toggled, say, "AI + Updates only" on
+  // attendance gets that back on every reopen.
+  const [sourceFilter, setSourceFilterState] = React.useState<Set<HistorySource>>(
+    () => readPersistedChipSet(sourceStorageKey(entityType), SOURCE_KEYS),
   );
-  const [actionFilter, setActionFilter] = React.useState<Set<HistoryAction>>(
-    () => new Set(ACTION_KEYS),
+  const [actionFilter, setActionFilterState] = React.useState<Set<HistoryAction>>(
+    () => readPersistedChipSet(actionStorageKey(entityType), ACTION_KEYS),
   );
   const hasEntityPeriod = !!entityPeriod && (
     entityPeriod.start !== undefined && entityPeriod.start !== null && entityPeriod.start !== "" ||
@@ -363,6 +431,22 @@ export function HistoryTimeline({
     (next: PeriodPreset) => {
       setPeriodFilterState(next);
       writePersistedPeriod(entityType, next);
+    },
+    [entityType],
+  );
+
+  const setSourceFilter = React.useCallback(
+    (next: Set<HistorySource>) => {
+      setSourceFilterState(next);
+      writePersistedChipSet(sourceStorageKey(entityType), SOURCE_KEYS, next);
+    },
+    [entityType],
+  );
+
+  const setActionFilter = React.useCallback(
+    (next: Set<HistoryAction>) => {
+      setActionFilterState(next);
+      writePersistedChipSet(actionStorageKey(entityType), ACTION_KEYS, next);
     },
     [entityType],
   );
@@ -513,22 +597,29 @@ export function HistoryTimeline({
     periodFilter !== "all";
 
   const resetFilters = React.useCallback(() => {
-    setSourceFilter(new Set(SOURCE_KEYS));
-    setActionFilter(new Set(ACTION_KEYS));
+    // Clear the persisted entries first so the in-memory defaults we set
+    // below also become the on-disk state — Reset is meant to forget the
+    // remembered choices across all three rows, not just locally re-light
+    // the chips for this render.
+    clearPersistedChipSet(sourceStorageKey(entityType));
+    clearPersistedChipSet(actionStorageKey(entityType));
+    setSourceFilterState(new Set(SOURCE_KEYS));
+    setActionFilterState(new Set(ACTION_KEYS));
     // Persist "all" so the Reset button is also a way to forget the
     // remembered preset, not just a local-this-render-only override.
     setPeriodFilter("all");
-  }, [setPeriodFilter]);
+  }, [entityType, setPeriodFilter]);
 
-  // When we move to a different entity (or different entity type), throw away
-  // the per-mount source/action chip selections so the next entity starts
-  // from a clean "all on" state. We deliberately do NOT include
-  // `hasEntityPeriod` here — if the parent later re-resolves an `entityPeriod`
-  // for the same entity, that should not silently reset the user's chip
-  // toggles mid-view.
+  // When we move to a different entity (or different entity type), rehydrate
+  // the chip selections from storage so each surface honours its own
+  // remembered choice (attendance keeps its "AI + Updates only" while the
+  // JE drawer keeps its own pick). We deliberately do NOT include
+  // `hasEntityPeriod` here — if the parent later re-resolves an
+  // `entityPeriod` for the same entity, that should not silently reset the
+  // user's chip toggles mid-view.
   React.useEffect(() => {
-    setSourceFilter(new Set(SOURCE_KEYS));
-    setActionFilter(new Set(ACTION_KEYS));
+    setSourceFilterState(readPersistedChipSet(sourceStorageKey(entityType), SOURCE_KEYS));
+    setActionFilterState(readPersistedChipSet(actionStorageKey(entityType), ACTION_KEYS));
   }, [entityType, entityId]);
 
   // Rehydrate the period preset from storage whenever the entity type
