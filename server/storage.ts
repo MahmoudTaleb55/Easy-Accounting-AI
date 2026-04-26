@@ -1479,22 +1479,54 @@ export class DatabaseStorage implements IStorage {
         );
       }
     }
+    // Resolve the revenue/expense leg with the same self-heal posture as the
+    // cash branch above. Previously this fell back to `cash.id` whenever the
+    // category-mapped revenue/expense account was missing, producing a
+    // "balanced" but accounting-meaningless `Dr cash / Cr cash` JE — revenue
+    // or expense never hit the GL, and the trial balance, P&L, and dashboard
+    // totals were quietly wrong (same shape as the bug task #191 closed for
+    // the cash account itself).
+    const resolveOrSeed = async (
+      code: string,
+      leg: "revenue" | "expense",
+    ): Promise<Account> => {
+      let acct = await this.getAccountByCode(companyId, code);
+      if (acct) return acct;
+      console.warn(
+        `[autoPostFromTransaction] workspace ${companyId} is missing ${leg} account ` +
+          `code=${code}; re-seeding default chart of accounts before posting tx ${tx.id}`,
+      );
+      const { seedDefaultCoaForCompany } = await import("./init-coa");
+      await seedDefaultCoaForCompany(companyId);
+      acct = await this.getAccountByCode(companyId, code);
+      if (!acct) {
+        throw new Error(
+          `[autoPostFromTransaction] workspace ${companyId} has no ${leg} account ` +
+            `(code=${code}) even after re-seeding the default CoA; ` +
+            `transaction ${tx.id} created without an offsetting JE. Restore the ` +
+            `${leg} account, then re-run POST /api/admin/backfill-journal-entries ` +
+            `to balance the books.`,
+        );
+      }
+      return acct;
+    };
+
     const amt = Number(tx.amount);
     let drId: number;
     let crId: number;
     if (tx.type === "income") {
-      const rev = await this.getAccountByCode(
-        companyId,
+      const rev = await resolveOrSeed(
         pickRevenueAccountCode(tx.category, tx.description),
+        "revenue",
       );
       drId = cash.id;
-      crId = rev?.id ?? cash.id;
+      crId = rev.id;
     } else {
-      const exp = await this.getAccountByCode(
-        companyId,
+      const exp = await resolveOrSeed(
         pickExpenseAccountCode(tx.category, tx.description),
+        "expense",
       );
-      drId = exp?.id ?? cash.id;
+      drId = exp.id;
       crId = cash.id;
     }
     const reference = await nextJournalReference(companyId);
