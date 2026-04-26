@@ -383,6 +383,15 @@ async function seedDocument(
 interface AuditRow {
   id: number;
   action: string;
+  /**
+   * Display name (or fallback) of the user who issued the mutation. The
+   * server derives it from the verified session principal (see
+   * `actorName` in `server/routes.ts`) — never from client-controlled
+   * input — and writes it through `recordAudit` -> `audit_log.actor`.
+   * On a cascade-reversed JE this *must* be populated so the History
+   * drawer can answer "by whom" and not just "what".
+   */
+  actor: string | null;
   changes: Array<{ field: string; from?: unknown; to?: unknown }> | null;
 }
 
@@ -528,6 +537,28 @@ test.describe(
               `got changes=${JSON.stringify(reversalRow!.changes)}`,
           ).toBeTruthy();
           expect(companyStamp?.to).toBe(user.companyId);
+
+          // Attribution check: the reversal audit row must carry the
+          // user who triggered the cascade (not be silently anonymous).
+          // The route layer feeds `userCtx(req)` into each `deleteX`
+          // storage method, which threads it through into
+          // `reverseAutoPostedJournalEntry` -> `recordAudit`. A future
+          // refactor that drops `ctx` on any of the six cascade sources
+          // would silently strip attribution from the History drawer
+          // for cascade-reversed JEs — auditors would see "the JE was
+          // reversed" but not "by whom". This assertion locks down
+          // every source so that drift can't happen on any of them.
+          //
+          // The expected value is the human-readable name our signup
+          // helper provides ("Audit Tester" — `firstName` + `lastName`
+          // joined). `actorName()` in `server/routes.ts` prefers the
+          // joined name over email/sub, so this matches whether the
+          // session was minted via OIDC or local-auth.
+          expect(
+            reversalRow!.actor,
+            `expected non-null actor on reversal audit row for ` +
+              `${source.label}, got actor=${JSON.stringify(reversalRow!.actor)}`,
+          ).toBe("Audit Tester");
         } finally {
           await client.end();
         }
