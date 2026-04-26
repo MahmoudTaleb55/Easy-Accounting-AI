@@ -93,6 +93,7 @@ export const STRINGS = {
   col_category:    { ar: "الفئة", en: "Category", de: "Kategorie", fr: "Catégorie" },
   col_amount:      { ar: "المبلغ", en: "Amount", de: "Betrag", fr: "Montant" },
   empty_recent:    { ar: "لا توجد معاملات بعد.", en: "No transactions yet.", de: "Noch keine Transaktionen.", fr: "Aucune transaction pour l'instant." },
+  empty_recent_add: { ar: "إضافة معاملة", en: "Add transaction", de: "Transaktion hinzufügen", fr: "Ajouter une transaction" },
 
   // AI rail
   ai_title:      { ar: "المساعد الذكي", en: "AI assistant", de: "KI-Assistent", fr: "Assistant IA" },

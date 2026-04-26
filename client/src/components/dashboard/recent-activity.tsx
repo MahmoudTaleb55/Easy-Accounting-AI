@@ -6,7 +6,7 @@ import { useFormatMoney } from "@/lib/format";
 import { useLocale } from "@/contexts/locale-context";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
-import { ArrowUpRight, ArrowDownRight, ArrowRight } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, ArrowRight, Plus } from "lucide-react";
 import { RecentActivitySkeleton } from "./skeletons";
 
 export function RecentActivity() {
@@ -38,7 +38,17 @@ export function RecentActivity() {
         </Link>
       </div>
       {rows.length === 0 ? (
-        <div className="px-4 py-12 text-center text-xs text-muted-foreground">{t("empty_recent")}</div>
+        <div className="px-4 py-12 flex flex-col items-center justify-center gap-3 text-center">
+          <p className="text-xs text-muted-foreground">{t("empty_recent")}</p>
+          <Link
+            href="/app/transactions?new=1"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground border border-border rounded-md px-3 py-1.5 hover-elevate active-elevate-2 transition-colors"
+            data-testid="button-empty-add-transaction"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            {t("empty_recent_add")}
+          </Link>
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
