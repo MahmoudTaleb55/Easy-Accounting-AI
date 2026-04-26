@@ -1,22 +1,31 @@
 #!/usr/bin/env tsx
 /**
- * Static check: every `button-*` test id wrapped by <WriteGuard>,
+ * Static check: every interactive test id wrapped by <WriteGuard>,
  * <OwnerGuard> or <OwnerOnly> in `client/src/` must be referenced by
  * the role-based gating spec for all three roles (owner / accountant /
  * viewer).
+ *
+ * "Interactive" here means a test id whose prefix matches one of the
+ * surfaces a developer is plausibly placing inside a role guard:
+ *
+ *   button-  inputs that fire mutations (the original surface)
+ *   input-   text / number / date inputs that bind to write payloads
+ *   link-    anchors / clickable rows that drill into a write surface
+ *   select-  shadcn Select triggers backing a write payload
+ *   tab-     TabsTriggers that gate access to a write tab
  *
  * Why this exists: `tests/e2e/role-based-buttons.spec.ts` enumerates
  * each guarded surface by hand. When a developer adds a new page that
  * uses one of the role guards, they must remember to add a matching
  * assertion under all three roles, or the regression net silently
  * misses the new control. This script scans the codebase, builds a
- * list of guarded button ids, and cross-references them against the
+ * list of guarded test ids, and cross-references them against the
  * spec — failing CI if any role coverage is missing.
  *
  * The script is intentionally dependency-free (no TS compiler API,
  * no parser5 / babel, etc.) so it can run as a fast precommit or CI
  * check. It uses a stack-based regex scanner for the JSX tag matching
- * which is robust enough for the simple guard-wraps-button pattern
+ * which is robust enough for the simple guard-wraps-control pattern
  * used throughout the codebase.
  *
  * Run directly:   `tsx scripts/check-role-guard-coverage.ts`
@@ -35,15 +44,29 @@ type GuardTag = (typeof GUARD_TAGS)[number];
 const ROLES = ["owner", "accountant", "viewer"] as const;
 type Role = (typeof ROLES)[number];
 
-export interface GuardedButton {
+/**
+ * Test-id prefixes we treat as "interactive enough" to require role
+ * coverage. Adding a new prefix here will retro-actively flag any
+ * existing guarded controls that match it, so the spec must be
+ * updated in the same commit.
+ */
+export const GUARDED_TESTID_PREFIXES = [
+  "button-",
+  "input-",
+  "link-",
+  "select-",
+  "tab-",
+] as const;
+
+export interface GuardedSurface {
   /** Repo-relative path to the .tsx file. */
   file: string;
   /** 1-indexed line of the *opening* guard tag. */
   line: number;
-  /** Which guard wraps the button. */
+  /** Which guard wraps the control. */
   guard: GuardTag;
-  /** Human-readable id template, e.g. `button-add-x` or `button-delete-${tx.id}`. */
-  buttonId: string;
+  /** Human-readable id template, e.g. `button-add-x` or `input-foo-${id}`. */
+  testId: string;
   /**
    * Substrings the spec must contain to count as covering this id.
    * For a static id this is `[id]`. For a template literal with a
@@ -63,7 +86,7 @@ export interface GuardedButton {
 }
 
 export interface MissingCoverage {
-  button: GuardedButton;
+  surface: GuardedSurface;
   /** Roles whose describe() block does not reference any of the tokens. */
   missingRoles: Role[];
 }
@@ -144,10 +167,14 @@ function findGuardSpans(src: string, tag: GuardTag): GuardSpan[] {
 // data-testid extraction inside a guard span
 // ---------------------------------------------------------------------------
 
-/** Static `data-testid="button-..."` or `data-testid='button-...'`. */
+/** Static `data-testid="<prefix>..."` or `data-testid='<prefix>...'`. */
 const STATIC_TESTID_RE = /data-testid=(?:"([^"]+)"|'([^']+)')/g;
-/** Template literal `data-testid={`button-...`}`. */
+/** Template literal `data-testid={`<prefix>...`}`. */
 const TEMPLATE_TESTID_RE = /data-testid=\{`([^`]+)`\}/g;
+
+function hasGuardedPrefix(value: string): boolean {
+  return GUARDED_TESTID_PREFIXES.some((p) => value.startsWith(p));
+}
 
 /**
  * Resolve a template-literal id into the search tokens that must
@@ -202,20 +229,20 @@ function tokensForTemplate(
   return { tokens: [template], kind: "template" };
 }
 
-function extractGuardedButtons(src: string, file: string, span: GuardSpan): GuardedButton[] {
+function extractGuardedSurfaces(src: string, file: string, span: GuardSpan): GuardedSurface[] {
   const inside = src.slice(span.contentStart, span.contentEnd);
-  const found: GuardedButton[] = [];
+  const found: GuardedSurface[] = [];
 
   STATIC_TESTID_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = STATIC_TESTID_RE.exec(inside)) !== null) {
     const value = m[1] ?? m[2];
-    if (!value || !value.startsWith("button-")) continue;
+    if (!value || !hasGuardedPrefix(value)) continue;
     found.push({
       file,
       line: span.openLine,
       guard: span.guard,
-      buttonId: value,
+      testId: value,
       tokens: [value],
       tokenKind: "static",
     });
@@ -224,13 +251,13 @@ function extractGuardedButtons(src: string, file: string, span: GuardSpan): Guar
   TEMPLATE_TESTID_RE.lastIndex = 0;
   while ((m = TEMPLATE_TESTID_RE.exec(inside)) !== null) {
     const template = m[1];
-    if (!template.startsWith("button-")) continue;
+    if (!hasGuardedPrefix(template)) continue;
     const { tokens, kind } = tokensForTemplate(template);
     found.push({
       file,
       line: span.openLine,
       guard: span.guard,
-      buttonId: template,
+      testId: template,
       tokens,
       tokenKind: kind,
     });
@@ -272,13 +299,18 @@ function escapeRegex(s: string): string {
  *
  * which leaves no literal "button-impairment-" string to match against.
  * To avoid forcing every per-row action button to be unrolled in the
- * spec, accept a prefix `button-WORD-` as covered when the block both
- *   (a) contains a `\`button-${...}-...\`` template, AND
+ * spec, accept a prefix `<surface>-WORD-` as covered when the block
+ * both:
+ *   (a) contains a `\`<surface>-${...}-...\`` template, AND
  *   (b) mentions the literal "WORD" / 'WORD' as a quoted string.
+ *
+ * The loop fallback is generalized over every supported prefix so a
+ * future `for (const action of [...]) { \`tab-${action}-...\` }` pattern
+ * would Just Work without any further script changes.
  */
 export function tokenAppearsInBlock(
   token: string,
-  kind: GuardedButton["tokenKind"],
+  kind: GuardedSurface["tokenKind"],
   block: string,
 ): boolean {
   if (kind === "static" || kind === "template") {
@@ -288,11 +320,14 @@ export function tokenAppearsInBlock(
   const followBy = new RegExp(`${escapeRegex(token)}(?:["'\`]|\\$\\{)`);
   if (followBy.test(block)) return true;
 
-  // Loop fallback: `button-WORD-` where WORD is a single segment.
-  if (!token.startsWith("button-") || !token.endsWith("-")) return false;
-  const word = token.slice("button-".length, -1);
+  // Loop fallback: `<surface>-WORD-` where WORD is a single segment.
+  if (!token.endsWith("-")) return false;
+  const matchedPrefix = GUARDED_TESTID_PREFIXES.find((p) => token.startsWith(p));
+  if (!matchedPrefix) return false;
+  const word = token.slice(matchedPrefix.length, -1);
   if (!word || word.includes("-")) return false;
-  if (!/`button-\$\{[^}]+\}-/.test(block)) return false;
+  const loopTemplateRe = new RegExp(`\`${escapeRegex(matchedPrefix)}\\$\\{[^}]+\\}-`);
+  if (!loopTemplateRe.test(block)) return false;
   return block.includes(`"${word}"`) || block.includes(`'${word}'`);
 }
 
@@ -341,13 +376,13 @@ export function splitSpecByRole(specSrc: string): Record<Role, string> {
 // ---------------------------------------------------------------------------
 
 export interface CoverageReport {
-  buttons: GuardedButton[];
+  surfaces: GuardedSurface[];
   missing: MissingCoverage[];
 }
 
 export function checkRoleGuardCoverage(): CoverageReport {
-  // 1. Collect every guarded button across the client tree.
-  const buttons: GuardedButton[] = [];
+  // 1. Collect every guarded surface across the client tree.
+  const surfaces: GuardedSurface[] = [];
   for (const file of walkTsx(CLIENT_SRC)) {
     let src: string;
     try {
@@ -360,21 +395,21 @@ export function checkRoleGuardCoverage(): CoverageReport {
     const rel = relative(PROJECT_ROOT, file);
     for (const tag of GUARD_TAGS) {
       for (const span of findGuardSpans(src, tag)) {
-        buttons.push(...extractGuardedButtons(src, rel, span));
+        surfaces.push(...extractGuardedSurfaces(src, rel, span));
       }
     }
   }
 
-  // 2. Deduplicate identical (file, buttonId, guard) entries that arise
-  //    when a button id is captured by multiple nested guard tags or
+  // 2. Deduplicate identical (file, testId, guard) entries that arise
+  //    when an id is captured by multiple nested guard tags or
   //    repeated regex sweeps. Keep the first occurrence (lowest line).
-  const dedup = new Map<string, GuardedButton>();
-  for (const b of buttons) {
-    const key = `${b.file}|${b.guard}|${b.buttonId}`;
+  const dedup = new Map<string, GuardedSurface>();
+  for (const s of surfaces) {
+    const key = `${s.file}|${s.guard}|${s.testId}`;
     const prior = dedup.get(key);
-    if (!prior || b.line < prior.line) dedup.set(key, b);
+    if (!prior || s.line < prior.line) dedup.set(key, s);
   }
-  const uniqueButtons = [...dedup.values()].sort((a, b) =>
+  const uniqueSurfaces = [...dedup.values()].sort((a, b) =>
     a.file === b.file ? a.line - b.line : a.file.localeCompare(b.file),
   );
 
@@ -383,23 +418,23 @@ export function checkRoleGuardCoverage(): CoverageReport {
   const perRole = splitSpecByRole(specSrc);
 
   const missing: MissingCoverage[] = [];
-  for (const button of uniqueButtons) {
+  for (const surface of uniqueSurfaces) {
     const missingRoles: Role[] = [];
     for (const role of ROLES) {
       const block = perRole[role];
-      // A button is "covered" for a role when *every* required token
+      // A surface is "covered" for a role when *every* required token
       // (usually one) appears at least once in that role's block.
-      const covered = button.tokens.every((tok) =>
-        tokenAppearsInBlock(tok, button.tokenKind, block),
+      const covered = surface.tokens.every((tok) =>
+        tokenAppearsInBlock(tok, surface.tokenKind, block),
       );
       if (!covered) missingRoles.push(role);
     }
     if (missingRoles.length > 0) {
-      missing.push({ button, missingRoles });
+      missing.push({ surface, missingRoles });
     }
   }
 
-  return { buttons: uniqueButtons, missing };
+  return { surfaces: uniqueSurfaces, missing };
 }
 
 // ---------------------------------------------------------------------------
@@ -409,14 +444,14 @@ export function checkRoleGuardCoverage(): CoverageReport {
 function formatMissing(report: CoverageReport): string {
   const lines: string[] = [];
   lines.push(
-    `Found ${report.missing.length} guarded button(s) without complete role coverage in tests/e2e/role-based-buttons.spec.ts:`,
+    `Found ${report.missing.length} guarded surface(s) without complete role coverage in tests/e2e/role-based-buttons.spec.ts:`,
     "",
   );
-  for (const { button, missingRoles } of report.missing) {
+  for (const { surface, missingRoles } of report.missing) {
     lines.push(
-      `  • ${button.file}:${button.line}  <${button.guard}>  data-testid="${button.buttonId}"`,
+      `  • ${surface.file}:${surface.line}  <${surface.guard}>  data-testid="${surface.testId}"`,
       `      missing role coverage: ${missingRoles.join(", ")}`,
-      `      spec must reference token(s): ${button.tokens.map((t) => JSON.stringify(t)).join(", ")}`,
+      `      spec must reference token(s): ${surface.tokens.map((t) => JSON.stringify(t)).join(", ")}`,
     );
   }
   lines.push(
@@ -439,7 +474,7 @@ if (isMain()) {
   if (report.missing.length === 0) {
     // eslint-disable-next-line no-console
     console.log(
-      `role-guard coverage OK — ${report.buttons.length} guarded button id(s) all have owner / accountant / viewer assertions`,
+      `role-guard coverage OK — ${report.surfaces.length} guarded test id(s) all have owner / accountant / viewer assertions`,
     );
     process.exit(0);
   } else {
