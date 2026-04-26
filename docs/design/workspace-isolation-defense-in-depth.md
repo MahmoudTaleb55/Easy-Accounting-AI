@@ -434,6 +434,15 @@ on completion. Audited bypass call sites (with `reason` strings):
   list below stays exhaustive).
 - `cron:email-delivery-alert-sweep` — the periodic alert evaluator that
   iterates every workspace.
+- `cron:rls-policy-drift-sweep` — the periodic production policy-drift
+  sweep added by task #238. Runs the same canonical-expression detector
+  the CI spec at `tests/e2e/database-rls-policy-coverage.spec.ts` uses
+  against the live database every `RLS_POLICY_DRIFT_SWEEP_MINUTES`
+  (default 30 min). The query targets system catalogs (`pg_policy` /
+  `pg_class` / `pg_namespace`), which are not RLS-protected anyway, but
+  the wrapper keeps this code path on the audited bypass list and makes
+  the `cron:rls-policy-drift-sweep` reason a grep marker for log
+  searches. See "Production drift sweep" below.
 - `workspace:create` — `DatabaseStorage.createCompany`,
   `authBizStorage.createCompanyForOwner`, and the boot-time
   `ensureDefaultCompanyAndCategories` (when the table is empty). Creating
@@ -506,6 +515,62 @@ static assertions:
 Together these four checks make the property "every `db.` and storage
 call site goes through the workspace-isolation layer" enforceable in CI
 rather than by human grep.
+
+### Production drift sweep (task #238)
+
+The CI spec at `tests/e2e/database-rls-policy-coverage.spec.ts` reads
+every `workspace_isolation` policy in the local test/dev database and
+asserts each one matches the canonical expression
+`(company_id = (current_setting('app.current_company_id'::text, true))::uuid)`.
+That catches drift introduced by a migration, a schema-change PR, or a
+hand-edited dev DB before it ever ships.
+
+What it cannot catch is a tampered policy in the **live production
+database** — for example, a one-off `psql` session that runs `ALTER
+POLICY workspace_isolation ON invoices USING (true)` to "debug" a
+report, or an accidental `DROP POLICY` from a hot-fix script. The CI
+spec never connects to production.
+
+The runtime guard added by task #238 closes that gap by running the same
+detector on a periodic schedule against the live DB:
+
+- The detector itself
+  (`CANONICAL_POLICY_EXPR`, `POLICY_EXPR_QUERY`, `findPolicyDrifts`,
+  `policyDriftSignature`) lives in `shared/auth/rls-policy-drift.ts` so
+  the CI spec and the runtime sweep share one source of truth — a fix
+  to either side cannot drift away from the other.
+- `server/auth/rls-policy-drift-alerts.ts` exposes
+  `runRlsPolicyDriftSweep` and `startRlsPolicyDriftJob` /
+  `stopRlsPolicyDriftJob`. The job is started from `server/index.ts`
+  next to `startEmailDeliveryAlertJob` and ticks every
+  `RLS_POLICY_DRIFT_SWEEP_MINUTES` (default 30 min). Test runs
+  (`NODE_ENV === "test"`) skip the start so e2e specs can call the
+  evaluator deterministically.
+- Each sweep wraps itself in `withRlsBypass("cron:rls-policy-drift-sweep", …)`
+  (see "Bypass paths (audited)" above). The query reads
+  `pg_policy` / `pg_class` / `pg_namespace`, which are not RLS-protected
+  anyway, but the wrapper keeps this file on the audited bypass list and
+  makes the reason a grep marker for log searches.
+- Drifts are reported through the same alerting pipeline as
+  `evaluateEmailDeliveryAlerts*`: one operator email per offending
+  `(schema, table, kind, expression)` tuple, sent to the deduplicated
+  union of all workspace owner emails (via
+  `authBizStorage.listCompanyIdsWithMemberships()` +
+  `listOwnerEmailsForCompany(...)`), with a `PUBLIC_APP_URL`-based deep
+  link to `/app/settings/email-delivery`.
+- An in-memory `alertedSignatures` set keyed on `policyDriftSignature`
+  suppresses repeat emails for the same drift across consecutive sweeps,
+  and is pruned on every tick to drop signatures that have since been
+  fixed — so a fresh occurrence of the same drift after a re-tampering
+  re-fires. The signature is only recorded if at least one operator
+  email actually went out; a transient SMTP / recipient-lookup outage
+  leaves the drift unacknowledged so the next sweep retries instead of
+  permanently muting a real production drift.
+
+The intentional non-goal is *self-healing*: the sweep only alerts. A
+human operator inspects the alert, restores the canonical policy via a
+follow-up migration, and the next sweep observes the prune-and-clear
+behavior above.
 
 ### What this still does not cover
 

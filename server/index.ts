@@ -280,6 +280,27 @@ app.use((req, res, next) => {
     }
   }
 
+  // Production-side runtime guard for the workspace_isolation RLS policies
+  // (task #238). The CI spec at
+  // tests/e2e/database-rls-policy-coverage.spec.ts catches a tampered
+  // policy in the test/dev DB; this sweep runs the same canonical-
+  // expression detector against the *live* DB on a periodic schedule, so
+  // a hand-edited `ALTER POLICY workspace_isolation … USING (true)` in
+  // production is alerted on even though the spec never runs there. See
+  // docs/design/workspace-isolation-defense-in-depth.md ("Production
+  // drift sweep"). Disabled in test runs for the same reason as the
+  // email-delivery sweep.
+  if (process.env.NODE_ENV !== "test") {
+    try {
+      const { startRlsPolicyDriftJob } = await import(
+        "./auth/rls-policy-drift-alerts"
+      );
+      startRlsPolicyDriftJob();
+    } catch (err) {
+      console.error("Failed to start RLS policy drift sweep:", err);
+    }
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

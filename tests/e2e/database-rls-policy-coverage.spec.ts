@@ -1,6 +1,13 @@
 import { test, expect } from "@playwright/test";
 import pg from "pg";
 
+import {
+  CANONICAL_POLICY_EXPR,
+  POLICY_EXPR_QUERY,
+  findPolicyDrifts,
+  type PolicyExprRow,
+} from "../../shared/auth/rls-policy-drift";
+
 /**
  * Task #139 — catch new workspace-scoped tables that forget RLS.
  *
@@ -125,76 +132,15 @@ interface RlsRow {
   policy_count: string; // pg returns BIGINT as string
 }
 
-// Task #190 — the canonical text Postgres stores for the
-// `workspace_isolation` policy installed by
-// `migrations/0008_workspace_rls.sql` (and re-applied for `audit_log`
-// by `migrations/0016_audit_log_company_id.sql`). Both USING and
-// WITH CHECK clauses are written identically.
-//
-// `pg_get_expr(polqual, polrelid)` round-trips the parsed expression,
-// so the form Postgres returns is its own canonicalisation: a leading
-// outer `(...)`, the OR's right-hand `=` comparison wrapped in its own
-// `(...)`. If the migration ever rewrites the expression, *this* string
-// must move with it — they are deliberately coupled.
-const CANONICAL_POLICY_EXPR =
-  "(rls_is_bypassed() OR (company_id = current_company_id()))";
-
-interface PolicyExprRow {
-  table_name: string;
-  qual: string | null;
-  with_check: string | null;
-}
-
-interface PolicyDrift {
-  table: string;
-  problems: string[];
-}
-
-// Compare each `workspace_isolation` policy's USING / WITH CHECK
-// against the canonical expression. Pulled out of the test body so the
-// sibling "tampering trips the check" spec can call the exact same
-// detection logic — the verification is meaningful only if the same
-// code path is what catches the tamper.
-function findPolicyDrifts(rows: PolicyExprRow[]): PolicyDrift[] {
-  const drifts: PolicyDrift[] = [];
-  for (const r of rows) {
-    const problems: string[] = [];
-    if (r.qual !== CANONICAL_POLICY_EXPR) {
-      problems.push(
-        `USING expression is ${JSON.stringify(r.qual)} ` +
-          `but should be ${JSON.stringify(CANONICAL_POLICY_EXPR)}`,
-      );
-    }
-    if (r.with_check !== CANONICAL_POLICY_EXPR) {
-      problems.push(
-        `WITH CHECK expression is ${JSON.stringify(r.with_check)} ` +
-          `but should be ${JSON.stringify(CANONICAL_POLICY_EXPR)}`,
-      );
-    }
-    if (problems.length > 0) {
-      drifts.push({ table: r.table_name, problems });
-    }
-  }
-  return drifts;
-}
-
-// Read every `workspace_isolation` policy's parsed expression text
-// directly from `pg_policy` via `pg_get_expr`. Going through `pg_policy`
-// + `pg_get_expr` (rather than the `pg_policies` view's `qual` /
-// `with_check` columns) keeps us on the same canonicalisation pass that
-// produced `CANONICAL_POLICY_EXPR` above, so a string comparison is
-// meaningful without normalising whitespace or parens by hand.
-const POLICY_EXPR_QUERY = `
-  SELECT cls.relname                                AS table_name,
-         pg_get_expr(p.polqual,      p.polrelid)    AS qual,
-         pg_get_expr(p.polwithcheck, p.polrelid)    AS with_check
-    FROM pg_policy   p
-    JOIN pg_class    cls ON cls.oid = p.polrelid
-    JOIN pg_namespace ns ON ns.oid = cls.relnamespace
-   WHERE ns.nspname = 'public'
-     AND p.polname  = 'workspace_isolation'
-   ORDER BY cls.relname
-`;
+// Task #190 — the canonical-expression check, the policy-text query,
+// and the drift detector all live in `shared/auth/rls-policy-drift.ts`
+// so the runtime production sweep
+// (`server/auth/rls-policy-drift-alerts.ts`, task #238) can reuse the
+// exact same detection logic without copy-paste drift between the two
+// callers. Importing the same string from one place is what makes the
+// tamper-detection promise hold across the CI guard *and* the prod
+// alert — see also `docs/design/workspace-isolation-defense-in-depth.md`
+// ("Production drift sweep").
 
 test.describe("workspace-scoped tables must be under RLS @db", () => {
   test.skip(

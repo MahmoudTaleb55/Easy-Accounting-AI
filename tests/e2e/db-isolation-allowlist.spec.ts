@@ -146,6 +146,16 @@ const DB_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "chatStorage methods are invoked from /api/chat/* route handlers, " +
       "which run inside withCompanyScope.",
   },
+  {
+    file: "server/auth/rls-policy-drift-alerts.ts",
+    rationale:
+      "Periodic production sweep (task #238) that runs the canonical " +
+      "workspace_isolation policy-text query against the live DB. The " +
+      "single entry point runRlsPolicyDriftSweep wraps itself in " +
+      "withRlsBypass('cron:rls-policy-drift-sweep'); the read targets " +
+      "system catalogs (pg_policy / pg_class / pg_namespace), which are " +
+      "not RLS-protected anyway.",
+  },
 ];
 
 /**
@@ -236,6 +246,17 @@ const STORAGE_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "(b) per-row retry / evaluate helpers are invoked from /api/* route " +
       "handlers, which run inside withCompanyScope. The storage methods " +
       "themselves only touch the auth + alert tables (out of RLS scope).",
+  },
+  {
+    file: "server/auth/rls-policy-drift-alerts.ts",
+    rationale:
+      "Periodic production sweep (task #238) that reads pg_policy via " +
+      "db.execute(sql) to catch a tampered workspace_isolation policy in " +
+      "the live DB. The single entry point runRlsPolicyDriftSweep wraps " +
+      "itself in withRlsBypass('cron:rls-policy-drift-sweep'); the read " +
+      "is against system catalogs (pg_policy / pg_class / pg_namespace), " +
+      "which are not RLS-protected anyway, but the wrapper keeps this " +
+      "module on the audited bypass path documented in the design doc.",
   },
   {
     file: "server/replit_integrations/auth/replitAuth.ts",

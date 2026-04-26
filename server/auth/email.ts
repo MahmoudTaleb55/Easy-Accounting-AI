@@ -579,6 +579,97 @@ export async function sendEmailDeliveryAlertEmail(args: {
   return results;
 }
 
+/**
+ * Operator-facing alert: a `workspace_isolation` policy in the
+ * production database has drifted from the canonical expression
+ * installed by `migrations/0008_workspace_rls.sql`. Sent once per
+ * offending table (so a drift across N tables produces N emails) by
+ * the runtime sweep in `server/auth/rls-policy-drift-alerts.ts`.
+ *
+ * This is a system-level alert — it has no per-workspace context, so
+ * no locale / RTL templating: every recipient is an owner of *some*
+ * workspace and the body is a short English operator message that
+ * names the offending table and the offending clause text.
+ *
+ * Returns one `SendEmailResult` per recipient address.
+ */
+export async function sendRlsPolicyDriftAlertEmail(args: {
+  to: string[];
+  table: string;
+  problems: string[];
+  qual: string | null;
+  withCheck: string | null;
+  canonicalExpression: string;
+  link?: string;
+}): Promise<SendEmailResult[]> {
+  if (args.to.length === 0) return [];
+  const subject = `RLS policy drift on "${args.table}" — workspace isolation may be broken`;
+  const problemsList = args.problems
+    .map((p) => `      <li style="margin:0 0 6px 0;">${escapeHtml(p)}</li>`)
+    .join("\n");
+  const linkBlock = args.link
+    ? `<p style="margin:16px 0 0 0;">${button(args.link, "Open production policy audit")}</p>`
+    : "";
+
+  const html = `<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(subject)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f4f4f5;color:#18181b;font-family:Inter,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:24px 0;">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;padding:24px;text-align:left;">
+          <tr><td>
+            <p style="margin:0 0 12px 0;font-size:16px;font-weight:600;color:${BRAND_COLOR};">⚠ Production RLS policy drift</p>
+            <p style="margin:0 0 12px 0;">The <code>workspace_isolation</code> policy on <strong>${escapeHtml(args.table)}</strong> in the production database does not match the canonical expression installed by <code>migrations/0008_workspace_rls.sql</code>.</p>
+            <p style="margin:0 0 6px 0;font-weight:600;">Drift</p>
+            <ul style="margin:0 0 12px 16px;padding:0;font-size:13px;color:#27272a;">
+${problemsList}
+            </ul>
+            <p style="margin:0 0 6px 0;font-weight:600;">Expected (both clauses)</p>
+            <pre style="margin:0 0 12px 0;padding:8px 12px;background:#f4f4f5;border-radius:6px;font-size:12px;white-space:pre-wrap;">${escapeHtml(args.canonicalExpression)}</pre>
+            <p style="margin:0 0 6px 0;font-weight:600;">Live USING</p>
+            <pre style="margin:0 0 12px 0;padding:8px 12px;background:#f4f4f5;border-radius:6px;font-size:12px;white-space:pre-wrap;">${escapeHtml(args.qual ?? "(null)")}</pre>
+            <p style="margin:0 0 6px 0;font-weight:600;">Live WITH CHECK</p>
+            <pre style="margin:0 0 12px 0;padding:8px 12px;background:#f4f4f5;border-radius:6px;font-size:12px;white-space:pre-wrap;">${escapeHtml(args.withCheck ?? "(null)")}</pre>
+            <p style="margin:0 0 0 0;color:#52525b;font-size:13px;">Re-apply the canonical policy by re-running the DO-block in <code>migrations/0008_workspace_rls.sql</code> (or, for <code>audit_log</code>, <code>migrations/0016_audit_log_company_id.sql</code>).</p>
+            ${linkBlock}
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+
+  const text = [
+    `Production RLS policy drift on "${args.table}".`,
+    "",
+    "The workspace_isolation policy does not match the canonical expression",
+    "installed by migrations/0008_workspace_rls.sql.",
+    "",
+    "Drift:",
+    ...args.problems.map((p) => `  - ${p}`),
+    "",
+    `Expected (both clauses): ${args.canonicalExpression}`,
+    `Live USING:              ${args.qual ?? "(null)"}`,
+    `Live WITH CHECK:         ${args.withCheck ?? "(null)"}`,
+    "",
+    "Re-apply the canonical policy by re-running the DO-block in",
+    "migrations/0008_workspace_rls.sql (or migrations/0016_audit_log_company_id.sql",
+    "for audit_log).",
+    ...(args.link ? ["", `Open: ${args.link}`] : []),
+  ].join("\n");
+
+  // One message per recipient so a bad address can't block the rest
+  // (mirrors `sendEmailDeliveryAlertEmail`).
+  const results = await Promise.all(
+    args.to.map((to) => sendEmail({ to, subject, html, text })),
+  );
+  return results;
+}
+
 export async function sendPasswordResetEmail(args: {
   to: string;
   link: string;
