@@ -4,6 +4,12 @@ import ExcelJS from "exceljs";
 import { randomUUID } from "crypto";
 import type { Account } from "@shared/schema";
 import type { JournalEntryWithLines } from "../storage";
+import {
+  containsArabic,
+  fontFor,
+  prepareArabicForPdf,
+  registerArabicFonts,
+} from "./pdf-arabic";
 
 /* ────────────────────────────────────────────────────────────────────────── */
 /*  In-memory file store — short-lived, served by /api/files/:id/download    */
@@ -317,14 +323,17 @@ export async function generateBalanceSheetExcel(
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/*  PDF generation — Latin column for code/type, numeric amounts             */
-/*  (Arabic glyphs require shaping libs; we keep PDF crisp & numeric for v1)*/
+/*  PDF generation — Arabic-aware via Amiri font + shaping/bidi pipeline     */
 /* ────────────────────────────────────────────────────────────────────────── */
 
 const num = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function pdfBase(title: string, subtitle: string): PDFKit.PDFDocument {
   const doc = new PDFDocument({ size: "A4", margin: 48, info: { Title: title, Producer: "Mohaseb" } });
+  // Register Amiri once so any later cell with Arabic can switch to it
+  // without re-registering. Fonts are streamed from disk by pdfkit, so the
+  // file IO cost is paid only when an Arabic glyph is actually drawn.
+  registerArabicFonts(doc);
   doc.fillColor("#065F46").fontSize(20).font("Helvetica-Bold").text(title, { align: "center" });
   doc.moveDown(0.2);
   doc.fillColor("#6B7280").fontSize(10).font("Helvetica").text(subtitle, { align: "center" });
@@ -332,21 +341,49 @@ function pdfBase(title: string, subtitle: string): PDFKit.PDFDocument {
   return doc;
 }
 
+/** Pick font + reshape for the cell's text. We default the latin alias to
+ *  Helvetica (the historical font) so non-Arabic cells render exactly like
+ *  before. Arabic cells get Amiri + presentation-form-shaped + bidi-reordered
+ *  text, which is what pdfkit needs to draw legible Arabic. */
+function drawCell(
+  doc: PDFKit.PDFDocument,
+  value: string,
+  x: number,
+  y: number,
+  width: number,
+  align: "left" | "right",
+  bold: boolean,
+) {
+  const isArabic = containsArabic(value);
+  const text = isArabic ? prepareArabicForPdf(value) : value;
+  const font = fontFor(value, bold, bold ? "Helvetica-Bold" : "Helvetica");
+  doc.font(font);
+  // For pure-Arabic cells we right-align by default — that's the natural
+  // RTL "where the eye starts" position. Mixed AR/EN strings keep the
+  // caller-supplied alignment so they slot in cleanly next to numeric
+  // columns.
+  const effectiveAlign: "left" | "right" =
+    isArabic && /^[\s\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF\d.,/-]+$/.test(value) && align === "left"
+      ? "right"
+      : align;
+  doc.text(text, x, y, { width, align: effectiveAlign });
+}
+
 function tableHeader(doc: PDFKit.PDFDocument, cols: { label: string; x: number; w: number; align?: "left"|"right" }[]) {
   const y = doc.y;
   doc.rect(48, y - 4, doc.page.width - 96, 22).fill("#065F46");
-  doc.fillColor("#fff").font("Helvetica-Bold").fontSize(10);
-  for (const c of cols) doc.text(c.label, c.x, y + 1, { width: c.w, align: c.align ?? "left" });
+  doc.fillColor("#fff").fontSize(10);
+  for (const c of cols) drawCell(doc, c.label, c.x, y + 1, c.w, c.align ?? "left", true);
   doc.moveDown(1.2);
-  doc.fillColor("#111").font("Helvetica").fontSize(10);
+  doc.fillColor("#111").fontSize(10);
 }
 
 function tableRow(doc: PDFKit.PDFDocument, cols: { value: string; x: number; w: number; align?: "left"|"right" }[], opts: { bold?: boolean; bg?: string } = {}) {
   if (doc.y > doc.page.height - 80) doc.addPage();
   const y = doc.y;
   if (opts.bg) doc.rect(48, y - 3, doc.page.width - 96, 18).fill(opts.bg);
-  doc.fillColor("#111").font(opts.bold ? "Helvetica-Bold" : "Helvetica").fontSize(10);
-  for (const c of cols) doc.text(c.value, c.x, y, { width: c.w, align: c.align ?? "left" });
+  doc.fillColor("#111").fontSize(10);
+  for (const c of cols) drawCell(doc, c.value, c.x, y, c.w, c.align ?? "left", !!opts.bold);
   doc.moveDown(0.7);
 }
 
@@ -367,19 +404,21 @@ export async function generateTrialBalancePdf(
   const doc = pdfBase("Trial Balance", `As of ${new Date().toLocaleDateString("en-US")}  ·  Currency: ${currency}`);
 
   const cols = [
-    { label: "Code",   x: 56,  w: 70 },
-    { label: "Type",   x: 130, w: 80 },
-    { label: "Debit",  x: 230, w: 130, align: "right" as const },
-    { label: "Credit", x: 380, w: 130, align: "right" as const },
+    { label: "Code",            x: 56,  w: 50 },
+    { label: "Account / الحساب", x: 110, w: 170 },
+    { label: "Type",            x: 285, w: 70 },
+    { label: "Debit",           x: 360, w: 85, align: "right" as const },
+    { label: "Credit",          x: 450, w: 95, align: "right" as const },
   ];
   tableHeader(doc, cols);
   let alt = false;
   for (const r of tb.rows) {
     tableRow(doc, [
-      { value: r.code,        x: 56,  w: 70 },
-      { value: r.type,        x: 130, w: 80 },
-      { value: num(r.debit),  x: 230, w: 130, align: "right" },
-      { value: num(r.credit), x: 380, w: 130, align: "right" },
+      { value: r.code,                 x: 56,  w: 50 },
+      { value: r.nameAr.slice(0, 36),  x: 110, w: 170 },
+      { value: r.type,                 x: 285, w: 70 },
+      { value: num(r.debit),           x: 360, w: 85, align: "right" },
+      { value: num(r.credit),          x: 450, w: 95, align: "right" },
     ], { bg: alt ? "#F9FAFB" : undefined });
     alt = !alt;
   }
@@ -387,9 +426,9 @@ export async function generateTrialBalancePdf(
   doc.strokeColor("#065F46").lineWidth(1).moveTo(48, doc.y).lineTo(doc.page.width - 48, doc.y).stroke();
   doc.moveDown(0.3);
   tableRow(doc, [
-    { value: "TOTAL",            x: 56,  w: 174 },
-    { value: num(tb.totalDebit),  x: 230, w: 130, align: "right" },
-    { value: num(tb.totalCredit), x: 380, w: 130, align: "right" },
+    { value: "TOTAL",                 x: 56,  w: 304 },
+    { value: num(tb.totalDebit),       x: 360, w: 85, align: "right" },
+    { value: num(tb.totalCredit),      x: 450, w: 95, align: "right" },
   ], { bold: true });
 
   return streamToBuffer(doc);

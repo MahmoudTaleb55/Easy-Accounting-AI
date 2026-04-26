@@ -470,14 +470,17 @@ export async function executeTool(
     switch (name) {
       case "add_quick_transaction": {
         const a = txArgs.parse(rawArgs);
-        await storage.createTransaction(
+        const created = await storage.createTransaction(
           ctx.companyId,
           { type: a.type, amount: a.amount, description: a.description, category: a.category },
           aiAudit
         );
         return {
           toolName: name,
-          modelResult: { ok: true, message: `Recorded ${a.type} ${a.amount} ${ctx.currency} — ${a.description}` },
+          // Surface the transaction id so the chat handler can resolve the
+          // auto-posted journal entry id (via getJournalEntryIdByTransactionId)
+          // and link any chat-attached receipt to it in the document inbox.
+          modelResult: { ok: true, transactionId: created.id, message: `Recorded ${a.type} ${a.amount} ${ctx.currency} — ${a.description}` },
           artifact: { kind: "transaction", type: a.type, amount: a.amount, description: a.description, category: a.category },
         };
       }

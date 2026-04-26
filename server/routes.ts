@@ -1113,6 +1113,104 @@ export async function registerRoutes(
     res.json(messages);
   });
 
+  // Map of assistant tool name → entity tags whose cached views the client
+  // must invalidate after the tool runs. Returned in the chat response as
+  // `affected: string[]`. Keep in sync with AFFECTED_KEYS in
+  // client/src/hooks/use-chat.ts.
+  const TOOL_TO_AFFECTED: Record<string, readonly string[]> = {
+    add_quick_transaction: ["transactions", "journal-entries", "accounts", "insights", "reports"],
+    create_journal_entry: ["journal-entries", "accounts", "transactions", "insights", "reports"],
+    create_account: ["accounts"],
+    delete_transaction: ["transactions", "journal-entries", "accounts", "insights", "reports"],
+    create_employee: ["employees"],
+    record_attendance: ["attendance"],
+    record_leave: ["leaves"],
+    // Read-only tools below intentionally have no side effects to invalidate.
+    list_accounts: [],
+    list_transactions: [],
+    list_employees: [],
+    list_fixed_assets: [],
+    get_financial_summary: [],
+    generate_report: [],
+    generate_excel_document: [],
+    generate_word_document: [],
+    generate_powerpoint_document: [],
+  };
+
+  /**
+   * Mirror an image attached to a chat turn into the document inbox so it
+   * shows up alongside receipts uploaded the regular way. Returns true on
+   * success, false when the data URL was unparseable or the bytes weren't a
+   * recognisable image (we don't want to litter the inbox with garbage rows
+   * for malformed uploads).
+   */
+  async function mirrorChatImageToInbox(opts: {
+    companyId: number;
+    imageDataUrl: string;
+    uploadedBy: string | null;
+    linkedJournalEntryId: number | null;
+    assistantSummary: string;
+  }): Promise<boolean> {
+    // data URLs look like `data:<mime>;base64,<payload>`. Anything else is
+    // either a remote URL we don't want to fetch from the chat path, or a
+    // malformed input — bail out either way.
+    const match = /^data:([^;,]+);base64,(.+)$/i.exec(opts.imageDataUrl);
+    if (!match) return false;
+    const buffer = Buffer.from(match[2], "base64");
+    if (buffer.length === 0) return false;
+    // Trust the bytes, not the data-URL header — same defence as the
+    // `/api/documents` upload path. Spoofed `data:image/png` prefixes
+    // wrapping non-image bytes get rejected here.
+    const detectedMime = detectImageMimeFromBuffer(buffer);
+    if (!detectedMime) return false;
+
+    const ext =
+      detectedMime === "image/jpeg" ? "jpg" :
+      detectedMime === "image/png"  ? "png" :
+      detectedMime === "image/webp" ? "webp" :
+      "img";
+    const fileName = `chat-receipt-${Date.now()}.${ext}`;
+
+    const saved = await saveDocumentFile({
+      companyId: opts.companyId,
+      buffer,
+      originalName: fileName,
+    });
+
+    // If the assistant posted a JE from this image, mark the row "posted"
+    // and link to that JE so the inbox renders it as fully ingested. If it
+    // didn't, mark it "ready" with a minimal extraction so the user can
+    // still see the receipt in their inbox and act on it manually if they
+    // want to. This matches what /api/documents would have produced.
+    const posted = opts.linkedJournalEntryId != null;
+    await storage.createDocument(opts.companyId, {
+      companyId: opts.companyId,
+      fileName,
+      mimeType: detectedMime,
+      sizeBytes: saved.sizeBytes,
+      storagePath: saved.storagePath,
+      status: posted ? "posted" : "ready",
+      extractedJson: {
+        // Keep a bare-minimum extraction shape so the inbox UI's parser
+        // doesn't choke. We don't have structured fields from the chat
+        // turn, but the assistant's natural-language summary is useful as
+        // a hint for whoever reviews the inbox later.
+        documentType: "receipt",
+        paymentMethod: "unknown",
+        language: "ar",
+        lineItems: [],
+        confidence: 0.5,
+        notes: opts.assistantSummary?.slice(0, 500) || "Captured via AI chat.",
+      } as any,
+      suggestedJournalJson: null,
+      journalEntryId: opts.linkedJournalEntryId ?? null,
+      uploadedBy: opts.uploadedBy ?? null,
+      extractedAt: new Date(),
+      postedAt: posted ? new Date() : null,
+    });
+    return true;
+  }
+
   app.post(api.chat.message.path, async (req, res) => {
     try {
       const input = api.chat.message.input.parse(req.body);
@@ -1216,6 +1314,14 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
 
       // Function-calling loop — up to 6 iterations (tool → result → tool → …)
       const artifacts: ToolArtifact[] = [];
+      // Tools the assistant actually invoked this turn. We use this set both
+      // to derive the `affected` payload (so the client knows which caches
+      // to invalidate) and to decide whether a chat-uploaded image should be
+      // mirrored into the document inbox as a "posted" or "ready" row.
+      const toolsCalled = new Set<string>();
+      // The first journal-entry id created by a tool, if any. Used to link
+      // a chat-uploaded receipt to the JE the assistant posted from it.
+      let firstJournalEntryId: number | null = null;
       let finalText = "";
       const MAX_ITERS = 6;
 
@@ -1245,6 +1351,39 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
             actor: actorName(req),
           });
           if (result.artifact) artifacts.push(result.artifact);
+          toolsCalled.add(tc.function.name);
+          // Capture the JE id so we can link the chat-uploaded receipt to
+          // it below. Two tools can post a journal entry:
+          //   - create_journal_entry returns it directly in modelResult.
+          //   - add_quick_transaction auto-posts asynchronously through
+          //     `autoPostFromTransaction`; we look the id back up by the
+          //     transaction id the tool surfaces in modelResult.
+          if (
+            firstJournalEntryId == null &&
+            tc.function.name === "create_journal_entry" &&
+            (result as any).modelResult?.ok &&
+            typeof (result as any).modelResult?.journalEntryId === "number"
+          ) {
+            firstJournalEntryId = (result as any).modelResult.journalEntryId;
+          }
+          if (
+            firstJournalEntryId == null &&
+            tc.function.name === "add_quick_transaction" &&
+            (result as any).modelResult?.ok &&
+            typeof (result as any).modelResult?.transactionId === "number"
+          ) {
+            try {
+              firstJournalEntryId = await storage.getJournalEntryIdByTransactionId(
+                companyId,
+                (result as any).modelResult.transactionId,
+              );
+            } catch (lookupErr) {
+              // Swallow: failing the lookup just means the mirrored receipt
+              // stays in `ready` instead of `posted`, which is the previous
+              // behaviour and strictly safer than blocking the chat reply.
+              console.warn("[chat] failed to resolve auto-posted JE id", lookupErr);
+            }
+          }
           return {
             role: "tool" as const,
             tool_call_id: tc.id,
@@ -1260,13 +1399,49 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
         ? `${finalText}\n\n<<ARTIFACTS>>${JSON.stringify(artifacts)}<<END>>`
         : finalText;
 
+      // ── Mirror chat-uploaded receipts into the document inbox ──────────
+      // When the user attaches an image to a chat turn, the assistant
+      // typically extracts the data and (often) posts a journal entry. The
+      // user reasonably expects that receipt to also show up in the inbox
+      // alongside the ones they uploaded the "normal" way. Without this
+      // mirror step, every AI-ingested receipt is invisible to the auditor
+      // browsing /inbox after the fact.
+      const affectedSet = new Set<string>();
+      if (input.imageData) {
+        try {
+          const mirrored = await mirrorChatImageToInbox({
+            companyId,
+            imageDataUrl: input.imageData,
+            uploadedBy: (req as any).user?.claims?.sub ?? null,
+            linkedJournalEntryId: firstJournalEntryId,
+            assistantSummary: finalText,
+          });
+          if (mirrored) affectedSet.add("documents");
+        } catch (mirrorErr) {
+          // Non-fatal: failing to mirror should never block the chat reply.
+          // We log and move on so the user still gets their answer.
+          console.warn("[chat] failed to mirror image to inbox", mirrorErr);
+        }
+      }
+
+      // Translate the set of tool names into entity tags the client knows
+      // how to invalidate. Keep this map in sync with AFFECTED_KEYS in
+      // client/src/hooks/use-chat.ts.
+      // (Set.forEach instead of for-of to avoid the downlevelIteration TS
+      // diagnostic — the rest of this file follows the same convention.)
+      toolsCalled.forEach((tool) => {
+        for (const tag of TOOL_TO_AFFECTED[tool] ?? []) {
+          affectedSet.add(tag);
+        }
+      });
+
       const assistantMessage = await storage.createChatMessage({
         companyId,
         role: "assistant",
         content: serialized,
       });
 
-      res.json(assistantMessage);
+      res.json({ ...assistantMessage, affected: Array.from(affectedSet) });
     } catch (err) {
       console.error("Chat error", err);
       if (err instanceof z.ZodError) {

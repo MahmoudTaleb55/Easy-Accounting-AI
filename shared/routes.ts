@@ -288,7 +288,14 @@ export const api = {
         locale: z.enum(['ar', 'en', 'de', 'fr']).optional(),
       }),
       responses: {
-        200: z.custom<typeof chatMessages.$inferSelect>(),
+        // The chat handler returns the assistant message *plus* an
+        // `affected: string[]` payload so the client can invalidate exactly
+        // the TanStack Query keys that the LLM's tool calls touched (e.g.
+        // ["transactions", "journal-entries", "documents"]). The list is
+        // always present — empty when no tools ran.
+        200: z.custom<
+          typeof chatMessages.$inferSelect & { affected: string[] }
+        >(),
         400: errorSchemas.validation,
       },
     },

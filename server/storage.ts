@@ -127,6 +127,15 @@ export interface IStorage {
   getTransactions(companyId: number): Promise<TransactionWithJournal[]>;
   createTransaction(companyId: number, tx: InsertTransaction, ctx?: AuditContext): Promise<Transaction>;
   deleteTransaction(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
+  /** Look up the auto-posted journal entry id for a quick-entry transaction.
+   *  Returns null when the auto-post leg failed (best-effort by design — see
+   *  `autoPostFromTransaction`). Used by the chat handler to mirror an
+   *  attached receipt into the inbox with `status="posted"` and a working
+   *  deep link to the JE the assistant just created via `add_quick_transaction`. */
+  getJournalEntryIdByTransactionId(
+    companyId: number,
+    transactionId: number,
+  ): Promise<number | null>;
 
   // Chat
   getChatMessages(companyId: number): Promise<ChatMessage[]>;
@@ -1153,6 +1162,27 @@ export class DatabaseStorage implements IStorage {
       console.error("Failed to auto-post journal entry for transaction", transaction.id, e);
     }
     return transaction;
+  }
+
+  async getJournalEntryIdByTransactionId(
+    companyId: number,
+    transactionId: number,
+  ): Promise<number | null> {
+    // Quick-entry transactions auto-post exactly one journal entry whose
+    // `sourceTransactionId` points back at them (see `autoPostFromTransaction`).
+    // We scope on `companyId` defensively so a workspace can never resolve
+    // another tenant's JE id, even though RLS would already block the read.
+    const [row] = await db
+      .select({ id: journalEntries.id })
+      .from(journalEntries)
+      .where(
+        and(
+          eq(journalEntries.sourceTransactionId, transactionId),
+          eq(journalEntries.companyId, companyId),
+        ),
+      )
+      .limit(1);
+    return row?.id ?? null;
   }
 
   async deleteTransaction(companyId: number, id: number, ctx?: AuditContext): Promise<void> {

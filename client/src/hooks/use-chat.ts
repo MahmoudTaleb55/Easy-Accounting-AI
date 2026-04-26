@@ -25,6 +25,48 @@ export function useChatMessages() {
   });
 }
 
+/**
+ * Map of "entity tag returned by the server" → list of TanStack Query keys
+ * that surface that entity in the UI. The server (chat handler) inspects which
+ * tools the assistant invoked and returns a list of tags in the
+ * `affected` array on the response. We invalidate every matching key so the
+ * inbox / journal / transactions / accounts / reports pages refresh
+ * automatically — no manual reload required after the assistant writes.
+ *
+ * Keep this in sync with the server-side `toolToAffected` map in
+ * server/routes.ts.
+ */
+const AFFECTED_KEYS: Record<string, ReadonlyArray<readonly unknown[]>> = {
+  documents: [["/api/documents"]],
+  transactions: [
+    [api.transactions.list.path],
+    [api.transactions.summary.path],
+  ],
+  "journal-entries": [["/api/journal-entries"]],
+  accounts: [["/api/accounts"]],
+  "fixed-assets": [["/api/fixed-assets"]],
+  employees: [["/api/hr/employees"]],
+  attendance: [["/api/hr/attendance"]],
+  leaves: [["/api/hr/leaves"]],
+  payroll: [["/api/hr/payroll/runs"]],
+  insights: [
+    // Use the *prefix* query keys here (no date/range arguments). TanStack
+    // Query's default invalidation matches anything that *starts with* the
+    // given key, so this single entry per endpoint invalidates every cached
+    // variant — current period, prior period, custom date range, etc.
+    ["/api/insights/alerts"],
+    ["/api/insights/cash-forecast"],
+    ["/api/insights/health"],
+    ["/api/insights/taxes"],
+    ["/api/insights/budget-vs-actual"],
+  ],
+  reports: [
+    ["/api/reports/trial-balance"],
+    ["/api/reports/balance-sheet"],
+    ["/api/reports/profit-loss"],
+  ],
+};
+
 export function useSendMessage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -69,15 +111,61 @@ export function useSendMessage() {
       
       return { previousMessages };
     },
-    onSuccess: () => {
+    onSuccess: (response, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.chat.list.path] });
-      // The AI might have added a transaction, so we invalidate those too
-      queryClient.invalidateQueries({ queryKey: [api.transactions.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.transactions.summary.path] });
-      // Any AI-added transaction also auto-posts a JE, so the chart of
-      // accounts trailing balances need to be invalidated for every
-      // period the user might flip back to.
-      invalidateAccountBalances();
+
+      // The server returns `affected: string[]` listing the entity tags whose
+      // cached views may now be stale. Walk that list and invalidate every
+      // matching query key so the inbox/journal/transactions/accounts pages
+      // refresh on their own — addressing the user-reported "I have to
+      // manually refresh after the assistant adds something" bug.
+      //
+      // We're defensive about the response shape (it might be the raw chat
+      // message object on older deployments, or a `{ ...message, affected }`
+      // envelope on newer ones), and fall back to invalidating the historical
+      // "transactions only" set when no `affected` array is present so the
+      // hook is fully backward-compatible.
+      const affected: string[] = Array.isArray(response?.affected)
+        ? (response.affected as string[])
+        : [];
+
+      // If the user attached an image to this turn, the inbox cache is
+      // *always* potentially stale (the chat handler now mirrors uploaded
+      // receipts into the document inbox). Pre-seed the affected set so the
+      // inbox refreshes even when the server forgot to include it.
+      const effective = new Set(affected);
+      if (variables?.imageData) effective.add("documents");
+      // Always include the historical transactions/accounts invalidation —
+      // the assistant might add a row through any of several tool paths and
+      // we'd rather over-invalidate by a few cheap queries than leave the
+      // user staring at a stale list.
+      effective.add("transactions");
+      effective.add("accounts");
+
+      const seen = new Set<string>();
+      effective.forEach((tag) => {
+        const keys = AFFECTED_KEYS[tag];
+        if (!keys) return;
+        for (const key of keys) {
+          // Cheap dedupe so we only fire one invalidation per query key per
+          // mutation, even if multiple tags map to overlapping keys.
+          const sig = JSON.stringify(key);
+          if (seen.has(sig)) continue;
+          seen.add(sig);
+          queryClient.invalidateQueries({ queryKey: key as unknown[] });
+        }
+      });
+
+      // Account trailing balances are computed client-side per period, so
+      // they don't live behind a single query key — invalidate them through
+      // the dedicated helper that walks every cached period.
+      if (
+        effective.has("transactions") ||
+        effective.has("journal-entries") ||
+        effective.has("accounts")
+      ) {
+        invalidateAccountBalances();
+      }
     },
     onError: (err, _, context) => {
       queryClient.setQueryData([api.chat.list.path], context?.previousMessages);
