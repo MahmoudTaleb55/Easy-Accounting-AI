@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateAccountBalances, ApiError } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useCompany } from "@/contexts/company-context";
 import { useFormatMoney } from "@/lib/format";
@@ -15,9 +15,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { WriteGuard, OwnerGuard, useCanManageWorkspace } from "@/components/auth/write-guard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck } from "lucide-react";
+import { Building2, Plus, Trash2, Calculator, ArrowDownCircle, RefreshCw, Truck, AlertCircle } from "lucide-react";
 import { ListSkeleton } from "@/components/feedback/list-skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { HistoryTimeline } from "@/components/audit/history-drawer";
@@ -639,10 +648,48 @@ function AddAssetDialog({ company, categories, onClose }: { company: Company; ca
 
 function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; company: Company; onClose: () => void }) {
   const fmt = useAssetMoneyFmt();
+  const { toast } = useToast();
   const { data, isLoading } = useQuery<AssetDetail>({
     queryKey: ["/api/fixed-assets", assetId, "detail"],
     queryFn: async () => (await fetch(`/api/fixed-assets/${assetId}`)).json(),
   });
+
+  // Task #263: when DELETE /api/{impairment-events,revaluation-events,disposals}
+  // returns 409 (e.g. a later event blocks the delete per task #209, the JE
+  // is referenced elsewhere per task #111, or the legacy-row guard from task
+  // #208 fires), park the server-supplied reason in state so the modal alert
+  // below can surface it verbatim. A toast would auto-dismiss before the
+  // user could read which event blocked the delete; the modal stays put
+  // until they explicitly close it.
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
+
+  const eventDeleteOptions = (path: string) => {
+    const fallback = "تعذّر حذف الحدث: مرتبط بسجلات لاحقة على نفس الأصل.";
+    return {
+      mutationFn: async (id: number) => apiRequest("DELETE", `/api/${path}/${id}`),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets", assetId, "detail"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+        invalidateAccountBalances();
+        toast({ title: "تم", description: "تم حذف الحدث وعكس قيده المحاسبي" });
+      },
+      onError: (e: Error) => {
+        if (e instanceof ApiError && e.status === 409) {
+          const body = e.body as { message?: unknown } | null | undefined;
+          const raw = body?.message;
+          const serverMsg = typeof raw === "string" && raw.trim().length > 0 ? raw : fallback;
+          setConflictMessage(serverMsg);
+          return;
+        }
+        toast({ title: "خطأ", description: e.message, variant: "destructive" });
+      },
+    };
+  };
+
+  const deleteImpairment = useMutation(eventDeleteOptions("impairment-events"));
+  const deleteRevaluation = useMutation(eventDeleteOptions("revaluation-events"));
+  const deleteDisposal = useMutation(eventDeleteOptions("disposals"));
 
   // Build a unified history of journal-bearing events sorted by date
   const history = useMemo(() => {
@@ -662,6 +709,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
   }, [data]);
 
   return (
+    <>
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent dir="rtl" className="sm:max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-asset-detail">
         <DialogHeader>
@@ -752,9 +800,9 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
             </TabsContent>
             <TabsContent value="impairments" className="mt-4">
               {data.impairments.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد قيود انخفاض.</div> : (
-                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة الاستردادية</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">القيد</th></tr></thead>
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة الاستردادية</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">القيد</th><th className="text-right py-2"></th></tr></thead>
                   <tbody>{data.impairments.map((e) => (
-                    <tr key={e.id} className="border-b">
+                    <tr key={e.id} className="border-b" data-testid={`row-impairment-${e.id}`}>
                       <td className="py-1">{e.eventDate}</td>
                       <td className="py-1 tabular-nums">{fmt(e.recoverableAmount)}</td>
                       <td className="py-1 tabular-nums">{fmt(e.lossAmount)}</td>
@@ -768,15 +816,29 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           JE {e.journalEntryId}
                         </JournalEntryRefLink>
                       ) : <span className="text-muted-foreground">—</span>}</td>
+                      <td className="py-1">
+                        <WriteGuard>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => deleteImpairment.mutate(e.id)}
+                            disabled={deleteImpairment.isPending}
+                            data-testid={`button-delete-impairment-${e.id}`}
+                            title="حذف الحدث وعكس قيده المحاسبي"
+                          >
+                            <Trash2 className="w-4 h-4 text-rose-600" />
+                          </Button>
+                        </WriteGuard>
+                      </td>
                     </tr>
                   ))}</tbody></table></div>
               )}
             </TabsContent>
             <TabsContent value="revaluations" className="mt-4">
               {data.revaluations.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد عمليات إعادة تقييم.</div> : (
-                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة العادلة</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">فائض</th><th className="text-right py-2">P&L</th><th className="text-right py-2">القيد</th></tr></thead>
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة العادلة</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">فائض</th><th className="text-right py-2">P&L</th><th className="text-right py-2">القيد</th><th className="text-right py-2"></th></tr></thead>
                   <tbody>{data.revaluations.map((e) => (
-                    <tr key={e.id} className="border-b">
+                    <tr key={e.id} className="border-b" data-testid={`row-revaluation-${e.id}`}>
                       <td className="py-1">{e.eventDate}</td>
                       <td className="py-1 tabular-nums">{fmt(e.fairValue)}</td>
                       <td className="py-1">{e.method}</td>
@@ -792,13 +854,27 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           JE {e.journalEntryId}
                         </JournalEntryRefLink>
                       ) : <span className="text-muted-foreground">—</span>}</td>
+                      <td className="py-1">
+                        <WriteGuard>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => deleteRevaluation.mutate(e.id)}
+                            disabled={deleteRevaluation.isPending}
+                            data-testid={`button-delete-revaluation-${e.id}`}
+                            title="حذف الحدث وعكس قيده المحاسبي"
+                          >
+                            <Trash2 className="w-4 h-4 text-rose-600" />
+                          </Button>
+                        </WriteGuard>
+                      </td>
                     </tr>
                   ))}</tbody></table></div>
               )}
             </TabsContent>
             <TabsContent value="disposals" className="mt-4">
               {data.disposals.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد عمليات استبعاد.</div> : (
-                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">المتحصلات</th><th className="text-right py-2">ربح/خسارة</th><th className="text-right py-2">القيد</th></tr></thead>
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">المتحصلات</th><th className="text-right py-2">ربح/خسارة</th><th className="text-right py-2">القيد</th><th className="text-right py-2"></th></tr></thead>
                   <tbody>{data.disposals.map((e) => (
                     <tr key={e.id} className="border-b" data-testid={`row-disposal-${e.id}`}>
                       <td className="py-1">{e.eventDate}</td>
@@ -815,6 +891,20 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           JE {e.journalEntryId}
                         </JournalEntryRefLink>
                       ) : <span className="text-muted-foreground">—</span>}</td>
+                      <td className="py-1">
+                        <WriteGuard>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => deleteDisposal.mutate(e.id)}
+                            disabled={deleteDisposal.isPending}
+                            data-testid={`button-delete-disposal-${e.id}`}
+                            title="حذف الحدث وعكس قيده المحاسبي"
+                          >
+                            <Trash2 className="w-4 h-4 text-rose-600" />
+                          </Button>
+                        </WriteGuard>
+                      </td>
                     </tr>
                   ))}</tbody></table></div>
               )}
@@ -837,6 +927,42 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
         )}
       </DialogContent>
     </Dialog>
+    {/*
+      Task #263: surface the server-supplied 409 reason in a modal alert
+      (not a toast) so the user has time to read which specific event
+      blocks the delete — e.g. "a revaluation posted on 2099-08-31 must
+      be deleted first". A destructive toast would auto-dismiss after a
+      few seconds and leave the user staring at a row that didn't go
+      away with no explanation.
+    */}
+    <AlertDialog
+      open={!!conflictMessage}
+      onOpenChange={(o) => { if (!o) setConflictMessage(null); }}
+    >
+      <AlertDialogContent dir="rtl" data-testid="dialog-asset-event-delete-conflict">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2 text-right">
+            <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
+            تعذّر حذف الحدث
+          </AlertDialogTitle>
+          <AlertDialogDescription
+            className="text-sm leading-relaxed text-foreground text-right whitespace-pre-line"
+            data-testid="text-asset-event-delete-conflict-message"
+          >
+            {conflictMessage}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction
+            onClick={() => setConflictMessage(null)}
+            data-testid="button-asset-event-delete-conflict-close"
+          >
+            فهمت
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 

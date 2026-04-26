@@ -394,20 +394,85 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
     // Filter on status='active' so a stale disposed/depreciated row from a
     // previous run doesn't satisfy the existence check and skip the insert.
     const assetExists = (
-      await client.query(
+      await client.query<{ id: number }>(
         `SELECT id FROM fixed_assets WHERE company_id = $1 AND status = 'active' LIMIT 1`,
         [companyId],
       )
     ).rows[0];
-    if (!assetExists) {
+    let assetId: number;
+    if (assetExists) {
+      assetId = Number(assetExists.id);
+    } else {
+      assetId = Number(
+        (
+          await client.query<{ id: number }>(
+            `INSERT INTO fixed_assets (
+               company_id, category_id, code, name, acquisition_date, in_service_date,
+               currency, tx_cost, fx_rate, cost, residual, useful_life_months, method,
+               measurement_model, status, location
+             ) VALUES ($1, $2, 'FA-E2E-001', 'Role Test Asset', '2024-06-01', '2024-06-01',
+               'USD', '12000', '1', '12000', '0', 60, 'straight_line', 'cost', 'active', '')
+             RETURNING id`,
+            [companyId, categoryId],
+          )
+        ).rows[0].id,
+      );
+    }
+
+    // ---- (d.3.b) One impairment + one revaluation + one disposal ----
+    // The asset detail dialog renders a per-row delete button (added in
+    // task #263) inside each of the impairment / revaluation / disposal
+    // tabs. Those buttons are <WriteGuard>-wrapped, which means the role
+    // coverage scanner (`scripts/check-role-guard-coverage.ts`) requires
+    // them to be exercised by every role's describe block. Seed one row
+    // per kind on the canonical Role Test Asset so the spec can deep-link
+    // into the dialog and verify the unguarded / guarded shape per role.
+    //
+    // `journal_entry_id` is nullable on all three event tables (the rows
+    // pre-date the JE-link contract; see schema notes around line 845),
+    // so we leave it null and skip the JE bookkeeping — the delete button
+    // visibility check does not depend on the linked JE.
+    const impEventExists = (
       await client.query(
-        `INSERT INTO fixed_assets (
-           company_id, category_id, code, name, acquisition_date, in_service_date,
-           currency, tx_cost, fx_rate, cost, residual, useful_life_months, method,
-           measurement_model, status, location
-         ) VALUES ($1, $2, 'FA-E2E-001', 'Role Test Asset', '2024-06-01', '2024-06-01',
-           'USD', '12000', '1', '12000', '0', 60, 'straight_line', 'cost', 'active', '')`,
-        [companyId, categoryId],
+        `SELECT id FROM impairment_events WHERE company_id = $1 AND asset_id = $2 LIMIT 1`,
+        [companyId, assetId],
+      )
+    ).rows[0];
+    if (!impEventExists) {
+      await client.query(
+        `INSERT INTO impairment_events
+           (company_id, asset_id, event_date, recoverable_amount, loss_amount)
+         VALUES ($1, $2, '2024-07-01', '10000.00', '500.00')`,
+        [companyId, assetId],
+      );
+    }
+    const revEventExists = (
+      await client.query(
+        `SELECT id FROM revaluation_events WHERE company_id = $1 AND asset_id = $2 LIMIT 1`,
+        [companyId, assetId],
+      )
+    ).rows[0];
+    if (!revEventExists) {
+      await client.query(
+        `INSERT INTO revaluation_events
+           (company_id, asset_id, event_date, fair_value, method,
+            surplus_delta, pl_impact)
+         VALUES ($1, $2, '2024-07-15', '11000.00', 'elimination', '500.00', '0')`,
+        [companyId, assetId],
+      );
+    }
+    const dispEventExists = (
+      await client.query(
+        `SELECT id FROM disposals WHERE company_id = $1 AND asset_id = $2 LIMIT 1`,
+        [companyId, assetId],
+      )
+    ).rows[0];
+    if (!dispEventExists) {
+      await client.query(
+        `INSERT INTO disposals
+           (company_id, asset_id, event_date, proceeds, method, gain_loss)
+         VALUES ($1, $2, '2024-07-20', '5000.00', 'sale', '0')`,
+        [companyId, assetId],
       );
     }
 
@@ -548,6 +613,19 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
   // We just have to clear the page's cookie jar between roles so each
   // saved state contains exactly one user's cookies and nothing leaks
   // across roles.
+  //
+  // We also pre-seed `active_company_id` in localStorage via the
+  // `afterCookiesPlanted` hook so the very first authenticated render
+  // pins the X-Company-Id header to the canonical "E2E Roles Co"
+  // workspace. Without this, the FE fetches `/api/auth/memberships`,
+  // the server falls back to the user's *first* membership row by
+  // unspecified DB order, and the owner — who can accumulate extra
+  // memberships from other suites in the shared test DB (e.g.
+  // `role-based-api.spec.ts` creates "RBA Owner Co <runtag>" rows
+  // that survive between sessions) — can land on the wrong workspace,
+  // hiding the seeded asset/categories/fx and turning every gated
+  // assertion into a stale-empty-state failure.
+  const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
   for (const spec of ROLE_SPECS) {
     const uid = userIds.get(spec.role)!;
     await page.context().clearCookies();
@@ -559,6 +637,13 @@ setup("authenticate + seed role-based fixtures", async ({ page }) => {
       firstName: "E2E",
       lastName: `Role-${spec.role}`,
       storagePath: path.resolve(spec.storagePath),
+      baseURL,
+      afterCookiesPlanted: async (p) => {
+        await p.goto(baseURL, { waitUntil: "domcontentloaded" });
+        await p.evaluate((id) => {
+          window.localStorage.setItem("active_company_id", String(id));
+        }, companyId);
+      },
     });
   }
 

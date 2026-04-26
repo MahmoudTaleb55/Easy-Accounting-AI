@@ -328,6 +328,58 @@ test.describe("role-based button gating @rbac", () => {
       await expectUnguarded(page, "button-post-dep");
     });
 
+    test("fixed-assets asset detail: per-event delete buttons enabled", async ({ page }) => {
+      // The asset detail dialog (opened via the `#asset-<id>` hash) renders
+      // a per-row delete button inside each of the impairment / revaluation
+      // / disposal tabs. Those buttons are <WriteGuard>-wrapped (task #263)
+      // and the role-guard-coverage scanner therefore requires them to be
+      // exercised under every role. The shared setup seeds one event per
+      // kind on the canonical Role Test Asset so the buttons render here.
+      //
+      // Note on the literal locator strings below ("button-delete-impairment-",
+      // "button-delete-revaluation-", "button-delete-disposal-"): the
+      // role-guard-coverage scanner only resolves loop tokens whose dynamic
+      // segment is a single dash-free word (see `tokenAppearsInBlock` in
+      // `scripts/check-role-guard-coverage.ts`). Composing the testid via a
+      // for-of like `\`button-delete-${kind}-\`` would leave the scanner
+      // unable to match `button-delete-impairment-` against that pattern,
+      // so we spell each one out instead.
+      await gotoApp(page, "/app/fixed-assets");
+      await expectAnyRow(page, "row-asset-");
+      const assetRow = page.locator('[data-testid^="row-asset-"]').first();
+      const assetId = (await assetRow.getAttribute("data-testid"))!.replace("row-asset-", "");
+
+      // The `#asset-<id>` deep link must be appended AFTER the
+      // `?lang=en` query the gotoApp helper injects — otherwise the
+      // browser treats the hash as containing the query string and the
+      // dialog never opens. We bypass gotoApp here and re-construct the
+      // URL by hand.
+      await page.goto(`/app/fixed-assets?lang=en#asset-${assetId}`, { waitUntil: "networkidle" });
+      const dialog = page.locator('[data-testid="dialog-asset-detail"]');
+      await expect(dialog).toBeVisible();
+
+      await dialog.locator('[data-testid="tab-detail-impairments"]').click();
+      await expectAnyRow(page, "row-impairment-");
+      const impBtn = page.locator('[data-testid^="button-delete-impairment-"]').first();
+      const impBtnId = await impBtn.getAttribute("data-testid");
+      await expectUnguarded(page, impBtnId!);
+      await expect(impBtn).toBeEnabled();
+
+      await dialog.locator('[data-testid="tab-detail-revaluations"]').click();
+      await expectAnyRow(page, "row-revaluation-");
+      const revBtn = page.locator('[data-testid^="button-delete-revaluation-"]').first();
+      const revBtnId = await revBtn.getAttribute("data-testid");
+      await expectUnguarded(page, revBtnId!);
+      await expect(revBtn).toBeEnabled();
+
+      await dialog.locator('[data-testid="tab-detail-disposals"]').click();
+      await expectAnyRow(page, "row-disposal-");
+      const dispBtn = page.locator('[data-testid^="button-delete-disposal-"]').first();
+      const dispBtnId = await dispBtn.getAttribute("data-testid");
+      await expectUnguarded(page, dispBtnId!);
+      await expect(dispBtn).toBeEnabled();
+    });
+
     test("settings members: invite + per-row remove are enabled", async ({ page }) => {
       await gotoApp(page, "/app/settings/members");
 
@@ -627,6 +679,48 @@ test.describe("role-based button gating @rbac", () => {
       await expectUnguarded(page, "button-post-dep");
     });
 
+    test("fixed-assets asset detail: per-event delete buttons enabled", async ({ page }) => {
+      // Accountants pass the WriteGuard `canWrite` check just like owners,
+      // so the per-event delete buttons must render unwrapped and enabled
+      // here too. The viewer counterpart of this test asserts the inverse
+      // (read-only-guarded), keeping all three role coverage hits in the
+      // same describe-block layout the role-guard-coverage scanner expects.
+      // The literal "button-delete-impairment-" / "button-delete-revaluation-"
+      // / "button-delete-disposal-" locators are required for the static
+      // scanner — see the matching owner test for the long-form rationale.
+      await gotoApp(page, "/app/fixed-assets");
+      await expectAnyRow(page, "row-asset-");
+      const assetRow = page.locator('[data-testid^="row-asset-"]').first();
+      const assetId = (await assetRow.getAttribute("data-testid"))!.replace("row-asset-", "");
+
+      // Hash AFTER query — see the matching owner test for why we bypass
+      // gotoApp here.
+      await page.goto(`/app/fixed-assets?lang=en#asset-${assetId}`, { waitUntil: "networkidle" });
+      const dialog = page.locator('[data-testid="dialog-asset-detail"]');
+      await expect(dialog).toBeVisible();
+
+      await dialog.locator('[data-testid="tab-detail-impairments"]').click();
+      await expectAnyRow(page, "row-impairment-");
+      const impBtn = page.locator('[data-testid^="button-delete-impairment-"]').first();
+      const impBtnId = await impBtn.getAttribute("data-testid");
+      await expectUnguarded(page, impBtnId!);
+      await expect(impBtn).toBeEnabled();
+
+      await dialog.locator('[data-testid="tab-detail-revaluations"]').click();
+      await expectAnyRow(page, "row-revaluation-");
+      const revBtn = page.locator('[data-testid^="button-delete-revaluation-"]').first();
+      const revBtnId = await revBtn.getAttribute("data-testid");
+      await expectUnguarded(page, revBtnId!);
+      await expect(revBtn).toBeEnabled();
+
+      await dialog.locator('[data-testid="tab-detail-disposals"]').click();
+      await expectAnyRow(page, "row-disposal-");
+      const dispBtn = page.locator('[data-testid^="button-delete-disposal-"]').first();
+      const dispBtnId = await dispBtn.getAttribute("data-testid");
+      await expectUnguarded(page, dispBtnId!);
+      await expect(dispBtn).toBeEnabled();
+    });
+
     test("settings members: page is forbidden for accountants", async ({ page }) => {
       // Members management is hard-gated on isAdmin, so non-owners get
       // the forbidden notice instead of the (otherwise
@@ -916,6 +1010,51 @@ test.describe("role-based button gating @rbac", () => {
         "write-guard-disabled",
         READ_ONLY_TOOLTIP,
       );
+    });
+
+    test("fixed-assets asset detail: per-event delete buttons are read-only guarded", async ({ page }) => {
+      // Viewers fail the WriteGuard `canWrite` check, so the per-event
+      // delete buttons inside the asset detail dialog must render wrapped
+      // in `[data-testid="write-guard-disabled"]` with the read-only
+      // tooltip — same shape as the per-asset action buttons in the
+      // register tab. The literal "button-delete-impairment-" /
+      // "button-delete-revaluation-" / "button-delete-disposal-" locators
+      // are required for the static role-guard-coverage scanner — see the
+      // matching owner test for the long-form rationale.
+      await gotoApp(page, "/app/fixed-assets");
+      await expectAnyRow(page, "row-asset-");
+      const assetRow = page.locator('[data-testid^="row-asset-"]').first();
+      const assetId = (await assetRow.getAttribute("data-testid"))!.replace("row-asset-", "");
+
+      // Hash AFTER query — see the matching owner test for why we bypass
+      // gotoApp here.
+      await page.goto(`/app/fixed-assets?lang=en#asset-${assetId}`, { waitUntil: "networkidle" });
+      const dialog = page.locator('[data-testid="dialog-asset-detail"]');
+      await expect(dialog).toBeVisible();
+
+      await dialog.locator('[data-testid="tab-detail-impairments"]').click();
+      await expectAnyRow(page, "row-impairment-");
+      const impBtnId = await page
+        .locator('[data-testid^="button-delete-impairment-"]')
+        .first()
+        .getAttribute("data-testid");
+      await expectGuarded(page, impBtnId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
+
+      await dialog.locator('[data-testid="tab-detail-revaluations"]').click();
+      await expectAnyRow(page, "row-revaluation-");
+      const revBtnId = await page
+        .locator('[data-testid^="button-delete-revaluation-"]')
+        .first()
+        .getAttribute("data-testid");
+      await expectGuarded(page, revBtnId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
+
+      await dialog.locator('[data-testid="tab-detail-disposals"]').click();
+      await expectAnyRow(page, "row-disposal-");
+      const dispBtnId = await page
+        .locator('[data-testid^="button-delete-disposal-"]')
+        .first()
+        .getAttribute("data-testid");
+      await expectGuarded(page, dispBtnId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
     });
 
     test("settings members: page is forbidden for viewers", async ({ page }) => {
