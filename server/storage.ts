@@ -107,6 +107,14 @@ export const AUDIT_ENTITY_TYPES = [
   "attendance",
   "leave",
   "payroll_run",
+  // Workspace-scoped maintenance actions whose "entity" is the workspace
+  // itself rather than a row in a domain table. Today: a single audit row
+  // per invocation of `backfillJournalForLegacyTransactions`, with
+  // `entity_id = company_id` and a payload of `{ created, skipped,
+  // triggered_via: 'admin-route' | 'boot' }`. Lets two owners (or future
+  // support) see who re-ran the recovery action and when, without rooting
+  // through every per-JE audit row. See task #236.
+  "backfill",
 ] as const;
 
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
@@ -229,6 +237,54 @@ export interface IStorage {
     companyId: number,
     entityId: number,
   ): Promise<AuditLogEntry[] | null>;
+
+  /**
+   * Append a `journal_entry/<action>` audit row inside the caller's open
+   * transaction. Used by callers that insert journal entries directly via
+   * Drizzle (notably `backfillJournalForLegacyTransactions` in init-coa.ts)
+   * instead of going through `createJournalEntry`, so every JE in the
+   * system carries the same audit-log lineage regardless of which code
+   * path posted it. Task #222 / task #236.
+   */
+  recordJournalEntryAudit(
+    tx: AuditWriter,
+    input: {
+      companyId: number;
+      journalEntryId: number;
+      action: "create" | "update" | "delete" | "post";
+      changes?: AuditChange[];
+      ctx?: AuditContext;
+    },
+  ): Promise<void>;
+
+  /**
+   * Append the per-invocation summary audit row written by the
+   * journal-entry recovery action (see `backfillJournalForLegacyTransactions`).
+   * Stamps `entity_type='backfill'`, `entity_id=companyId`, and a payload of
+   * `{ created, skipped, triggered_via }` in the `changes` JSON, so two
+   * owners (or future support) can answer "who re-paired the books and
+   * when?" without rooting through every per-JE audit row. Caller passes
+   * the open transaction handle so the audit row commits atomically with
+   * the per-JE writes from the same backfill invocation (task #222 / task #236).
+   */
+  recordBackfillRunAudit(
+    tx: AuditWriter,
+    input: {
+      companyId: number;
+      created: number;
+      skipped: number;
+      triggeredVia: "admin-route" | "boot";
+      ctx?: AuditContext;
+    },
+  ): Promise<void>;
+
+  /**
+   * Most recent backfill audit row for the active workspace, or `null` if
+   * the recovery action has never been recorded for this workspace. Powers
+   * the "Last run by <owner> on <date>" line under the Re-pair card on
+   * /app/settings (task #236).
+   */
+  getLastBackfillRun(companyId: number): Promise<AuditLogEntry | null>;
 
   // AI document inbox
   createDocument(companyId: number, input: InsertDocument): Promise<DocumentRow>;
@@ -2537,6 +2593,85 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async recordJournalEntryAudit(
+    tx: AuditWriter,
+    input: {
+      companyId: number;
+      journalEntryId: number;
+      action: "create" | "update" | "delete" | "post";
+      changes?: AuditChange[];
+      ctx?: AuditContext;
+    },
+  ): Promise<void> {
+    // Same single-transaction guarantee as `recordPayrollRunAudit` —
+    // forwarding `tx` straight into `recordAudit` keeps the JE write and
+    // its audit row atomic. Used by the journal-entry recovery action
+    // (`backfillJournalForLegacyTransactions`) so backfilled JEs carry
+    // the same audit lineage as manually-posted ones (task #236).
+    await recordAudit(tx, {
+      companyId: input.companyId,
+      entityType: "journal_entry",
+      entityId: input.journalEntryId,
+      action: input.action,
+      changes: input.changes,
+      ctx: input.ctx,
+    });
+  }
+
+  async recordBackfillRunAudit(
+    tx: AuditWriter,
+    input: {
+      companyId: number;
+      created: number;
+      skipped: number;
+      triggeredVia: "admin-route" | "boot";
+      ctx?: AuditContext;
+    },
+  ): Promise<void> {
+    // Task #236: per-invocation summary of the journal-entry recovery
+    // action. Stamps `entity_id = company_id` so the row is naturally
+    // workspace-scoped and the existing
+    // `audit_log_company_entity_idx (company_id, entity_type, entity_id)`
+    // composite index covers `getLastBackfillRun`'s lookup. The payload
+    // lives in the `changes` JSON as three field rows so the History
+    // drawer can render it the same way it renders any other audit row,
+    // and so a future report can pivot on `triggered_via`.
+    await recordAudit(tx, {
+      companyId: input.companyId,
+      entityType: "backfill",
+      entityId: input.companyId,
+      action: "create",
+      changes: [
+        { field: "created", to: input.created },
+        { field: "skipped", to: input.skipped },
+        { field: "triggered_via", to: input.triggeredVia },
+      ],
+      ctx: input.ctx,
+    });
+  }
+
+  async getLastBackfillRun(companyId: number): Promise<AuditLogEntry | null> {
+    // The `companyId` predicate is redundant under the audit_log
+    // workspace_isolation RLS (task #169) but is left in place as
+    // defense-in-depth and as a planner hint for the
+    // `audit_log_company_entity_idx` composite index. Bounding by
+    // `entityId = companyId` matches the stamp written by
+    // `recordBackfillRunAudit`.
+    const [row] = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.companyId, companyId),
+          eq(auditLog.entityType, "backfill"),
+          eq(auditLog.entityId, companyId),
+        ),
+      )
+      .orderBy(desc(auditLog.occurredAt))
+      .limit(1);
+    return row ?? null;
+  }
+
   // ----- Audit log (workspace-scoped) -----
   async entityBelongsToCompany(
     entityType: AuditEntityType,
@@ -2610,6 +2745,13 @@ export class DatabaseStorage implements IStorage {
           .where(and(eq(payrollRuns.id, entityId), eq(payrollRuns.companyId, companyId)))
           .limit(1);
         return rows.length > 0;
+      }
+      case "backfill": {
+        // Backfill audit rows have no per-row entity table; the "entity"
+        // is the workspace itself and we stamp `entity_id = company_id`
+        // when writing the row (see `recordBackfillRunAudit` below).
+        // Ownership is therefore exactly identity on the active workspace.
+        return entityId === companyId;
       }
       default: {
         const _exhaustive: never = entityType;

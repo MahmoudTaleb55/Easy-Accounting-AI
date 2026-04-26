@@ -257,6 +257,29 @@ export const api = {
         500: errorSchemas.internal,
       },
     },
+    // Companion read-only endpoint that returns the most recent
+    // backfill audit row for the active workspace, so the settings card
+    // can render a "Last run by <owner> on <date>" line under the
+    // Re-pair button. Returns `{ lastRun: null }` when no backfill has
+    // ever been recorded for this workspace. See task #236.
+    backfillJournalEntriesLastRun: {
+      method: 'GET' as const,
+      path: '/api/admin/backfill-journal-entries/last-run' as const,
+      responses: {
+        200: z.object({
+          lastRun: z
+            .object({
+              actor: z.string().nullable(),
+              source: z.string(),
+              occurredAt: z.string(),
+              created: z.number(),
+              skipped: z.number(),
+              triggeredVia: z.enum(['admin-route', 'boot']),
+            })
+            .nullable(),
+        }),
+      },
+    },
   },
   chat: {
     list: {

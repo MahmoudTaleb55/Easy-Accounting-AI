@@ -3,6 +3,7 @@ import { accounts, journalEntries, journalLines, transactions } from "@shared/sc
 import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode, PAYROLL_EXTRA_ACCOUNTS, FIXED_ASSETS_EXTRA_ACCOUNTS, FA_CATEGORY_DEFAULTS, FA_ACCUM_IMP_CODE, FA_DEP_EXPENSE_CODE, FA_IMP_LOSS_CODE, FA_REVAL_SURPLUS_CODE, FA_GAIN_LOSS_DISPOSAL_CODE } from "@shared/coa-seed";
 import { companies, assetCategories } from "@shared/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { storage, type AuditContext } from "./storage";
 
 /**
  * Converge the chart of accounts to the canonical seed defined in
@@ -289,16 +290,32 @@ export async function initChartOfAccounts(): Promise<void> {
  *
  * Two callers:
  *   1. Boot path (`ensureIfrsBootstrap`) — passes no filter, sweeps every
- *      workspace under `withRlsBypass`.
+ *      workspace under `withRlsBypass`. `triggeredVia: 'boot'`, no actor
+ *      attribution (the sweep belongs to the system).
  *   2. Admin route (`POST /api/admin/backfill-journal-entries`) — passes the
  *      caller's active `companyId` so an owner can fix only their own
  *      backlog after a future regression, without needing cross-tenant
- *      privileges.
+ *      privileges. `triggeredVia: 'admin-route'` with the calling owner's
+ *      `AuditContext` so every audit row carries their name.
  *
  * JE references are numbered per-workspace (matching `nextJournalReference`
  * in `storage.ts`), so a backfilled JE slots cleanly into the workspace's
  * existing JE-NNNNN sequence instead of inheriting a global counter that
  * would skip ahead by other workspaces' JE counts.
+ *
+ * Audit trail (task #236):
+ *   - For each JE created, a `journal_entry/create` audit row is written
+ *     in the same transaction as the JE + lines insert, with the same
+ *     line-summary payload as a manually-posted entry. The `actor` is
+ *     stamped as "backfill on behalf of <owner>" (or just "backfill"
+ *     when triggered at boot) so the existing
+ *     `/api/audit/journal_entry/:id` endpoint surfaces who restored the
+ *     entry.
+ *   - For each workspace touched, a single `backfill/create` audit row
+ *     summarises the invocation with `{ created, skipped, triggered_via }`
+ *     in `changes`. Two owners (or future support) can answer "who
+ *     re-paired the books and when?" without rooting through the per-JE
+ *     rows. See `recordBackfillRunAudit` in storage.ts.
  *
  * Returns `{ created, skipped }` so callers can report how many orphan
  * transactions were paired with a JE versus left untouched (workspace not
@@ -306,13 +323,53 @@ export async function initChartOfAccounts(): Promise<void> {
  */
 export async function backfillJournalForLegacyTransactions(
   companyIdFilter?: number,
+  options?: {
+    /**
+     * Where the invocation came from. Stamped on every audit row this
+     * function writes so a future support investigation can tell apart
+     * boot-time sweeps from owner-initiated repairs. Defaults to `'boot'`
+     * to keep the existing `ensureIfrsBootstrap` call site unchanged.
+     */
+    triggeredVia?: "admin-route" | "boot";
+    /**
+     * Who triggered the recovery. The admin-route caller passes
+     * `userCtx(req)` so the calling owner's name flows into both the
+     * per-JE audit rows and the per-workspace summary row. The boot
+     * sweep leaves this undefined; the function falls back to a
+     * `{ source: 'system' }` context with no actor.
+     */
+    ctx?: AuditContext;
+  },
 ): Promise<{ created: number; skipped: number }> {
+  const triggeredVia = options?.triggeredVia ?? "boot";
+  // Per-JE audit rows always say `source: 'system'` because the JE was
+  // created by automation, not by a human edit. The actor name carries
+  // the lineage instead — "backfill on behalf of <owner>" for an
+  // admin-route invocation, or just "backfill" for the boot sweep — so
+  // the History drawer surfaces the recovery origin without misclassifying
+  // the row as a user-authored posting.
+  const callerActor = options?.ctx?.actor ?? null;
+  const jeActor = callerActor
+    ? `backfill on behalf of ${callerActor}`
+    : "backfill";
+  const jeAuditCtx: AuditContext = { source: "system", actor: jeActor };
+  // The summary row preserves the calling source so the History drawer
+  // can render the user/system distinction faithfully on /app/settings.
+  const summaryAuditCtx: AuditContext = {
+    source: options?.ctx?.source ?? "system",
+    actor: callerActor,
+  };
+
   const allAccounts =
     companyIdFilter !== undefined
       ? await db.select().from(accounts).where(eq(accounts.companyId, companyIdFilter))
       : await db.select().from(accounts);
   // companyId -> (code -> account.id), so we never cross workspace boundaries.
   const codeToIdByCompany = new Map<number, Map<string, number>>();
+  // accountId -> account row, so the per-JE audit can render the same
+  // "<code> <nameAr>" line summary as a manually-posted entry without
+  // re-querying inside every per-transaction loop iteration.
+  const accountById = new Map<number, (typeof allAccounts)[number]>();
   for (const a of allAccounts) {
     let m = codeToIdByCompany.get(a.companyId);
     if (!m) {
@@ -320,6 +377,7 @@ export async function backfillJournalForLegacyTransactions(
       codeToIdByCompany.set(a.companyId, m);
     }
     m.set(a.code, a.id);
+    accountById.set(a.id, a);
   }
 
   const allTx =
@@ -365,6 +423,20 @@ export async function backfillJournalForLegacyTransactions(
 
   let created = 0;
   let skipped = 0;
+  // Per-workspace tally so we can write a single `backfill` summary audit
+  // row per workspace touched at the end of the run, matching the
+  // task-#236 contract that "each invocation writes an audit-log entry".
+  // The boot path sweeps every workspace in one call; the admin route
+  // touches exactly one — both shapes flow through the same loop.
+  const perWorkspaceTally = new Map<number, { created: number; skipped: number }>();
+  const tallyFor = (companyId: number) => {
+    let t = perWorkspaceTally.get(companyId);
+    if (!t) {
+      t = { created: 0, skipped: 0 };
+      perWorkspaceTally.set(companyId, t);
+    }
+    return t;
+  };
 
   for (const tx of allTx) {
     if (covered.has(tx.id)) continue;
@@ -375,6 +447,7 @@ export async function backfillJournalForLegacyTransactions(
     // rather than borrow another workspace's accounts.
     if (!codeToId || !cashId) {
       skipped += 1;
+      tallyFor(tx.companyId).skipped += 1;
       continue;
     }
 
@@ -389,30 +462,112 @@ export async function backfillJournalForLegacyTransactions(
     }
     if (!dr || !cr) {
       skipped += 1;
+      tallyFor(tx.companyId).skipped += 1;
       continue;
     }
 
     const ref = await nextRef(tx.companyId);
     const amt = Number(tx.amount);
+    // Capture the resolved Dr/Cr ids in narrowing-friendly locals so the
+    // closure body doesn't have to re-narrow `dr` / `cr` (TS can't see
+    // through the outer `if (!dr || !cr)` guard inside the transaction
+    // callback).
+    const drId = dr;
+    const crId = cr;
 
-    const [je] = await db
-      .insert(journalEntries)
-      .values({
+    // JE header + lines + per-JE audit row commit atomically (task #222).
+    // Mirrors the contract in `storage.createJournalEntry` so a failed
+    // audit insert rolls the JE back rather than stranding a posted entry
+    // without history.
+    await db.transaction(async (txn) => {
+      const [je] = await txn
+        .insert(journalEntries)
+        .values({
+          companyId: tx.companyId,
+          reference: ref,
+          entryDate: tx.date ?? new Date(),
+          description: tx.description,
+          source: "transaction",
+          sourceTransactionId: tx.id,
+        })
+        .returning();
+
+      const insertedLines = await txn
+        .insert(journalLines)
+        .values([
+          {
+            companyId: tx.companyId,
+            journalEntryId: je.id,
+            accountId: drId,
+            debit: amt.toFixed(2),
+            credit: "0",
+            description: tx.description,
+          },
+          {
+            companyId: tx.companyId,
+            journalEntryId: je.id,
+            accountId: crId,
+            debit: "0",
+            credit: amt.toFixed(2),
+            description: tx.description,
+          },
+        ])
+        .returning();
+
+      // Same line-summary shape as `createJournalEntry`'s audit row, so
+      // the History drawer renders backfilled JEs with the same Dr/Cr
+      // breakdown a manually-posted entry shows. The actor name carries
+      // the recovery lineage ("backfill on behalf of <owner>" or just
+      // "backfill" for the boot sweep).
+      const lineSummary = insertedLines.map((l) => {
+        const acc = accountById.get(l.accountId);
+        const label = acc ? `${acc.code} ${acc.nameAr}` : `account#${l.accountId}`;
+        const debit = Number(l.debit);
+        const credit = Number(l.credit);
+        const value = debit > 0 ? `Dr ${debit.toFixed(2)}` : `Cr ${credit.toFixed(2)}`;
+        return { field: label, to: value };
+      });
+
+      await storage.recordJournalEntryAudit(txn, {
         companyId: tx.companyId,
-        reference: ref,
-        entryDate: tx.date ?? new Date(),
-        description: tx.description,
-        source: "transaction",
-        sourceTransactionId: tx.id,
-      })
-      .returning();
-
-    await db.insert(journalLines).values([
-      { companyId: tx.companyId, journalEntryId: je.id, accountId: dr, debit: amt.toFixed(2), credit: "0", description: tx.description },
-      { companyId: tx.companyId, journalEntryId: je.id, accountId: cr, debit: "0", credit: amt.toFixed(2), description: tx.description },
-    ]);
+        journalEntryId: je.id,
+        action: "create",
+        changes: [
+          { field: "reference", to: je.reference },
+          { field: "description", to: je.description },
+          { field: "source", to: je.source },
+          ...lineSummary,
+        ],
+        ctx: jeAuditCtx,
+      });
+    });
 
     created += 1;
+    tallyFor(tx.companyId).created += 1;
+  }
+
+  // Per-workspace summary audit row. We always write one row per workspace
+  // we considered, even if `created` and `skipped` are both zero, so a
+  // future "did the owner re-run this?" question always has an answer.
+  // For the boot sweep we only write rows for workspaces that actually
+  // had transactions visited (the `perWorkspaceTally` map), to avoid
+  // amplifying boot-time audit noise across every workspace on every
+  // restart.
+  const summaryWorkspaces =
+    companyIdFilter !== undefined
+      ? [companyIdFilter]
+      : Array.from(perWorkspaceTally.keys());
+  for (const cid of summaryWorkspaces) {
+    const t = perWorkspaceTally.get(cid) ?? { created: 0, skipped: 0 };
+    await db.transaction(async (txn) => {
+      await storage.recordBackfillRunAudit(txn, {
+        companyId: cid,
+        created: t.created,
+        skipped: t.skipped,
+        triggeredVia,
+        ctx: summaryAuditCtx,
+      });
+    });
   }
 
   return { created, skipped };

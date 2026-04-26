@@ -548,11 +548,65 @@ export async function registerRoutes(
     async (req, res) => {
       try {
         const { backfillJournalForLegacyTransactions } = await import("./init-coa");
-        const result = await backfillJournalForLegacyTransactions(cid(req));
+        // Task #236: forward the calling owner's `AuditContext` so every
+        // audit row this invocation writes (per-JE + the per-workspace
+        // `backfill` summary) carries their name. `triggeredVia:
+        // 'admin-route'` distinguishes the row from the boot-time sweep
+        // when two owners later argue about who re-paired the books.
+        const result = await backfillJournalForLegacyTransactions(cid(req), {
+          triggeredVia: "admin-route",
+          ctx: userCtx(req),
+        });
         res.json(result);
       } catch (err) {
         console.error("Admin backfill-journal-entries error", err);
         res.status(500).json({ message: "تعذّر استكمال قيود اليومية" });
+      }
+    },
+  );
+
+  // Companion read-only endpoint: returns the most recent backfill audit
+  // row for the active workspace so /app/settings can render a "Last run
+  // by <owner> on <date>" line under the Re-pair card. Owner-only because
+  // the row carries an actor name; matching the requireRole("owner") gate
+  // on the POST keeps the read/write halves consistent. Task #236.
+  app.get(
+    api.admin.backfillJournalEntriesLastRun.path,
+    requireRole("owner"),
+    async (req, res) => {
+      try {
+        const row = await storage.getLastBackfillRun(cid(req));
+        if (!row) {
+          return res.json({ lastRun: null });
+        }
+        // Translate the generic audit row into the focused payload the
+        // settings card needs, hiding the `entityType` / `entityId`
+        // bookkeeping. Defaults are defensive: an old row pre-dating
+        // task #236 (none should exist, but we guard anyway) won't crash
+        // the page if the `changes` JSON is empty.
+        const changes = (row.changes ?? []) as Array<{
+          field: string;
+          to?: unknown;
+        }>;
+        const get = (field: string) => changes.find((c) => c.field === field)?.to;
+        const created = Number(get("created"));
+        const skipped = Number(get("skipped"));
+        const triggeredViaRaw = String(get("triggered_via") ?? "");
+        const triggeredVia: "admin-route" | "boot" =
+          triggeredViaRaw === "admin-route" ? "admin-route" : "boot";
+        res.json({
+          lastRun: {
+            actor: row.actor,
+            source: row.source,
+            occurredAt: row.occurredAt.toISOString(),
+            created: Number.isFinite(created) ? created : 0,
+            skipped: Number.isFinite(skipped) ? skipped : 0,
+            triggeredVia,
+          },
+        });
+      } catch (err) {
+        console.error("Admin backfill-journal-entries last-run error", err);
+        res.status(500).json({ message: "تعذّر جلب سجل آخر إصلاح" });
       }
     },
   );

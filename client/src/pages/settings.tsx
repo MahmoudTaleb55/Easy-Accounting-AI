@@ -125,11 +125,30 @@ function SettingsSubpagesNav() {
   );
 }
 
+interface BackfillLastRun {
+  actor: string | null;
+  source: string;
+  occurredAt: string;
+  created: number;
+  skipped: number;
+  triggeredVia: "admin-route" | "boot";
+}
+
 function DataToolsCard() {
   const { toast } = useToast();
   const { locale } = useLocale();
   const ar = locale === "ar";
   const [lastResult, setLastResult] = useState<{ created: number; skipped: number } | null>(null);
+
+  // Last-run audit row drives the "Last run by <owner> on <date>" line
+  // under the Re-pair card so admins arriving at /app/settings can see
+  // whether a co-owner has already fixed the books — task #236. Returns
+  // `{ lastRun: null }` when the recovery action has never been recorded
+  // for this workspace, in which case we skip the line entirely.
+  const { data: lastRunData } = useQuery<{ lastRun: BackfillLastRun | null }>({
+    queryKey: [api.admin.backfillJournalEntriesLastRun.path],
+  });
+  const lastRun = lastRunData?.lastRun ?? null;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -149,6 +168,11 @@ function DataToolsCard() {
       // so /app/accounts reflects the new GL on the next visit.
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       invalidateAccountBalances();
+      // Refresh the "Last run by …" line so the row this owner just
+      // wrote shows up under the card without a manual reload (task #236).
+      queryClient.invalidateQueries({
+        queryKey: [api.admin.backfillJournalEntriesLastRun.path],
+      });
       toast({
         title: ar ? "تمّ الإصلاح" : "Done",
         description: ar
@@ -252,6 +276,34 @@ function DataToolsCard() {
                 {ar
                   ? `أُنشئ ${lastResult.created} قيد يومية، وتُخطّي ${lastResult.skipped}.`
                   : `Created ${lastResult.created} journal entries, skipped ${lastResult.skipped}.`}
+              </div>
+            )}
+            {lastRun && (
+              // "Last run by <owner> on <date>" line — task #236. Surfaces the
+              // most recent recovery so a co-owner arriving at the page can
+              // see whether the books have already been re-paired today.
+              // Formatted with `Intl.DateTimeFormat` to avoid pulling
+              // date-fns into this card just for a single line. Falls back
+              // to "system" when the row was written by the boot sweep
+              // (no actor on the audit row).
+              <div
+                className="text-xs text-muted-foreground"
+                data-testid="text-repair-journal-entries-last-run"
+              >
+                {(() => {
+                  const actor =
+                    lastRun.actor ?? (ar ? "النظام" : "the system");
+                  const when = new Intl.DateTimeFormat(
+                    ar ? "ar" : "en",
+                    {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    },
+                  ).format(new Date(lastRun.occurredAt));
+                  return ar
+                    ? `آخر إصلاح بواسطة ${actor} في ${when}`
+                    : `Last run by ${actor} on ${when}`;
+                })()}
               </div>
             )}
           </div>
