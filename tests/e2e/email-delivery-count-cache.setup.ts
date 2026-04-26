@@ -1,13 +1,14 @@
 import { test as setup } from "@playwright/test";
 import crypto from "node:crypto";
-import bcrypt from "bcryptjs";
 import pg from "pg";
 import fs from "node:fs";
 import path from "node:path";
-// @ts-ignore — express-session ships these without bundled types
-import cookieSignature from "cookie-signature";
-// @ts-ignore
-import uidSafe from "uid-safe";
+import {
+  ensureUser,
+  forgeSession,
+  requireCookieSecret,
+  requireDbUrl,
+} from "./_helpers/forge-session";
 
 /**
  * Dedicated auth + workspace setup for the email-delivery-count-cache
@@ -27,31 +28,26 @@ import uidSafe from "uid-safe";
  * setup completed. Provisioning a fully separate workspace + owner
  * here removes that race entirely.
  *
- * Mirrors the cookie-forging approach used by the sibling delivery
- * setups (forge a session row + signed connect.sid cookie, save a
- * storage state file the spec can `test.use({ storageState })`).
+ * The user-creation + session-forging machinery is shared with the
+ * other e2e setups via `tests/e2e/_helpers/forge-session.ts` so
+ * cookie-name / secret-rotation / schema changes only need to be made
+ * in one place. The workspace itself stays inline (rather than going
+ * through `ensureCompany`) because this setup needs `is_default=false`
+ * and an explicit `is_active=true` reset, neither of which the helper's
+ * defaults provide.
  */
-
-const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
 
 const COMPANY_NAME = "E2E Delivery Count-Cache Co";
 const OWNER_EMAIL = "e2e-edcc-owner@example.test";
 const OWNER_PASSWORD = "playwright-edcc-pw-owner-2025";
+const OWNER_FIRST_NAME = "E2E";
+const OWNER_LAST_NAME = "Edcc-owner";
 const STORAGE_PATH = ".playwright/edcc-owner.json";
 const FIXTURE_PATH = ".playwright/email-delivery-count-cache-fixture.json";
 
 setup("authenticate + seed email-delivery-count-cache fixtures", async ({ page }) => {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) {
-    throw new Error(
-      "DATABASE_URL must be set for the email-delivery-count-cache setup.",
-    );
-  }
-  if (!COOKIE_SECRET) {
-    throw new Error(
-      "SESSION_SECRET (or WM_COOKIE_SECRET) must be set so the email-delivery-count-cache setup can sign the connect.sid cookie.",
-    );
-  }
+  const dbUrl = requireDbUrl("the email-delivery-count-cache setup");
+  requireCookieSecret("the email-delivery-count-cache setup");
 
   let ownerUserId: string;
   let companyId: number;
@@ -60,26 +56,14 @@ setup("authenticate + seed email-delivery-count-cache fixtures", async ({ page }
   await client.connect();
   try {
     // (a) Ensure the dedicated owner exists with a known password hash.
-    //     Refresh the hash on every run so a rotated SESSION_SECRET
-    //     can't strand the suite.
-    const passwordHash = await bcrypt.hash(OWNER_PASSWORD, 10);
-    const existingOwner = (
-      await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [OWNER_EMAIL])
-    ).rows[0];
-    if (existingOwner) {
-      ownerUserId = existingOwner.id;
-      await client.query(
-        `UPDATE users SET password_hash=$1, first_name='E2E', last_name='Edcc-owner' WHERE id=$2`,
-        [passwordHash, ownerUserId],
-      );
-    } else {
-      ownerUserId = crypto.randomUUID();
-      await client.query(
-        `INSERT INTO users (id, email, password_hash, first_name, last_name, preferred_locale)
-         VALUES ($1, $2, $3, 'E2E', 'Edcc-owner', 'en')`,
-        [ownerUserId, OWNER_EMAIL, passwordHash],
-      );
-    }
+    //     The shared helper refreshes the hash on every run so a
+    //     rotated SESSION_SECRET can't strand the suite.
+    ownerUserId = await ensureUser(client, {
+      email: OWNER_EMAIL,
+      password: OWNER_PASSWORD,
+      firstName: OWNER_FIRST_NAME,
+      lastName: OWNER_LAST_NAME,
+    });
 
     // (b) Ensure the dedicated company exists, owned by the dedicated
     //     owner. Crucially, this company is *only* used by this spec —
@@ -142,63 +126,21 @@ setup("authenticate + seed email-delivery-count-cache fixtures", async ({ page }
     await client.end();
   }
 
-  // (d) Forge a session row + signed connect.sid cookie, then save a
-  //     storage state the spec can `test.use({ storageState })`.
-  const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
-  const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
-  const sessionsClient = new pg.Client({ connectionString: dbUrl });
-  await sessionsClient.connect();
-  try {
-    const sessionId = await uidSafe(24);
-    const sessionExpire = new Date(Date.now() + sessionTtlMs);
-    const sessionPayload = {
-      cookie: {
-        originalMaxAge: sessionTtlMs,
-        expires: sessionExpire.toISOString(),
-        httpOnly: true,
-        path: "/",
-        secure: true,
-      },
-      passport: {
-        user: {
-          _local: true,
-          claims: {
-            sub: ownerUserId,
-            email: OWNER_EMAIL,
-            first_name: "E2E",
-            last_name: "Edcc-owner",
-            profile_image_url: null,
-          },
-        },
-      },
-    };
-    await sessionsClient.query(
-      `INSERT INTO sessions (sid, sess, expire) VALUES ($1, $2::json, $3)
-       ON CONFLICT (sid) DO UPDATE SET sess = EXCLUDED.sess, expire = EXCLUDED.expire`,
-      [sessionId, JSON.stringify(sessionPayload), sessionExpire],
-    );
-    const signedSid = "s:" + cookieSignature.sign(sessionId, COOKIE_SECRET!);
-
-    await page.context().clearCookies();
-    await page.context().addCookies([
-      { name: "connect.sid", value: signedSid, url: baseURL, sameSite: "Lax" },
-    ]);
-
-    // Confirm the session is real before saving — catches typos in the
-    // payload shape and a wrong SESSION_SECRET.
-    const me = await page.request.get("/api/auth/user");
-    if (me.status() !== 200) {
-      throw new Error(
-        `/api/auth/user expected 200 for the count-cache owner but got ${me.status()}: ${await me.text()}`,
-      );
-    }
-
-    const storagePath = path.resolve(STORAGE_PATH);
-    fs.mkdirSync(path.dirname(storagePath), { recursive: true });
-    await page.context().storageState({ path: storagePath });
-  } finally {
-    await sessionsClient.end();
-  }
+  // (d) Forge a session row + signed connect.sid cookie via the shared
+  //     helper, then save a storage state the spec can
+  //     `test.use({ storageState })`. Clearing cookies first matches
+  //     the historical inline behaviour and keeps a stale signed sid
+  //     from a prior run out of the saved state.
+  await page.context().clearCookies();
+  await forgeSession({
+    page,
+    dbUrl,
+    userId: ownerUserId,
+    email: OWNER_EMAIL,
+    firstName: OWNER_FIRST_NAME,
+    lastName: OWNER_LAST_NAME,
+    storagePath: path.resolve(STORAGE_PATH),
+  });
 
   // (e) Persist the dedicated company id + owner user id so the spec can
   //     pin DB seeds (event inserts, count probes) to the right rows

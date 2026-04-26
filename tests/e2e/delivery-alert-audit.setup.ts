@@ -1,13 +1,14 @@
 import { test as setup } from "@playwright/test";
 import crypto from "node:crypto";
-import bcrypt from "bcryptjs";
 import pg from "pg";
 import fs from "node:fs";
 import path from "node:path";
-// @ts-ignore — express-session ships these without bundled types
-import cookieSignature from "cookie-signature";
-// @ts-ignore
-import uidSafe from "uid-safe";
+import {
+  ensureUser,
+  forgeSession,
+  requireCookieSecret,
+  requireDbUrl,
+} from "./_helpers/forge-session";
 
 /**
  * Dedicated setup for `delivery-alert-audit.spec.ts`.
@@ -24,13 +25,14 @@ import uidSafe from "uid-safe";
  * if they shared a workspace the parallel run would race (one test's
  * resetAlertState would delete the other's freshly-seeded alert).
  *
- * Mirrors the approach used by `email-delivery-alerts.setup.ts` and
- * `role-based-buttons.setup.ts`: forge a session row + signed
- * connect.sid cookie, save a storage state, and persist the company
- * id + owner user id to a fixture file the spec reads at runtime.
+ * The user-creation + session-forging machinery is shared with the
+ * other e2e setups via `tests/e2e/_helpers/forge-session.ts` so
+ * cookie-name / secret-rotation / schema changes only need to be made
+ * in one place. The workspace itself stays inline (rather than going
+ * through `ensureCompany`) because this setup needs `is_default=false`
+ * and an explicit `is_active=true` reset, neither of which the helper's
+ * defaults provide.
  */
-
-const COOKIE_SECRET = process.env.SESSION_SECRET || process.env.WM_COOKIE_SECRET;
 
 const COMPANY_NAME = "E2E Delivery Alert Audit Co";
 const OWNER_EMAIL = "e2e-daa-owner@example.test";
@@ -41,13 +43,8 @@ const STORAGE_PATH = ".playwright/daa-owner.json";
 const FIXTURE_PATH = ".playwright/delivery-alert-audit-fixture.json";
 
 setup("authenticate + seed delivery-alert-audit fixtures", async ({ page }) => {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) throw new Error("DATABASE_URL must be set for the delivery-alert-audit setup.");
-  if (!COOKIE_SECRET) {
-    throw new Error(
-      "SESSION_SECRET (or WM_COOKIE_SECRET) must be set so the delivery-alert-audit setup can sign the connect.sid cookie.",
-    );
-  }
+  const dbUrl = requireDbUrl("the delivery-alert-audit setup");
+  requireCookieSecret("the delivery-alert-audit setup");
 
   let ownerUserId: string;
   let companyId: number;
@@ -56,26 +53,16 @@ setup("authenticate + seed delivery-alert-audit fixtures", async ({ page }) => {
   await client.connect();
   try {
     // (a) Ensure the owner user exists with a known password hash and
-    //     stable first/last name. The audit-table assertion depends on
-    //     these names being exact, so refresh them on every run.
-    const passwordHash = await bcrypt.hash(OWNER_PASSWORD, 10);
-    const existing = (
-      await client.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [OWNER_EMAIL])
-    ).rows[0];
-    if (existing) {
-      ownerUserId = existing.id;
-      await client.query(
-        `UPDATE users SET password_hash=$1, first_name=$2, last_name=$3 WHERE id=$4`,
-        [passwordHash, OWNER_FIRST_NAME, OWNER_LAST_NAME, ownerUserId],
-      );
-    } else {
-      ownerUserId = crypto.randomUUID();
-      await client.query(
-        `INSERT INTO users (id, email, password_hash, first_name, last_name, preferred_locale)
-         VALUES ($1, $2, $3, $4, $5, 'en')`,
-        [ownerUserId, OWNER_EMAIL, passwordHash, OWNER_FIRST_NAME, OWNER_LAST_NAME],
-      );
-    }
+    //     stable first/last name. The shared helper refreshes
+    //     first_name/last_name on every run so the audit-table
+    //     assertion (which depends on these names being exact) stays
+    //     stable across re-runs.
+    ownerUserId = await ensureUser(client, {
+      email: OWNER_EMAIL,
+      password: OWNER_PASSWORD,
+      firstName: OWNER_FIRST_NAME,
+      lastName: OWNER_LAST_NAME,
+    });
 
     // (b) Ensure the dedicated workspace exists, owned by this owner.
     let companyRow = (
@@ -128,63 +115,21 @@ setup("authenticate + seed delivery-alert-audit fixtures", async ({ page }) => {
     await client.end();
   }
 
-  // (d) Forge a session row + signed connect.sid cookie, then save the
-  //     storage state so the spec can `test.use({ storageState })`.
-  const sessionTtlMs = 7 * 24 * 60 * 60 * 1000;
-  const baseURL = `http://127.0.0.1:${process.env.PORT || "5000"}`;
-  const sessionsClient = new pg.Client({ connectionString: dbUrl });
-  await sessionsClient.connect();
-  try {
-    const sessionId = await uidSafe(24);
-    const sessionExpire = new Date(Date.now() + sessionTtlMs);
-    const sessionPayload = {
-      cookie: {
-        originalMaxAge: sessionTtlMs,
-        expires: sessionExpire.toISOString(),
-        httpOnly: true,
-        path: "/",
-        secure: true,
-      },
-      passport: {
-        user: {
-          _local: true,
-          claims: {
-            sub: ownerUserId,
-            email: OWNER_EMAIL,
-            first_name: OWNER_FIRST_NAME,
-            last_name: OWNER_LAST_NAME,
-            profile_image_url: null,
-          },
-        },
-      },
-    };
-    await sessionsClient.query(
-      `INSERT INTO sessions (sid, sess, expire) VALUES ($1, $2::json, $3)
-       ON CONFLICT (sid) DO UPDATE SET sess = EXCLUDED.sess, expire = EXCLUDED.expire`,
-      [sessionId, JSON.stringify(sessionPayload), sessionExpire],
-    );
-    const signedSid = "s:" + cookieSignature.sign(sessionId, COOKIE_SECRET!);
-
-    await page.context().clearCookies();
-    await page.context().addCookies([
-      { name: "connect.sid", value: signedSid, url: baseURL, sameSite: "Lax" },
-    ]);
-
-    // Confirm the session is valid before saving — catches a wrong
-    // SESSION_SECRET or a payload-shape regression early.
-    const me = await page.request.get("/api/auth/user");
-    if (me.status() !== 200) {
-      throw new Error(
-        `/api/auth/user expected 200 for daa-owner but got ${me.status()}: ${await me.text()}`,
-      );
-    }
-
-    const storagePath = path.resolve(STORAGE_PATH);
-    fs.mkdirSync(path.dirname(storagePath), { recursive: true });
-    await page.context().storageState({ path: storagePath });
-  } finally {
-    await sessionsClient.end();
-  }
+  // (d) Forge a session row + signed connect.sid cookie via the shared
+  //     helper, then save the storage state so the spec can
+  //     `test.use({ storageState })`. Clearing cookies first matches
+  //     the historical inline behaviour and keeps a stale signed sid
+  //     from a prior run out of the saved state.
+  await page.context().clearCookies();
+  await forgeSession({
+    page,
+    dbUrl,
+    userId: ownerUserId,
+    email: OWNER_EMAIL,
+    firstName: OWNER_FIRST_NAME,
+    lastName: OWNER_LAST_NAME,
+    storagePath: path.resolve(STORAGE_PATH),
+  });
 
   // (e) Persist the company id + owner user id so the spec can pin
   //     DB seeds to the right rows without rediscovering them.

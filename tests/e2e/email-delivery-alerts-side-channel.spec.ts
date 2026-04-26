@@ -49,10 +49,10 @@ process.env.RESEND_API_KEY = "test_eda_sidechannel_stub";
 
 import { test, expect } from "@playwright/test";
 import crypto from "node:crypto";
-import bcrypt from "bcryptjs";
 import pg from "pg";
 import { evaluateEmailDeliveryAlertsForCompany } from "../../server/auth/email-delivery-alerts";
 import { withRlsBypass, pool } from "../../server/db";
+import { ensureUser, requireDbUrl } from "./_helpers/forge-session";
 
 const RESEND_URL = "https://api.resend.com/emails";
 
@@ -138,14 +138,10 @@ interface OwnerRow {
 let companyId = 0;
 let ownerRows: OwnerRow[] = [];
 
-function requireDbUrl(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL must be set for the email-delivery-alerts side-channel spec.");
-  return url;
-}
-
 async function dbConnect(): Promise<pg.Client> {
-  const c = new pg.Client({ connectionString: requireDbUrl() });
+  const c = new pg.Client({
+    connectionString: requireDbUrl("the email-delivery-alerts side-channel spec"),
+  });
   await c.connect();
   return c;
 }
@@ -158,31 +154,19 @@ async function ensureFixture(): Promise<void> {
   try {
     ownerRows = [];
     for (const o of OWNERS) {
-      // Hash a throw-away password — the column is nullable but earlier
-      // local users invariably have one, so we keep parity with the rest
-      // of the test fixtures.
-      const passwordHash = await bcrypt.hash(`${o.email}-pw`, 4);
-      const existing = (
-        await c.query<{ id: string }>(
-          `SELECT id FROM users WHERE email = $1 LIMIT 1`,
-          [o.email],
-        )
-      ).rows[0];
-      let uid: string;
-      if (existing) {
-        uid = existing.id;
-        await c.query(
-          `UPDATE users SET password_hash=$1, first_name=$2, last_name='SideChan' WHERE id=$3`,
-          [passwordHash, o.firstName, uid],
-        );
-      } else {
-        uid = crypto.randomUUID();
-        await c.query(
-          `INSERT INTO users (id, email, password_hash, first_name, last_name, preferred_locale)
-           VALUES ($1, $2, $3, $4, 'SideChan', 'ar')`,
-          [uid, o.email, passwordHash, o.firstName],
-        );
-      }
+      // Route user creation through the shared helper so cookie-name /
+      // SESSION_SECRET / users-schema changes only need to be made in
+      // one place. Pin `preferredLocale: 'ar'` to preserve the prior
+      // fresh-insert default — `resetAlertState` always rewrites this
+      // column anyway, so the locale-heuristic assertions are still in
+      // charge of what the row holds at evaluator-call time.
+      const uid = await ensureUser(c, {
+        email: o.email,
+        password: `${o.email}-pw`,
+        firstName: o.firstName,
+        lastName: "SideChan",
+        preferredLocale: "ar",
+      });
       ownerRows.push({ email: o.email, userId: uid });
     }
 
