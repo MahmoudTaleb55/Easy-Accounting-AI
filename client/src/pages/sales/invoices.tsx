@@ -55,7 +55,7 @@ export default function SalesInvoicesPage() {
   const form = useForm<CreateSalesInvoiceInput>({
     resolver: zodResolver(createSalesInvoiceSchema),
     defaultValues: {
-      customerId: 0 as any,
+      customerId: 0,
       invoiceDate: today,
       dueDate: "",
       status: "draft",

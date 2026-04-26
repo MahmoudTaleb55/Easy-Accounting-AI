@@ -1088,7 +1088,7 @@ export async function executeTool(
         try {
           const created = await storage.createCustomer(
             ctx.companyId,
-            { ...a, isActive: true } as any,
+            { ...a, isActive: true },
             aiAudit,
           );
           return {
