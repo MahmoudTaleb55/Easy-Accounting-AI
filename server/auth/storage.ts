@@ -974,7 +974,10 @@ export const authBizStorage = {
   async createCompanyForOwner(
     ownerUserId: string,
     name: string,
-    opts?: { currencyCode?: string },
+    opts?: {
+      currencyCode?: string;
+      ownerMembership?: { userId: string; role?: Role };
+    },
   ): Promise<typeof companies.$inferSelect> {
     // Symbol is derived server-side from the canonical catalogue — never
     // trusted from caller input — to keep accounting defaults consistent.
@@ -996,11 +999,19 @@ export const authBizStorage = {
     const { withWorkspaceCreation } = await import("../db");
     const { seedDefaultCoaInTx } = await import("../init-coa");
     return withWorkspaceCreation(async () => {
-      // All-or-nothing: a workspace without its settings row OR without its
-      // chart of accounts would leave the bootstrap half-complete and let
-      // the first quick transaction silently fail to auto-post a journal
-      // entry. Wrap company + settings + CoA seed in a single transaction
-      // so the workspace either appears fully bootstrapped or not at all.
+      // All-or-nothing: a workspace without its settings row, without its
+      // chart of accounts, or — when the caller asked for one — without its
+      // owner membership would leave the bootstrap half-complete. The
+      // first quick transaction would silently fail to auto-post a journal
+      // entry, or worse the workspace would be invisible to its creator
+      // (the `/api/companies` list is filtered by membership) with the
+      // seeded accounts effectively orphaned in the database. Wrap company
+      // + settings + CoA seed + optional owner-membership wire-up in a
+      // single transaction so the workspace either appears fully
+      // bootstrapped (membership and all) or not at all. Mirrors the same
+      // single-transaction shape `DatabaseStorage.createCompany` adopted
+      // for the `/api/companies` route in task #218; see task #274 for the
+      // signup-bootstrap half of that fix.
       const created = await db.transaction(async (tx) => {
         const [c] = await tx
           .insert(companies)
@@ -1024,6 +1035,18 @@ export const authBizStorage = {
         // transaction so the workspace cannot commit without one. Any
         // failure here rolls the entire bootstrap back.
         await seedDefaultCoaInTx(tx, c.id);
+
+        // Owner-link membership wire-up shares the same transaction so a
+        // failure here (RLS regression, network blip, future unique
+        // constraint) rolls back the workspace + settings + CoA together
+        // rather than stranding them invisible to their creator.
+        if (opts?.ownerMembership) {
+          await tx.insert(memberships).values({
+            userId: opts.ownerMembership.userId,
+            companyId: c.id,
+            role: opts.ownerMembership.role ?? "owner",
+          });
+        }
 
         return c;
       });
@@ -1623,7 +1646,17 @@ export const authBizStorage = {
 
   /** First-signup bootstrap: if the legacy seed companies have no owner,
    *  give the new user Owner membership on each so the seeded data is usable.
-   *  Otherwise we provision them a fresh personal workspace. */
+   *  Otherwise we provision them a fresh personal workspace.
+   *
+   *  Both branches commit the ownership change + the owner membership in a
+   *  single transaction so a failure in either write rolls the whole
+   *  adoption / creation back. Without this, a half-completed bootstrap
+   *  could leave a workspace whose `ownerUserId` was set but whose owner
+   *  membership row was missing — making the workspace invisible to its
+   *  creator (the `/api/companies` list is filtered by membership) and
+   *  effectively orphaning its accounts. Mirrors the same all-or-nothing
+   *  shape `DatabaseStorage.createCompany` adopted for the
+   *  `POST /api/companies` route in task #218; see task #274. */
   async bootstrapWorkspaceForUser(
     userId: string,
     displayName: string,
@@ -1635,21 +1668,46 @@ export const authBizStorage = {
       .where(sql`${companies.ownerUserId} IS NULL`);
 
     if (orphan.length > 0) {
-      // First user adopts all orphan seed companies as owner + owner member.
+      // First user adopts all orphan seed companies as owner + owner
+      // member. Each (claim-ownership + owner-membership) pair shares one
+      // transaction so a failure in the membership insert rolls back the
+      // ownerUserId update too — otherwise we'd leave a workspace with an
+      // owner stamp but no membership row, exactly the same orphan shape
+      // the new-workspace branch below now guards against.
       for (const c of orphan) {
-        await db.update(companies).set({ ownerUserId: userId }).where(eq(companies.id, c.id));
-        const existing = await this.getMembership(userId, c.id);
-        if (!existing) {
-          await this.createMembership({ userId, companyId: c.id, role: "owner" });
-        }
+        await db.transaction(async (tx) => {
+          await tx
+            .update(companies)
+            .set({ ownerUserId: userId })
+            .where(eq(companies.id, c.id));
+          const [existing] = await tx
+            .select()
+            .from(memberships)
+            .where(and(eq(memberships.userId, userId), eq(memberships.companyId, c.id)));
+          if (!existing) {
+            await tx.insert(memberships).values({
+              userId,
+              companyId: c.id,
+              role: "owner",
+            });
+          }
+        });
       }
       const def = orphan.find((c) => c.isDefault) ?? orphan[0];
       return { companyId: def.id, role: "owner", bootstrapped: "adopted" };
     }
 
-    // Otherwise create a fresh personal workspace.
-    const c = await this.createCompanyForOwner(userId, `${displayName} — Workspace`, opts);
-    await this.createMembership({ userId, companyId: c.id, role: "owner" });
+    // Otherwise create a fresh personal workspace. Pass `ownerMembership`
+    // so the company + settings + CoA seed + owner-link membership commit
+    // (or roll back) together inside `createCompanyForOwner`'s
+    // transaction. Without `ownerMembership` here we'd be back to the
+    // pre-#218 two-step shape: a successful workspace insert followed by
+    // a separate membership write that, on failure, would strand the
+    // workspace invisible to its creator.
+    const c = await this.createCompanyForOwner(userId, `${displayName} — Workspace`, {
+      ...opts,
+      ownerMembership: { userId, role: "owner" },
+    });
     return { companyId: c.id, role: "owner", bootstrapped: "created" };
   },
 };
