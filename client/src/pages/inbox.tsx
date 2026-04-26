@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useLocale, type Locale } from "@/contexts/locale-context";
-import { detectedLanguageLabel } from "@/lib/inbox-error-i18n";
+import { detectedLanguageLabel, resolveInboxError } from "@/lib/inbox-error-i18n";
 import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -609,10 +609,27 @@ export default function InboxPage() {
                               );
                             })()}
                           </div>
-                          <div className="text-[11px] text-muted-foreground font-mono truncate">
-                            {ext?.invoiceNumber ? `#${ext.invoiceNumber} · ` : ""}
-                            {shortDate(ext?.documentDate ?? d.uploadedAt, ar)}
-                          </div>
+                          {/* Error rows surface the localised error title
+                            * inline so the operator can triage the pile
+                            * without opening every failed document. The
+                            * detail panel still shows the full body + hint.
+                            * For the unsupported_language code this lets
+                            * us hit the task #345 requirement of an
+                            * actionable, locale-specific message visible
+                            * at the row level itself. */}
+                          {status === "error" ? (
+                            <div
+                              className="text-[11px] text-destructive truncate"
+                              data-testid={`text-row-error-${d.id}`}
+                            >
+                              {resolveInboxError(d.errorMessage, locale).title}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-muted-foreground font-mono truncate">
+                              {ext?.invoiceNumber ? `#${ext.invoiceNumber} · ` : ""}
+                              {shortDate(ext?.documentDate ?? d.uploadedAt, ar)}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-0.5 shrink-0">
                           <span className="font-mono text-sm tabular-nums">
@@ -779,8 +796,8 @@ function EmptyState({ ar, onPick }: { ar: boolean; onPick: () => void }) {
       </div>
       <p className="text-xs text-muted-foreground max-w-xs leading-relaxed mb-5">
         {ar
-          ? "PNG، JPEG، WEBP حتى 10 ميجابايت. ندعم العربية والإنجليزية وضرائب القيمة المضافة الخليجية."
-          : "PNG, JPEG, WEBP up to 10 MB. Bilingual AR/EN with GCC VAT awareness."}
+          ? "PNG، JPEG، WEBP حتى 10 ميجابايت. ندعم العربية والإنجليزية والألمانية والفرنسية مع ضرائب القيمة المضافة الخليجية."
+          : "PNG, JPEG, WEBP up to 10 MB. Arabic, English, German, and French with GCC VAT awareness."}
       </p>
       <Button size="sm" onClick={onPick} variant="outline" data-testid="button-empty-upload">
         <Upload className="me-2 h-3.5 w-3.5" />
