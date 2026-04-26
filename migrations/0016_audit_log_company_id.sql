@@ -148,16 +148,29 @@ CREATE INDEX IF NOT EXISTS "audit_log_company_entity_idx"
   ON "audit_log" ("company_id", "entity_type", "entity_id");
 --> statement-breakpoint
 
--- Row-level security. The same policy shape applied to every other
--- workspace-scoped table by `migrations/0008_workspace_rls.sql`. The
--- helpers `current_company_id()` and `rls_is_bypassed()` are installed
--- by that migration and the matching boot helper.
-ALTER TABLE "audit_log" ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE "audit_log" FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-DROP POLICY IF EXISTS "workspace_isolation" ON "audit_log";
---> statement-breakpoint
-CREATE POLICY "workspace_isolation" ON "audit_log"
-  USING      (rls_is_bypassed() OR company_id = current_company_id())
-  WITH CHECK (rls_is_bypassed() OR company_id = current_company_id());
+-- Row-level security on `audit_log`.
+--
+-- Task #239 — historically this migration installed the same policy
+-- shape inline (ENABLE / FORCE / DROP / CREATE POLICY) with the
+-- canonical USING / WITH CHECK clause copy-pasted from
+-- `migrations/0008_workspace_rls.sql`. That made the canonical clause
+-- text live in three files at once: this migration, 0008, and the
+-- policy-coverage spec.
+--
+-- The per-table install now lives in
+-- `server/db-bootstrap-rls.ts::bootstrapWorkspaceRlsPolicies`, driven by
+-- the canonical `RLS_TABLES` list (which includes `audit_log`) and the
+-- `CANONICAL_RLS_USING_SQL` / `CANONICAL_RLS_WITH_CHECK_SQL` constants.
+-- The boot helper runs on every restart from `server/index.ts` (right
+-- after the SQL migration runner), so:
+--
+--   - Fresh dev databases reach the same end state as if this
+--     migration had installed RLS on `audit_log` itself.
+--   - Pre-existing databases that already ran this migration in its
+--     original (inline-policy) form get the policy re-applied
+--     idempotently on the next boot, automatically reconciling any
+--     drift from the canonical clause text.
+--
+-- The helpers `current_company_id()` and `rls_is_bypassed()` are
+-- installed by `migrations/0008_workspace_rls.sql`, which the SQL
+-- migration runner applies ahead of the boot helper.

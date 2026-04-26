@@ -376,6 +376,47 @@ CREATE POLICY workspace_isolation ON <t>
 owner in our deploy environment, and Postgres exempts owners from RLS by
 default.
 
+#### Single source of truth for the canonical clause (task #239)
+
+The per-table install above is no longer hand-written in three places.
+The canonical USING / WITH CHECK clause text and the list of in-scope
+tables now live in **one** TypeScript module,
+`server/db-bootstrap-rls.ts`, which exports:
+
+- `RLS_TABLES` — the in-scope table names. Replaces the
+  `FOREACH t IN ARRAY ARRAY[…]` block that originally lived in
+  `migrations/0008_workspace_rls.sql` and the `audit_log` add-on at
+  the end of `migrations/0016_audit_log_company_id.sql`, and replaces
+  the duplicate `KNOWN_RLS_PROTECTED` set that lived in
+  `tests/e2e/database-rls-policy-coverage.spec.ts`.
+- `CANONICAL_RLS_USING_SQL` / `CANONICAL_RLS_WITH_CHECK_SQL` — the
+  raw SQL clause text the boot helper installs.
+- `CANONICAL_RLS_USING_EXPR_PG` / `CANONICAL_RLS_WITH_CHECK_EXPR_PG`
+  — the form Postgres re-emits via `pg_get_expr` after parsing the
+  raw clause (it adds an outer `(...)` and wraps the OR's right-hand
+  `=` comparison). The drift-detection spec compares against this.
+- `bootstrapWorkspaceRlsPolicies(client)` — the per-table
+  ENABLE/FORCE/DROP/CREATE POLICY loop, called from `server/index.ts`
+  on every restart.
+
+The two migrations above keep the one-time DDL the boot helper depends
+on (the `app_api` role and the `current_company_id()` /
+`rls_is_bypassed()` helper functions). They no longer iterate tables
+themselves; the per-table install is delegated to the boot helper.
+
+**To change the canonical clause in future:** edit
+`CANONICAL_RLS_USING_SQL` (and `CANONICAL_RLS_WITH_CHECK_SQL` if it
+needs to differ) plus the matching `*_EXPR_PG` round-trip constants in
+`server/db-bootstrap-rls.ts`. Restart the app — the boot helper drops
+and re-creates the policy on every table in `RLS_TABLES` with the new
+clause; the policy-coverage spec passes because it imports from the
+same module. If pre-existing databases must converge atomically rather
+than waiting for the next boot, write a *new* migration that DROP /
+CREATEs the policy per table; do not edit the historical migrations.
+
+**To add a table to the in-scope set:** append its name to
+`RLS_TABLES` and restart. No migration edit is needed.
+
 ### Tables in scope
 
 The full set of workspace-scoped business tables: `accounts`,
@@ -426,7 +467,8 @@ on completion. Audited bypass call sites (with `reason` strings):
   change-set stamp, and pins it NOT NULL). Wrapped in bypass because
   the backfill UPDATE walks every workspace's audit rows. The matching
   `workspace_isolation` policy install on `audit_log` is performed by
-  migration 0016 itself, applied by the SQL migration runner.
+  `bootstrapWorkspaceRlsPolicies` (task #239) since `audit_log` lives in
+  its `RLS_TABLES` list.
 - `bootstrap:email-delivery-alert-tables` —
   `ensureEmailDeliveryAlertTablesOnStartup` re-stages the parent
   `email_delivery_alert_settings` / `email_delivery_alerts` tables (auth

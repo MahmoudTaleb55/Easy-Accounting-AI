@@ -235,11 +235,12 @@ app.use((req, res, next) => {
   // `audit_log`, backfills it from each entity table + the legacy
   // `companyId` change-set stamp, and pins it NOT NULL. The matching
   // `workspace_isolation` policy install for `audit_log` is performed
-  // by migration 0016 itself (now applied by the runner above), so this
-  // helper only needs to materialise the column on dev databases that
-  // boot ahead of the runner. Wrapped in `withRlsBypass` because the
-  // backfill UPDATE walks every workspace's audit rows. Idempotent. See
-  // task #169 and docs/design/workspace-isolation-defense-in-depth.md.
+  // by `bootstrapWorkspaceRlsPolicies` below (since `audit_log` lives
+  // in `RLS_TABLES`), so this helper only needs to materialise the
+  // column on dev databases that boot ahead of the runner. Wrapped in
+  // `withRlsBypass` because the backfill UPDATE walks every
+  // workspace's audit rows. Idempotent. See task #169 and
+  // docs/design/workspace-isolation-defense-in-depth.md.
   try {
     const { applyAuditLogCompanyIdOnStartup } = await import(
       "./db-bootstrap-audit-log-companyid"
@@ -253,6 +254,75 @@ app.use((req, res, next) => {
       "Failed to bootstrap audit_log.company_id:",
       err,
     );
+  }
+
+  // Task #239 — re-apply ENABLE/FORCE RLS + the canonical
+  // `workspace_isolation` policy on every workspace-scoped table from
+  // the single-source-of-truth `RLS_TABLES` list. Replaces the
+  // `FOREACH t IN ARRAY ARRAY[…]` block that used to live in
+  // `migrations/0008_workspace_rls.sql` and the per-table install at
+  // the end of `migrations/0016_audit_log_company_id.sql` so the
+  // canonical clause text and the table list now exist in exactly one
+  // place (`server/db-bootstrap-rls.ts`). Migration 0008 still owns the
+  // one-time DDL the helper depends on (`app_api` role,
+  // `current_company_id()` / `rls_is_bypassed()` helper functions);
+  // the boot helper here owns the per-table loop.
+  //
+  // The helper runs DDL only (ALTER TABLE … ENABLE/FORCE RLS, DROP/
+  // CREATE POLICY), which the connecting role (the table owner)
+  // executes directly — no `withRlsBypass` wrapper is needed because
+  // RLS policies aren't consulted on policy-management DDL itself.
+  // Setting `app.rls_bypass = 'on'` on the same client anyway is
+  // belt-and-braces in case a future addition to the helper does a
+  // same-connection SELECT/UPDATE on a table whose new policy was
+  // already installed earlier in the loop.
+  //
+  // Idempotent — DROP POLICY IF EXISTS + CREATE POLICY runs every boot
+  // so a hand-edit in prod (or an older migration) that drifted from
+  // canonical is automatically re-converged.
+  //
+  // RLS bootstrap failure is FATAL — same standard as the migration
+  // runner above. `workspace_isolation` is the core tenant-boundary
+  // control: if we can't (re)install it on every table in `RLS_TABLES`,
+  // continuing to serve traffic risks cross-workspace data exposure on
+  // any code path that relies on RLS as the last line of defense
+  // (audit_log writes, the cross-workspace e2e contract, etc.). Aborting
+  // boot lets CI / dev / deploys notice the regression on the next
+  // restart instead of in production.
+  try {
+    const { bootstrapWorkspaceRlsPolicies } = await import(
+      "./db-bootstrap-rls"
+    );
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query(`SET app.rls_bypass = 'on'`);
+      await client.query("BEGIN");
+      try {
+        await bootstrapWorkspaceRlsPolicies(client);
+        await client.query("COMMIT");
+      } catch (innerErr) {
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+          /* connection may be unusable; release recycles it */
+        }
+        throw innerErr;
+      }
+    } finally {
+      try {
+        await client.query(`RESET app.rls_bypass`);
+      } catch {
+        /* connection may be unusable; release recycles it */
+      }
+      client.release();
+    }
+  } catch (err) {
+    console.error(
+      "FATAL: aborting boot — workspace_isolation RLS policies could not be installed:",
+      err,
+    );
+    process.exit(1);
   }
 
   // Bootstrap IFRS Chart of Accounts and backfill journal entries for legacy

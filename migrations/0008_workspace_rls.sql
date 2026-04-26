@@ -72,50 +72,31 @@ GRANT EXECUTE ON FUNCTION current_company_id() TO app_api;
 GRANT EXECUTE ON FUNCTION rls_is_bypassed() TO app_api;
 
 -- ---------------------------------------------------------------------------
--- Per-table policy: enable RLS, FORCE it (the API role is the table owner in
--- our deploy environment, and Postgres exempts owners from RLS by default),
--- then install a single workspace_isolation policy.
+-- Per-table policy install: ENABLE / FORCE row-level security and install a
+-- single `workspace_isolation` policy on every workspace-scoped table.
+--
+-- Task #239 — historically this migration carried a hand-written
+-- `FOREACH t IN ARRAY ARRAY[…]` block that hard-coded the 24 in-scope
+-- table names *and* spelled out the canonical USING / WITH CHECK
+-- expression inline. Migration 0016 then duplicated the same expression
+-- (and added a 25th table, `audit_log`), and the policy-coverage spec
+-- duplicated both the table list and the expression a third time. A
+-- change to the canonical clause meant editing three files in lock-step.
+--
+-- The per-table loop now lives in `server/db-bootstrap-rls.ts` as
+-- `bootstrapWorkspaceRlsPolicies(client)`, driven by `RLS_TABLES` and
+-- the `CANONICAL_RLS_USING_SQL` / `CANONICAL_RLS_WITH_CHECK_SQL`
+-- constants. The boot helper runs on every restart from
+-- `server/index.ts` (right after the SQL migration runner), so:
+--
+--   - Fresh dev databases reach the same end state as if this
+--     migration had iterated tables itself.
+--   - Pre-existing databases that already ran this migration in its
+--     original (looped) form get their policies re-applied idempotently
+--     (DROP POLICY IF EXISTS + CREATE POLICY) so any drift from the
+--     canonical clause text is reconciled on the next boot.
+--
+-- This migration still owns the one-time DDL the boot helper depends on:
+-- the `app_api` role, the matching grants, and the
+-- `current_company_id()` / `rls_is_bypassed()` helper functions above.
 -- ---------------------------------------------------------------------------
-
-DO $$
-DECLARE
-  t text;
-BEGIN
-  FOREACH t IN ARRAY ARRAY[
-    'accounts',
-    'journal_entries',
-    'journal_lines',
-    'transactions',
-    'budgets',
-    'settings',
-    'employees',
-    'attendance',
-    'leaves',
-    'payroll_runs',
-    'payroll_lines',
-    'fx_rates',
-    'asset_categories',
-    'fixed_assets',
-    'asset_components',
-    'depreciation_runs',
-    'depreciation_schedule',
-    'depreciation_postings',
-    'asset_usage_periods',
-    'impairment_events',
-    'revaluation_events',
-    'disposals',
-    'chat_messages',
-    'documents'
-  ]
-  LOOP
-    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('ALTER TABLE %I FORCE  ROW LEVEL SECURITY', t);
-    EXECUTE format('DROP POLICY IF EXISTS workspace_isolation ON %I', t);
-    EXECUTE format(
-      'CREATE POLICY workspace_isolation ON %I
-         USING      (rls_is_bypassed() OR company_id = current_company_id())
-         WITH CHECK (rls_is_bypassed() OR company_id = current_company_id())',
-      t
-    );
-  END LOOP;
-END $$;

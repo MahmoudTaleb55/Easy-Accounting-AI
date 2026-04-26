@@ -1,5 +1,10 @@
 import { test, expect } from "@playwright/test";
 import pg from "pg";
+import {
+  RLS_TABLES,
+  CANONICAL_RLS_USING_EXPR_PG,
+  CANONICAL_RLS_WITH_CHECK_EXPR_PG,
+} from "../../server/db-bootstrap-rls";
 
 import {
   CANONICAL_POLICY_EXPR,
@@ -63,40 +68,17 @@ import {
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
-// Source of truth: every public-schema table that the RLS migration
-// MUST harden with RLS + the `workspace_isolation` policy. Mirrors the
-// `FOREACH t IN ARRAY ARRAY[…]` block in
-// `migrations/0008_workspace_rls.sql`. Keep both in sync.
-const KNOWN_RLS_PROTECTED = new Set<string>([
-  "accounts",
-  "journal_entries",
-  "journal_lines",
-  "transactions",
-  "budgets",
-  "settings",
-  "employees",
-  "attendance",
-  "leaves",
-  "payroll_runs",
-  "payroll_lines",
-  "fx_rates",
-  "asset_categories",
-  "fixed_assets",
-  "asset_components",
-  "depreciation_runs",
-  "depreciation_schedule",
-  "depreciation_postings",
-  "asset_usage_periods",
-  "impairment_events",
-  "revaluation_events",
-  "disposals",
-  "chat_messages",
-  "documents",
-  // Brought under RLS by task #169 (migration 0016) once `audit_log`
-  // gained a `company_id` column. See
-  // `docs/design/workspace-isolation-defense-in-depth.md`.
-  "audit_log",
-]);
+// Source of truth: the canonical `RLS_TABLES` list lives in
+// `server/db-bootstrap-rls.ts` and is what the boot helper iterates on
+// every restart. Re-exposing it here as a Set is just an ergonomics
+// adapter — the spec checks set membership in a couple of places.
+//
+// Task #239 used to keep a hand-maintained `KNOWN_RLS_PROTECTED` set
+// here that mirrored the `FOREACH t IN ARRAY ARRAY[…]` block in
+// `migrations/0008_workspace_rls.sql` (and was forced to add
+// `audit_log` separately when migration 0016 brought it into scope).
+// Both copies are now imports from the single TS source of truth.
+const KNOWN_RLS_PROTECTED = new Set<string>(RLS_TABLES);
 
 // Tables that carry `company_id` but are deliberately *not* under RLS,
 // per `docs/design/workspace-isolation-defense-in-depth.md` ("Tables
@@ -132,15 +114,38 @@ interface RlsRow {
   policy_count: string; // pg returns BIGINT as string
 }
 
-// Task #190 — the canonical-expression check, the policy-text query,
-// and the drift detector all live in `shared/auth/rls-policy-drift.ts`
-// so the runtime production sweep
-// (`server/auth/rls-policy-drift-alerts.ts`, task #238) can reuse the
-// exact same detection logic without copy-paste drift between the two
-// callers. Importing the same string from one place is what makes the
-// tamper-detection promise hold across the CI guard *and* the prod
-// alert — see also `docs/design/workspace-isolation-defense-in-depth.md`
+// Task #190 / #238 — the canonical-expression check, the policy-text
+// query, and the drift detector live in
+// `shared/auth/rls-policy-drift.ts` so the runtime production sweep
+// (`server/auth/rls-policy-drift-alerts.ts`) can reuse the exact same
+// detection logic without copy-paste drift between the CI guard and
+// the prod alert. See `docs/design/workspace-isolation-defense-in-depth.md`
 // ("Production drift sweep").
+//
+// Task #239 added a complementary single source of truth in
+// `server/db-bootstrap-rls.ts` that owns the SQL clause text the boot
+// helper installs and the `pg_get_expr` round-trip text it expects.
+// The two modules MUST agree on the canonical expression — the boot
+// helper installs what the drift detector then reads back — so the
+// assertions below trip at module load if a future edit pulls them
+// apart. USING and WITH CHECK are also deliberately identical (a row a
+// user can't see is also a row they can't write).
+if (CANONICAL_RLS_USING_EXPR_PG !== CANONICAL_POLICY_EXPR) {
+  throw new Error(
+    "server/db-bootstrap-rls.ts CANONICAL_RLS_USING_EXPR_PG diverged " +
+      "from shared/auth/rls-policy-drift.ts CANONICAL_POLICY_EXPR. " +
+      "Update both in lock-step — the boot helper installs what the " +
+      "drift detector reads back.",
+  );
+}
+if (CANONICAL_RLS_WITH_CHECK_EXPR_PG !== CANONICAL_POLICY_EXPR) {
+  throw new Error(
+    "server/db-bootstrap-rls.ts CANONICAL_RLS_WITH_CHECK_EXPR_PG " +
+      "diverged from shared/auth/rls-policy-drift.ts CANONICAL_POLICY_EXPR. " +
+      "Update both in lock-step, or split the drift detector to compare " +
+      "USING and WITH CHECK against separate constants.",
+  );
+}
 
 test.describe("workspace-scoped tables must be under RLS @db", () => {
   test.skip(
