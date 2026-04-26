@@ -2030,16 +2030,28 @@ function registerDocumentRoutes(app: Express) {
 
       // Kick off extraction. We await so the response carries the result
       // (and any errors are surfaced to the user immediately).
+      //
+      // The OpenAI vision call inside `extractDocument` runs the request
+      // through the SDK's fetch dispatcher, which under load can detach
+      // the AsyncLocalStorage context that the global `/api` gate set up
+      // via `withCompanyScope`. When that happens the post-extraction
+      // `storage.*` calls land on the unscoped `db` proxy and the
+      // workspace-isolation guard throws with a stack trace that bubbles
+      // straight into the inbox row. Re-pinning the scope around the
+      // downstream storage operations is defensive and cheap — the GUC
+      // is reapplied to a fresh pooled client, so the queries always run
+      // under RLS regardless of whether the outer scope survived.
       try {
         const extracted = await extractDocument(file.buffer, detectedMime);
-        const accounts = await storage.getAccounts(companyId);
-        const settings = await storage.getSettings(companyId);
-        const suggestion = await suggestJournalForDocument(extracted, accounts, settings);
-
-        const updated = await storage.updateDocumentExtraction(companyId, created.id, {
-          status: "ready",
-          extractedJson: extracted,
-          suggestedJournalJson: suggestion,
+        const updated = await withCompanyScope(companyId, async () => {
+          const accounts = await storage.getAccounts(companyId);
+          const settings = await storage.getSettings(companyId);
+          const suggestion = await suggestJournalForDocument(extracted, accounts, settings);
+          return storage.updateDocumentExtraction(companyId, created.id, {
+            status: "ready",
+            extractedJson: extracted,
+            suggestedJournalJson: suggestion,
+          });
         });
         res.status(201).json(updated);
       } catch (err: any) {
@@ -2053,10 +2065,12 @@ function registerDocumentRoutes(app: Express) {
           err instanceof DocumentExtractionError
             ? err.code
             : String(err?.message ?? "Extraction failed");
-        const failed = await storage.updateDocumentExtraction(companyId, created.id, {
-          status: "error",
-          errorMessage: errorMessage.slice(0, 500),
-        });
+        const failed = await withCompanyScope(companyId, () =>
+          storage.updateDocumentExtraction(companyId, created.id, {
+            status: "error",
+            errorMessage: errorMessage.slice(0, 500),
+          }),
+        );
         res.status(201).json(failed);
       }
     } catch (err) {

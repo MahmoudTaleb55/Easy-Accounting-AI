@@ -150,7 +150,7 @@ export const authBizStorage = {
     passwordHash: string;
     firstName?: string | null;
     lastName?: string | null;
-    preferredLocale?: "ar" | "en";
+    preferredLocale?: "ar" | "en" | "de" | "fr";
   }): Promise<User> {
     const [u] = await db
       .insert(users)
