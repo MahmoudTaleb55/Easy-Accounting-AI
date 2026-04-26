@@ -1100,7 +1100,8 @@ export async function executeTool(
             location: a.location ?? "",
             custodian: a.custodian ?? "",
             customSchedule: null,
-          } as any,
+            unitsTotal: null,
+          } satisfies Parameters<typeof storage.createFixedAsset>[0],
           aiAudit,
         );
         // Auto-generate the planned depreciation schedule (mirrors POST /api/fixed-assets).
