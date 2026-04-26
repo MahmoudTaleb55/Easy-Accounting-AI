@@ -35,7 +35,6 @@ import {
   Camera,
 } from "lucide-react";
 import { CameraCaptureDialog } from "@/components/camera/camera-capture-dialog";
-import { resolveInboxError } from "@/lib/inbox-error-i18n";
 import type {
   DocumentRow,
   ExtractedDocument,
@@ -591,10 +590,6 @@ export default function InboxPage() {
                             <span className="text-sm font-medium truncate">
                               {ext?.vendor || d.fileName}
                             </span>
-                            {/* Detected document language — task #345.
-                             * Rendered only when the extractor returned a
-                             * recognised language; legacy/pre-feature rows
-                             * silently render no badge. */}
                             {(() => {
                               const langLabel = detectedLanguageLabel(ext?.language, locale);
                               if (!langLabel) return null;
@@ -609,14 +604,6 @@ export default function InboxPage() {
                               );
                             })()}
                           </div>
-                          {/* Error rows surface the localised error title
-                            * inline so the operator can triage the pile
-                            * without opening every failed document. The
-                            * detail panel still shows the full body + hint.
-                            * For the unsupported_language code this lets
-                            * us hit the task #345 requirement of an
-                            * actionable, locale-specific message visible
-                            * at the row level itself. */}
                           {status === "error" ? (
                             <div
                               className="text-[11px] text-destructive truncate"
