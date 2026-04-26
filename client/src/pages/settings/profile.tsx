@@ -8,7 +8,7 @@ import type { User } from "@shared/models/auth";
 
 type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, ApiError, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/contexts/locale-context";
 import { useToast } from "@/hooks/use-toast";
@@ -154,8 +154,11 @@ export default function ProfilePage() {
       toast({ title: ar ? "تم تغيير كلمة المرور" : "Password updated" });
     },
     onError: (e: Error) => {
-      try { setPasswordError(JSON.parse(e.message.replace(/^\d+:\s*/, "")).message); }
-      catch { setPasswordError(e.message); }
+      const bodyMessage =
+        e instanceof ApiError && e.body && typeof e.body === "object"
+          ? (e.body as { message?: unknown }).message
+          : undefined;
+      setPasswordError(typeof bodyMessage === "string" ? bodyMessage : e.message);
     },
   });
 
