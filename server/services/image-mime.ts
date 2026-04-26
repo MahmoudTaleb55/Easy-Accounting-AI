@@ -14,6 +14,13 @@
  * and the document-inbox route (server/routes.ts → registerDocumentRoutes)
  * trust the bytes here, not the caller. See task #146 (avatar) and #196
  * (documents).
+ *
+ * `detectDocumentMimeFromBuffer` is the document-inbox-flavoured sibling:
+ * it accepts everything `detectImageMimeFromBuffer` accepts, PLUS
+ * `application/pdf` (sniffed from the `%PDF-` header). Vendor invoices
+ * arrive as PDFs far more often than as phone photos, so the document
+ * route widens the gate without weakening the avatar route — avatars
+ * would still reject a PDF outright. See task #248.
  */
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -24,12 +31,31 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/gif": ".gif",
 };
 
+const DOCUMENT_MIME_TO_EXT: Record<string, string> = {
+  ...MIME_TO_EXT,
+  "application/pdf": ".pdf",
+};
+
 /** Canonical MIME types accepted everywhere we sniff image uploads. */
 export const ALLOWED_IMAGE_MIME_TYPES = Object.keys(MIME_TO_EXT);
+
+/**
+ * Canonical MIME types accepted by the document inbox — the four image
+ * formats plus `application/pdf` for forwarded vendor invoices.
+ */
+export const ALLOWED_DOCUMENT_MIME_TYPES = Object.keys(DOCUMENT_MIME_TO_EXT);
 
 /** Map a sniffed MIME (e.g. "image/png") to its canonical file extension. */
 export function imageMimeToExt(mime: string): string | undefined {
   return MIME_TO_EXT[mime];
+}
+
+/**
+ * Map a sniffed document MIME to its canonical file extension. Accepts
+ * everything `imageMimeToExt` accepts plus `application/pdf` → `.pdf`.
+ */
+export function documentMimeToExt(mime: string): string | undefined {
+  return DOCUMENT_MIME_TO_EXT[mime];
 }
 
 /**
@@ -78,6 +104,38 @@ export function detectImageMimeFromBuffer(buf: Buffer): string | null {
 }
 
 /**
+ * Inspect the first few bytes of an upload and return the canonical MIME
+ * type for an image OR a PDF, or `null` if the buffer is neither. This
+ * is the document-inbox sibling of `detectImageMimeFromBuffer`: the
+ * avatar route still rejects PDFs (it uses the image-only sniff), while
+ * the document route accepts them.
+ */
+export function detectDocumentMimeFromBuffer(buf: Buffer): string | null {
+  const asImage = detectImageMimeFromBuffer(buf);
+  if (asImage) return asImage;
+
+  // PDF: "%PDF-" (25 50 44 46 2D). Real PDFs may have up to ~1 KB of
+  // junk before the header, but the spec strongly recommends putting
+  // it in the first 1024 bytes — and the major browsers/Acrobat refuse
+  // anything that doesn't have it at offset 0. We match the strict
+  // form so a renamed text file with "blah blah %PDF-" buried inside
+  // doesn't sneak through.
+  if (
+    buf &&
+    buf.length >= 5 &&
+    buf[0] === 0x25 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x44 &&
+    buf[3] === 0x46 &&
+    buf[4] === 0x2d
+  ) {
+    return "application/pdf";
+  }
+
+  return null;
+}
+
+/**
  * Thrown when an upload claims to be an image but the bytes don't match
  * any supported format. Callers translate this into a 400 response.
  */
@@ -86,5 +144,21 @@ export class InvalidImageError extends Error {
   constructor(message = "Only image uploads are supported (PNG, JPEG, WEBP, GIF).") {
     super(message);
     this.name = "InvalidImageError";
+  }
+}
+
+/**
+ * Thrown when an upload to the document inbox isn't one of the supported
+ * formats. Distinct from `InvalidImageError` so the avatar route can
+ * keep its narrower error message — and so a future audit of "where
+ * are PDFs allowed?" comes back to exactly this class.
+ */
+export class InvalidDocumentError extends Error {
+  readonly code = "INVALID_DOCUMENT";
+  constructor(
+    message = "Only image uploads (PNG, JPEG, WEBP, GIF) and PDF files are supported.",
+  ) {
+    super(message);
+    this.name = "InvalidDocumentError";
   }
 }

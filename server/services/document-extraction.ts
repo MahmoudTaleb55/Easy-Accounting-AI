@@ -120,17 +120,56 @@ function bufferToDataUrl(buffer: Buffer, mime: string): string {
   return `data:${mime};base64,${buffer.toString("base64")}`;
 }
 
-/** Extract structured data from a receipt/invoice image. */
+/**
+ * Build the user-message content array sent to the vision model. Images
+ * go in as `image_url` (the model rasterises the data URL itself); PDFs
+ * go in as `file` content with the base64 bytes inline. gpt-4o reads
+ * every page of an inline PDF in a single call, so multi-page invoices
+ * are not silently truncated — see task #248.
+ */
+function buildUserContent(
+  buffer: Buffer,
+  mimeType: string,
+): Array<Record<string, unknown>> {
+  const promptText = `Extract this receipt/invoice into the following JSON shape exactly:\n${EXTRACTION_JSON_SHAPE}`;
+
+  if (mimeType === "application/pdf") {
+    return [
+      {
+        type: "text",
+        text: `${promptText}\n\nThe attached file is a PDF. If it has multiple pages, read every page and merge the data — line items from page 2 belong on the same invoice as the totals on page 1.`,
+      },
+      {
+        type: "file",
+        file: {
+          filename: "document.pdf",
+          file_data: bufferToDataUrl(buffer, mimeType),
+        },
+      },
+    ];
+  }
+
+  return [
+    { type: "text", text: promptText },
+    {
+      type: "image_url",
+      image_url: { url: bufferToDataUrl(buffer, mimeType), detail: "high" },
+    },
+  ];
+}
+
+/** Extract structured data from a receipt/invoice image or PDF. */
 export async function extractDocument(
   buffer: Buffer,
   mimeType: string,
 ): Promise<ExtractedDocument> {
-  if (!mimeType.startsWith("image/")) {
-    // PDF support would require a separate page-rasterise step. We surface
-    // a clear error so the route can mark the document as needing a re-upload
-    // instead of silently producing junk.
+  if (!mimeType.startsWith("image/") && mimeType !== "application/pdf") {
+    // The route's magic-bytes gate should have already rejected anything
+    // other than an image or a PDF, so reaching this branch means the
+    // caller passed a MIME we don't actually support — fail loud rather
+    // than silently feed junk to the vision model.
     throw new Error(
-      "Only image uploads (PNG/JPEG/WEBP) are supported by the extractor at the moment. PDF rasterisation is on the roadmap.",
+      "Only image (PNG/JPEG/WEBP/GIF) and PDF uploads are supported by the extractor.",
     );
   }
 
@@ -142,16 +181,11 @@ export async function extractDocument(
       { role: "system", content: EXTRACTION_SYSTEM },
       {
         role: "user",
-        content: [
-          {
-            type: "text",
-            text: `Extract this receipt/invoice into the following JSON shape exactly:\n${EXTRACTION_JSON_SHAPE}`,
-          },
-          {
-            type: "image_url",
-            image_url: { url: bufferToDataUrl(buffer, mimeType), detail: "high" },
-          },
-        ],
+        // The chat-completions content array is loosely typed in the
+        // OpenAI SDK because the union of supported part types varies
+        // by model. We assemble the right shape per MIME above and
+        // cast at the boundary.
+        content: buildUserContent(buffer, mimeType) as any,
       },
     ],
   });

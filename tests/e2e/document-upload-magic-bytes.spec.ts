@@ -3,7 +3,8 @@ import pg from "pg";
 
 /**
  * Regression net for task #196 — the magic-bytes gate on the document
- * inbox upload route.
+ * inbox upload route — and task #248, which widened that gate to
+ * accept PDFs (the format most vendor invoices actually arrive in).
  *
  * Task #146 closed the same hole on the avatar route, but the
  * `/api/documents` multer handler still trusted `file.mimetype` and
@@ -22,11 +23,20 @@ import pg from "pg";
  *     touches disk, and before `extractDocument` calls OpenAI).
  *  3. POST with a forged JPEG covers the second branch of the
  *     magic-bytes check (different signature, same expectation).
- *  4. POST with a non-image MIME (text/plain, no spoofing) is still
- *     rejected by the multer fileFilter — the original gate must keep
- *     working, so we know the magic-bytes check is a defence-in-depth
- *     layer and not the only thing standing between a renamed shell
- *     script and the bucket.
+ *  4. POST with a non-image, non-PDF MIME (text/plain, no spoofing)
+ *     is still rejected by the multer fileFilter, and the user-facing
+ *     error message names PDF alongside the four image formats — so a
+ *     user who tries to upload a `.txt` knows what they SHOULD upload.
+ *  5. POST with a forged `application/pdf` Content-Type wrapping
+ *     non-PDF bytes is rejected by the magic-bytes check too — the
+ *     PDF branch added in task #248 still trusts the bytes, not the
+ *     caller.
+ *  6. A real PDF (one with a `%PDF-` header) gets PAST the magic-bytes
+ *     gate and creates a document row. We don't assert on the AI
+ *     extraction outcome (that depends on a real OpenAI call which
+ *     may succeed or surface a non-200-from-OpenAI error and mark the
+ *     row as `error`), only that the upload was no longer rejected at
+ *     the format gate.
  *
  * The spec drives everything over HTTP using the same cookie-jar
  * bootstrap pattern as `ai-audit-attribution.spec.ts` so it doesn't
@@ -201,6 +211,14 @@ async function countDocsForCompany(companyId: number): Promise<number> {
   }
 }
 
+/**
+ * Smallest possible byte sequence that satisfies the magic-bytes PDF
+ * sniff (`%PDF-`). This is NOT a valid PDF — the OpenAI extraction call
+ * downstream is expected to return an error and mark the row as
+ * `status: "error"`. We assert only on the gate, not on extraction.
+ */
+const PDF_HEADER_STUB = Buffer.from("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n", "binary");
+
 test.describe("POST /api/documents magic-bytes gate @api", () => {
   test("rejects forged image uploads before extraction or storage", async () => {
     const session = await bootstrapUser();
@@ -230,7 +248,9 @@ test.describe("POST /api/documents magic-bytes gate @api", () => {
       /image uploads/i,
     );
 
-    // ── 3. Old gate still works: non-image MIME hits the multer filter ──
+    // ── 3. Old gate still works: non-image, non-PDF MIME hits the multer
+    //      filter, and the user-facing message names PDF too — task #248
+    //      widened the gate, so the error has to widen with it.
     const txt = await uploadDocument(session, {
       filename: "note.txt",
       contentType: "text/plain",
@@ -238,11 +258,48 @@ test.describe("POST /api/documents magic-bytes gate @api", () => {
     });
     expect(txt.status, txt.text).toBe(400);
     expect((txt.body as { message?: string }).message).toMatch(/image uploads/i);
+    expect((txt.body as { message?: string }).message).toMatch(/pdf/i);
 
-    // ── 4. None of the above created a document row. The whole point of
+    // ── 4. Forged PDF: plain text with application/pdf MIME ──────────────
+    //      The PDF branch added in #248 must still trust the bytes — a
+    //      renamed text file with the right Content-Type would otherwise
+    //      land on disk and burn a vision-model call.
+    const forgedPdf = await uploadDocument(session, {
+      filename: "vendor-invoice.pdf",
+      contentType: "application/pdf",
+      bytes: Buffer.from("not really a pdf\n", "utf8"),
+    });
+    expect(forgedPdf.status, forgedPdf.text).toBe(400);
+    expect((forgedPdf.body as { message?: string }).message).toMatch(/pdf/i);
+
+    // ── 5. None of the above created a document row. The whole point of
     //      this gate is to trip BEFORE storage / extraction — if any row
     //      survived we'd be paying for a vision-model call on garbage and
     //      keeping a renamed shell script around as an "ingested invoice".
     expect(await countDocsForCompany(session.companyId)).toBe(0);
+  });
+
+  test("accepts a real PDF past the magic-bytes gate", async () => {
+    const session = await bootstrapUser();
+    expect(await countDocsForCompany(session.companyId)).toBe(0);
+
+    // A buffer whose first five bytes are `%PDF-` should sail past the
+    // format gate that used to be image-only. We don't care whether the
+    // downstream OpenAI call succeeds — it almost certainly won't on a
+    // 14-byte stub — only that the row was created (i.e. the gate let
+    // it through and `storage.createDocument` ran). The route returns
+    // 201 with `status: "ready"` on success or `status: "error"` on
+    // extractor failure; both are acceptable here.
+    const realish = await uploadDocument(session, {
+      filename: "vendor-invoice.pdf",
+      contentType: "application/pdf",
+      bytes: PDF_HEADER_STUB,
+    });
+    expect(realish.status, realish.text).toBe(201);
+    const created = realish.body as { id: number; mimeType: string; status: string };
+    expect(created.id).toBeGreaterThan(0);
+    expect(created.mimeType).toBe("application/pdf");
+    expect(["ready", "extracting", "error"]).toContain(created.status);
+    expect(await countDocsForCompany(session.companyId)).toBe(1);
   });
 });

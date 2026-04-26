@@ -67,7 +67,9 @@ import {
   deleteDocumentFileIfOrphaned,
 } from "./services/document-storage";
 import {
+  detectDocumentMimeFromBuffer,
   detectImageMimeFromBuffer,
+  InvalidDocumentError,
   InvalidImageError,
 } from "./services/image-mime";
 import { postDocumentSchema } from "@shared/schema";
@@ -1944,8 +1946,22 @@ function registerDocumentRoutes(app: Express) {
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-      const ok = file.mimetype.startsWith("image/");
-      if (!ok) return cb(new Error("Only image uploads are supported (PNG, JPEG, WEBP)."));
+      // First-line gate based on the caller-supplied Content-Type. The
+      // real defence is the magic-bytes sniff inside the route handler
+      // (a forged `image/png` MIME on a shell script would otherwise
+      // sail through this branch); see task #196 / #248. PDF support
+      // was added in #248 so vendor invoices can be forwarded straight
+      // from email without printing-then-scanning.
+      const ok =
+        file.mimetype.startsWith("image/") ||
+        file.mimetype === "application/pdf";
+      if (!ok) {
+        return cb(
+          new Error(
+            "Only image uploads (PNG, JPEG, WEBP, GIF) and PDF files are supported.",
+          ),
+        );
+      }
       cb(null, true);
     },
   });
@@ -1976,10 +1992,11 @@ function registerDocumentRoutes(app: Express) {
       // arbitrary bytes into the AI vision extractor and persist them as
       // an "ingested invoice"). Sniff the actual file signature here, BEFORE
       // any extraction or storage write, and trust the bytes — not the
-      // caller. Mirrors the avatar route's defence; see task #196.
-      const detectedMime = detectImageMimeFromBuffer(file.buffer);
+      // caller. Mirrors the avatar route's defence; see task #196 (image
+      // formats) and task #248 (PDF support).
+      const detectedMime = detectDocumentMimeFromBuffer(file.buffer);
       if (!detectedMime) {
-        throw new InvalidImageError();
+        throw new InvalidDocumentError();
       }
 
       const saved = await saveDocumentFile({
@@ -2164,15 +2181,21 @@ function registerDocumentRoutes(app: Express) {
     }
   });
 
-  // Multer / fileFilter errors → 400 instead of 500. The `InvalidImageError`
-  // branch is the magic-bytes gate from task #196 — a renamed text file with
-  // a forged `image/png` Content-Type passes the multer filter but fails the
-  // signature sniff in the route handler.
+  // Multer / fileFilter errors → 400 instead of 500. The `InvalidDocumentError`
+  // branch is the magic-bytes gate from task #196 (extended for PDFs in
+  // task #248) — a renamed text file with a forged `image/png` Content-Type
+  // passes the multer filter but fails the signature sniff in the route
+  // handler. `InvalidImageError` is kept around because legacy callers
+  // (and the avatar route's shared error class) may still surface here.
   app.use("/api/documents", (err: any, _req: Request, res: Response, next: NextFunction) => {
-    if (err instanceof InvalidImageError) {
+    if (err instanceof InvalidDocumentError || err instanceof InvalidImageError) {
       return res.status(400).json({ message: err.message });
     }
-    if (err && (err instanceof multer.MulterError || /Only image uploads/.test(err.message))) {
+    if (
+      err &&
+      (err instanceof multer.MulterError ||
+        /Only image uploads/.test(err.message ?? ""))
+    ) {
       return res.status(400).json({ message: err.message });
     }
     return next(err);

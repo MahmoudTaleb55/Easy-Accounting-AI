@@ -341,8 +341,16 @@ export default function InboxPage() {
   const handleFiles = useCallback(
     (files: FileList | null) => {
       if (!files || files.length === 0) return;
+      // Mirror the server-side gate (image/* + application/pdf, see
+      // server/services/image-mime.ts → detectDocumentMimeFromBuffer).
+      // The browser-supplied `type` is advisory here — the real check is
+      // the magic-bytes sniff on the server — but filtering up front
+      // means a stray .docx dropped on the inbox doesn't trigger a
+      // pointless 400 round-trip.
       Array.from(files)
-        .filter((f) => f.type.startsWith("image/"))
+        .filter(
+          (f) => f.type.startsWith("image/") || f.type === "application/pdf",
+        )
         .forEach((f) => uploadMut.mutate(f));
     },
     [uploadMut],
@@ -412,7 +420,7 @@ export default function InboxPage() {
           <input
             ref={fileInput}
             type="file"
-            accept="image/png,image/jpeg,image/webp"
+            accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
             multiple
             className="hidden"
             onChange={(e) => handleFiles(e.target.files)}
