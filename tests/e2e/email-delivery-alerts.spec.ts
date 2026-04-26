@@ -1635,3 +1635,130 @@ async function seedRecipientHistory(opts: {
     await client.end();
   }
 }
+
+// ===========================================================================
+// 7) Alert-history cursor input validation — sibling to the recent-alerts
+//    pagination spec (section 4) but driven entirely at the API layer. The
+//    pagination spec proves the *happy path* through the UI; this block
+//    locks the *input contract* of GET /api/auth/email-delivery-alerts/
+//    history so the three defensive branches in the handler
+//    (server/auth/local-routes.ts ~957–967) cannot silently regress:
+//
+//      - unparseable `before` cursor → 400 with the documented message
+//        (catches a refactor that swaps `new Date(...)` for a parser that
+//        accepts garbage and lets it fall through to Postgres as
+//        `Invalid Date`, crashing the SQL or — worse — coercing to NULL
+//        and returning the entire history).
+//      - `limit` above the cap → response is truncated to 100 rows
+//        (catches a refactor that drops the `Math.min(..., 100)` clamp
+//        and lets a malicious or buggy caller pull thousands of rows).
+//      - missing or non-numeric `limit` → response defaults to 20 rows
+//        (catches a refactor that swaps `Number()` for `parseInt`, where
+//        a missing param would coerce to NaN the same way but a future
+//        Zod schema with `.default(50)` would silently change the
+//        page-size contract).
+//
+//    Each branch is exercised against a workspace seeded with > 100
+//    alerts so the cap and default are *observable* as page sizes — any
+//    seed of ≤100 would still pass even if the cap regressed, because
+//    the response would be naturally short.
+// ===========================================================================
+test.describe("alert-history cursor input validation @alerts", () => {
+  test.use({ storageState: ROLE_FILES.owner });
+
+  // 100 is the documented hard cap (see Math.min(limit, 100) in
+  // server/auth/storage.ts → listRecentEmailDeliveryAlerts). Seed a
+  // handful past the cap so the 100-row truncation and the 20-row
+  // default are both detectable as short pages with non-null cursors.
+  const SEEDED_ALERTS = 105;
+
+  test.beforeEach(async () => {
+    await resetAlertState();
+    await seedRecentAlerts(SEEDED_ALERTS);
+  });
+
+  test("?before=not-a-date returns 400 with the documented error message", async ({
+    request,
+  }) => {
+    const r = await call(
+      request,
+      "GET",
+      "/api/auth/email-delivery-alerts/history?before=not-a-date",
+    );
+    expect(
+      r.status,
+      `unparseable cursor must 400, got ${r.status}: ${JSON.stringify(r.body)}`,
+    ).toBe(400);
+    // Pin the literal message — the client surfaces it in a toast and a
+    // future copy change should be a deliberate, reviewable edit, not a
+    // silent drift caused by reaching for a generic "Bad Request".
+    expect((r.body as { message?: string } | null)?.message).toBe(
+      "Invalid 'before' cursor",
+    );
+  });
+
+  test("?limit=999 caps the response at 100 rows", async ({ request }) => {
+    const r = await call(
+      request,
+      "GET",
+      "/api/auth/email-delivery-alerts/history?limit=999",
+    );
+    expect(r.status).toBe(200);
+    const body = r.body as { rows: unknown[]; nextCursor: string | null };
+    // Exact-count assertion: a regression that drops the 100 clamp would
+    // return all 105 seeded rows instead — 100 vs 105 is the only signal
+    // that proves the cap is still active.
+    expect(
+      body.rows,
+      `limit=999 must be clamped to 100; got ${body.rows.length} rows`,
+    ).toHaveLength(100);
+    // 100 rows is exactly the cap with 5 still on the server, so the
+    // handler must surface a non-null cursor for the next page.
+    expect(
+      body.nextCursor,
+      "100-row capped page is full → nextCursor must be set",
+    ).not.toBeNull();
+  });
+
+  test("missing limit falls back to 20 rows", async ({ request }) => {
+    const r = await call(request, "GET", "/api/auth/email-delivery-alerts/history");
+    expect(r.status).toBe(200);
+    const body = r.body as { rows: unknown[]; nextCursor: string | null };
+    // 20 is the documented default. Asserting an exact count (rather
+    // than a `<=`) catches a future Zod schema with a different
+    // `.default(...)` value just as cleanly as it catches a bug that
+    // returns the full unbounded page.
+    expect(
+      body.rows,
+      `missing limit must default to 20; got ${body.rows.length} rows`,
+    ).toHaveLength(20);
+    expect(
+      body.nextCursor,
+      "20-row default page is full → nextCursor must be set",
+    ).not.toBeNull();
+  });
+
+  test("non-numeric limit falls back to 20 rows", async ({ request }) => {
+    const r = await call(
+      request,
+      "GET",
+      "/api/auth/email-delivery-alerts/history?limit=banana",
+    );
+    expect(r.status).toBe(200);
+    const body = r.body as { rows: unknown[]; nextCursor: string | null };
+    // `Number("banana")` is NaN, which fails `Number.isFinite` and falls
+    // through to the default-of-20 branch. A refactor to `parseInt`
+    // would behave the same way here, but a refactor to a Zod
+    // `.coerce.number()` *without* a fallback would 400 instead — this
+    // assertion locks in "graceful default", not "strict reject", as
+    // the contract for non-numeric junk.
+    expect(
+      body.rows,
+      `non-numeric limit must default to 20; got ${body.rows.length} rows`,
+    ).toHaveLength(20);
+    expect(
+      body.nextCursor,
+      "20-row default page is full → nextCursor must be set",
+    ).not.toBeNull();
+  });
+});
