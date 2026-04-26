@@ -105,6 +105,11 @@ export const RLS_TABLES: readonly string[] = [
   // Brought under RLS by task #169 (migration 0016) once `audit_log`
   // gained a `company_id` column.
   "audit_log",
+  // Sales Portal — added by task #301 (migration 0019).
+  "customers",
+  "products",
+  "sales_invoices",
+  "sales_invoice_lines",
 ] as const;
 
 /**

@@ -24,6 +24,9 @@ import JournalEntries from "@/pages/journal-entries";
 import Insights from "@/pages/insights";
 import HR from "@/pages/hr";
 import FixedAssets from "@/pages/fixed-assets";
+import SalesInvoices from "@/pages/sales/invoices";
+import SalesInvoiceDetail from "@/pages/sales/invoice-detail";
+import SalesCustomers from "@/pages/sales/customers";
 import SettingsPage from "@/pages/settings";
 import Styleguide from "@/pages/styleguide";
 
@@ -74,6 +77,9 @@ function AppShellRoutes() {
       <Route path="/app/insights" component={Insights} />
       <Route path="/app/hr" component={HR} />
       <Route path="/app/fixed-assets" component={FixedAssets} />
+      <Route path="/app/sales/invoices" component={SalesInvoices} />
+      <Route path="/app/sales/invoices/:id" component={SalesInvoiceDetail} />
+      <Route path="/app/sales/customers" component={SalesCustomers} />
       <Route path="/app/settings" component={SettingsPage} />
       <Route path="/app/settings/members" component={MembersPage} />
       <Route path="/app/settings/profile" component={ProfilePage} />

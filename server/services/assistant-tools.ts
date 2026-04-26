@@ -15,6 +15,13 @@ import {
   generateCustomWord,
   generateCustomPpt,
 } from "./assistant-doc-generators";
+import {
+  createSalesInvoice,
+  updateSalesInvoice,
+  deleteSalesInvoice,
+  postSalesInvoice,
+} from "../sales";
+import { createSalesInvoiceSchema, updateSalesInvoiceSchema } from "@shared/schema";
 
 /* ────────────────────────────────────────────────────────────────────────── */
 /*  Tool schemas exposed to OpenAI function calling                          */
@@ -341,6 +348,145 @@ export const ASSISTANT_TOOLS = [
           },
         },
         required: ["title", "slides"],
+      },
+    },
+  },
+
+  /* ───────── Sales Portal ───────── */
+  {
+    type: "function",
+    function: {
+      name: "find_customer",
+      description:
+        "Search the workspace's customer list by name (Arabic or English) or by code. Use this before creating a sales invoice to resolve the customerId.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Substring of the customer's Arabic/English name or code" },
+          limit: { type: "integer", description: "Max rows to return (default 10, max 50)" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_customer",
+      description:
+        "Create a new customer in the workspace. Use when the user wants to invoice a name that's not in the customer list yet.",
+      parameters: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "Short customer code, e.g. CUST-0001" },
+          nameAr: { type: "string", description: "Arabic name (required)" },
+          nameEn: { type: "string", description: "English name (optional)" },
+          email: { type: "string" },
+          phone: { type: "string" },
+          taxNumber: { type: "string" },
+          address: { type: "string" },
+          notes: { type: "string" },
+        },
+        required: ["code", "nameAr"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_recent_sales_invoices",
+      description: "List the most recent sales invoices in the workspace (newest first).",
+      parameters: {
+        type: "object",
+        properties: {
+          status: { type: "string", enum: ["draft", "posted", "cancelled"] },
+          customerId: { type: "integer" },
+          limit: { type: "integer", description: "Max rows (default 25, max 100)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_sales_invoice",
+      description:
+        "Create a sales invoice for a customer with one or more lines. Status 'posted' auto-posts the journal entry (DR AR/Cash, CR Sales/VAT, DR COGS/CR Inventory). Use 'draft' to leave it for later approval.",
+      parameters: {
+        type: "object",
+        properties: {
+          customerId: { type: "integer" },
+          invoiceDate: { type: "string", description: "YYYY-MM-DD" },
+          dueDate: { type: "string", description: "YYYY-MM-DD, optional" },
+          status: { type: "string", enum: ["draft", "posted"], description: "Default draft" },
+          paymentMethod: { type: "string", enum: ["credit", "cash"], description: "Default credit" },
+          notes: { type: "string" },
+          lines: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                productId: { type: "integer", description: "Optional — set when the line ties to a stocked product" },
+                description: { type: "string" },
+                quantity: { type: "number" },
+                unitPrice: { type: "number" },
+                vatRate: { type: "number", description: "Fraction, e.g. 0.15 for 15%" },
+                unitCost: { type: "number", description: "Optional — used for COGS posting" },
+              },
+              required: ["quantity", "unitPrice"],
+            },
+            description: "At least one line required",
+          },
+        },
+        required: ["customerId", "invoiceDate", "lines"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_sales_invoice",
+      description:
+        "Update a draft sales invoice's header or lines. Cannot edit posted invoices — cancel them first.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "integer" },
+          customerId: { type: "integer" },
+          invoiceDate: { type: "string" },
+          dueDate: { type: "string" },
+          paymentMethod: { type: "string", enum: ["credit", "cash"] },
+          notes: { type: "string" },
+          lines: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                productId: { type: "integer" },
+                description: { type: "string" },
+                quantity: { type: "number" },
+                unitPrice: { type: "number" },
+                vatRate: { type: "number" },
+                unitCost: { type: "number" },
+              },
+              required: ["quantity", "unitPrice"],
+            },
+          },
+        },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_sales_invoice",
+      description:
+        "Delete a sales invoice. Posted invoices are reversed first (their JE is undone) and then removed.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "integer" } },
+        required: ["id"],
       },
     },
   },
@@ -897,6 +1043,170 @@ export async function executeTool(
           toolName: name,
           modelResult: { ok: true, fileId: stored.id, filename: stored.filename, sizeKB: stored.sizeKB },
           artifact: { kind: "file", fileId: stored.id, filename: stored.filename, mime: stored.mime, sizeKB: stored.sizeKB, report: "custom_pptx", format: "pptx" },
+        };
+      }
+
+      /* ───────── Sales Portal ───────── */
+      case "find_customer": {
+        const a = z
+          .object({ query: z.string().trim().min(1).max(200), limit: z.coerce.number().int().min(1).max(50).default(10) })
+          .parse(rawArgs);
+        const all = await storage.listCustomers(ctx.companyId);
+        const q = a.query.toLowerCase();
+        const matches = all
+          .filter(
+            (c) =>
+              c.code.toLowerCase().includes(q) ||
+              c.nameAr.toLowerCase().includes(q) ||
+              c.nameEn.toLowerCase().includes(q),
+          )
+          .slice(0, a.limit)
+          .map((c) => ({
+            id: c.id,
+            code: c.code,
+            nameAr: c.nameAr,
+            nameEn: c.nameEn,
+            phone: c.phone,
+            email: c.email,
+          }));
+        return { toolName: name, modelResult: { count: matches.length, items: matches } };
+      }
+
+      case "create_customer": {
+        const a = z
+          .object({
+            code: z.string().trim().min(1).max(40),
+            nameAr: z.string().trim().min(1).max(160),
+            nameEn: z.string().trim().max(160).default(""),
+            email: z.string().trim().max(160).default(""),
+            phone: z.string().trim().max(40).default(""),
+            taxNumber: z.string().trim().max(40).default(""),
+            address: z.string().trim().max(400).default(""),
+            notes: z.string().trim().max(800).default(""),
+          })
+          .parse(rawArgs);
+        try {
+          const created = await storage.createCustomer(
+            ctx.companyId,
+            { ...a, isActive: true } as any,
+            aiAudit,
+          );
+          return {
+            toolName: name,
+            modelResult: { ok: true, id: created.id, code: created.code, nameAr: created.nameAr },
+          };
+        } catch (err: any) {
+          if (err?.code === "23505" || /duplicate key/i.test(err?.message ?? "")) {
+            const existing = (await storage.listCustomers(ctx.companyId)).find(
+              (c) => c.code.toLowerCase() === a.code.toLowerCase(),
+            );
+            if (existing) {
+              return {
+                toolName: name,
+                modelResult: {
+                  ok: true,
+                  id: existing.id,
+                  code: existing.code,
+                  nameAr: existing.nameAr,
+                  message: `Customer with code ${a.code} already exists — returning existing id.`,
+                },
+              };
+            }
+          }
+          throw err;
+        }
+      }
+
+      case "list_recent_sales_invoices": {
+        const a = z
+          .object({
+            status: z.enum(["draft", "posted", "cancelled"]).optional(),
+            customerId: z.coerce.number().int().positive().optional(),
+            limit: z.coerce.number().int().min(1).max(100).default(25),
+          })
+          .parse(rawArgs);
+        const list = await storage.listSalesInvoices(ctx.companyId, {
+          status: a.status,
+          customerId: a.customerId,
+        });
+        const items = list.slice(0, a.limit).map((inv) => ({
+          id: inv.id,
+          number: inv.number,
+          customerId: inv.customerId,
+          customerName: inv.customer?.nameAr || inv.customer?.nameEn || null,
+          invoiceDate: inv.invoiceDate,
+          status: inv.status,
+          paymentMethod: inv.paymentMethod,
+          subtotal: Number(inv.subtotal),
+          vatAmount: Number(inv.vatAmount),
+          totalAmount: Number(inv.totalAmount),
+          journalEntryId: inv.journalEntryId,
+        }));
+        return { toolName: name, modelResult: { count: items.length, items, currency: ctx.currency } };
+      }
+
+      case "create_sales_invoice": {
+        const parsed = createSalesInvoiceSchema.parse(rawArgs);
+        const desiredStatus = parsed.status;
+        // Always create as draft, then post in a separate step so the
+        // assistant gets back the auto-posted JE id when appropriate.
+        const draftInput = { ...parsed, status: "draft" as const };
+        const created = await createSalesInvoice(ctx.companyId, draftInput, aiAudit);
+        let final = created;
+        if (desiredStatus === "posted") {
+          final = await postSalesInvoice(ctx.companyId, created.id, aiAudit);
+        }
+        return {
+          toolName: name,
+          modelResult: {
+            ok: true,
+            id: final.id,
+            number: final.number,
+            status: final.status,
+            totalAmount: Number(final.totalAmount),
+            journalEntryId: final.journalEntryId,
+          },
+          artifact:
+            final.journalEntryId != null
+              ? {
+                  kind: "journal_entry",
+                  id: final.journalEntryId,
+                  description: `Sales invoice ${final.number}`,
+                  totalDebit: Number(final.totalAmount) + Number(final.cogsAmount),
+                  totalCredit: Number(final.totalAmount) + Number(final.cogsAmount),
+                  lines: final.lines.length,
+                }
+              : undefined,
+        };
+      }
+
+      case "update_sales_invoice": {
+        const a = z
+          .object({ id: z.coerce.number().int().positive() })
+          .passthrough()
+          .parse(rawArgs);
+        const { id, ...rest } = a;
+        const patch = updateSalesInvoiceSchema.parse(rest);
+        const updated = await updateSalesInvoice(ctx.companyId, id, patch, aiAudit);
+        return {
+          toolName: name,
+          modelResult: {
+            ok: true,
+            id: updated.id,
+            number: updated.number,
+            status: updated.status,
+            totalAmount: Number(updated.totalAmount),
+          },
+        };
+      }
+
+      case "delete_sales_invoice": {
+        const a = z.object({ id: z.coerce.number().int().positive() }).parse(rawArgs);
+        await deleteSalesInvoice(ctx.companyId, a.id, aiAudit);
+        return {
+          toolName: name,
+          modelResult: { ok: true, deletedId: a.id },
+          artifact: { kind: "deletion", entity: "sales_invoice", id: a.id },
         };
       }
 

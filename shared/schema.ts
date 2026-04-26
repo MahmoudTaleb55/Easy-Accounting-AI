@@ -134,14 +134,15 @@ export type InsertJournalLine = z.infer<typeof insertJournalLineSchema>;
 
 // `JournalEntrySourceLink` is computed at read time by joining the JE id
 // against the modules that auto-post to it (payroll runs, depreciation runs,
-// fixed-asset events). The link is omitted when no such row exists, which
-// naturally hides the badge if the source row was later deleted.
+// fixed-asset events, sales invoices). The link is omitted when no such row
+// exists, which naturally hides the badge if the source row was later deleted.
 export type JournalEntrySourceKind =
   | "payroll_run"
   | "depreciation_run"
   | "impairment"
   | "revaluation"
-  | "disposal";
+  | "disposal"
+  | "sales_invoice";
 
 export interface JournalEntrySourceLink {
   kind: JournalEntrySourceKind;
@@ -1074,6 +1075,11 @@ export const extractedDocumentSchema = z.object({
   paymentMethod: z.enum(["cash", "card", "bank", "credit", "unknown"]).default("unknown"),
   category: z.string().nullable().optional(),
   documentType: z.enum(["receipt", "invoice", "credit_note", "other"]).default("receipt"),
+  // "sales" → the workspace issued this to a customer; "purchase" → vendor
+  // issued it to the workspace. Defaults to purchase since most uploaded
+  // receipts are vendor-side.
+  direction: z.enum(["sales", "purchase"]).default("purchase"),
+  counterparty: z.string().nullable().optional(),
   language: z.enum(["ar", "en", "mixed"]).default("ar"),
   lineItems: z
     .array(
@@ -1123,3 +1129,244 @@ export const postDocumentSchema = z.object({
     .min(2),
 });
 export type PostDocumentInput = z.infer<typeof postDocumentSchema>;
+
+// ============================================================================
+// Sales Portal — Customers, Products, Sales Invoices (task #301)
+// ============================================================================
+//
+// Workspace isolation recipe (see docs/design/workspace-isolation-defense-in-depth.md):
+//   - Every table carries `companyId NOT NULL` with no column default.
+//   - Each parent declares `unique(id, company_id)` so child tables can
+//     declare composite FKs that physically refuse cross-tenant writes.
+//   - Children carry a denormalised `companyId` equal to the parent's, and
+//     point both columns at the parent's composite unique.
+
+export const customers = pgTable(
+  "customers",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    code: text("code").notNull(),                 // CUST-0001 — unique per workspace
+    nameAr: text("name_ar").notNull(),
+    nameEn: text("name_en").notNull().default(""),
+    email: text("email").notNull().default(""),
+    phone: text("phone").notNull().default(""),
+    taxNumber: text("tax_number").notNull().default(""),
+    address: text("address").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("customers_id_company_uq").on(t.id, t.companyId),
+    codeCompanyUq: unique("customers_code_company_uq").on(t.companyId, t.code),
+  }),
+);
+export const insertCustomerSchema = createInsertSchema(customers)
+  .omit({ id: true, createdAt: true, companyId: true })
+  .extend({
+    code: z.string().trim().min(1, "كود العميل مطلوب").max(40),
+    nameAr: z.string().trim().min(1, "اسم العميل مطلوب").max(160),
+    nameEn: z.string().trim().max(160).default(""),
+    email: z.string().trim().max(160).default(""),
+    phone: z.string().trim().max(40).default(""),
+    taxNumber: z.string().trim().max(40).default(""),
+    address: z.string().trim().max(400).default(""),
+    notes: z.string().trim().max(800).default(""),
+    isActive: z.boolean().default(true),
+  });
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+
+export const products = pgTable(
+  "products",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    sku: text("sku").notNull(),                   // SKU — unique per workspace
+    nameAr: text("name_ar").notNull(),
+    nameEn: text("name_en").notNull().default(""),
+    description: text("description").notNull().default(""),
+    unitPrice: numeric("unit_price", { precision: 14, scale: 2 }).notNull().default("0"),
+    unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull().default("0"),
+    // VAT override: when null, the invoice line falls back to settings.vatRate.
+    vatRate: numeric("vat_rate", { precision: 5, scale: 4 }),
+    stockQty: numeric("stock_qty", { precision: 14, scale: 4 }).notNull().default("0"),
+    // Service-style products (consulting, hours, fees) skip inventory accounting:
+    // no COGS leg is posted and no stock decrement runs on invoice posting.
+    isService: boolean("is_service").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("products_id_company_uq").on(t.id, t.companyId),
+    skuCompanyUq: unique("products_sku_company_uq").on(t.companyId, t.sku),
+  }),
+);
+export const insertProductSchema = createInsertSchema(products)
+  .omit({ id: true, createdAt: true, companyId: true })
+  .extend({
+    sku: z.string().trim().min(1, "كود المنتج مطلوب").max(40),
+    nameAr: z.string().trim().min(1, "اسم المنتج مطلوب").max(160),
+    nameEn: z.string().trim().max(160).default(""),
+    description: z.string().trim().max(400).default(""),
+    unitPrice: z.coerce.number().nonnegative().default(0),
+    unitCost: z.coerce.number().nonnegative().default(0),
+    vatRate: z.coerce.number().min(0).max(0.99).optional().nullable(),
+    stockQty: z.coerce.number().default(0),
+    isService: z.boolean().default(false),
+    isActive: z.boolean().default(true),
+  });
+export type Product = typeof products.$inferSelect;
+export type InsertProduct = z.infer<typeof insertProductSchema>;
+
+export const SALES_INVOICE_STATUSES = ["draft", "posted", "cancelled"] as const;
+export type SalesInvoiceStatus = (typeof SALES_INVOICE_STATUSES)[number];
+
+export const SALES_INVOICE_PAYMENT_METHODS = ["credit", "cash"] as const;
+export type SalesInvoicePaymentMethod = (typeof SALES_INVOICE_PAYMENT_METHODS)[number];
+
+export const salesInvoices = pgTable(
+  "sales_invoices",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    number: text("number").notNull(),             // INV-0001 — unique per workspace
+    customerId: integer("customer_id").notNull(),
+    invoiceDate: text("invoice_date").notNull(),  // YYYY-MM-DD
+    dueDate: text("due_date"),                    // YYYY-MM-DD, nullable
+    status: text("status").notNull().default("draft"),                 // draft|posted|cancelled
+    paymentMethod: text("payment_method").notNull().default("credit"), // credit|cash
+    subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+    vatAmount: numeric("vat_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    cogsAmount: numeric("cogs_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    paidAmount: numeric("paid_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    notes: text("notes").notNull().default(""),
+    journalEntryId: integer("journal_entry_id"),  // set when status=posted
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("sales_invoices_id_company_uq").on(t.id, t.companyId),
+    numberCompanyUq: unique("sales_invoices_number_company_uq").on(t.companyId, t.number),
+    customerCompanyFk: foreignKey({
+      columns: [t.customerId, t.companyId],
+      foreignColumns: [customers.id, customers.companyId],
+      name: "sales_invoices_customer_company_fk",
+    }),
+    journalEntryCompanyFk: foreignKey({
+      columns: [t.journalEntryId, t.companyId],
+      foreignColumns: [journalEntries.id, journalEntries.companyId],
+      name: "sales_invoices_journal_entry_company_fk",
+    }),
+    customerIdx: index("sales_invoices_customer_idx").on(t.companyId, t.customerId),
+    statusIdx: index("sales_invoices_status_idx").on(t.companyId, t.status),
+  }),
+);
+export const insertSalesInvoiceSchema = createInsertSchema(salesInvoices)
+  .omit({
+    id: true,
+    createdAt: true,
+    companyId: true,
+    journalEntryId: true,
+    subtotal: true,
+    vatAmount: true,
+    totalAmount: true,
+    cogsAmount: true,
+    paidAmount: true,
+    number: true,
+  })
+  .extend({
+    customerId: z.coerce.number().int().positive(),
+    invoiceDate: z.string().min(1, "تاريخ الفاتورة مطلوب"),
+    dueDate: z.string().optional().nullable(),
+    status: z.enum(SALES_INVOICE_STATUSES).default("draft"),
+    paymentMethod: z.enum(SALES_INVOICE_PAYMENT_METHODS).default("credit"),
+    notes: z.string().max(800).default(""),
+  });
+export type SalesInvoice = typeof salesInvoices.$inferSelect;
+export type InsertSalesInvoice = z.infer<typeof insertSalesInvoiceSchema>;
+
+export const salesInvoiceLines = pgTable(
+  "sales_invoice_lines",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    invoiceId: integer("invoice_id").notNull(),
+    productId: integer("product_id"),             // nullable — supports free-form lines
+    description: text("description").notNull().default(""),
+    quantity: numeric("quantity", { precision: 14, scale: 4 }).notNull().default("1"),
+    unitPrice: numeric("unit_price", { precision: 14, scale: 2 }).notNull().default("0"),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 4 }).notNull().default("0"),
+    lineSubtotal: numeric("line_subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+    lineVat: numeric("line_vat", { precision: 14, scale: 2 }).notNull().default("0"),
+    lineTotal: numeric("line_total", { precision: 14, scale: 2 }).notNull().default("0"),
+    unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull().default("0"),
+    costAmount: numeric("cost_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  },
+  (t) => ({
+    invoiceCompanyFk: foreignKey({
+      columns: [t.invoiceId, t.companyId],
+      foreignColumns: [salesInvoices.id, salesInvoices.companyId],
+      name: "sales_invoice_lines_invoice_company_fk",
+    }),
+    productCompanyFk: foreignKey({
+      columns: [t.productId, t.companyId],
+      foreignColumns: [products.id, products.companyId],
+      name: "sales_invoice_lines_product_company_fk",
+    }),
+    invoiceIdx: index("sales_invoice_lines_invoice_idx").on(t.invoiceId),
+  }),
+);
+export const insertSalesInvoiceLineSchema = createInsertSchema(salesInvoiceLines)
+  .omit({
+    id: true,
+    companyId: true,
+    invoiceId: true,
+    lineSubtotal: true,
+    lineVat: true,
+    lineTotal: true,
+    costAmount: true,
+  })
+  .extend({
+    productId: z.coerce.number().int().positive().optional().nullable(),
+    description: z.string().max(300).default(""),
+    quantity: z.coerce.number().positive(),
+    unitPrice: z.coerce.number().nonnegative(),
+    vatRate: z.coerce.number().min(0).max(0.99).default(0),
+    unitCost: z.coerce.number().nonnegative().default(0),
+  });
+export type SalesInvoiceLine = typeof salesInvoiceLines.$inferSelect;
+export type InsertSalesInvoiceLine = z.infer<typeof insertSalesInvoiceLineSchema>;
+
+// Composite create payload accepted by POST /api/sales/invoices.
+export const createSalesInvoiceSchema = z.object({
+  customerId: z.coerce.number().int().positive(),
+  invoiceDate: z.string().min(1),
+  dueDate: z.string().optional().nullable(),
+  status: z.enum(SALES_INVOICE_STATUSES).default("draft"),
+  paymentMethod: z.enum(SALES_INVOICE_PAYMENT_METHODS).default("credit"),
+  notes: z.string().max(800).default(""),
+  lines: z
+    .array(insertSalesInvoiceLineSchema)
+    .min(1, "يجب إضافة بند واحد على الأقل"),
+});
+export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
+
+// Update payload (mutates header + replaces lines). Status transitions are
+// validated server-side: posted→draft is rejected; posted→cancelled flows
+// through the dedicated reverse path.
+export const updateSalesInvoiceSchema = createSalesInvoiceSchema.partial({
+  customerId: true,
+  invoiceDate: true,
+  paymentMethod: true,
+  lines: true,
+});
+export type UpdateSalesInvoiceInput = z.infer<typeof updateSalesInvoiceSchema>;
+
+// API response shape for GET /api/sales/invoices/:id and POST/PATCH responses.
+export type SalesInvoiceWithLines = SalesInvoice & {
+  lines: SalesInvoiceLine[];
+  customer?: Pick<Customer, "id" | "code" | "nameAr" | "nameEn"> | null;
+  journalEntryReference?: string | null;
+};

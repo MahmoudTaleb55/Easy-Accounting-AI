@@ -65,6 +65,13 @@ const AFFECTED_KEYS: Record<string, ReadonlyArray<readonly unknown[]>> = {
     ["/api/reports/balance-sheet"],
     ["/api/reports/profit-loss"],
   ],
+  customers: [
+    ["/api/sales/customers"],
+  ],
+  "sales-invoices": [
+    ["/api/sales/invoices"],
+    ["/api/sales/invoices/next-number"],
+  ],
 };
 
 export function useSendMessage() {

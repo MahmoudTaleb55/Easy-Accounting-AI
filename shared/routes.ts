@@ -9,6 +9,15 @@ import {
   createJournalEntrySchema,
   journalEntries,
   type TransactionWithJournal,
+  insertCustomerSchema,
+  insertProductSchema,
+  createSalesInvoiceSchema,
+  updateSalesInvoiceSchema,
+  type Customer,
+  type Product,
+  type SalesInvoice,
+  type SalesInvoiceWithLines,
+  SALES_INVOICE_STATUSES,
 } from './schema';
 
 export const errorSchemas = {
@@ -300,6 +309,168 @@ export const api = {
         403: errorSchemas.notFound,
         500: errorSchemas.internal,
       },
+    },
+  },
+  sales: {
+    // ----- Customers -----
+    customersList: {
+      method: 'GET' as const,
+      path: '/api/sales/customers' as const,
+      responses: { 200: z.array(z.custom<Customer>()) },
+    },
+    customerGet: {
+      method: 'GET' as const,
+      path: '/api/sales/customers/:id' as const,
+      responses: { 200: z.custom<Customer>(), 404: errorSchemas.notFound },
+    },
+    customerCreate: {
+      method: 'POST' as const,
+      path: '/api/sales/customers' as const,
+      input: insertCustomerSchema,
+      responses: { 201: z.custom<Customer>(), 400: errorSchemas.validation },
+    },
+    customerUpdate: {
+      method: 'PATCH' as const,
+      path: '/api/sales/customers/:id' as const,
+      input: insertCustomerSchema.partial(),
+      responses: {
+        200: z.custom<Customer>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    customerDelete: {
+      method: 'DELETE' as const,
+      path: '/api/sales/customers/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    // Open AR balance for the active customer (sum of total - paid on
+    // posted credit invoices). Returns 0 when no posted activity exists.
+    customerBalance: {
+      method: 'GET' as const,
+      path: '/api/sales/customers/:id/balance' as const,
+      responses: { 200: z.object({ balance: z.number() }) },
+    },
+    customerHistory: {
+      method: 'GET' as const,
+      path: '/api/sales/customers/:id/history' as const,
+      responses: { 200: z.array(z.custom<SalesInvoice>()) },
+    },
+    // ----- Products -----
+    productsList: {
+      method: 'GET' as const,
+      path: '/api/sales/products' as const,
+      responses: { 200: z.array(z.custom<Product>()) },
+    },
+    productCreate: {
+      method: 'POST' as const,
+      path: '/api/sales/products' as const,
+      input: insertProductSchema,
+      responses: { 201: z.custom<Product>(), 400: errorSchemas.validation },
+    },
+    productUpdate: {
+      method: 'PATCH' as const,
+      path: '/api/sales/products/:id' as const,
+      input: insertProductSchema.partial(),
+      responses: {
+        200: z.custom<Product>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    productDelete: {
+      method: 'DELETE' as const,
+      path: '/api/sales/products/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    // ----- Sales invoices -----
+    invoicesList: {
+      method: 'GET' as const,
+      path: '/api/sales/invoices' as const,
+      responses: { 200: z.array(z.custom<SalesInvoiceWithLines>()) },
+    },
+    invoiceGet: {
+      method: 'GET' as const,
+      path: '/api/sales/invoices/:id' as const,
+      responses: {
+        200: z.custom<SalesInvoiceWithLines>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    invoiceCreate: {
+      method: 'POST' as const,
+      path: '/api/sales/invoices' as const,
+      input: createSalesInvoiceSchema,
+      responses: {
+        201: z.custom<SalesInvoiceWithLines>(),
+        400: errorSchemas.validation,
+      },
+    },
+    invoiceUpdate: {
+      method: 'PATCH' as const,
+      path: '/api/sales/invoices/:id' as const,
+      input: updateSalesInvoiceSchema,
+      responses: {
+        200: z.custom<SalesInvoiceWithLines>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    invoiceDelete: {
+      method: 'DELETE' as const,
+      path: '/api/sales/invoices/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    // Status transitions live as dedicated endpoints rather than a generic
+    // PATCH so the API contract makes the lifecycle (`draft` → `posted` →
+    // `cancelled`) explicit and the role gate / Tool list can target each
+    // transition independently.
+    invoicePost: {
+      method: 'POST' as const,
+      path: '/api/sales/invoices/:id/post' as const,
+      responses: {
+        200: z.custom<SalesInvoiceWithLines>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    invoiceCancel: {
+      method: 'POST' as const,
+      path: '/api/sales/invoices/:id/cancel' as const,
+      responses: {
+        200: z.custom<SalesInvoiceWithLines>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    invoicePdf: {
+      method: 'GET' as const,
+      path: '/api/sales/invoices/:id/pdf' as const,
+      responses: {
+        // Binary PDF body. Documented as `z.any()` so the OpenAPI / TS
+        // shape doesn't pretend it's JSON.
+        200: z.any(),
+        404: errorSchemas.notFound,
+      },
+    },
+    invoiceNextNumber: {
+      method: 'GET' as const,
+      path: '/api/sales/invoices/next-number' as const,
+      responses: { 200: z.object({ number: z.string() }) },
     },
   },
   chat: {

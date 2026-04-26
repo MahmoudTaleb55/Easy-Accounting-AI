@@ -268,3 +268,302 @@ export function fontFor(text: string, bold: boolean, fallbackLatin: string): str
   }
   return fallbackLatin;
 }
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Sales Invoice PDF                                                        */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+// Helper: format a number with 2dp using "en-US" digits (Arabic accountants
+// universally use Western digits in invoice totals; the surrounding labels
+// are still rendered in Arabic).
+function fmtMoney(v: string | number): string {
+  const n = typeof v === "string" ? Number(v) : v;
+  return (Number.isFinite(n) ? n : 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function fmtQty(v: string | number): string {
+  const n = typeof v === "string" ? Number(v) : v;
+  return (Number.isFinite(n) ? n : 0).toLocaleString("en-US", {
+    maximumFractionDigits: 4,
+  });
+}
+
+// Status → bilingual badge. We render the Arabic + English side-by-side so
+// a non-Arabic reader still understands the invoice state at a glance.
+function statusLabel(status: string): string {
+  switch (status) {
+    case "draft":
+      return "مسودة Draft";
+    case "posted":
+      return "مُرحَّلة Posted";
+    case "cancelled":
+      return "ملغاة Cancelled";
+    default:
+      return status;
+  }
+}
+
+function paymentLabel(method: string): string {
+  switch (method) {
+    case "cash":
+      return "نقد Cash";
+    case "credit":
+      return "آجل Credit";
+    case "bank":
+      return "بنك Bank";
+    default:
+      return method;
+  }
+}
+
+// Draw a single cell — same shape/bidi pipeline as the report PDFs but kept
+// local to this file so the sales template stays self-contained and we don't
+// pull on `assistant-files.ts` (which would create a circular dependency).
+function cell(
+  doc: any,
+  value: string,
+  x: number,
+  y: number,
+  width: number,
+  align: "left" | "right" | "center",
+  bold: boolean,
+): void {
+  const text = containsArabic(value) ? prepareArabicForPdf(value) : value;
+  const font = fontFor(value, bold, bold ? "Helvetica-Bold" : "Helvetica");
+  doc.font(font).text(text, x, y, { width, align });
+}
+
+async function streamToBuffer(doc: any): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+    doc.end();
+  });
+}
+
+/**
+ * Render a sales invoice to a PDF Buffer. The layout mirrors a standard
+ * Saudi VAT invoice: workspace branding at top-right (RTL reading order),
+ * customer block on the right, invoice meta on the left, then a bordered
+ * line-items table, totals, and a notes/footer block.
+ *
+ * The implementation lives here (rather than in `assistant-files.ts`)
+ * because every text string passes through Amiri shaping + bidi reordering
+ * — the same pipeline this module already provides for report PDFs.
+ */
+export async function renderSalesInvoicePdf(
+  companyId: number,
+  invoice: any, // SalesInvoiceWithLines — typed loosely to avoid pulling
+                // shared/schema into this server-side helper module.
+): Promise<Buffer> {
+  // Lazy-load to avoid pulling pdfkit / storage / drizzle into the import
+  // graph for callers (e.g. unit tests) that don't actually render PDFs.
+  const PDFDocument = (await import("pdfkit")).default;
+  const { storage } = await import("../storage");
+  const { db } = await import("../db");
+  const { products: productsTable } = await import("@shared/schema");
+  const { eq, and, inArray } = await import("drizzle-orm");
+
+  const settings = await storage.getSettings(companyId);
+  const currency = settings.currencySymbol || settings.currencyCode || "";
+  const orgName = settings.orgName || "";
+
+  // Resolve product names so the line table can show "Product · description"
+  // even when the user only supplied a productId. Issue a single bulk query
+  // for all distinct product ids to keep the cost O(1) per invoice.
+  const productIds = Array.from(
+    new Set(
+      (invoice.lines || [])
+        .map((l: any) => l.productId)
+        .filter((v: any): v is number => v != null),
+    ),
+  ) as number[];
+  const productRows: Array<{ id: number; nameAr: string; nameEn: string | null }> =
+    productIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: productsTable.id,
+            nameAr: productsTable.nameAr,
+            nameEn: productsTable.nameEn,
+          })
+          .from(productsTable)
+          .where(
+            and(
+              eq(productsTable.companyId, companyId),
+              inArray(productsTable.id, productIds),
+            ),
+          );
+  const productById = new Map(productRows.map((p) => [p.id, p]));
+
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: 40,
+    info: {
+      Title: `Invoice ${invoice.number}`,
+      Producer: "Mohaseb",
+    },
+  });
+  registerArabicFonts(doc);
+
+  const pageW = doc.page.width;
+  const pageM = 40;
+  const innerW = pageW - pageM * 2;
+
+  // -------- Header band --------
+  doc.rect(pageM, pageM, innerW, 56).fill("#065F46");
+  doc.fillColor("#ffffff").fontSize(18);
+  cell(doc, "فاتورة مبيعات / Sales Invoice", pageM + 12, pageM + 10, innerW - 24, "right", true);
+  doc.fontSize(10);
+  cell(
+    doc,
+    orgName,
+    pageM + 12,
+    pageM + 36,
+    innerW - 24,
+    containsArabic(orgName) ? "right" : "left",
+    false,
+  );
+
+  doc.fillColor("#111").fontSize(10).font("Helvetica");
+  let y = pageM + 78;
+
+  // -------- Meta block (left) + Customer block (right) --------
+  // We treat Arabic readers' eyes as starting on the right, so the customer
+  // block (the human entity) is on the right; the invoice meta (numbers) is
+  // on the left where Latin numerals naturally sit.
+  const colW = (innerW - 16) / 2;
+  const leftX = pageM;
+  const rightX = pageM + colW + 16;
+
+  // Customer card (right column)
+  doc.rect(rightX, y, colW, 96).strokeColor("#E5E7EB").lineWidth(1).stroke();
+  cell(doc, "بيانات العميل / Bill To", rightX + 10, y + 8, colW - 20, "right", true);
+  const cust = invoice.customer;
+  const custName = cust ? cust.nameAr || cust.nameEn || `#${cust.id}` : "-";
+  cell(doc, custName, rightX + 10, y + 28, colW - 20, "right", true);
+  if (cust?.code) {
+    cell(doc, `كود: ${cust.code}`, rightX + 10, y + 46, colW - 20, "right", false);
+  }
+
+  // Meta card (left column)
+  doc.rect(leftX, y, colW, 96).strokeColor("#E5E7EB").lineWidth(1).stroke();
+  const metaRows: Array<[string, string]> = [
+    ["رقم الفاتورة / Invoice #", invoice.number],
+    ["التاريخ / Date", invoice.invoiceDate],
+    ["الاستحقاق / Due", invoice.dueDate || "-"],
+    ["الحالة / Status", statusLabel(invoice.status)],
+    ["طريقة الدفع / Payment", paymentLabel(invoice.paymentMethod)],
+  ];
+  metaRows.forEach(([label, value], i) => {
+    const ry = y + 10 + i * 16;
+    cell(doc, label, leftX + 10, ry, colW * 0.55 - 10, "left", false);
+    cell(doc, String(value), leftX + colW * 0.55, ry, colW * 0.45 - 10, "right", true);
+  });
+
+  y += 96 + 16;
+
+  // -------- Lines table --------
+  const colXs = {
+    idx: leftX,
+    desc: leftX + 30,
+    qty: leftX + innerW - 280,
+    price: leftX + innerW - 210,
+    vat: leftX + innerW - 130,
+    total: leftX + innerW - 70,
+  };
+  const colWs = {
+    idx: 30,
+    desc: innerW - 30 - 280,
+    qty: 70,
+    price: 80,
+    vat: 60,
+    total: 70,
+  };
+
+  // Header row
+  doc.rect(leftX, y, innerW, 22).fill("#065F46");
+  doc.fillColor("#ffffff").fontSize(9);
+  cell(doc, "#", colXs.idx, y + 6, colWs.idx, "center", true);
+  cell(doc, "الوصف Description", colXs.desc, y + 6, colWs.desc, "right", true);
+  cell(doc, "الكمية Qty", colXs.qty, y + 6, colWs.qty, "right", true);
+  cell(doc, "السعر Price", colXs.price, y + 6, colWs.price, "right", true);
+  cell(doc, "ض.ق.م VAT", colXs.vat, y + 6, colWs.vat, "right", true);
+  cell(doc, "الإجمالي Total", colXs.total, y + 6, colWs.total, "right", true);
+  y += 22;
+
+  doc.fillColor("#111").fontSize(9);
+  let alt = false;
+  (invoice.lines || []).forEach((line: any, i: number) => {
+    if (y > doc.page.height - 200) {
+      doc.addPage();
+      y = pageM;
+    }
+    if (alt) doc.rect(leftX, y, innerW, 22).fill("#F9FAFB");
+    doc.fillColor("#111");
+    const product = line.productId ? productById.get(line.productId) : null;
+    const productName = product?.nameAr || product?.nameEn || "";
+    const desc =
+      productName && line.description
+        ? `${productName} — ${line.description}`
+        : productName || line.description || "";
+    cell(doc, String(i + 1), colXs.idx, y + 6, colWs.idx, "center", false);
+    cell(doc, desc, colXs.desc, y + 6, colWs.desc, "right", false);
+    cell(doc, fmtQty(line.quantity), colXs.qty, y + 6, colWs.qty, "right", false);
+    cell(doc, fmtMoney(line.unitPrice), colXs.price, y + 6, colWs.price, "right", false);
+    cell(doc, fmtMoney(line.lineVat), colXs.vat, y + 6, colWs.vat, "right", false);
+    cell(doc, fmtMoney(line.lineTotal), colXs.total, y + 6, colWs.total, "right", true);
+    y += 22;
+    alt = !alt;
+  });
+
+  // -------- Totals box (right-aligned) --------
+  y += 10;
+  const totalsW = 260;
+  const totalsX = leftX + innerW - totalsW;
+  const totalsRows: Array<[string, string, boolean]> = [
+    ["الإجمالي قبل الضريبة / Subtotal", `${fmtMoney(invoice.subtotal)} ${currency}`, false],
+    ["ضريبة القيمة المضافة / VAT", `${fmtMoney(invoice.vatAmount)} ${currency}`, false],
+    ["الإجمالي / Total", `${fmtMoney(invoice.totalAmount)} ${currency}`, true],
+  ];
+  totalsRows.forEach(([label, value, bold], i) => {
+    const ry = y + i * 22;
+    if (bold) doc.rect(totalsX, ry - 2, totalsW, 22).fill("#D1FAE5");
+    doc.fillColor("#111").fontSize(bold ? 11 : 10);
+    cell(doc, label, totalsX + 8, ry + 4, totalsW * 0.55 - 8, "right", bold);
+    cell(doc, value, totalsX + totalsW * 0.55, ry + 4, totalsW * 0.45 - 8, "left", bold);
+  });
+  y += totalsRows.length * 22 + 16;
+
+  // -------- Notes + JE reference --------
+  if (invoice.notes && invoice.notes.trim().length > 0) {
+    if (y > doc.page.height - 80) {
+      doc.addPage();
+      y = pageM;
+    }
+    doc.fillColor("#111").fontSize(10);
+    cell(doc, "ملاحظات / Notes", leftX, y, innerW, "right", true);
+    y += 16;
+    cell(doc, String(invoice.notes), leftX, y, innerW, "right", false);
+    y += 24;
+  }
+  if (invoice.journalEntryReference) {
+    doc.fillColor("#6B7280").fontSize(9);
+    cell(
+      doc,
+      `قيد اليومية المرتبط / Linked JE: ${invoice.journalEntryReference}`,
+      leftX,
+      y,
+      innerW,
+      "right",
+      false,
+    );
+  }
+
+  return await streamToBuffer(doc);
+}

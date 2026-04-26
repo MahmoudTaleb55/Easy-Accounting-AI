@@ -31,7 +31,9 @@ export type HistoryEntityType =
   | "employee"
   | "attendance"
   | "leave"
-  | "payroll_run";
+  | "payroll_run"
+  | "sales_invoice"
+  | "customer";
 
 // Source kinds that can trigger a `reverseAutoPostedJournalEntry` cascade.
 // Mirrors `JournalEntrySourceKind` in `server/storage.ts`. Kept inline here
@@ -44,7 +46,8 @@ type ReversalSourceKind =
   | "impairment_event"
   | "revaluation_event"
   | "disposal"
-  | "document";
+  | "document"
+  | "sales_invoice";
 
 interface ReversalSource {
   kind: ReversalSourceKind;
@@ -66,7 +69,8 @@ function parseReversedBy(value: unknown): ReversalSource | null {
     kind !== "impairment_event" &&
     kind !== "revaluation_event" &&
     kind !== "disposal" &&
-    kind !== "document"
+    kind !== "document" &&
+    kind !== "sales_invoice"
   ) {
     return null;
   }
@@ -92,6 +96,8 @@ function reversalSourceHref(source: ReversalSource): string {
       return `/app/fixed-assets#disp-${source.id}`;
     case "document":
       return `/app/inbox#doc-${source.id}`;
+    case "sales_invoice":
+      return `/app/sales/invoices/${source.id}`;
   }
 }
 
@@ -113,6 +119,8 @@ function reversalSourceLabel(
       return ar ? `استبعاد #${source.id}` : `Disposal #${source.id}`;
     case "document":
       return ar ? `مستند مرفوع #${source.id}` : `Document #${source.id}`;
+    case "sales_invoice":
+      return ar ? `فاتورة مبيعات #${source.id}` : `Sales invoice #${source.id}`;
   }
 }
 

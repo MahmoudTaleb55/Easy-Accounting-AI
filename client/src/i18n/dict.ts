@@ -12,6 +12,7 @@ export const STRINGS = {
   group_books:        { ar: "الدفاتر",     en: "Books",     de: "Bücher",         fr: "Comptabilité" },
   group_people:       { ar: "الموارد والأصول", en: "People & Assets", de: "Personal & Vermögen", fr: "Personnel & Actifs" },
   group_intelligence: { ar: "الذكاء",       en: "Intelligence", de: "Intelligenz", fr: "Intelligence" },
+  group_sales:        { ar: "المبيعات",      en: "Sales",     de: "Vertrieb",       fr: "Ventes" },
   group_settings:     { ar: "الإعدادات",     en: "Settings",  de: "Einstellungen", fr: "Paramètres" },
 
   nav_dashboard:    { ar: "اللوحة الرئيسية", en: "Dashboard",          de: "Übersicht",            fr: "Tableau de bord" },
@@ -24,6 +25,8 @@ export const STRINGS = {
   nav_hr:           { ar: "الموارد البشرية",    en: "HR",                 de: "Personal",             fr: "RH" },
   nav_assets:       { ar: "الأصول الثابتة",     en: "Fixed Assets",       de: "Anlagevermögen",       fr: "Immobilisations" },
   nav_ai:           { ar: "المساعد الذكي",     en: "AI Assistant",       de: "KI-Assistent",         fr: "Assistant IA" },
+  nav_sales_invoices: { ar: "فواتير المبيعات",  en: "Sales Invoices",     de: "Verkaufsrechnungen",   fr: "Factures de vente" },
+  nav_sales_customers:{ ar: "العملاء",          en: "Customers",          de: "Kunden",               fr: "Clients" },
   nav_settings:     { ar: "الإعدادات",         en: "Settings",           de: "Einstellungen",        fr: "Paramètres" },
 
   // Top bar

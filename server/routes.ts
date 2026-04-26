@@ -1109,6 +1109,278 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // ──────────────────────────────────────────────────────────────────
+  // Sales Portal — customers, products, sales invoices.
+  //
+  // Reads use the bare GET handlers (the global /api gate already
+  // requires authentication + active workspace). Writes inherit the
+  // owner/accountant gate from `requireWriteRoleForMutations`, so we
+  // don't redeclare it here. Workspace isolation comes from `cid(req)`
+  // being threaded through every storage call (and RLS on the tables).
+  //
+  // The auto-posting / lifecycle transitions live in `server/sales.ts`
+  // so the route layer stays thin. JE conflicts (e.g. trying to delete
+  // a posted invoice without going through the cancel flow) bubble up
+  // as `JournalEntryReferenceConflictError` → 409.
+  // ──────────────────────────────────────────────────────────────────
+  {
+    const {
+      insertCustomerSchema,
+      insertProductSchema,
+      createSalesInvoiceSchema,
+      updateSalesInvoiceSchema,
+    } = await import("@shared/schema");
+    const sales = await import("./sales");
+
+    // ----- Customers -----
+    app.get(api.sales.customersList.path, async (req, res) => {
+      res.json(await storage.listCustomers(cid(req)));
+    });
+
+    app.get("/api/sales/customers/:id", async (req, res) => {
+      const row = await storage.getCustomer(cid(req), Number(req.params.id));
+      if (!row) return res.status(404).json({ message: "غير موجود" });
+      res.json(row);
+    });
+
+    app.post(api.sales.customerCreate.path, async (req, res) => {
+      try {
+        const input = insertCustomerSchema.parse(req.body);
+        res.status(201).json(await storage.createCustomer(cid(req), input, userCtx(req)));
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        res.status(500).json({ message: "تعذر حفظ العميل" });
+      }
+    });
+
+    app.patch("/api/sales/customers/:id", async (req, res) => {
+      try {
+        const input = insertCustomerSchema.partial().parse(req.body);
+        const row = await storage.updateCustomer(
+          cid(req),
+          Number(req.params.id),
+          input,
+          userCtx(req),
+        );
+        res.json(row);
+      } catch (err: any) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        if (err?.message?.includes("غير موجود")) {
+          return res.status(404).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر التحديث" });
+      }
+    });
+
+    app.delete("/api/sales/customers/:id", async (req, res) => {
+      try {
+        await storage.deleteCustomer(cid(req), Number(req.params.id), userCtx(req));
+        res.status(204).send();
+      } catch (err: any) {
+        // Storage throws when the customer still has invoices linked.
+        if (err?.message?.includes("مرتبط") || err?.message?.includes("فواتير")) {
+          return res.status(409).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر الحذف" });
+      }
+    });
+
+    app.get("/api/sales/customers/:id/balance", async (req, res) => {
+      const balance = await storage.getCustomerBalance(cid(req), Number(req.params.id));
+      res.json({ balance });
+    });
+
+    app.get("/api/sales/customers/:id/history", async (req, res) => {
+      res.json(await storage.getCustomerInvoices(cid(req), Number(req.params.id)));
+    });
+
+    // ----- Products -----
+    app.get(api.sales.productsList.path, async (req, res) => {
+      res.json(await storage.listProducts(cid(req)));
+    });
+
+    app.post(api.sales.productCreate.path, async (req, res) => {
+      try {
+        const input = insertProductSchema.parse(req.body);
+        res.status(201).json(await storage.createProduct(cid(req), input, userCtx(req)));
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        res.status(500).json({ message: "تعذر حفظ المنتج" });
+      }
+    });
+
+    app.patch("/api/sales/products/:id", async (req, res) => {
+      try {
+        const input = insertProductSchema.partial().parse(req.body);
+        const row = await storage.updateProduct(
+          cid(req),
+          Number(req.params.id),
+          input,
+          userCtx(req),
+        );
+        res.json(row);
+      } catch (err: any) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        if (err?.message?.includes("غير موجود")) {
+          return res.status(404).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر التحديث" });
+      }
+    });
+
+    app.delete("/api/sales/products/:id", async (req, res) => {
+      try {
+        await storage.deleteProduct(cid(req), Number(req.params.id), userCtx(req));
+        res.status(204).send();
+      } catch (err: any) {
+        if (err?.message?.includes("مرتبط") || err?.message?.includes("فواتير")) {
+          return res.status(409).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر الحذف" });
+      }
+    });
+
+    // ----- Sales invoices -----
+    // Live-preview helper for the "create invoice" dialog. Declared
+    // BEFORE the `/:id` route so Express doesn't try to parse
+    // "next-number" as a numeric id.
+    app.get(api.sales.invoiceNextNumber.path, async (req, res) => {
+      res.json({ number: await storage.getNextSalesInvoiceNumber(cid(req)) });
+    });
+
+    app.get(api.sales.invoicesList.path, async (req, res) => {
+      const status = req.query.status as
+        | "draft"
+        | "posted"
+        | "cancelled"
+        | undefined;
+      const customerId = req.query.customerId
+        ? Number(req.query.customerId)
+        : undefined;
+      res.json(await storage.listSalesInvoices(cid(req), { status, customerId }));
+    });
+
+    app.get("/api/sales/invoices/:id", async (req, res) => {
+      const inv = await storage.getSalesInvoice(cid(req), Number(req.params.id));
+      if (!inv) return res.status(404).json({ message: "الفاتورة غير موجودة" });
+      res.json(inv);
+    });
+
+    app.post(api.sales.invoiceCreate.path, async (req, res) => {
+      try {
+        const input = createSalesInvoiceSchema.parse(req.body);
+        const inv = await sales.createSalesInvoice(cid(req), input, userCtx(req));
+        res.status(201).json(inv);
+      } catch (err: any) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر إنشاء الفاتورة" });
+      }
+    });
+
+    app.patch("/api/sales/invoices/:id", async (req, res) => {
+      try {
+        const input = updateSalesInvoiceSchema.parse(req.body);
+        const inv = await sales.updateSalesInvoice(
+          cid(req),
+          Number(req.params.id),
+          input,
+          userCtx(req),
+        );
+        res.json(inv);
+      } catch (err: any) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        if (err instanceof JournalEntryReferenceConflictError) {
+          return res.status(409).json({ message: err.message });
+        }
+        if (err?.message?.includes("غير موجود")) {
+          return res.status(404).json({ message: err.message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر التحديث" });
+      }
+    });
+
+    app.delete("/api/sales/invoices/:id", async (req, res) => {
+      try {
+        await sales.deleteSalesInvoice(cid(req), Number(req.params.id), userCtx(req));
+        res.status(204).send();
+      } catch (err: any) {
+        if (err instanceof JournalEntryReferenceConflictError) {
+          return res.status(409).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر الحذف" });
+      }
+    });
+
+    // Lifecycle transitions — explicit endpoints so the chat tool list /
+    // role gate can target each one independently.
+    app.post(api.sales.invoicePost.path, async (req, res) => {
+      try {
+        const inv = await sales.postSalesInvoice(
+          cid(req),
+          Number(req.params.id),
+          userCtx(req),
+        );
+        res.json(inv);
+      } catch (err: any) {
+        if (err?.message?.includes("غير موجود")) {
+          return res.status(404).json({ message: err.message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر ترحيل الفاتورة" });
+      }
+    });
+
+    app.post(api.sales.invoiceCancel.path, async (req, res) => {
+      try {
+        const inv = await sales.cancelSalesInvoice(
+          cid(req),
+          Number(req.params.id),
+          userCtx(req),
+        );
+        res.json(inv);
+      } catch (err: any) {
+        if (err instanceof JournalEntryReferenceConflictError) {
+          return res.status(409).json({ message: err.message });
+        }
+        if (err?.message?.includes("غير موجود")) {
+          return res.status(404).json({ message: err.message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر إلغاء الفاتورة" });
+      }
+    });
+
+    // PDF route — implementation lands in T5 (`pdf-arabic.ts`). For now
+    // the route is wired so the API contract (and the chat tool that
+    // returns a download link) doesn't 404.
+    app.get("/api/sales/invoices/:id/pdf", async (req, res) => {
+      try {
+        const inv = await storage.getSalesInvoice(cid(req), Number(req.params.id));
+        if (!inv) return res.status(404).json({ message: "الفاتورة غير موجودة" });
+        const { renderSalesInvoicePdf } = await import("./services/pdf-arabic");
+        const buf = await renderSalesInvoicePdf(cid(req), inv);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="invoice-${inv.number}.pdf"`,
+        );
+        res.send(buf);
+      } catch (err: any) {
+        res.status(500).json({ message: err?.message || "تعذر إنشاء ملف PDF" });
+      }
+    });
+  }
+
   // AI Decision Coach (with simple per-IP rate limit to prevent abuse)
   const coachLimiter = new Map<string, number[]>();
   app.post("/api/insights/ai-coach", async (req, res) => {
@@ -1199,6 +1471,16 @@ export async function registerRoutes(
     create_employee: ["employees"],
     record_attendance: ["attendance"],
     record_leave: ["leaves"],
+    create_customer: ["customers"],
+    create_sales_invoice: [
+      "sales-invoices", "customers", "journal-entries", "accounts", "insights", "reports",
+    ],
+    update_sales_invoice: [
+      "sales-invoices", "customers", "journal-entries", "accounts", "insights", "reports",
+    ],
+    delete_sales_invoice: [
+      "sales-invoices", "customers", "journal-entries", "accounts", "insights", "reports",
+    ],
     // Read-only tools below intentionally have no side effects to invalidate.
     list_accounts: [],
     list_transactions: [],
@@ -1209,6 +1491,8 @@ export async function registerRoutes(
     generate_excel_document: [],
     generate_word_document: [],
     generate_powerpoint_document: [],
+    find_customer: [],
+    list_recent_sales_invoices: [],
   };
 
   /**

@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   Home, ListOrdered, Bot, Wallet, Menu, BarChart3, BookOpen, BookText,
   Activity, Users, Building2, Inbox, Settings as SettingsIcon, ChevronLeft, ChevronRight,
-  LogOut, User as UserIcon, type LucideIcon,
+  LogOut, User as UserIcon, FileText, UserCog, type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -38,6 +38,13 @@ const GROUPS: NavGroup[] = [
       { key: "nav_journal",      url: "/app/journal",        icon: BookText },
       { key: "nav_accounts",     url: "/app/accounts",       icon: BookOpen },
       { key: "nav_reports",      url: "/app/reports",        icon: BarChart3 },
+    ],
+  },
+  {
+    label: "group_sales",
+    items: [
+      { key: "nav_sales_invoices",  url: "/app/sales/invoices",  icon: FileText },
+      { key: "nav_sales_customers", url: "/app/sales/customers", icon: UserCog },
     ],
   },
   {

@@ -46,6 +46,16 @@ Rules:
   spend (e.g. "Fuel", "وقود", "Office supplies", "ضيافة", "اتصالات").
 - "documentType": receipt for cash receipts, invoice for vendor invoices
   with payment terms, credit_note for refunds, other for anything else.
+- "direction" classifies whose document this is:
+    "sales"    — issued BY the workspace TO a customer (we are the seller).
+                 Look for the workspace's own org name in the "From"/"Seller"
+                 block, or a customer name in the "To"/"Bill to" block.
+    "purchase" — issued TO the workspace BY a vendor (we are the buyer).
+                 Default for most receipts the user uploads.
+                 If unsure, prefer "purchase".
+- "counterparty" is the OTHER party on the document — the customer name when
+  direction=sales, the vendor name when direction=purchase. Mirror what's
+  printed; do not translate. Leave null if not legible.
 - "confidence" reflects how legible and complete the data is. Be honest.
 - Never fabricate. If a field is not visible, return null.
 - Output ONLY valid JSON matching the requested schema, nothing else.`;
@@ -89,6 +99,8 @@ const EXTRACTION_JSON_SHAPE = `{
   "paymentMethod": "cash" | "card" | "bank" | "credit" | "unknown",
   "category": string | null,
   "documentType": "receipt" | "invoice" | "credit_note" | "other",
+  "direction": "sales" | "purchase",
+  "counterparty": string | null,
   "language": "ar" | "en" | "mixed",
   "lineItems": [{ "description": string, "quantity": number | null, "unitPrice": number | null, "total": number | null }],
   "confidence": number,

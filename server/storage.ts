@@ -12,6 +12,19 @@ import {
   leaves,
   payrollRuns,
   payrollLines,
+  customers,
+  products,
+  salesInvoices,
+  salesInvoiceLines,
+  type Customer,
+  type InsertCustomer,
+  type Product,
+  type InsertProduct,
+  type SalesInvoice,
+  type SalesInvoiceLine,
+  type SalesInvoiceWithLines,
+  type SalesInvoiceStatus,
+  type SalesInvoicePaymentMethod,
   companies,
   fxRates,
   assetCategories,
@@ -107,6 +120,13 @@ export const AUDIT_ENTITY_TYPES = [
   "attendance",
   "leave",
   "payroll_run",
+  // Sales Portal — task #301. Customers, products, and sales invoices each
+  // get their own audit thread; the History drawer keys on these strings.
+  // The matching `entityBelongsToCompany` branches below pin the workspace
+  // ownership check to the concrete table.
+  "customer",
+  "product",
+  "sales_invoice",
   // Workspace-scoped maintenance actions whose "entity" is the workspace
   // itself rather than a row in a domain table. Today: a single audit row
   // per invocation of `backfillJournalForLegacyTransactions`, with
@@ -312,6 +332,129 @@ export interface IStorage {
     id: number,
     ctx?: AuditContext,
   ): Promise<DocumentRow | undefined>;
+
+  // ----- Sales Portal (task #301) -----
+  // Customers
+  listCustomers(companyId: number): Promise<Customer[]>;
+  getCustomer(companyId: number, id: number): Promise<Customer | undefined>;
+  createCustomer(companyId: number, input: InsertCustomer, ctx?: AuditContext): Promise<Customer>;
+  updateCustomer(companyId: number, id: number, input: Partial<InsertCustomer>, ctx?: AuditContext): Promise<Customer>;
+  deleteCustomer(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
+  /** Open AR balance for a customer = sum(total_amount - paid_amount) over
+   *  posted (non-cancelled) credit invoices. Cash invoices are settled at
+   *  posting time and do not contribute. Returns 0 when the customer has
+   *  no posted activity. */
+  getCustomerBalance(companyId: number, customerId: number): Promise<number>;
+  /** Posted invoices for a customer in reverse chronological order. Powers
+   *  the "Statement / Recent activity" tab on the customer detail page. */
+  getCustomerInvoices(companyId: number, customerId: number): Promise<SalesInvoice[]>;
+  // Products
+  listProducts(companyId: number): Promise<Product[]>;
+  getProduct(companyId: number, id: number): Promise<Product | undefined>;
+  createProduct(companyId: number, input: InsertProduct, ctx?: AuditContext): Promise<Product>;
+  updateProduct(companyId: number, id: number, input: Partial<InsertProduct>, ctx?: AuditContext): Promise<Product>;
+  deleteProduct(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
+  // Sales invoices (header + lines + customer + JE-link snapshot)
+  listSalesInvoices(
+    companyId: number,
+    filters?: { status?: SalesInvoiceStatus; customerId?: number },
+  ): Promise<SalesInvoiceWithLines[]>;
+  getSalesInvoice(companyId: number, id: number): Promise<SalesInvoiceWithLines | undefined>;
+  /** Returns the next "INV-####" reference for the workspace; padded to 4
+   *  digits and monotonically increasing across the workspace's history.
+   *  Used by /api/sales/invoices/next-number for live preview. */
+  getNextSalesInvoiceNumber(companyId: number): Promise<string>;
+  /** Insert a draft sales invoice (header + lines) and audit. Totals are
+   *  expected pre-computed by `server/sales.ts`. The JE is *not* posted
+   *  here; that lives in `postSalesInvoice` so the data layer stays free
+   *  of CoA / pricing logic. */
+  createDraftSalesInvoice(
+    companyId: number,
+    header: {
+      number: string;
+      customerId: number;
+      invoiceDate: string;
+      dueDate?: string | null;
+      paymentMethod: SalesInvoicePaymentMethod;
+      notes?: string;
+      subtotal: number;
+      vatAmount: number;
+      totalAmount: number;
+      cogsAmount: number;
+    },
+    lines: Array<{
+      productId: number | null;
+      description: string;
+      quantity: number;
+      unitPrice: number;
+      vatRate: number;
+      lineSubtotal: number;
+      lineVat: number;
+      lineTotal: number;
+      unitCost: number;
+      costAmount: number;
+    }>,
+    ctx?: AuditContext,
+  ): Promise<SalesInvoiceWithLines>;
+  /** Replace the lines and re-compute totals on a draft invoice. Refuses if
+   *  the invoice is no longer in `draft`. Audits the diff. */
+  updateDraftSalesInvoice(
+    companyId: number,
+    id: number,
+    header: {
+      customerId?: number;
+      invoiceDate?: string;
+      dueDate?: string | null;
+      paymentMethod?: SalesInvoicePaymentMethod;
+      notes?: string;
+      subtotal: number;
+      vatAmount: number;
+      totalAmount: number;
+      cogsAmount: number;
+    },
+    lines: Array<{
+      productId: number | null;
+      description: string;
+      quantity: number;
+      unitPrice: number;
+      vatRate: number;
+      lineSubtotal: number;
+      lineVat: number;
+      lineTotal: number;
+      unitCost: number;
+      costAmount: number;
+    }>,
+    ctx?: AuditContext,
+  ): Promise<SalesInvoiceWithLines>;
+  /** Atomically marks an invoice posted: links the JE, sets `paidAmount`
+   *  (= total for cash invoices, 0 for credit), decrements stock for the
+   *  per-line `inventoryAdjustments`, and writes the "post" audit row.
+   *  Throws if the invoice is not in `draft`. */
+  markSalesInvoicePosted(
+    companyId: number,
+    invoiceId: number,
+    journalEntryId: number,
+    inventoryAdjustments: Array<{ productId: number; quantity: number }>,
+    ctx?: AuditContext,
+  ): Promise<SalesInvoiceWithLines>;
+  /** Reverses a posted invoice. `mode === 'cancel'` keeps the row with
+   *  `status='cancelled'` (and `paidAmount=0`); `mode === 'delete'` removes
+   *  the lines + header. In both modes the linked JE is cascade-reversed
+   *  (via the shared `reverseAutoPostedJournalEntry` helper) and the
+   *  per-line stock changes are rolled back inside the same transaction. */
+  reverseSalesInvoicePosting(
+    companyId: number,
+    invoiceId: number,
+    mode: "cancel" | "delete",
+    ctx?: AuditContext,
+  ): Promise<void>;
+  /** Hard-delete a draft (or already-cancelled) invoice + its lines + audit.
+   *  Posted invoices must go through `reverseSalesInvoicePosting` instead. */
+  deleteDraftOrCancelledSalesInvoice(
+    companyId: number,
+    invoiceId: number,
+    ctx?: AuditContext,
+  ): Promise<void>;
 
   // Auto-posting fixed-asset deletes — same JE-orphan guard as payroll runs
   deleteDepreciationRun(
@@ -561,7 +704,8 @@ export type JournalEntrySourceKind =
   | "impairment_event"
   | "revaluation_event"
   | "disposal"
-  | "document";
+  | "document"
+  | "sales_invoice";
 
 /**
  * Returns the human-readable list of modules that point at `journalEntryId`
@@ -662,6 +806,23 @@ async function detectJournalEntryReferences(
     );
   if (docs.length > 0) {
     conflicts.push(`مستند مرفوع (${docs.length})`);
+  }
+
+  // Sales invoices (task #301) — same pattern as the other auto-posting
+  // sources. Refusing here means a sales-invoice-driven JE that somehow
+  // ended up linked to a *different* invoice will not be silently reversed
+  // when the originating invoice is deleted.
+  const sales = await db
+    .select({ id: salesInvoices.id })
+    .from(salesInvoices)
+    .where(
+      and(
+        eq(salesInvoices.journalEntryId, journalEntryId),
+        exclude("sales_invoice", salesInvoices.id),
+      ),
+    );
+  if (sales.length > 0) {
+    conflicts.push(`فواتير مبيعات (${sales.length})`);
   }
 
   return conflicts;
@@ -1792,6 +1953,821 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  // ----- Sales Portal (task #301) -----
+  //
+  // CRUD plus a few read-side helpers (`getCustomerBalance`,
+  // `getCustomerInvoices`, `getNextSalesInvoiceNumber`). The auto-posting
+  // pipeline that turns a draft invoice into a posted JE lives in
+  // `server/sales.ts` so this module stays a pure data layer; deleting a
+  // posted invoice goes through `reverseAutoPostedJournalEntry` (the same
+  // helper payroll/depreciation/asset events use), which is also driven
+  // from the sales service.
+  //
+  // All writes are scoped by `companyId` and audited inside the same
+  // transaction as the entity write (task #222) so a failed audit insert
+  // — including a workspace_isolation RLS rejection on `audit_log` itself
+  // (task #169) — rolls the whole thing back.
+
+  async listCustomers(companyId: number): Promise<Customer[]> {
+    return await db
+      .select()
+      .from(customers)
+      .where(eq(customers.companyId, companyId))
+      .orderBy(customers.code);
+  }
+
+  async getCustomer(companyId: number, id: number): Promise<Customer | undefined> {
+    const [row] = await db
+      .select()
+      .from(customers)
+      .where(and(eq(customers.id, id), eq(customers.companyId, companyId)));
+    return row;
+  }
+
+  async createCustomer(companyId: number, input: InsertCustomer, ctx?: AuditContext): Promise<Customer> {
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(customers)
+        .values({ ...input, companyId })
+        .returning();
+      await recordAudit(tx, {
+        companyId,
+        entityType: "customer",
+        entityId: created.id,
+        action: "create",
+        changes: snapshotChanges(created),
+        ctx,
+      });
+      return created;
+    });
+  }
+
+  async updateCustomer(
+    companyId: number,
+    id: number,
+    input: Partial<InsertCustomer>,
+    ctx?: AuditContext,
+  ): Promise<Customer> {
+    return await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(customers)
+        .where(and(eq(customers.id, id), eq(customers.companyId, companyId)));
+      const [updated] = await tx
+        .update(customers)
+        .set(input)
+        .where(and(eq(customers.id, id), eq(customers.companyId, companyId)))
+        .returning();
+      if (before && updated) {
+        const changes = diffChanges(before, updated);
+        if (changes.length > 0) {
+          await recordAudit(tx, {
+            companyId,
+            entityType: "customer",
+            entityId: id,
+            action: "update",
+            changes,
+            ctx,
+          });
+        }
+      }
+      return updated;
+    });
+  }
+
+  async deleteCustomer(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
+    // Refuse to delete a customer that still owns invoices: the composite FK
+    // would block the DELETE anyway, but a clear 409 from the route layer
+    // is a much nicer UX than a generic Postgres error. The route layer
+    // catches `JournalEntryReferenceConflictError` (the same one
+    // payroll/asset events use) and turns it into a 409 with this message.
+    const [{ count }] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(salesInvoices)
+      .where(and(eq(salesInvoices.companyId, companyId), eq(salesInvoices.customerId, id)));
+    if (count > 0) {
+      throw new JournalEntryReferenceConflictError(
+        `لا يمكن حذف عميل لديه فواتير (${count}) — قم بإلغاء الفواتير أولاً.`,
+      );
+    }
+    await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(customers)
+        .where(and(eq(customers.id, id), eq(customers.companyId, companyId)));
+      await tx
+        .delete(customers)
+        .where(and(eq(customers.id, id), eq(customers.companyId, companyId)));
+      if (before) {
+        await recordAudit(tx, {
+          companyId,
+          entityType: "customer",
+          entityId: id,
+          action: "delete",
+          changes: snapshotChanges(before),
+          ctx,
+        });
+      }
+    });
+  }
+
+  async getCustomerBalance(companyId: number, customerId: number): Promise<number> {
+    // Open AR = posted, non-cancelled, credit invoices' (total - paid).
+    // Cash invoices settle at posting time (the posting JE debits Cash
+    // instead of AR), so they don't appear here.
+    const rows = await db
+      .select({
+        total: salesInvoices.totalAmount,
+        paid: salesInvoices.paidAmount,
+      })
+      .from(salesInvoices)
+      .where(
+        and(
+          eq(salesInvoices.companyId, companyId),
+          eq(salesInvoices.customerId, customerId),
+          eq(salesInvoices.status, "posted"),
+          eq(salesInvoices.paymentMethod, "credit"),
+        ),
+      );
+    let sum = 0;
+    for (const r of rows) {
+      sum += Number(r.total) - Number(r.paid);
+    }
+    // Round to 2dp to keep currency math honest across many invoices.
+    return Math.round(sum * 100) / 100;
+  }
+
+  async getCustomerInvoices(companyId: number, customerId: number): Promise<SalesInvoice[]> {
+    return await db
+      .select()
+      .from(salesInvoices)
+      .where(
+        and(
+          eq(salesInvoices.companyId, companyId),
+          eq(salesInvoices.customerId, customerId),
+        ),
+      )
+      .orderBy(desc(salesInvoices.invoiceDate), desc(salesInvoices.id));
+  }
+
+  async listProducts(companyId: number): Promise<Product[]> {
+    return await db
+      .select()
+      .from(products)
+      .where(eq(products.companyId, companyId))
+      .orderBy(products.sku);
+  }
+
+  async getProduct(companyId: number, id: number): Promise<Product | undefined> {
+    const [row] = await db
+      .select()
+      .from(products)
+      .where(and(eq(products.id, id), eq(products.companyId, companyId)));
+    return row;
+  }
+
+  async createProduct(companyId: number, input: InsertProduct, ctx?: AuditContext): Promise<Product> {
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(products)
+        .values({
+          ...input,
+          companyId,
+          unitPrice: String(input.unitPrice ?? 0),
+          unitCost: String(input.unitCost ?? 0),
+          stockQty: String(input.stockQty ?? 0),
+          vatRate: input.vatRate == null ? null : String(input.vatRate),
+        })
+        .returning();
+      await recordAudit(tx, {
+        companyId,
+        entityType: "product",
+        entityId: created.id,
+        action: "create",
+        changes: snapshotChanges(created),
+        ctx,
+      });
+      return created;
+    });
+  }
+
+  async updateProduct(
+    companyId: number,
+    id: number,
+    input: Partial<InsertProduct>,
+    ctx?: AuditContext,
+  ): Promise<Product> {
+    const patch: Record<string, unknown> = { ...input };
+    if (input.unitPrice !== undefined) patch.unitPrice = String(input.unitPrice);
+    if (input.unitCost !== undefined) patch.unitCost = String(input.unitCost);
+    if (input.stockQty !== undefined) patch.stockQty = String(input.stockQty);
+    if (input.vatRate !== undefined) patch.vatRate = input.vatRate == null ? null : String(input.vatRate);
+    return await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(products)
+        .where(and(eq(products.id, id), eq(products.companyId, companyId)));
+      const [updated] = await tx
+        .update(products)
+        .set(patch)
+        .where(and(eq(products.id, id), eq(products.companyId, companyId)))
+        .returning();
+      if (before && updated) {
+        const changes = diffChanges(before, updated);
+        if (changes.length > 0) {
+          await recordAudit(tx, {
+            companyId,
+            entityType: "product",
+            entityId: id,
+            action: "update",
+            changes,
+            ctx,
+          });
+        }
+      }
+      return updated;
+    });
+  }
+
+  async deleteProduct(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
+    // Mirrors the customer guard — the FK on `sales_invoice_lines.product_id`
+    // would refuse anyway, but a clean 409 explains *why*.
+    const [{ count }] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(salesInvoiceLines)
+      .where(
+        and(
+          eq(salesInvoiceLines.companyId, companyId),
+          eq(salesInvoiceLines.productId, id),
+        ),
+      );
+    if (count > 0) {
+      throw new JournalEntryReferenceConflictError(
+        `لا يمكن حذف منتج مستخدم في بنود فواتير (${count}) — قم بحذف الفواتير المرتبطة أولاً.`,
+      );
+    }
+    await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(products)
+        .where(and(eq(products.id, id), eq(products.companyId, companyId)));
+      await tx
+        .delete(products)
+        .where(and(eq(products.id, id), eq(products.companyId, companyId)));
+      if (before) {
+        await recordAudit(tx, {
+          companyId,
+          entityType: "product",
+          entityId: id,
+          action: "delete",
+          changes: snapshotChanges(before),
+          ctx,
+        });
+      }
+    });
+  }
+
+  async listSalesInvoices(
+    companyId: number,
+    filters: { status?: SalesInvoiceStatus; customerId?: number } = {},
+  ): Promise<SalesInvoiceWithLines[]> {
+    const predicates = [eq(salesInvoices.companyId, companyId)];
+    if (filters.status) predicates.push(eq(salesInvoices.status, filters.status));
+    if (filters.customerId) predicates.push(eq(salesInvoices.customerId, filters.customerId));
+    const headers = await db
+      .select()
+      .from(salesInvoices)
+      .where(and(...predicates))
+      .orderBy(desc(salesInvoices.invoiceDate), desc(salesInvoices.id));
+    if (headers.length === 0) return [];
+    return await this.hydrateSalesInvoices(companyId, headers);
+  }
+
+  async getSalesInvoice(companyId: number, id: number): Promise<SalesInvoiceWithLines | undefined> {
+    const [row] = await db
+      .select()
+      .from(salesInvoices)
+      .where(and(eq(salesInvoices.id, id), eq(salesInvoices.companyId, companyId)));
+    if (!row) return undefined;
+    const [hydrated] = await this.hydrateSalesInvoices(companyId, [row]);
+    return hydrated;
+  }
+
+  /**
+   * Bulk-hydrates a list of sales-invoice headers with their lines, the
+   * customer summary, and the linked JE reference. Issued as 3 indexed
+   * lookups regardless of how many invoices the caller is paging — the
+   * detail page and the list both go through here.
+   */
+  private async hydrateSalesInvoices(
+    companyId: number,
+    headers: SalesInvoice[],
+  ): Promise<SalesInvoiceWithLines[]> {
+    const ids = headers.map((h) => h.id);
+    const customerIds = Array.from(new Set(headers.map((h) => h.customerId)));
+    const jeIds = Array.from(
+      new Set(headers.map((h) => h.journalEntryId).filter((v): v is number => v != null)),
+    );
+
+    const [linesRows, customerRows, jeRows] = await Promise.all([
+      db
+        .select()
+        .from(salesInvoiceLines)
+        .where(
+          and(
+            eq(salesInvoiceLines.companyId, companyId),
+            inArray(salesInvoiceLines.invoiceId, ids),
+          ),
+        )
+        .orderBy(salesInvoiceLines.id),
+      customerIds.length === 0
+        ? Promise.resolve([] as Customer[])
+        : db
+            .select()
+            .from(customers)
+            .where(
+              and(
+                eq(customers.companyId, companyId),
+                inArray(customers.id, customerIds),
+              ),
+            ),
+      jeIds.length === 0
+        ? Promise.resolve([] as { id: number; reference: string }[])
+        : db
+            .select({ id: journalEntries.id, reference: journalEntries.reference })
+            .from(journalEntries)
+            .where(
+              and(
+                eq(journalEntries.companyId, companyId),
+                inArray(journalEntries.id, jeIds),
+              ),
+            ),
+    ]);
+
+    const linesByInvoice = new Map<number, SalesInvoiceLine[]>();
+    for (const l of linesRows) {
+      const arr = linesByInvoice.get(l.invoiceId) ?? [];
+      arr.push(l);
+      linesByInvoice.set(l.invoiceId, arr);
+    }
+    const customerById = new Map<number, Customer>(customerRows.map((c) => [c.id, c]));
+    const jeRefById = new Map<number, string>(jeRows.map((j) => [j.id, j.reference]));
+
+    return headers.map<SalesInvoiceWithLines>((h) => {
+      const c = customerById.get(h.customerId);
+      return {
+        ...h,
+        lines: linesByInvoice.get(h.id) ?? [],
+        customer: c
+          ? { id: c.id, code: c.code, nameAr: c.nameAr, nameEn: c.nameEn }
+          : null,
+        journalEntryReference: h.journalEntryId ? jeRefById.get(h.journalEntryId) ?? null : null,
+      };
+    });
+  }
+
+  async getNextSalesInvoiceNumber(companyId: number): Promise<string> {
+    // Sequential per-workspace counter. We scan the existing INV-#### refs
+    // and pick max+1 instead of relying on a sequence so a recovered /
+    // imported workspace continues from where its history left off.
+    // Numbers below 1000 are zero-padded to 4 digits ("INV-0001").
+    const rows = await db
+      .select({ number: salesInvoices.number })
+      .from(salesInvoices)
+      .where(eq(salesInvoices.companyId, companyId));
+    let max = 0;
+    for (const r of rows) {
+      const m = /^INV-(\d+)$/.exec(r.number);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+    }
+    const next = max + 1;
+    return `INV-${String(next).padStart(4, "0")}`;
+  }
+
+  async createDraftSalesInvoice(
+    companyId: number,
+    header: {
+      number: string;
+      customerId: number;
+      invoiceDate: string;
+      dueDate?: string | null;
+      paymentMethod: SalesInvoicePaymentMethod;
+      notes?: string;
+      subtotal: number;
+      vatAmount: number;
+      totalAmount: number;
+      cogsAmount: number;
+    },
+    lines: Array<{
+      productId: number | null;
+      description: string;
+      quantity: number;
+      unitPrice: number;
+      vatRate: number;
+      lineSubtotal: number;
+      lineVat: number;
+      lineTotal: number;
+      unitCost: number;
+      costAmount: number;
+    }>,
+    ctx?: AuditContext,
+  ): Promise<SalesInvoiceWithLines> {
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(salesInvoices)
+        .values({
+          companyId,
+          number: header.number,
+          customerId: header.customerId,
+          invoiceDate: header.invoiceDate,
+          dueDate: header.dueDate ?? null,
+          status: "draft",
+          paymentMethod: header.paymentMethod,
+          subtotal: header.subtotal.toFixed(2),
+          vatAmount: header.vatAmount.toFixed(2),
+          totalAmount: header.totalAmount.toFixed(2),
+          cogsAmount: header.cogsAmount.toFixed(2),
+          paidAmount: "0",
+          notes: header.notes ?? "",
+        })
+        .returning();
+      const insertedLines = lines.length === 0
+        ? []
+        : await tx
+            .insert(salesInvoiceLines)
+            .values(
+              lines.map((l) => ({
+                companyId,
+                invoiceId: created.id,
+                productId: l.productId ?? null,
+                description: l.description,
+                quantity: l.quantity.toFixed(4),
+                unitPrice: l.unitPrice.toFixed(2),
+                vatRate: l.vatRate.toFixed(4),
+                lineSubtotal: l.lineSubtotal.toFixed(2),
+                lineVat: l.lineVat.toFixed(2),
+                lineTotal: l.lineTotal.toFixed(2),
+                unitCost: l.unitCost.toFixed(2),
+                costAmount: l.costAmount.toFixed(2),
+              })),
+            )
+            .returning();
+      await recordAudit(tx, {
+        companyId,
+        entityType: "sales_invoice",
+        entityId: created.id,
+        action: "create",
+        changes: [
+          { field: "number", to: created.number },
+          { field: "customerId", to: created.customerId },
+          { field: "invoiceDate", to: created.invoiceDate },
+          { field: "paymentMethod", to: created.paymentMethod },
+          { field: "subtotal", to: created.subtotal },
+          { field: "vatAmount", to: created.vatAmount },
+          { field: "totalAmount", to: created.totalAmount },
+          { field: "lineCount", to: insertedLines.length },
+        ],
+        ctx,
+      });
+      // Hydrate using the same shape the list/get endpoints return so the
+      // POST /api/sales/invoices response is interchangeable with a GET on
+      // the same id (no second round-trip from the create dialog).
+      return {
+        ...created,
+        lines: insertedLines,
+        customer: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async updateDraftSalesInvoice(
+    companyId: number,
+    id: number,
+    header: {
+      customerId?: number;
+      invoiceDate?: string;
+      dueDate?: string | null;
+      paymentMethod?: SalesInvoicePaymentMethod;
+      notes?: string;
+      subtotal: number;
+      vatAmount: number;
+      totalAmount: number;
+      cogsAmount: number;
+    },
+    lines: Array<{
+      productId: number | null;
+      description: string;
+      quantity: number;
+      unitPrice: number;
+      vatRate: number;
+      lineSubtotal: number;
+      lineVat: number;
+      lineTotal: number;
+      unitCost: number;
+      costAmount: number;
+    }>,
+    ctx?: AuditContext,
+  ): Promise<SalesInvoiceWithLines> {
+    return await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(salesInvoices)
+        .where(and(eq(salesInvoices.id, id), eq(salesInvoices.companyId, companyId)));
+      if (!before) {
+        throw new Error("الفاتورة غير موجودة");
+      }
+      if (before.status !== "draft") {
+        throw new Error("لا يمكن تعديل فاتورة بعد ترحيلها");
+      }
+      const headerPatch: Record<string, unknown> = {
+        subtotal: header.subtotal.toFixed(2),
+        vatAmount: header.vatAmount.toFixed(2),
+        totalAmount: header.totalAmount.toFixed(2),
+        cogsAmount: header.cogsAmount.toFixed(2),
+      };
+      if (header.customerId !== undefined) headerPatch.customerId = header.customerId;
+      if (header.invoiceDate !== undefined) headerPatch.invoiceDate = header.invoiceDate;
+      if (header.dueDate !== undefined) headerPatch.dueDate = header.dueDate;
+      if (header.paymentMethod !== undefined) headerPatch.paymentMethod = header.paymentMethod;
+      if (header.notes !== undefined) headerPatch.notes = header.notes;
+      const [updated] = await tx
+        .update(salesInvoices)
+        .set(headerPatch)
+        .where(and(eq(salesInvoices.id, id), eq(salesInvoices.companyId, companyId)))
+        .returning();
+      // Replace-all on lines is cheaper to reason about than per-row diff
+      // (drafts are short by definition) and keeps audit trails honest:
+      // an update that removes a line shows up as `lineCount` change.
+      await tx
+        .delete(salesInvoiceLines)
+        .where(
+          and(
+            eq(salesInvoiceLines.companyId, companyId),
+            eq(salesInvoiceLines.invoiceId, id),
+          ),
+        );
+      const insertedLines = lines.length === 0
+        ? []
+        : await tx
+            .insert(salesInvoiceLines)
+            .values(
+              lines.map((l) => ({
+                companyId,
+                invoiceId: id,
+                productId: l.productId ?? null,
+                description: l.description,
+                quantity: l.quantity.toFixed(4),
+                unitPrice: l.unitPrice.toFixed(2),
+                vatRate: l.vatRate.toFixed(4),
+                lineSubtotal: l.lineSubtotal.toFixed(2),
+                lineVat: l.lineVat.toFixed(2),
+                lineTotal: l.lineTotal.toFixed(2),
+                unitCost: l.unitCost.toFixed(2),
+                costAmount: l.costAmount.toFixed(2),
+              })),
+            )
+            .returning();
+      const changes = diffChanges(before, updated);
+      changes.push({ field: "lineCount", from: undefined, to: insertedLines.length });
+      await recordAudit(tx, {
+        companyId,
+        entityType: "sales_invoice",
+        entityId: id,
+        action: "update",
+        changes,
+        ctx,
+      });
+      return {
+        ...updated,
+        lines: insertedLines,
+        customer: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async markSalesInvoicePosted(
+    companyId: number,
+    invoiceId: number,
+    journalEntryId: number,
+    inventoryAdjustments: Array<{ productId: number; quantity: number }>,
+    ctx?: AuditContext,
+  ): Promise<SalesInvoiceWithLines> {
+    return await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(salesInvoices)
+        .where(
+          and(eq(salesInvoices.id, invoiceId), eq(salesInvoices.companyId, companyId)),
+        );
+      if (!before) throw new Error("الفاتورة غير موجودة");
+      if (before.status !== "draft") throw new Error("الفاتورة ليست مسودة");
+      const total = Number(before.totalAmount);
+      const paidAmount = before.paymentMethod === "cash" ? total : 0;
+      const [updated] = await tx
+        .update(salesInvoices)
+        .set({
+          status: "posted",
+          journalEntryId,
+          paidAmount: paidAmount.toFixed(2),
+        })
+        .where(
+          and(eq(salesInvoices.id, invoiceId), eq(salesInvoices.companyId, companyId)),
+        )
+        .returning();
+      // Decrement inventory for each goods line. Service products / free-form
+      // lines arrive here with `productId: null` (the sales service strips
+      // them) so we only ever touch real product rows.
+      for (const adj of inventoryAdjustments) {
+        await tx
+          .update(products)
+          .set({
+            stockQty: sql`${products.stockQty} - ${adj.quantity.toFixed(4)}`,
+          })
+          .where(
+            and(eq(products.id, adj.productId), eq(products.companyId, companyId)),
+          );
+      }
+      await recordAudit(tx, {
+        companyId,
+        entityType: "sales_invoice",
+        entityId: invoiceId,
+        action: "post",
+        changes: [
+          { field: "status", from: "draft", to: "posted" },
+          { field: "journalEntryId", to: journalEntryId },
+          { field: "paidAmount", to: paidAmount.toFixed(2) },
+          { field: "inventoryAdjustments", to: inventoryAdjustments.length },
+        ],
+        ctx,
+      });
+      const lineRows = await tx
+        .select()
+        .from(salesInvoiceLines)
+        .where(
+          and(
+            eq(salesInvoiceLines.companyId, companyId),
+            eq(salesInvoiceLines.invoiceId, invoiceId),
+          ),
+        )
+        .orderBy(salesInvoiceLines.id);
+      return {
+        ...updated,
+        lines: lineRows,
+        customer: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async reverseSalesInvoicePosting(
+    companyId: number,
+    invoiceId: number,
+    mode: "cancel" | "delete",
+    ctx?: AuditContext,
+  ): Promise<void> {
+    const [before] = await db
+      .select()
+      .from(salesInvoices)
+      .where(
+        and(eq(salesInvoices.id, invoiceId), eq(salesInvoices.companyId, companyId)),
+      );
+    if (!before) return;
+    if (before.status !== "posted") {
+      throw new Error("الفاتورة ليست مرحّلة");
+    }
+    const lineRows = await db
+      .select()
+      .from(salesInvoiceLines)
+      .where(
+        and(
+          eq(salesInvoiceLines.companyId, companyId),
+          eq(salesInvoiceLines.invoiceId, invoiceId),
+        ),
+      );
+
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "sales_invoice", id: invoiceId },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن عكس الفاتورة لأن قيدها المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        // Restore stock for goods lines (service / free-form lines have
+        // `productId === null` and were never decremented at posting time).
+        for (const l of lineRows) {
+          if (l.productId == null) continue;
+          const qty = Number(l.quantity);
+          if (qty <= 0) continue;
+          await tx
+            .update(products)
+            .set({
+              stockQty: sql`${products.stockQty} + ${qty.toFixed(4)}`,
+            })
+            .where(
+              and(eq(products.id, l.productId), eq(products.companyId, companyId)),
+            );
+        }
+        if (mode === "cancel") {
+          await tx
+            .update(salesInvoices)
+            .set({
+              status: "cancelled",
+              journalEntryId: null,
+              paidAmount: "0",
+            })
+            .where(
+              and(
+                eq(salesInvoices.id, invoiceId),
+                eq(salesInvoices.companyId, companyId),
+              ),
+            );
+          await recordAudit(tx, {
+            companyId,
+            entityType: "sales_invoice",
+            entityId: invoiceId,
+            action: "update",
+            changes: [
+              { field: "status", from: "posted", to: "cancelled" },
+              { field: "journalEntryId", from: before.journalEntryId ?? null, to: null },
+            ],
+            ctx,
+          });
+        } else {
+          await tx
+            .delete(salesInvoiceLines)
+            .where(
+              and(
+                eq(salesInvoiceLines.companyId, companyId),
+                eq(salesInvoiceLines.invoiceId, invoiceId),
+              ),
+            );
+          await tx
+            .delete(salesInvoices)
+            .where(
+              and(
+                eq(salesInvoices.id, invoiceId),
+                eq(salesInvoices.companyId, companyId),
+              ),
+            );
+          await recordAudit(tx, {
+            companyId,
+            entityType: "sales_invoice",
+            entityId: invoiceId,
+            action: "delete",
+            changes: snapshotChanges(before),
+            ctx,
+          });
+        }
+      },
+      ctx,
+    });
+  }
+
+  async deleteDraftOrCancelledSalesInvoice(
+    companyId: number,
+    invoiceId: number,
+    ctx?: AuditContext,
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(salesInvoices)
+        .where(
+          and(eq(salesInvoices.id, invoiceId), eq(salesInvoices.companyId, companyId)),
+        );
+      if (!before) return;
+      if (before.status === "posted") {
+        throw new Error("استخدم reverseSalesInvoicePosting لحذف فاتورة مرحّلة");
+      }
+      await tx
+        .delete(salesInvoiceLines)
+        .where(
+          and(
+            eq(salesInvoiceLines.companyId, companyId),
+            eq(salesInvoiceLines.invoiceId, invoiceId),
+          ),
+        );
+      await tx
+        .delete(salesInvoices)
+        .where(
+          and(eq(salesInvoices.id, invoiceId), eq(salesInvoices.companyId, companyId)),
+        );
+      await recordAudit(tx, {
+        companyId,
+        entityType: "sales_invoice",
+        entityId: invoiceId,
+        action: "delete",
+        changes: snapshotChanges(before),
+        ctx,
+      });
+    });
+  }
+
   // ----- Companies -----
   async getCompanies(): Promise<Company[]> {
     return await db.select().from(companies).orderBy(companies.name);
@@ -2743,6 +3719,30 @@ export class DatabaseStorage implements IStorage {
           .select({ id: payrollRuns.id })
           .from(payrollRuns)
           .where(and(eq(payrollRuns.id, entityId), eq(payrollRuns.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "customer": {
+        const rows = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(and(eq(customers.id, entityId), eq(customers.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "product": {
+        const rows = await db
+          .select({ id: products.id })
+          .from(products)
+          .where(and(eq(products.id, entityId), eq(products.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "sales_invoice": {
+        const rows = await db
+          .select({ id: salesInvoices.id })
+          .from(salesInvoices)
+          .where(and(eq(salesInvoices.id, entityId), eq(salesInvoices.companyId, companyId)))
           .limit(1);
         return rows.length > 0;
       }
