@@ -257,17 +257,17 @@ export const ASSISTANT_TOOLS = [
     function: {
       name: "create_fixed_asset",
       description:
-        "Capitalise a purchase as a new fixed asset. Use this — NOT add_quick_transaction — whenever the user uploads or describes an invoice for a long-lived item (furniture, equipment, computers, machinery, vehicles, fixtures). One call creates one asset, auto-generates its depreciation schedule, and posts a single capitalising journal entry: DR asset-cost account, CR cash/AP. Pick categoryId from list_asset_categories. Reuse the invoice line description as `name` and the invoice date as `acquisitionDate` / `inServiceDate` unless the user says otherwise. For invoice lines with quantity > 1, call this tool once per unit (asset code suffix -1, -2, …) so each unit has its own depreciation schedule, unless the user explicitly asks to group them.",
+        "Create ONE fixed asset (one row) under a workspace category and auto-generate its planned depreciation schedule. Does NOT post any journal entry on its own — after you've created all the asset rows for an invoice, call create_journal_entry exactly ONCE with the consolidated capitalising posting (one DR line per asset using its category cost account, single CR line on cash 1110 or AP 2110 for the invoice total — never expense). Always call list_asset_categories first to resolve categoryId; do not guess. For invoice lines with quantity > 1, call this once per unit so each unit has its own depreciation schedule, unless the user explicitly asks to group them.",
       parameters: {
         type: "object",
         properties: {
           categoryId: { type: "integer", description: "From list_asset_categories." },
-          code: { type: "string", description: "Short asset code, e.g. FA-0001 or DESK-2026-1. Must be unique per workspace." },
           name: { type: "string", description: "Human-readable asset name — usually the invoice line description." },
           acquisitionDate: { type: "string", description: "YYYY-MM-DD — invoice date." },
-          inServiceDate: { type: "string", description: "YYYY-MM-DD — usually same as acquisitionDate." },
-          currency: { type: "string", description: "ISO currency of the invoice (e.g. SAR, USD)." },
           txCost: { type: "number", description: "Original cost in transaction currency (per unit, excluding any deductible VAT)." },
+          code: { type: "string", description: "Optional short asset code (e.g. FA-2026-0001 or DESK-2026-1). Auto-generated from category prefix + sequence if omitted. Must be unique per workspace." },
+          inServiceDate: { type: "string", description: "Optional YYYY-MM-DD. Defaults to acquisitionDate." },
+          currency: { type: "string", description: "Optional ISO currency of the invoice (e.g. SAR, USD). Defaults to the workspace functional currency." },
           fxRate: { type: "number", description: "Rate to convert txCost → workspace functional currency. Default 1." },
           residual: { type: "number", description: "Estimated residual value at end of useful life. Default 0." },
           usefulLifeMonths: { type: "integer", description: "Useful life in months. If omitted, use the category default." },
@@ -278,13 +278,8 @@ export const ASSISTANT_TOOLS = [
           },
           location: { type: "string" },
           custodian: { type: "string" },
-          paymentMethod: {
-            type: "string",
-            enum: ["cash", "credit"],
-            description: "How the asset was paid for — drives the credit side of the capitalising journal entry. 'cash' credits Cash (1110); 'credit' credits Suppliers/AP (2110). Default 'cash'.",
-          },
         },
-        required: ["categoryId", "code", "name", "acquisitionDate", "inServiceDate", "currency", "txCost"],
+        required: ["categoryId", "name", "acquisitionDate", "txCost"],
       },
     },
   },
@@ -549,7 +544,7 @@ export type ToolArtifact =
   | { kind: "attendance"; id: number; employeeId: number; date: string; status: string }
   | { kind: "leave"; id: number; employeeId: number; startDate: string; endDate: string; days: number; type: string }
   | { kind: "account"; id: number; code: string; name: string; type: string }
-  | { kind: "fixed_asset"; id: number; code: string; name: string; cost: number; currency: string; categoryName: string; usefulLifeMonths: number; method: string; journalEntryId: number }
+  | { kind: "fixed_asset"; id: number; code: string; name: string; cost: number; currency: string; categoryName: string; usefulLifeMonths: number; method: string }
   | { kind: "deletion"; entity: string; id: number };
 
 export type ToolExecutionResult = {
@@ -1031,12 +1026,13 @@ export async function executeTool(
       case "create_fixed_asset": {
         const a = z.object({
           categoryId: z.coerce.number().int().positive(),
-          code: z.string().trim().min(1).max(40),
           name: z.string().trim().min(1).max(200),
           acquisitionDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "acquisitionDate must be YYYY-MM-DD"),
-          inServiceDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "inServiceDate must be YYYY-MM-DD"),
-          currency: z.string().trim().min(1).max(8),
           txCost: z.coerce.number().positive(),
+          // Optional — defaults applied below
+          code: z.string().trim().min(1).max(40).optional(),
+          inServiceDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "inServiceDate must be YYYY-MM-DD").optional(),
+          currency: z.string().trim().min(1).max(8).optional(),
           fxRate: z.coerce.number().positive().default(1),
           residual: z.coerce.number().nonnegative().default(0),
           usefulLifeMonths: z.coerce.number().int().positive().optional(),
@@ -1045,7 +1041,6 @@ export async function executeTool(
           ]).default("straight_line"),
           location: z.string().trim().max(120).optional(),
           custodian: z.string().trim().max(120).optional(),
-          paymentMethod: z.enum(["cash", "credit"]).default("cash"),
         }).parse(rawArgs);
         const cat = (await storage.getAssetCategories(ctx.companyId)).find((c) => c.id === a.categoryId);
         if (!cat) {
@@ -1055,30 +1050,46 @@ export async function executeTool(
             error: "invalid_category",
           };
         }
+        // Default inServiceDate to acquisitionDate; default currency to the
+        // workspace functional currency (looked up from `companies` directly
+        // since storage doesn't expose a single-row getter).
+        const inServiceDate = a.inServiceDate ?? a.acquisitionDate;
+        let currency = a.currency;
+        if (!currency) {
+          const { db } = await import("../db");
+          const { companies } = await import("@shared/schema");
+          const { eq } = await import("drizzle-orm");
+          const [co] = await db.select({ functionalCurrency: companies.functionalCurrency })
+            .from(companies).where(eq(companies.id, ctx.companyId)).limit(1);
+          currency = co?.functionalCurrency ?? "USD";
+        }
+        // Auto-generate code if not supplied: <CATPREFIX>-<seq>, where prefix
+        // is the first 3 alphabetic chars of the category name (uppercased,
+        // ASCII-only, falls back to "FA"). Sequence is monotonic per category
+        // (max existing sequence + 1) so deletions don't cause collisions.
+        let code = a.code;
+        if (!code) {
+          const rawPrefix = (cat.name.normalize("NFKD").replace(/[^A-Za-z]/g, "").slice(0, 3) || "FA").toUpperCase();
+          const existing = await storage.getFixedAssets(ctx.companyId);
+          const sameCat = existing.filter((x) => x.categoryId === a.categoryId);
+          const re = new RegExp(`^${rawPrefix}-(\\d+)$`);
+          const maxSeq = sameCat.reduce((m, x) => {
+            const mx = re.exec(x.code);
+            return mx ? Math.max(m, parseInt(mx[1], 10)) : m;
+          }, 0);
+          code = `${rawPrefix}-${String(maxSeq + 1).padStart(4, "0")}`;
+        }
         const usefulLifeMonths = a.usefulLifeMonths ?? cat.defaultUsefulLifeMonths;
         const cost = a.txCost * a.fxRate;
-        // Resolve the credit-side account for the capitalising journal entry
-        // BEFORE creating the asset, so a missing CoA row aborts cleanly
-        // without leaving an asset row without its booking JE.
-        const { CASH_ACCOUNT_CODE } = await import("@shared/coa-seed");
-        const creditAccountCode = a.paymentMethod === "credit" ? "2110" : CASH_ACCOUNT_CODE;
-        const creditAccount = await storage.getAccountByCode(ctx.companyId, creditAccountCode);
-        if (!creditAccount) {
-          return {
-            toolName: name,
-            modelResult: { ok: false, error: `Credit account ${creditAccountCode} (${a.paymentMethod === "credit" ? "Suppliers/AP" : "Cash"}) is missing from the workspace's chart of accounts.` },
-            error: "missing_credit_account",
-          };
-        }
         const created = await storage.createFixedAsset(
           {
             companyId: ctx.companyId,
             categoryId: a.categoryId,
-            code: a.code,
+            code,
             name: a.name,
             acquisitionDate: a.acquisitionDate,
-            inServiceDate: a.inServiceDate,
-            currency: a.currency,
+            inServiceDate,
+            currency,
             txCost: a.txCost,
             fxRate: a.fxRate,
             residual: a.residual,
@@ -1102,17 +1113,6 @@ export async function executeTool(
             sched.map((r) => ({ periodYear: r.year, periodMonth: r.month, plannedAmount: r.amount })),
           );
         }
-        // Post the single capitalising journal entry: DR asset cost / CR cash or AP.
-        const jeDescription = `رسملة أصل ${created.code} — ${created.name}`;
-        const je = await storage.createJournalEntry(ctx.companyId, {
-          description: jeDescription,
-          source: "ai",
-          entryDate: created.acquisitionDate,
-          lines: [
-            { accountId: cat.assetCostAccountId, debit: cost, credit: 0, description: jeDescription },
-            { accountId: creditAccount.id, debit: 0, credit: cost, description: jeDescription },
-          ] as any,
-        }, aiAudit);
         return {
           toolName: name,
           modelResult: {
@@ -1127,8 +1127,6 @@ export async function executeTool(
             usefulLifeMonths: created.usefulLifeMonths,
             method: created.method,
             assetCostAccountId: cat.assetCostAccountId,
-            journalEntryId: je.id,
-            paymentMethod: a.paymentMethod,
           },
           artifact: {
             kind: "fixed_asset",
@@ -1140,7 +1138,6 @@ export async function executeTool(
             categoryName: cat.name,
             usefulLifeMonths: created.usefulLifeMonths,
             method: created.method,
-            journalEntryId: je.id,
           },
         };
       }

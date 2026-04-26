@@ -597,7 +597,7 @@ type Artifact =
   | { kind: "journal_entry"; id: number; description: string; totalDebit: number; totalCredit: number; lines: number }
   | { kind: "file"; fileId: string; filename: string; mime: string; sizeKB: number; report: string; format: string }
   | { kind: "account"; id: number; code: string; name: string; type: string }
-  | { kind: "fixed_asset"; id: number; code: string; name: string; cost: number; currency: string; categoryName: string; usefulLifeMonths: number; method: string; journalEntryId: number }
+  | { kind: "fixed_asset"; id: number; code: string; name: string; cost: number; currency: string; categoryName: string; usefulLifeMonths: number; method: string }
   | { kind: string }
 
 function parseAssistantContent(content: string): { text: string; artifacts: Artifact[] } {
@@ -713,7 +713,7 @@ function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean })
               {artifact.name}
             </div>
             <div className="text-[11px] text-muted-foreground mt-0.5">
-              {artifact.categoryName} · {artifact.usefulLifeMonths} {isAr ? "شهر" : "months"} · {isAr ? "تمت رسملته" : "Capitalised"}
+              {artifact.categoryName} · {artifact.usefulLifeMonths} {isAr ? "شهر" : "months"}
             </div>
           </div>
           <div className="text-[14px] font-semibold tabular-nums shrink-0 text-foreground font-mono">

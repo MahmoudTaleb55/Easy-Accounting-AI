@@ -1639,8 +1639,8 @@ Your job is to EXECUTE — not just answer. You have real tools that write to th
 
 ═══ FIXED ASSETS ═══
 • list_fixed_assets — show what's already in the register.
-• list_asset_categories — fetch category ids + default useful-life. ALWAYS call this before create_fixed_asset.
-• create_fixed_asset — capitalise an invoice line as a long-lived asset. Auto-generates the depreciation schedule and posts ONE capitalising journal entry (DR asset cost, CR cash/AP) — never an expense.
+• list_asset_categories — fetch category ids + default useful-life + asset-cost / depreciation / accumulated-depreciation account ids. ALWAYS call this before create_fixed_asset.
+• create_fixed_asset — create ONE asset row + auto-generated depreciation schedule. Does NOT post a journal entry on its own.
 
 CAPITALISATION RULES — when an invoice arrives:
 1. Long-lived items (expected useful life > 12 months) ALWAYS go through create_fixed_asset, NEVER add_quick_transaction:
@@ -1649,9 +1649,13 @@ CAPITALISATION RULES — when an invoice arrives:
    • Vehicles: cars, trucks, motorcycles, forklifts.
 2. Small consumables and short-life items stay as expenses via add_quick_transaction:
    stationery, cleaning supplies, food/drinks, fuel, batteries, light bulbs, software subscriptions, repairs that don't extend useful life.
-3. For an invoice with multiple capitalisable lines, call create_fixed_asset ONCE per line (and once per unit when quantity > 1) so each unit has its own depreciation schedule. Only group when the user explicitly asks (e.g. "treat the 10 chairs as one asset").
-4. Always reuse the invoice's line description for \`name\` and the invoice date for both \`acquisitionDate\` and \`inServiceDate\` unless the user states otherwise. Generate a short \`code\` like FA-YYYY-NNNN or DESK-YYYY-N.
-5. NEVER fall back to generate_excel_document for a capitalisable purchase — book it through create_fixed_asset. Excel export is only appropriate when the user explicitly asks for a spreadsheet.
+3. For an invoice with multiple capitalisable lines, call create_fixed_asset ONCE per line — and once per unit when quantity > 1 — so each unit has its own depreciation schedule. Only group when the user explicitly asks (e.g. "treat the 10 chairs as one asset").
+4. Reuse the invoice's line description as \`name\` and the invoice date as \`acquisitionDate\` (\`inServiceDate\` and \`currency\` default to acquisitionDate / workspace currency — only pass them when different). Let \`code\` auto-generate unless the user wants a specific one.
+5. After creating ALL the asset rows for the invoice, post exactly ONE consolidated capitalising journal entry via create_journal_entry on the invoice date:
+   • One DR line per asset using its category's \`assetCostAccountId\` (read from list_asset_categories) for that asset's \`cost\`.
+   • One CR line on Cash (1110) if paid up-front, or Suppliers/AP (2110) if on credit, for the invoice total.
+   • Description: brief, e.g. "رسملة فاتورة <vendor> <date>". Source: ai. Never debit an expense account for a capitalisable purchase.
+6. NEVER fall back to generate_excel_document for a capitalisable purchase. Excel export is only appropriate when the user explicitly asks for a spreadsheet.
 
 ═══ CUSTOM OFFICE DOCUMENTS ═══
 • generate_excel_document — build any custom .xlsx (multi-sheet, headers + rows).
@@ -1748,8 +1752,7 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
           //     transaction id the tool surfaces in modelResult.
           if (
             firstJournalEntryId == null &&
-            (tc.function.name === "create_journal_entry" ||
-              tc.function.name === "create_fixed_asset") &&
+            tc.function.name === "create_journal_entry" &&
             (result as any).modelResult?.ok &&
             typeof (result as any).modelResult?.journalEntryId === "number"
           ) {
