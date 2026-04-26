@@ -3402,23 +3402,6 @@ export class DatabaseStorage implements IStorage {
       );
     if (!before) return;
 
-    // Snapshot postings BEFORE the cascade so we can roll back the per-asset
-    // accumDepreciation deltas this run had stamped on each fixed asset. We
-    // intentionally do NOT touch `accumDepNoImpairment` — the noImp delta is
-    // not stored per posting, and leaving the running counter slightly higher
-    // is the conservative side for the IAS 36 reversal cap.
-    const postings = await db
-      .select()
-      .from(depreciationPostings)
-      .where(eq(depreciationPostings.runId, runId));
-    const perAssetReversal = new Map<number, number>();
-    for (const p of postings) {
-      perAssetReversal.set(
-        p.assetId,
-        (perAssetReversal.get(p.assetId) ?? 0) + Number(p.amount),
-      );
-    }
-
     await reverseAutoPostedJournalEntry({
       companyId,
       source: { kind: "depreciation_run", id: runId },
@@ -3426,6 +3409,26 @@ export class DatabaseStorage implements IStorage {
       conflictMessage: (conflicts) =>
         `لا يمكن حذف دورة الإهلاك لأن قيدها المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
       extraDelete: async (tx) => {
+        // Snapshot postings BEFORE the cascade so we can roll back the
+        // per-asset accumDepreciation deltas this run had stamped on each
+        // fixed asset. The snapshot is taken *inside* the transaction so
+        // it sees a consistent view alongside the JE/run reversal.
+        // We intentionally do NOT touch `accumDepNoImpairment` — the noImp
+        // delta is not stored per posting, and leaving the running counter
+        // slightly higher is the conservative side for the IAS 36 reversal
+        // cap.
+        const postings = await tx
+          .select()
+          .from(depreciationPostings)
+          .where(eq(depreciationPostings.runId, runId));
+        const perAssetReversal = new Map<number, number>();
+        for (const p of postings) {
+          perAssetReversal.set(
+            p.assetId,
+            (perAssetReversal.get(p.assetId) ?? 0) + Number(p.amount),
+          );
+        }
+
         // Schedule rows posted by this run point at it via a composite FK
         // (run_id, company_id) → depreciation_runs(id, company_id). Reset
         // them to "planned" so the FK is satisfied and a future re-post can
@@ -3434,6 +3437,26 @@ export class DatabaseStorage implements IStorage {
           .update(depreciationSchedule)
           .set({ status: "planned", runId: null })
           .where(eq(depreciationSchedule.runId, runId));
+
+        // Roll back the per-asset accumDepreciation this run added,
+        // *inside* the JE/run reversal transaction (task #275). Before
+        // task #275 this loop ran outside the transaction and an inline
+        // comment admitted to leaving "a stale balance that an admin can
+        // correct" on partial failure — task #222 raised the bar for the
+        // rest of the audit-and-mutation surface to commit atomically, so
+        // doing the same here closes the only remaining drift window.
+        for (const [assetId, amount] of Array.from(perAssetReversal.entries())) {
+          const [asset] = await tx
+            .select()
+            .from(fixedAssets)
+            .where(and(eq(fixedAssets.id, assetId), eq(fixedAssets.companyId, companyId)));
+          if (!asset) continue;
+          await tx
+            .update(fixedAssets)
+            .set({ accumDepreciation: String(Math.max(0, Number(asset.accumDepreciation) - amount)) })
+            .where(and(eq(fixedAssets.id, assetId), eq(fixedAssets.companyId, companyId)));
+        }
+
         await tx
           .delete(depreciationPostings)
           .where(eq(depreciationPostings.runId, runId));
@@ -3445,22 +3468,6 @@ export class DatabaseStorage implements IStorage {
       },
       ctx,
     });
-
-    // Roll back the per-asset accumDepreciation this run added. Done outside
-    // the JE transaction so a slow update doesn't hold the audit-log row;
-    // the run + JE are already gone, so partial failure here merely leaves a
-    // stale balance that an admin can correct (rather than orphaning a JE).
-    for (const [assetId, amount] of Array.from(perAssetReversal.entries())) {
-      const [asset] = await db
-        .select()
-        .from(fixedAssets)
-        .where(and(eq(fixedAssets.id, assetId), eq(fixedAssets.companyId, companyId)));
-      if (!asset) continue;
-      await db
-        .update(fixedAssets)
-        .set({ accumDepreciation: String(Math.max(0, Number(asset.accumDepreciation) - amount)) })
-        .where(and(eq(fixedAssets.id, assetId), eq(fixedAssets.companyId, companyId)));
-    }
   }
 
   // ----- Schedule (planned rows) -----

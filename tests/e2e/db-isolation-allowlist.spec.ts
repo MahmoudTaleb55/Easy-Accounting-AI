@@ -156,6 +156,15 @@ const DB_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "system catalogs (pg_policy / pg_class / pg_namespace), which are " +
       "not RLS-protected anyway.",
   },
+  {
+    file: "server/__tests__/depreciation-run-delete-atomic-rollback.test.ts",
+    rationale:
+      "Vitest server-side integration test for task #275. Drives " +
+      "storage.deleteDepreciationRun directly to assert the per-asset " +
+      "accumDepreciation rollback commits/rolls back in lockstep with " +
+      "the JE reversal. Every db. call is inside an explicit " +
+      "withCompanyScope or withRlsBypass wrapper.",
+  },
 ];
 
 /**
@@ -287,6 +296,14 @@ const STORAGE_IMPORT_ALLOWLIST: AllowlistEntry[] = [
     rationale:
       "Barrel re-export of chatStorage and IChatStorage; no runtime db " +
       "calls of its own.",
+  },
+  {
+    file: "server/__tests__/depreciation-run-delete-atomic-rollback.test.ts",
+    rationale:
+      "Vitest server-side integration test for task #275. Imports " +
+      "`storage` to call deleteDepreciationRun directly inside an " +
+      "explicit withCompanyScope wrapper, asserting the JE/run/posting/" +
+      "asset-balance writes commit/roll back as one unit.",
   },
 ];
 
