@@ -23,7 +23,7 @@ import {
  * spec needs to assert each link in turn:
  *
  *   (a) A workspace owned by a fresh test user.
- *   (b) Five JEs (one per JE-bearing surface the spec covers):
+ *   (b) Six JEs (one per JE-bearing surface the spec covers):
  *         • JE-A backs a `documents` row in status='posted' (inbox
  *           detail strip + inbox "Recently posted" panel).
  *         • JE-B backs a posted `depreciation_runs` row + its
@@ -35,6 +35,11 @@ import {
  *           revaluations tab + history tab).
  *         • JE-E backs a `disposals` row (asset-detail disposals tab
  *           + history tab).
+ *         • JE-F has `source_transaction_id` set to a seeded
+ *           `transactions` row (transaction detail dialog "Posted as
+ *           JE-…" badge — task #192). A second `transactions` row is
+ *           seeded with no JE so the spec can also assert the badge is
+ *           hidden when no link exists.
  *   (c) The single asset_category + 7 GL accounts the FK chain on
  *       fixed_assets requires, plus a single fixed_assets row.
  *   (d) A passport session forged + planted in the browser context
@@ -71,11 +76,14 @@ setup("authenticate + seed JE deep-link fixtures", async ({ page }) => {
   let revaluationEventId: number;
   let disposalEventId: number;
   let documentId: number;
+  let txWithJeId: number;
+  let txNoJeId: number;
   let postedJeId: number; // JE-A
   let depreciationJeId: number; // JE-B
   let impairmentJeId: number; // JE-C
   let revaluationJeId: number; // JE-D
   let disposalJeId: number; // JE-E
+  let txJeId: number; // JE-F
   try {
     // ---- (a) Ensure the test user + workspace exist ----
     userId = await ensureUser(client, {
@@ -142,6 +150,14 @@ setup("authenticate + seed JE deep-link fixtures", async ({ page }) => {
     );
     await client.query(
       `DELETE FROM journal_entries WHERE company_id = $1`,
+      [companyId],
+    );
+    // `transactions` is wiped after journal_entries because the JE row
+    // carries `source_transaction_id` — there is no FK today, but
+    // dropping the JEs first keeps the data state internally consistent
+    // even if a future migration adds one.
+    await client.query(
+      `DELETE FROM transactions WHERE company_id = $1`,
       [companyId],
     );
     // accounts.code is globally UNIQUE, so we drop *only* the placeholder
@@ -240,14 +256,28 @@ setup("authenticate + seed JE deep-link fixtures", async ({ page }) => {
     // the spec does not assert any GL semantics, only that the JE id
     // round-trips through the deep link, so the leg accounts are
     // arbitrary as long as both live in this workspace.
-    const insertJe = async (reference: string, description: string) => {
+    const insertJe = async (
+      reference: string,
+      description: string,
+      opts: {
+        source?: string;
+        sourceTransactionId?: number | null;
+      } = {},
+    ) => {
       const jeRow = (
         await client.query<{ id: number }>(
           `INSERT INTO journal_entries
-             (company_id, reference, entry_date, description, source)
-           VALUES ($1, $2, '2099-06-15T12:00:00Z', $3, 'manual')
+             (company_id, reference, entry_date, description, source,
+              source_transaction_id)
+           VALUES ($1, $2, '2099-06-15T12:00:00Z', $3, $4, $5)
            RETURNING id`,
-          [companyId, reference, description],
+          [
+            companyId,
+            reference,
+            description,
+            opts.source ?? "manual",
+            opts.sourceTransactionId ?? null,
+          ],
         )
       ).rows[0];
       const jeId = Number(jeRow.id);
@@ -398,6 +428,45 @@ setup("authenticate + seed JE deep-link fixtures", async ({ page }) => {
       )
     ).rows[0];
     documentId = Number(docRow.id);
+
+    // ---- Two transactions + JE-F linked to the first via -----------
+    // `source_transaction_id`. The transaction list page filters by
+    // the active period (defaults to "month"), so both rows use NOW()
+    // to land inside whatever calendar month the test runs in. The
+    // descriptions are unique so the spec's row locators never collide
+    // with sibling test data.
+    const txWithJeRow = (
+      await client.query<{ id: number }>(
+        `INSERT INTO transactions
+           (company_id, type, amount, description, category, date)
+         VALUES ($1, 'expense', '42.00',
+                 'JE Link Tx With JE', 'office', NOW())
+         RETURNING id`,
+        [companyId],
+      )
+    ).rows[0];
+    txWithJeId = Number(txWithJeRow.id);
+
+    const txNoJeRow = (
+      await client.query<{ id: number }>(
+        `INSERT INTO transactions
+           (company_id, type, amount, description, category, date)
+         VALUES ($1, 'income', '99.00',
+                 'JE Link Tx No JE', 'sales', NOW())
+         RETURNING id`,
+        [companyId],
+      )
+    ).rows[0];
+    txNoJeId = Number(txNoJeRow.id);
+
+    // JE-F: source='transaction' + source_transaction_id matches the
+    // first txn so `getTransactions` joins the JE id/reference back
+    // onto the row and the detail dialog renders the badge.
+    txJeId = await insertJe(
+      `JE-TX-${companyId}-${Date.now() + 5}`,
+      "Auto-posted txn JE",
+      { source: "transaction", sourceTransactionId: txWithJeId },
+    );
   } finally {
     await client.end();
   }
@@ -439,11 +508,14 @@ setup("authenticate + seed JE deep-link fixtures", async ({ page }) => {
         revaluationEventId,
         disposalEventId,
         documentId,
+        txWithJeId,
+        txNoJeId,
         postedJeId,
         depreciationJeId,
         impairmentJeId,
         revaluationJeId,
         disposalJeId,
+        txJeId,
       },
       null,
       2,

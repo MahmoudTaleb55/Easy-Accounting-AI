@@ -4,15 +4,16 @@ import path from "node:path";
 
 /**
  * Regression net for the Journal-Entry deep-link contract that spans the
- * Inbox and Fixed-Assets pages.
+ * Inbox, Fixed-Assets, and Transactions pages.
  *
  * Every JE reference rendered by these pages is supposed to be a real
  * `<a href="/app/journal#je-<id>">…</a>` so an auditor can click straight
  * through to the originating entry. There is no other automated coverage
  * that asserts these are *links* (rather than plain text), and a future
  * refactor of the inbox posted strip, the fixed-assets depreciation runs
- * table, or the asset-detail dialog (history / impairments tabs) could
- * silently regress them with no test failure.
+ * table, the asset-detail dialog (history / impairments tabs), or the
+ * transactions detail dialog could silently regress them with no test
+ * failure.
  *
  * The fixtures (a posted document, a posted depreciation run, an
  * impairment event — each linked to its own JE in the same workspace)
@@ -38,6 +39,13 @@ import path from "node:path";
  *     • The past-depreciation-runs row renders
  *       `link-journal-entry-depreciation-run-{runId}` as an `<a>`
  *       whose `href` is `/app/journal#je-{depreciationJeId}`.
+ *
+ *   Transactions detail dialog (`/app/transactions`)
+ *     • Opening the txn-with-JE row renders
+ *       `link-transaction-journal-entry` as an `<a>` whose `href` is
+ *       `/app/journal#je-{txJeId}`.
+ *     • Opening the txn-with-no-JE row hides the badge (the badge
+ *       locator must not be visible).
  *
  *   Asset Detail dialog (opened via `/app/fixed-assets#asset-{assetId}`)
  *     • The Impairments tab renders
@@ -71,11 +79,14 @@ interface Fixtures {
   revaluationEventId: number;
   disposalEventId: number;
   documentId: number;
+  txWithJeId: number;
+  txNoJeId: number;
   postedJeId: number;
   depreciationJeId: number;
   impairmentJeId: number;
   revaluationJeId: number;
   disposalJeId: number;
+  txJeId: number;
 }
 
 function loadFixtures(): Fixtures {
@@ -315,5 +326,88 @@ test.describe("JE deep links across Inbox + Fixed Assets", () => {
       "href",
       expectedHref(fx.impairmentJeId),
     );
+
+    // ============================================================
+    // 4. Transactions detail dialog
+    // ============================================================
+    // Task #192 added a "Posted as JE-…" deep-link badge inside
+    // `TransactionDetailDialog` (client/src/pages/transactions.tsx).
+    // The badge round-trips through `getTransactions` →
+    // `journalEntries.sourceTransactionId` → the list payload's
+    // `journalEntryId` field; a regression that drops the join, the
+    // field, or the badge would silently break the cross-link with
+    // no other coverage in place. The setup seeds:
+    //   • txWithJeId — a transaction whose `source_transaction_id` is
+    //     pointed at by `txJeId` (badge MUST appear and link to JE-F).
+    //   • txNoJeId  — a transaction with no JE row referencing it
+    //     (badge MUST be absent).
+    // Both rows use NOW() for `transactions.date` so they fall inside
+    // the page's default "month" period filter regardless of when the
+    // suite runs.
+    await page.goto("/app/transactions");
+
+    const txWithJeRow = page.locator(
+      `[data-testid="row-transaction-${fx.txWithJeId}"]`,
+    );
+    await expect(
+      txWithJeRow,
+      "the seeded txn-with-JE row must appear in the transactions list",
+    ).toBeVisible();
+
+    // Open the detail dialog for the JE-bearing transaction. The row's
+    // description button is the affordance that opens the dialog.
+    await page
+      .locator(`[data-testid="link-transaction-${fx.txWithJeId}"]`)
+      .click();
+
+    const txDialog = page.locator(
+      '[data-testid="dialog-transaction-detail"]',
+    );
+    await expect(
+      txDialog,
+      "the transaction detail dialog must open after clicking the row",
+    ).toBeVisible();
+
+    const txJeLink = page.locator(
+      '[data-testid="link-transaction-journal-entry"]',
+    );
+    await expect(
+      txJeLink,
+      "the transaction detail dialog must render the JE deep-link badge",
+    ).toBeVisible();
+    // We assert it is specifically an <a> (not a <span> / <button> /
+    // <div>) so a future refactor that turns it back into plain text
+    // visibly fails this spec.
+    await expect(
+      txJeLink,
+      "the transaction-detail JE reference must be an <a> tag, not plain text",
+    ).toHaveJSProperty("tagName", "A");
+    await expect(txJeLink).toHaveAttribute(
+      "href",
+      expectedHref(fx.txJeId),
+    );
+
+    // Close the dialog so we can open the no-JE transaction next.
+    // Pressing Escape is the lightest-weight close affordance the
+    // shadcn Dialog supports and avoids relying on the localized
+    // close-button aria-label.
+    await page.keyboard.press("Escape");
+    await expect(
+      txDialog,
+      "the transaction detail dialog must close before opening the next row",
+    ).toBeHidden();
+
+    // ---- Negative case: txn-without-JE row hides the badge ----
+    await page
+      .locator(`[data-testid="link-transaction-${fx.txNoJeId}"]`)
+      .click();
+    await expect(
+      txDialog,
+      "the transaction detail dialog must open for the no-JE row",
+    ).toBeVisible();
+    await expect(
+      txJeLink,
+      "the JE deep-link badge must be absent when no JE is linked to the transaction",
+    ).toHaveCount(0);
   });
 });
