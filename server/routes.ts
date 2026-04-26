@@ -611,6 +611,26 @@ export async function registerRoutes(
     },
   );
 
+  // Read-only count preview for the settings "Re-pair missing journal
+  // entries" card. Same owner gate and same per-workspace scope as the
+  // POST above, so the number an owner sees is computed against the exact
+  // same rows the POST would act on. Surfacing it up front lets owners see
+  // "fix 0" or "fix 4,000" before they confirm, instead of after.
+  app.get(
+    api.admin.backfillJournalEntriesPreview.path,
+    requireRole("owner"),
+    async (req, res) => {
+      try {
+        const { countTransactionsMissingJournalEntryForCompany } = await import("./init-coa");
+        const count = await countTransactionsMissingJournalEntryForCompany(cid(req));
+        res.json({ count });
+      } catch (err) {
+        console.error("Admin backfill-journal-entries preview error", err);
+        res.status(500).json({ message: "تعذّر حساب القيود المفقودة" });
+      }
+    },
+  );
+
   // ----- Audit log -----
   app.get(api.audit.list.path, async (req, res) => {
     const entityType = String(req.params.entityType || "");

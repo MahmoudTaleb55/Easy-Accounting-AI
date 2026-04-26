@@ -277,6 +277,53 @@ export async function initChartOfAccounts(): Promise<void> {
 }
 
 /**
+ * Find every transaction in `companyId` that has no `journal_entries` row
+ * pointing back at it via `sourceTransactionId`. Shared between the count
+ * preview (`countTransactionsMissingJournalEntryForCompany` → the GET
+ * /api/admin/backfill-journal-entries/preview route) and the per-workspace
+ * backfill loop, so the number an owner sees in the UI is computed from
+ * the exact same predicate the POST will then act on. If those two queries
+ * ever drift, the dialog could promise "fix N entries" and then the POST
+ * would create a different number, which is exactly the surprise the
+ * preview is meant to remove.
+ */
+async function findTransactionsMissingJournalEntryForCompany(
+  companyId: number,
+): Promise<(typeof transactions.$inferSelect)[]> {
+  const allTx = await db
+    .select()
+    .from(transactions)
+    .where(eq(transactions.companyId, companyId));
+  const existingJEs = await db
+    .select({ src: journalEntries.sourceTransactionId })
+    .from(journalEntries)
+    .where(
+      and(
+        sql`${journalEntries.sourceTransactionId} is not null`,
+        eq(journalEntries.companyId, companyId),
+      ),
+    );
+  const covered = new Set(existingJEs.map((j) => j.src));
+  return allTx.filter((tx) => !covered.has(tx.id));
+}
+
+/**
+ * Count-only preview used by the owner-facing settings card so an owner can
+ * see "3 transactions are missing journal entries" before clicking the
+ * confirm dialog, instead of discovering N only after the POST returns.
+ *
+ * Owner-gated at the route layer (`requireRole("owner")`) and scoped here
+ * to the caller's active `companyId` — the same scope the backfill POST
+ * uses — so a workspace owner can never preview another workspace's count.
+ */
+export async function countTransactionsMissingJournalEntryForCompany(
+  companyId: number,
+): Promise<number> {
+  const rows = await findTransactionsMissingJournalEntryForCompany(companyId);
+  return rows.length;
+}
+
+/**
  * Backfill: any existing transaction without a corresponding journal entry
  * gets one auto-generated against the default cash and category-mapped account.
  *

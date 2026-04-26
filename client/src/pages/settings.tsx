@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight, MailCheck, Wrench } from "lucide-react";
+import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight, MailCheck, Wrench, CheckCircle2 } from "lucide-react";
 import { api } from "@shared/routes";
 import type { OrgSettings } from "@/lib/format";
 import { savePublicCurrency } from "@/lib/public-currency";
@@ -150,6 +150,21 @@ function DataToolsCard() {
   });
   const lastRun = lastRunData?.lastRun ?? null;
 
+  // Read-only count of transactions that are missing a journal entry. Loaded
+  // on mount so the card and the confirm dialog can both promise an exact
+  // number ("3 transactions are missing journal entries") instead of leaving
+  // the owner guessing whether they're about to fix 0, 4, or 4,000 rows.
+  // The query key matches the route path so the default fetcher hits the
+  // right URL; we pin staleTime to 0 so a re-mount after a backfill always
+  // refetches the fresh count (the mutation also invalidates this key
+  // explicitly).
+  const previewQuery = useQuery<{ count: number }>({
+    queryKey: [api.admin.backfillJournalEntriesPreview.path],
+    staleTime: 0,
+  });
+  const missingCount = previewQuery.data?.count;
+  const hasZero = missingCount === 0;
+
   const mutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest(
@@ -165,8 +180,14 @@ function DataToolsCard() {
       // posted entries from the backfill show up immediately if the user
       // navigates there. The chart-of-accounts trailing balances cache is
       // similarly stale after a backfill — invalidate it for every period
-      // so /app/accounts reflects the new GL on the next visit.
+      // so /app/accounts reflects the new GL on the next visit. The count
+      // preview is also stale (the backlog just shrank), so refetch it so
+      // the card flips to the "Everything is in sync" state without a
+      // manual reload.
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+      queryClient.invalidateQueries({
+        queryKey: [api.admin.backfillJournalEntriesPreview.path],
+      });
       invalidateAccountBalances();
       // Refresh the "Last run by …" line so the row this owner just
       // wrote shows up under the card without a manual reload (task #236).
@@ -226,13 +247,50 @@ function DataToolsCard() {
                 : "Walks every transaction in this workspace and posts a balanced double-entry for any one missing its journal entry. Safe to re-run."}
             </div>
           </div>
+          {/*
+            Live count of orphan transactions, loaded on mount so the owner
+            sees up front whether the action is a no-op or a meaningful
+            cleanup. Three visible states:
+              - loading            → muted skeleton-ish line
+              - count > 0          → "N transactions are missing journal entries"
+              - count === 0        → green "Everything is in sync" indicator,
+                                     and the button below is disabled
+            On error we render nothing here and let the button stay enabled
+            with its generic copy, so a transient preview failure never
+            blocks the recovery action itself.
+           */}
+          {previewQuery.isLoading ? (
+            <div
+              className="text-sm text-muted-foreground"
+              data-testid="text-repair-journal-entries-count-loading"
+            >
+              {ar ? "جارٍ حساب القيود المفقودة..." : "Counting missing entries..."}
+            </div>
+          ) : hasZero ? (
+            <div
+              className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400"
+              data-testid="status-repair-journal-entries-in-sync"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {ar ? "كل شيء متزامن — لا توجد قيود مفقودة." : "Everything is in sync — no missing entries."}
+            </div>
+          ) : missingCount !== undefined ? (
+            <div
+              className="text-sm text-foreground"
+              data-testid="text-repair-journal-entries-count"
+            >
+              {ar
+                ? `${missingCount} معاملة بدون قيد يومية.`
+                : `${missingCount} ${missingCount === 1 ? "transaction is" : "transactions are"} missing journal entries.`}
+            </div>
+          ) : null}
           <div className="flex items-center gap-3 flex-wrap">
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={mutation.isPending}
+                  disabled={mutation.isPending || hasZero}
                   data-testid="button-repair-journal-entries"
                 >
                   {mutation.isPending
@@ -249,10 +307,14 @@ function DataToolsCard() {
                   <AlertDialogTitle>
                     {ar ? "تأكيد إعادة ربط القيود" : "Confirm re-pair"}
                   </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {ar
-                      ? "ستُنشأ قيود يومية لأي معاملة في مساحة العمل لا قيد لها. تكرار التشغيل لا يُكرّر القيود."
-                      : "Journal entries will be created for any transaction in this workspace that is missing one. Running again does not duplicate entries."}
+                  <AlertDialogDescription data-testid="text-repair-journal-entries-confirm">
+                    {missingCount !== undefined
+                      ? ar
+                        ? `سيتم إنشاء ${missingCount} قيد يومية — هل تريد المتابعة؟`
+                        : `This will create ${missingCount} journal ${missingCount === 1 ? "entry" : "entries"} — continue?`
+                      : ar
+                        ? "ستُنشأ قيود يومية لأي معاملة في مساحة العمل لا قيد لها. تكرار التشغيل لا يُكرّر القيود."
+                        : "Journal entries will be created for any transaction in this workspace that is missing one. Running again does not duplicate entries."}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

@@ -278,6 +278,27 @@ export const api = {
             })
             .nullable(),
         }),
+        403: errorSchemas.notFound,
+        500: errorSchemas.internal,
+      },
+    },
+    // Read-only count of transactions in the active workspace that are
+    // missing a `journal_entries.sourceTransactionId` row pointing back at
+    // them — i.e. exactly the rows the POST above will act on. The settings
+    // "Re-pair missing journal entries" card uses this to show owners
+    // "N transactions are missing journal entries" before they confirm,
+    // so a click that would create 0 entries (or 4,000) is visible up front
+    // instead of being a surprise after the POST returns. Owner-gated like
+    // the POST so the count itself can never leak across role boundaries.
+    backfillJournalEntriesPreview: {
+      method: 'GET' as const,
+      path: '/api/admin/backfill-journal-entries/preview' as const,
+      responses: {
+        200: z.object({
+          count: z.number(),
+        }),
+        403: errorSchemas.notFound,
+        500: errorSchemas.internal,
       },
     },
   },
