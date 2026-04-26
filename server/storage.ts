@@ -466,16 +466,19 @@ export interface IStorage {
     companyId: number,
     eventId: number,
     ctx?: AuditContext,
+    opts?: { cascade?: boolean },
   ): Promise<void>;
   deleteRevaluationEvent(
     companyId: number,
     eventId: number,
     ctx?: AuditContext,
+    opts?: { cascade?: boolean },
   ): Promise<void>;
   deleteDisposal(
     companyId: number,
     eventId: number,
     ctx?: AuditContext,
+    opts?: { cascade?: boolean },
   ): Promise<void>;
   countDocumentsByStoragePath(companyId: number, storagePath: string): Promise<number>;
 }
@@ -733,13 +736,28 @@ export type JournalEntrySourceKind =
  */
 async function detectJournalEntryReferences(
   journalEntryId: number,
-  opts: { excludeSource?: { kind: JournalEntrySourceKind; id: number } } = {},
+  opts: {
+    excludeSource?: { kind: JournalEntrySourceKind; id: number };
+    /**
+     * Multi-source exclusion for cascade deletes (task #262): every member
+     * of the cascade set is "about to be" reversed, so its still-present row
+     * should not count as an orphan reference for any other event's JE in
+     * the same cascade.
+     */
+    excludeSources?: Array<{ kind: JournalEntrySourceKind; id: number }>;
+  } = {},
 ): Promise<string[]> {
   const conflicts: string[] = [];
-  const exclude = (kind: JournalEntrySourceKind, idCol: PgColumn) =>
-    opts.excludeSource && opts.excludeSource.kind === kind
-      ? sql`${idCol} <> ${opts.excludeSource.id}`
-      : sql`true`;
+  const allExcludes: Array<{ kind: JournalEntrySourceKind; id: number }> = [
+    ...(opts.excludeSource ? [opts.excludeSource] : []),
+    ...(opts.excludeSources ?? []),
+  ];
+  const exclude = (kind: JournalEntrySourceKind, idCol: PgColumn) => {
+    const ids = allExcludes.filter((s) => s.kind === kind).map((s) => s.id);
+    if (ids.length === 0) return sql`true`;
+    if (ids.length === 1) return sql`${idCol} <> ${ids[0]}`;
+    return sql`${idCol} not in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`;
+  };
 
   // Defence-in-depth: one JE per source row is the invariant, but a backfill
   // or a manual SQL fix-up could break it, in which case we should refuse
@@ -899,53 +917,82 @@ async function reverseAutoPostedJournalEntry(opts: {
   }
 
   await db.transaction(async (tx) => {
-    // Delete the source row(s) FIRST, then the JE. Some source tables
-    // (eg `documents`) carry a composite FK back to journal_entries, so
-    // dropping the JE while the source row still references it would fail
-    // with a 23503 foreign-key violation. Source tables that point the
-    // other way around (eg payroll_runs FK to JE has no action declared)
-    // are unaffected by this ordering.
-    await opts.extraDelete(tx as unknown as typeof db);
-    if (linkedJournal) {
-      await tx
-        .delete(journalLines)
-        .where(eq(journalLines.journalEntryId, linkedJournal.id));
-      await tx
-        .delete(journalEntries)
-        .where(
-          and(
-            eq(journalEntries.id, linkedJournal.id),
-            eq(journalEntries.companyId, opts.companyId),
-          ),
-        );
-      // Stamp the JE delete on its own audit thread so the History drawer
-      // for the journal entry shows the reversal even though it was
-      // triggered by a source-row delete. The audit row commits inside the
-      // *same* transaction as the JE/line deletes (task #222) so a failed
-      // audit insert — including a workspace_isolation RLS rejection on
-      // `audit_log` itself (task #169) — rolls back the JE delete instead
-      // of silently leaving the JE gone with no record of what removed it.
-      //
-      // Since task #169 the audit row carries `companyId` as a first-class
-      // column under workspace_isolation RLS, so the reversal lookup can
-      // be a single workspace-filtered SELECT. The `companyId` field is
-      // also kept in the change set as a self-documenting trail of who
-      // reversed what (and to remain compatible with audit rows that
-      // pre-date the column).
-      await recordAudit(tx, {
-        companyId: opts.companyId,
-        entityType: "journal_entry",
-        entityId: linkedJournal.id,
-        action: "delete",
-        changes: [
-          ...snapshotChanges(linkedJournal),
-          { field: "reversedBy", to: `${opts.source.kind}#${opts.source.id}` },
-          { field: "companyId", to: opts.companyId },
-        ],
-        ctx: opts.ctx,
-      });
-    }
+    await reverseAutoPostedJournalEntryInTx(tx as unknown as typeof db, {
+      companyId: opts.companyId,
+      source: opts.source,
+      linkedJournal,
+      extraDelete: opts.extraDelete,
+      ctx: opts.ctx,
+    });
   });
+}
+
+/**
+ * In-transaction variant of {@link reverseAutoPostedJournalEntry}: assumes
+ * the caller has already opened a `db.transaction` and pre-validated that
+ * the JE is not orphan-blocked. Used by cascade reversals (task #262) so
+ * multiple events on the same asset can be reversed atomically.
+ *
+ * The caller passes the pre-fetched `linkedJournal` (or `undefined` if the
+ * source row never had a JE attached) so we don't pay for a duplicate
+ * SELECT inside the tx.
+ */
+async function reverseAutoPostedJournalEntryInTx(
+  tx: typeof db,
+  opts: {
+    companyId: number;
+    source: { kind: JournalEntrySourceKind; id: number };
+    linkedJournal: JournalEntry | undefined;
+    extraDelete: (tx: typeof db) => Promise<void>;
+    ctx?: AuditContext;
+  },
+): Promise<void> {
+  // Delete the source row(s) FIRST, then the JE. Some source tables
+  // (eg `documents`) carry a composite FK back to journal_entries, so
+  // dropping the JE while the source row still references it would fail
+  // with a 23503 foreign-key violation. Source tables that point the
+  // other way around (eg payroll_runs FK to JE has no action declared)
+  // are unaffected by this ordering.
+  await opts.extraDelete(tx);
+  if (opts.linkedJournal) {
+    await tx
+      .delete(journalLines)
+      .where(eq(journalLines.journalEntryId, opts.linkedJournal.id));
+    await tx
+      .delete(journalEntries)
+      .where(
+        and(
+          eq(journalEntries.id, opts.linkedJournal.id),
+          eq(journalEntries.companyId, opts.companyId),
+        ),
+      );
+    // Stamp the JE delete on its own audit thread so the History drawer
+    // for the journal entry shows the reversal even though it was
+    // triggered by a source-row delete. The audit row commits inside the
+    // *same* transaction as the JE/line deletes (task #222) so a failed
+    // audit insert — including a workspace_isolation RLS rejection on
+    // `audit_log` itself (task #169) — rolls back the JE delete instead
+    // of silently leaving the JE gone with no record of what removed it.
+    //
+    // Since task #169 the audit row carries `companyId` as a first-class
+    // column under workspace_isolation RLS, so the reversal lookup can
+    // be a single workspace-filtered SELECT. The `companyId` field is
+    // also kept in the change set as a self-documenting trail of who
+    // reversed what (and to remain compatible with audit rows that
+    // pre-date the column).
+    await recordAudit(tx, {
+      companyId: opts.companyId,
+      entityType: "journal_entry",
+      entityId: opts.linkedJournal.id,
+      action: "delete",
+      changes: [
+        ...snapshotChanges(opts.linkedJournal),
+        { field: "reversedBy", to: `${opts.source.kind}#${opts.source.id}` },
+        { field: "companyId", to: opts.companyId },
+      ],
+      ctx: opts.ctx,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1040,6 +1087,268 @@ async function assertNoLaterEventsForAsset(
   if (conflicts.length > 0) {
     throw new AssetEventLaterDependencyError(buildMessage(conflicts));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cascade reversal of an asset event chain (task #262)
+//
+// `assertNoLaterEventsForAsset` (task #209) refuses any earlier-event delete
+// while *any* later event of any kind sits on top of the same asset. The
+// cascade path here offers the friendlier alternative the original task
+// description called out: instead of 409, undo every later event in the
+// chain (latest first) and then undo the target row, atomically.
+//
+// Pre-flight pass (outside the tx) gathers every event in the cascade set,
+// sorts them latest-first, and runs both safety guards up-front so we can
+// 409 without partially mutating anything:
+//   - Legacy snapshot guard (task #208): every row in the set must carry an
+//     `assetBalanceDelta`; otherwise we cannot reverse its asset-row deltas.
+//   - JE-orphan guard (task #111): every row's JE must be referenced ONLY
+//     by other members of the cascade set, never by an unrelated module.
+//
+// Then a single `db.transaction` reverses each event in order (latest first)
+// using the in-tx variant of the auto-posted-JE reverser. The target row is
+// always last so its own snapshot is undone after every later snapshot has
+// been peeled off. Failure of any individual reversal rolls back the whole
+// transaction — there's no half-cascaded asset.
+// ---------------------------------------------------------------------------
+
+interface CascadeEventRow {
+  kind: AssetEventKind;
+  id: number;
+  createdAt: Date | null;
+  journalEntryId: number | null;
+  assetBalanceDelta: unknown;
+}
+
+function compareCascadeOrder(a: CascadeEventRow, b: CascadeEventRow): number {
+  // Latest first. Treat null createdAt as the oldest possible (sorts last).
+  const at = a.createdAt ? a.createdAt.getTime() : -Infinity;
+  const bt = b.createdAt ? b.createdAt.getTime() : -Infinity;
+  if (at !== bt) return bt - at;
+  // Tie-break on id so ordering is deterministic when two events were
+  // posted in the same microsecond (rare; mostly happens in fixtures).
+  return b.id - a.id;
+}
+
+async function loadLaterEventsForCascade(
+  companyId: number,
+  assetId: number,
+  cutoff: Date,
+  excludeId: number,
+  excludeKind: AssetEventKind,
+): Promise<CascadeEventRow[]> {
+  const rows: CascadeEventRow[] = [];
+
+  const impConds = [
+    eq(impairmentEvents.companyId, companyId),
+    eq(impairmentEvents.assetId, assetId),
+    gte(impairmentEvents.createdAt, cutoff),
+  ];
+  if (excludeKind === "impairment_event") {
+    impConds.push(ne(impairmentEvents.id, excludeId));
+  }
+  const imps = await db
+    .select({
+      id: impairmentEvents.id,
+      createdAt: impairmentEvents.createdAt,
+      journalEntryId: impairmentEvents.journalEntryId,
+      assetBalanceDelta: impairmentEvents.assetBalanceDelta,
+    })
+    .from(impairmentEvents)
+    .where(and(...impConds));
+  imps.forEach((r) => rows.push({ kind: "impairment_event", ...r }));
+
+  const revConds = [
+    eq(revaluationEvents.companyId, companyId),
+    eq(revaluationEvents.assetId, assetId),
+    gte(revaluationEvents.createdAt, cutoff),
+  ];
+  if (excludeKind === "revaluation_event") {
+    revConds.push(ne(revaluationEvents.id, excludeId));
+  }
+  const revs = await db
+    .select({
+      id: revaluationEvents.id,
+      createdAt: revaluationEvents.createdAt,
+      journalEntryId: revaluationEvents.journalEntryId,
+      assetBalanceDelta: revaluationEvents.assetBalanceDelta,
+    })
+    .from(revaluationEvents)
+    .where(and(...revConds));
+  revs.forEach((r) => rows.push({ kind: "revaluation_event", ...r }));
+
+  const dispConds = [
+    eq(disposals.companyId, companyId),
+    eq(disposals.assetId, assetId),
+    gte(disposals.createdAt, cutoff),
+  ];
+  if (excludeKind === "disposal") {
+    dispConds.push(ne(disposals.id, excludeId));
+  }
+  const disps = await db
+    .select({
+      id: disposals.id,
+      createdAt: disposals.createdAt,
+      journalEntryId: disposals.journalEntryId,
+      assetBalanceDelta: disposals.assetBalanceDelta,
+    })
+    .from(disposals)
+    .where(and(...dispConds));
+  disps.forEach((r) => rows.push({ kind: "disposal", ...r }));
+
+  return rows;
+}
+
+function legacyMessageFor(kind: AssetEventKind): string {
+  switch (kind) {
+    case "impairment_event":
+      return "خسارة الانخفاض";
+    case "revaluation_event":
+      return "إعادة التقييم";
+    case "disposal":
+      return "الاستبعاد";
+  }
+}
+
+function jeConflictMessageFor(kind: AssetEventKind, conflicts: string[]): string {
+  const label = legacyMessageFor(kind);
+  return `لا يمكن حذف ${label} ضمن سلسلة التراجع لأن قيدها المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`;
+}
+
+async function reverseAssetEventInTx(
+  tx: typeof db,
+  companyId: number,
+  assetId: number,
+  evt: CascadeEventRow,
+  ctx: AuditContext | undefined,
+): Promise<void> {
+  let linkedJournal: JournalEntry | undefined;
+  if (evt.journalEntryId) {
+    const [je] = await tx
+      .select()
+      .from(journalEntries)
+      .where(
+        and(
+          eq(journalEntries.id, evt.journalEntryId),
+          eq(journalEntries.companyId, companyId),
+        ),
+      );
+    if (je) linkedJournal = je;
+  }
+
+  await reverseAutoPostedJournalEntryInTx(tx, {
+    companyId,
+    source: { kind: evt.kind, id: evt.id },
+    linkedJournal,
+    extraDelete: async (innerTx) => {
+      if (evt.kind === "impairment_event") {
+        await innerTx
+          .delete(impairmentEvents)
+          .where(
+            and(
+              eq(impairmentEvents.id, evt.id),
+              eq(impairmentEvents.companyId, companyId),
+            ),
+          );
+        await reverseImpairmentBalanceDelta(
+          innerTx,
+          assetId,
+          evt.assetBalanceDelta as ImpairmentBalanceDelta | null,
+        );
+      } else if (evt.kind === "revaluation_event") {
+        await innerTx
+          .delete(revaluationEvents)
+          .where(
+            and(
+              eq(revaluationEvents.id, evt.id),
+              eq(revaluationEvents.companyId, companyId),
+            ),
+          );
+        await reverseRevaluationBalanceDelta(
+          innerTx,
+          assetId,
+          evt.assetBalanceDelta as RevaluationBalanceDelta | null,
+        );
+      } else {
+        await innerTx
+          .delete(disposals)
+          .where(
+            and(
+              eq(disposals.id, evt.id),
+              eq(disposals.companyId, companyId),
+            ),
+          );
+        await reverseDisposalBalanceDelta(
+          innerTx,
+          assetId,
+          evt.assetBalanceDelta as DisposalBalanceDelta | null,
+        );
+      }
+    },
+    ctx,
+  });
+}
+
+async function cascadeDeleteAssetEvent(
+  companyId: number,
+  assetId: number,
+  target: CascadeEventRow,
+  ctx: AuditContext | undefined,
+): Promise<void> {
+  // Without a createdAt we can't define "later than this", so the only safe
+  // cascade is the target row alone — fall through to the regular per-event
+  // delete path so the caller's normal legacy/JE guards still apply.
+  const cutoff = target.createdAt;
+  const laters = cutoff
+    ? await loadLaterEventsForCascade(
+        companyId,
+        assetId,
+        cutoff,
+        target.id,
+        target.kind,
+      )
+    : [];
+
+  // Process latest first so each event's snapshot is peeled off after every
+  // event that was posted on top of it.
+  const ordered = [...laters, target].sort(compareCascadeOrder);
+
+  // Pre-flight legacy snapshot guard: refuse the whole cascade if any row
+  // is missing its `asset_balance_delta` rather than silently desync the
+  // GL from the asset sub-ledger for that one row (task #208).
+  for (const evt of ordered) {
+    if (evt.assetBalanceDelta == null) {
+      throw new LegacyAssetEventBalanceMissingError(
+        `لا يمكن تنفيذ التراجع المتسلسل لأن أحد الأحداث (${legacyMessageFor(
+          evt.kind,
+        )} #${evt.id}) مُسجَّل قبل تحديث تتبّع الأرصدة (task #157). يرجى تعديل أرصدة الأصل يدوياً.`,
+      );
+    }
+  }
+
+  // Pre-flight JE-orphan guard: every JE in the cascade set must only be
+  // referenced by other members of the same set. A still-present unrelated
+  // module (sales invoice, payroll run, manual link, …) aborts the cascade.
+  const excludeSources = ordered.map((e) => ({ kind: e.kind, id: e.id }));
+  for (const evt of ordered) {
+    if (!evt.journalEntryId) continue;
+    const conflicts = await detectJournalEntryReferences(evt.journalEntryId, {
+      excludeSources,
+    });
+    if (conflicts.length > 0) {
+      throw new JournalEntryReferenceConflictError(
+        jeConflictMessageFor(evt.kind, conflicts),
+      );
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    const innerTx = tx as unknown as typeof db;
+    for (const evt of ordered) {
+      await reverseAssetEventInTx(innerTx, companyId, assetId, evt, ctx);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -3357,12 +3666,34 @@ export class DatabaseStorage implements IStorage {
     companyId: number,
     eventId: number,
     ctx?: AuditContext,
+    opts?: { cascade?: boolean },
   ): Promise<void> {
     const [before] = await db
       .select()
       .from(impairmentEvents)
       .where(and(eq(impairmentEvents.id, eventId), eq(impairmentEvents.companyId, companyId)));
     if (!before) return;
+
+    // Cascade path (task #262): atomically reverse every later event on the
+    // same asset before reversing this row. The cascade helper runs the same
+    // legacy and JE-orphan guards across the whole set, so we hand off
+    // before the per-row guards below.
+    if (opts?.cascade) {
+      await cascadeDeleteAssetEvent(
+        companyId,
+        before.assetId,
+        {
+          kind: "impairment_event",
+          id: eventId,
+          createdAt: before.createdAt,
+          journalEntryId: before.journalEntryId,
+          assetBalanceDelta: before.assetBalanceDelta,
+        },
+        ctx,
+      );
+      return;
+    }
+
     if (before.assetBalanceDelta == null) {
       throw new LegacyAssetEventBalanceMissingError(
         "لا يمكن حذف خسارة الانخفاض لأنها مُسجَّلة قبل تحديث تتبّع الأرصدة (task #157). يرجى تعديل أرصدة الأصل يدوياً.",
@@ -3406,12 +3737,30 @@ export class DatabaseStorage implements IStorage {
     companyId: number,
     eventId: number,
     ctx?: AuditContext,
+    opts?: { cascade?: boolean },
   ): Promise<void> {
     const [before] = await db
       .select()
       .from(revaluationEvents)
       .where(and(eq(revaluationEvents.id, eventId), eq(revaluationEvents.companyId, companyId)));
     if (!before) return;
+
+    if (opts?.cascade) {
+      await cascadeDeleteAssetEvent(
+        companyId,
+        before.assetId,
+        {
+          kind: "revaluation_event",
+          id: eventId,
+          createdAt: before.createdAt,
+          journalEntryId: before.journalEntryId,
+          assetBalanceDelta: before.assetBalanceDelta,
+        },
+        ctx,
+      );
+      return;
+    }
+
     if (before.assetBalanceDelta == null) {
       throw new LegacyAssetEventBalanceMissingError(
         "لا يمكن حذف إعادة التقييم لأنها مُسجَّلة قبل تحديث تتبّع الأرصدة (task #157). يرجى تعديل أرصدة الأصل يدوياً.",
@@ -3455,12 +3804,30 @@ export class DatabaseStorage implements IStorage {
     companyId: number,
     eventId: number,
     ctx?: AuditContext,
+    opts?: { cascade?: boolean },
   ): Promise<void> {
     const [before] = await db
       .select()
       .from(disposals)
       .where(and(eq(disposals.id, eventId), eq(disposals.companyId, companyId)));
     if (!before) return;
+
+    if (opts?.cascade) {
+      await cascadeDeleteAssetEvent(
+        companyId,
+        before.assetId,
+        {
+          kind: "disposal",
+          id: eventId,
+          createdAt: before.createdAt,
+          journalEntryId: before.journalEntryId,
+          assetBalanceDelta: before.assetBalanceDelta,
+        },
+        ctx,
+      );
+      return;
+    }
+
     if (before.assetBalanceDelta == null) {
       throw new LegacyAssetEventBalanceMissingError(
         "لا يمكن حذف الاستبعاد لأنه مُسجَّل قبل تحديث تتبّع الأرصدة (task #157). يرجى تعديل حالة الأصل وأرصدته يدوياً.",

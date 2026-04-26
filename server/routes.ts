@@ -2561,6 +2561,14 @@ async function registerFixedAssetRoutes(app: Express) {
       }
       const companyId = cid(req);
       const ctx = userCtx(req);
+      // Task #262: opt-in cascade — when present, the storage layer reverses
+      // every later event of any kind on the same asset (latest first) before
+      // reversing this row, all in one transaction. Accepts the standard
+      // truthy spellings so curl, fetch, and form submits all just work.
+      const cascadeRaw = req.query.cascade;
+      const cascade =
+        cascadeRaw === "true" || cascadeRaw === "1" || cascadeRaw === "yes";
+      const opts = { cascade };
       // Cross-check ownership against the underlying event row.
       const events =
         kind === "impairment"
@@ -2574,11 +2582,11 @@ async function registerFixedAssetRoutes(app: Express) {
         return;
       }
       if (kind === "impairment") {
-        await storage.deleteImpairmentEvent(companyId, id, ctx);
+        await storage.deleteImpairmentEvent(companyId, id, ctx, opts);
       } else if (kind === "revaluation") {
-        await storage.deleteRevaluationEvent(companyId, id, ctx);
+        await storage.deleteRevaluationEvent(companyId, id, ctx, opts);
       } else {
-        await storage.deleteDisposal(companyId, id, ctx);
+        await storage.deleteDisposal(companyId, id, ctx, opts);
       }
       res.status(204).send();
     } catch (err: any) {
