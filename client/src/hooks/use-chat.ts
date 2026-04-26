@@ -45,6 +45,8 @@ const AFFECTED_KEYS: Record<string, ReadonlyArray<readonly unknown[]>> = {
   "journal-entries": [["/api/journal-entries"]],
   accounts: [["/api/accounts"]],
   "fixed-assets": [["/api/fixed-assets"]],
+  "asset-categories": [["/api/asset-categories"]],
+  "depreciation-runs": [["/api/depreciation-runs"]],
   employees: [["/api/hr/employees"]],
   attendance: [["/api/hr/attendance"]],
   leaves: [["/api/hr/leaves"]],

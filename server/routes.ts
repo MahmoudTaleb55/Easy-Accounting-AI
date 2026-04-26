@@ -1489,11 +1489,16 @@ export async function registerRoutes(
     delete_sales_invoice: [
       "sales-invoices", "customers", "journal-entries", "accounts", "insights", "reports",
     ],
+    create_fixed_asset: [
+      "fixed-assets", "asset-categories", "depreciation-runs",
+      "journal-entries", "accounts", "insights", "reports",
+    ],
     // Read-only tools below intentionally have no side effects to invalidate.
     list_accounts: [],
     list_transactions: [],
     list_employees: [],
     list_fixed_assets: [],
+    list_asset_categories: [],
     get_financial_summary: [],
     generate_report: [],
     generate_excel_document: [],
@@ -1633,7 +1638,20 @@ Your job is to EXECUTE — not just answer. You have real tools that write to th
 • list_employees, create_employee, record_attendance, record_leave.
 
 ═══ FIXED ASSETS ═══
-• list_fixed_assets.
+• list_fixed_assets — show what's already in the register.
+• list_asset_categories — fetch category ids + default useful-life. ALWAYS call this before create_fixed_asset.
+• create_fixed_asset — capitalise an invoice line as a long-lived asset. Auto-generates the depreciation schedule and posts ONE capitalising journal entry (DR asset cost, CR cash/AP) — never an expense.
+
+CAPITALISATION RULES — when an invoice arrives:
+1. Long-lived items (expected useful life > 12 months) ALWAYS go through create_fixed_asset, NEVER add_quick_transaction:
+   • Furniture & fixtures: desks, chairs, cabinets, shelving, lighting fixtures.
+   • Equipment & tools: laptops, monitors, printers, servers, machinery, power tools, kitchen equipment.
+   • Vehicles: cars, trucks, motorcycles, forklifts.
+2. Small consumables and short-life items stay as expenses via add_quick_transaction:
+   stationery, cleaning supplies, food/drinks, fuel, batteries, light bulbs, software subscriptions, repairs that don't extend useful life.
+3. For an invoice with multiple capitalisable lines, call create_fixed_asset ONCE per line (and once per unit when quantity > 1) so each unit has its own depreciation schedule. Only group when the user explicitly asks (e.g. "treat the 10 chairs as one asset").
+4. Always reuse the invoice's line description for \`name\` and the invoice date for both \`acquisitionDate\` and \`inServiceDate\` unless the user states otherwise. Generate a short \`code\` like FA-YYYY-NNNN or DESK-YYYY-N.
+5. NEVER fall back to generate_excel_document for a capitalisable purchase — book it through create_fixed_asset. Excel export is only appropriate when the user explicitly asks for a spreadsheet.
 
 ═══ CUSTOM OFFICE DOCUMENTS ═══
 • generate_excel_document — build any custom .xlsx (multi-sheet, headers + rows).
@@ -1644,7 +1662,7 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
 ═══ EXECUTION RULES ═══
 1. The user describes — you execute. Never promise; act, then confirm in one short line.
 2. Use list_accounts before any create_journal_entry. Debits MUST equal credits.
-3. For receipt/invoice images: extract amount + vendor, then call add_quick_transaction.
+3. For receipt/invoice images: extract amount + vendor + each line. Then for each line apply the FIXED ASSETS capitalisation rules — long-lived items (furniture, equipment, vehicles, machinery, …) MUST go through create_fixed_asset, while short-life consumables and services go through add_quick_transaction. Never expense a capitalisable purchase, and never offer an Excel export as a substitute for booking it.
 4. When the user asks for an Excel/Word/PowerPoint that isn't a standard financial report,
    use the matching generate_*_document tool. Don't paste the data into chat — produce a real file.
 5. Workspace currency is ${currency}. Use it for all amounts.
@@ -1730,7 +1748,8 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
           //     transaction id the tool surfaces in modelResult.
           if (
             firstJournalEntryId == null &&
-            tc.function.name === "create_journal_entry" &&
+            (tc.function.name === "create_journal_entry" ||
+              tc.function.name === "create_fixed_asset") &&
             (result as any).modelResult?.ok &&
             typeof (result as any).modelResult?.journalEntryId === "number"
           ) {
