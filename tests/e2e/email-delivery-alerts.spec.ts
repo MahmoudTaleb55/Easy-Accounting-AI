@@ -1628,7 +1628,240 @@ async function seedRecipientHistory(opts: {
 }
 
 // ===========================================================================
-// 7) Alert-history cursor input validation — sibling to the recent-alerts
+// 7) retryMinutes override beats env value — proves the per-workspace column
+//    drives the retry-pass window, not the EMAIL_DELIVERY_ALERT_RETRY_MINUTES
+//    env fallback. Without this assertion a refactor that accidentally read
+//    only the env value would still pass every other test in this file
+//    (the retry pass would simply use the wrong number) but operators who
+//    set a non-default override would silently get the env behaviour
+//    instead — the same failure mode the symmetric dedupe coverage in
+//    section 6 was added to prevent.
+//
+//    Mechanism: the retry pass (`runRetryPass` in
+//    server/auth/email-delivery-alerts.ts) consults
+//    `email_delivery_alert_recipients` for any `status='failed'` row whose
+//    `attempted_at` is within the configured window AND whose alert id has
+//    no later `status='sent'` row for the same address. We pre-seed a
+//    single 30-minute-old failed row for every workspace owner — both
+//    hung off a real parent alert row, because the retry pass joins
+//    recipients to alerts via `alert_id` (synthetic UUIDs are silently
+//    dropped, unlike the dedupe path in section 6) — then run two
+//    evaluator passes back-to-back with different override values. The
+//    30-min-old rows are *outside* a 10-minute window (no candidates,
+//    `retried=0`) but *inside* a 120-minute window (every owner re-sent,
+//    `retried=ownerCount`). Same fixture, two outcomes — driven entirely
+//    by the per-workspace override.
+//
+//    No failure events are seeded, so the threshold check below the
+//    retry pass returns `below_threshold` and `fired=false` in both
+//    phases — isolating the retry-pass behaviour from the threshold,
+//    cooldown, dedupe, and alert-row-write paths so a regression in any
+//    of those can't masquerade as a retry-window regression here.
+//
+//    Pre-seeding *every* owner (not just OWNER_A) keeps the assertion
+//    deterministic regardless of whether section 4 — which idempotently
+//    plants OWNER_B in this workspace — has already run, and uses the
+//    NODE_ENV-gated email stub so the test doesn't depend on Resend.
+// ===========================================================================
+test.describe("delivery-alert retryMinutes override beats env @alerts", () => {
+  test.use({ storageState: ROLE_FILES.owner });
+
+  test.beforeAll(async () => {
+    // Plant the second owner regardless of whether section 4 ran first,
+    // so the assertion below is deterministic in isolation (e.g. when a
+    // developer runs `npx playwright test -g "retryMinutes override"`).
+    // Idempotent: section 4 calls the same helper. Either way, this
+    // workspace ends up with the {OWNER_A, OWNER_B} owner pair the test
+    // pre-seeds prior-failure history for.
+    await ensureSecondOwner();
+  });
+
+  test.beforeEach(async ({ request }) => {
+    // The FK on `email_delivery_alert_recipients.alert_id` (restored by
+    // migration 0017) cascades the per-recipient rows when the parent
+    // alert is deleted, so a single `resetAlertState()` clears both
+    // tables for the dedicated workspace and the retry pass starts from
+    // zero candidates. Email stub starts cleared so a failed previous
+    // run can't leak in-process state into this case.
+    await resetAlertState();
+    await clearEmailStub(request);
+  });
+
+  test.afterAll(async ({ request }) => {
+    // Best-effort: don't let the stub linger past this block — a later
+    // spec (or the next `npx playwright test` run reusing the dev
+    // server) must see the real transport again. If the dev server has
+    // already gone away the request just throws and we move on.
+    try {
+      await clearEmailStub(request);
+    } catch {
+      /* server gone — nothing to clear */
+    }
+  });
+
+  test("30-min-old failure is outside retryMinutes=10 (no retry) but inside retryMinutes=120 (retry pass re-sends)", async ({
+    request,
+  }) => {
+    // Stub Resend so every retry send always succeeds — we're not
+    // testing the transport here, we're testing which knob drives the
+    // retry-pass window.
+    await installEmailStub(request, []);
+
+    // The workspace owner pair is fixed by `ensureSecondOwner()` (in
+    // beforeAll) plus the dedicated setup — listing them once and
+    // pinning both phases to the same number keeps the assertion
+    // explicit instead of hard-coding "2".
+    const ownerEmails = [OWNER_A_EMAIL, OWNER_B_EMAIL];
+    const ownerCount = ownerEmails.length;
+
+    // ---------------------------------------------------------------
+    // Phase 1 — retryMinutes=10. Every owner has a 30-min-old prior
+    // failure, OUTSIDE the 10-minute window, so the retry pass must
+    // NOT re-attempt any address (`retried=0`).
+    // ---------------------------------------------------------------
+    await writeSettings(request, {
+      absoluteThreshold: 3,
+      cooldownMinutes: 360,
+      emailEnabled: true,
+      retryMinutes: 10,
+    });
+    await seedFailedAlertRecipients({
+      emails: ownerEmails,
+      minutesAgo: 30,
+    });
+
+    const out1 = (await evaluate(request)) as EvaluateOutcome & {
+      retried?: number;
+    };
+    // No failure events seeded → threshold check returns
+    // `below_threshold` and the alert-row-write path is skipped, so
+    // `retried` is the only signal driven by the override.
+    expect(
+      out1.fired,
+      `phase 1: no failure events seeded — evaluator must NOT fire (got ${JSON.stringify(out1)})`,
+    ).toBe(false);
+    expect(
+      out1.reason,
+      `phase 1: expected below_threshold, got ${JSON.stringify(out1)}`,
+    ).toBe("below_threshold");
+    expect(
+      out1.retried,
+      `retryMinutes=10 must NOT re-attempt a 30-min-old failure for any owner — got ${JSON.stringify(out1)}`,
+    ).toBe(0);
+
+    // Reset between phases — we need the retry-pass input to be
+    // EXACTLY the pre-seeded 30-min-old failed rows, not the alert /
+    // recipient rows phase 1 may have appended (a future regression
+    // that *did* re-send under retryMinutes=10 would otherwise leave
+    // a fresh `attempted_at = NOW()` 'sent' row that suppresses the
+    // candidate under retryMinutes=120 *regardless* of the override
+    // and prove nothing). Same workspace, same owners, same fixture.
+    await resetAlertState();
+
+    // ---------------------------------------------------------------
+    // Phase 2 — retryMinutes=120. The same 30-min-old failure is now
+    // INSIDE the 120-minute window, so the retry pass must re-attempt
+    // every owner. The stub makes every send succeed, so `retried`
+    // collapses to `ownerCount` — that's how we prove the override
+    // value, not the env fallback, drove the outcome.
+    // ---------------------------------------------------------------
+    await writeSettings(request, {
+      absoluteThreshold: 3,
+      cooldownMinutes: 360,
+      emailEnabled: true,
+      retryMinutes: 120,
+    });
+    await seedFailedAlertRecipients({
+      emails: ownerEmails,
+      minutesAgo: 30,
+    });
+
+    const out2 = (await evaluate(request)) as EvaluateOutcome & {
+      retried?: number;
+    };
+    expect(
+      out2.fired,
+      `phase 2: no failure events seeded — evaluator must NOT fire (got ${JSON.stringify(out2)})`,
+    ).toBe(false);
+    expect(
+      out2.reason,
+      `phase 2: expected below_threshold, got ${JSON.stringify(out2)}`,
+    ).toBe("below_threshold");
+    expect(
+      out2.retried,
+      `retryMinutes=120 must re-attempt a 30-min-old failure for every owner — got ${JSON.stringify(out2)}`,
+    ).toBe(ownerCount);
+  });
+});
+
+/**
+ * Insert a real `email_delivery_alerts` row plus one
+ * `email_delivery_alert_recipients` "previously failed N minutes ago" row
+ * per address — all hung off the same alert id — so the retry pass has a
+ * deterministic candidate set to consult.
+ *
+ * Unlike `seedRecipientHistory` (which feeds the dedupe gate via the
+ * `(company_id, reason, email, attempted_at)` covering index and never
+ * joins back to the parent alert), the retry pass joins recipients to
+ * the alert table via `alert_id` (`byId.get(...)` in
+ * `listEmailDeliveryAlertRetries`) and silently drops any row whose
+ * parent alert doesn't exist. So the parent row has to be real — the
+ * synthetic-UUID shortcut the dedupe seeder uses won't fly here.
+ *
+ * The `failure_count` / `send_count` / `window_hours` / `snapshot`
+ * values written on the alert row are only re-read by the retry pass to
+ * repopulate the alert email body; the retry-pass *gating* itself
+ * depends solely on `retryMinutes` vs. `attempted_at`, which is the
+ * point of this seeder.
+ */
+async function seedFailedAlertRecipients(opts: {
+  emails: string[];
+  minutesAgo: number;
+  reason?: "absolute" | "ratio";
+}): Promise<string> {
+  const { companyId } = await getShared();
+  const reason = opts.reason ?? "absolute";
+  const alertId = crypto.randomUUID();
+  const client = new pg.Client({ connectionString: requiredDbUrl() });
+  await client.connect();
+  try {
+    await client.query(
+      `INSERT INTO email_delivery_alerts
+         (id, company_id, fired_at, window_hours, failure_count, send_count,
+          reason, snapshot, email_sent, email_recipients)
+       VALUES ($1, $2, NOW() - ($3::int * INTERVAL '1 minute'),
+               24, 3, 0, $4, $5::jsonb, false, 0)`,
+      [
+        alertId,
+        companyId,
+        opts.minutesAgo,
+        reason,
+        JSON.stringify({ bounced: 3, complained: 0, send_failed: 0 }),
+      ],
+    );
+    for (const email of opts.emails) {
+      await client.query(
+        `INSERT INTO email_delivery_alert_recipients
+           (alert_id, company_id, email, reason, status, error, attempted_at)
+         VALUES ($1, $2, $3, $4, 'failed', 'send_failed',
+                 NOW() - ($5::int * INTERVAL '1 minute'))`,
+        [
+          alertId,
+          companyId,
+          email.trim().toLowerCase(),
+          reason,
+          opts.minutesAgo,
+        ],
+      );
+    }
+    return alertId;
+  } finally {
+    await client.end();
+  }
+}
+
+// ===========================================================================
+// 8) Alert-history cursor input validation — sibling to the recent-alerts
 //    pagination spec (section 4) but driven entirely at the API layer. The
 //    pagination spec proves the *happy path* through the UI; this block
 //    locks the *input contract* of GET /api/auth/email-delivery-alerts/
