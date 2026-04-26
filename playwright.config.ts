@@ -72,6 +72,7 @@ export default defineConfig({
         /delivery-alert-audit\.setup\.ts/,
         /delivery-alert-audit\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
+        /depreciation-asset-event-journal-link\.spec\.ts/,
         /journal-entry-deeplinks\.spec\.ts/,
         /dev-only-routes-production-gate\.spec\.ts/,
         /avatar-crop\.spec\.ts/,
@@ -357,6 +358,33 @@ export default defineConfig({
       use: {
         viewport: { width: 1280, height: 800 },
         storageState: ".playwright/payroll-journal-link-state.json",
+      },
+    },
+    {
+      // One-time setup that provisions a dedicated workspace and seeds
+      // four JEs — each linked back to a different upstream row
+      // (depreciation_run, impairment_event, revaluation_event,
+      // disposal) — so the spec can exercise the four
+      // `JournalEntrySourceKind` branches the payroll-journal-link
+      // suite doesn't already cover. See
+      // `depreciation-asset-event-journal-link.setup.ts`.
+      name: "depreciation-asset-event-journal-link-setup",
+      testMatch: /depreciation-asset-event-journal-link\.setup\.ts/,
+    },
+    {
+      // Locks down the "From: …" source-link badge contract on the
+      // four `JournalEntrySourceKind` branches the payroll suite
+      // doesn't cover — depreciation_run, impairment, revaluation,
+      // disposal — across the JE row, JE detail dialog, and Recent
+      // admin activity feed. See
+      // `depreciation-asset-event-journal-link.spec.ts`.
+      name: "depreciation-asset-event-journal-link",
+      testMatch: /depreciation-asset-event-journal-link\.spec\.ts/,
+      dependencies: ["depreciation-asset-event-journal-link-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+        storageState:
+          ".playwright/depreciation-asset-event-journal-link-state.json",
       },
     },
     {
