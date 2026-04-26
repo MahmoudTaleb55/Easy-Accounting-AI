@@ -226,14 +226,25 @@ export default function ChartOfAccountsPage() {
         locale === "ar"
           ? "ستظهر هنا أسطر القيود فور ترحيل أول قيد يستخدم الحساب."
           : "Lines will appear here as soon as a journal entry posts to this account.",
-      ledgerEmptyPeriod:
+      // Period-aware empty title — substitutes the active range so users can
+      // tell at a glance which window they're looking through. Date strings
+      // are formatted by the sheet (it owns the locale + period context) and
+      // spliced in via the {start}/{end} placeholders below.
+      ledgerEmptyPeriodRange:
         locale === "ar"
-          ? "لا حركة على هذا الحساب في هذه الفترة"
-          : "No postings to this account in this period",
+          ? "لا حركة على هذا الحساب بين {start} و{end}"
+          : "No postings between {start} and {end}",
       ledgerEmptyPeriodHint:
         locale === "ar"
           ? "جرّب توسيع نطاق الفترة من الأعلى لاستعراض المزيد من الحركات."
           : "Try widening the period range above to see more postings.",
+      // Inline jump-to-YTD shortcut, surfaced when the active window is
+      // narrower than the whole year so users don't have to hunt for the
+      // chip dropdown to broaden their view.
+      ledgerEmptyPeriodSwitchYtd:
+        locale === "ar"
+          ? "عرض منذ بداية السنة"
+          : "Switch to year-to-date",
       ledgerOpenAria: locale === "ar" ? "فتح حركة الحساب" : "Open account ledger",
       ledgerJEAria:
         locale === "ar" ? "فتح قيد اليومية" : "Open journal entry",
@@ -761,8 +772,9 @@ export default function ChartOfAccountsPage() {
           je: t.ledgerJE,
           empty: t.ledgerEmpty,
           emptyHint: t.ledgerEmptyHint,
-          emptyPeriod: t.ledgerEmptyPeriod,
+          emptyPeriodRange: t.ledgerEmptyPeriodRange,
           emptyPeriodHint: t.ledgerEmptyPeriodHint,
+          emptyPeriodSwitchYtd: t.ledgerEmptyPeriodSwitchYtd,
           jeAria: t.ledgerJEAria,
           totalDebit: t.ledgerTotalDebit,
           totalCredit: t.ledgerTotalCredit,
@@ -1099,8 +1111,11 @@ interface AccountLedgerSheetLabels {
   je: string
   empty: string
   emptyHint: string
-  emptyPeriod: string
+  // Template containing `{start}` and `{end}` placeholders that the sheet
+  // fills in with locale-formatted dates from the active period range.
+  emptyPeriodRange: string
   emptyPeriodHint: string
+  emptyPeriodSwitchYtd: string
   jeAria: string
   totalDebit: string
   totalCredit: string
@@ -1142,7 +1157,7 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
   const { locale } = useLocale()
   const fmt = useFormatMoney()
   const dfLocale = locale === "ar" ? ar : enUS
-  const { period } = usePeriod()
+  const { period, setPeriodKey } = usePeriod()
 
   // Reuse the journal-entries cache so flipping between this drawer and the
   // /app/journal page is instantaneous. Only fetch when the drawer opens to
@@ -1349,12 +1364,62 @@ function AccountLedgerSheet({ account, onClose, labels }: AccountLedgerSheetProp
               className="rounded-md border border-dashed border-border px-4 py-8 text-center"
               data-testid={hasAnyHistory ? "empty-account-ledger-period" : "empty-account-ledger"}
             >
-              <p className="text-sm font-medium text-foreground">
-                {hasAnyHistory ? labels.emptyPeriod : labels.empty}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {hasAnyHistory ? labels.emptyPeriodHint : labels.emptyHint}
-              </p>
+              {hasAnyHistory ? (
+                <>
+                  {/* Spell out the active window so users immediately see
+                      *which* period they're looking through, mirroring the
+                      chip's start/end formatting (short month + day, year on
+                      the end). Splice the formatted dates into the localized
+                      template so RTL/LTR phrasing stays natural. */}
+                  <p
+                    className="text-sm font-medium text-foreground"
+                    data-testid="text-ledger-empty-period-range"
+                  >
+                    {labels.emptyPeriodRange
+                      .replace(
+                        "{start}",
+                        period.start.toLocaleDateString(
+                          locale === "ar" ? "ar-SA" : "en-US",
+                          { month: "short", day: "numeric" },
+                        ),
+                      )
+                      .replace(
+                        "{end}",
+                        period.end.toLocaleDateString(
+                          locale === "ar" ? "ar-SA" : "en-US",
+                          { month: "short", day: "numeric", year: "numeric" },
+                        ),
+                      )}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {labels.emptyPeriodHint}
+                  </p>
+                  {/* When the window is already YTD there's nothing to
+                      broaden to — suppress the shortcut to avoid a no-op
+                      action that would just reselect the current key. */}
+                  {period.key !== "ytd" && (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      onClick={() => setPeriodKey("ytd")}
+                      className="mt-2 h-auto p-0 text-xs"
+                      data-testid="button-ledger-empty-switch-ytd"
+                    >
+                      {labels.emptyPeriodSwitchYtd}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-foreground">
+                    {labels.empty}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {labels.emptyHint}
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto table-sticky-first">
