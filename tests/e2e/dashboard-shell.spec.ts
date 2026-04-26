@@ -34,29 +34,25 @@ const COMBOS: { locale: Locale; theme: Theme }[] = [
 ];
 
 async function gotoDashboard(page: Page, locale: Locale, theme: Theme) {
-  // Set locale + theme before the SPA mounts so the very first paint is
-  // correct. The seeded user's `preferred_locale` is pinned to 'en' once,
-  // in `dashboard-shell.setup.ts` via `ensureUser({ preferredLocale })`,
-  // so we don't need a per-test PATCH to keep `LocaleSync` from
-  // clobbering the localStorage-seeded value:
-  //   • For EN variants the server preference matches what we seed, so
-  //     `LocaleSync` is a no-op either way.
-  //   • For AR variants `LocaleSync` sees the user's stored 'en', but
-  //     its preloaded-localStorage guard (HAD_PRELOADED_LOCALE) means
-  //     it just records what the server said and *doesn't* call
-  //     `setLocale`, leaving the in-memory locale at the AR value the
-  //     `addInitScript` wrote before React booted.
-  // Removing the per-test PATCH is the whole point of task #195: the
-  // language preference is now expressed once in the setup helper
-  // signature instead of being silently re-PATCHed before every goto.
-  await page.addInitScript(
-    ({ locale, theme }) => {
-      window.localStorage.setItem("app.locale", locale);
-      window.localStorage.setItem("app.theme", theme);
-    },
-    { locale, theme },
-  );
-  await page.goto("/app", { waitUntil: "networkidle" });
+  // Pin locale via the `?lang=` URL override and theme via localStorage
+  // before the SPA mounts so the very first paint is correct.
+  //
+  // The URL override is the durable way to pin the locale for a test:
+  // it's honoured by both `LocaleProvider`'s initializer AND by
+  // `LocaleSync`'s early-return guard (see
+  // `client/src/components/layout/main-layout.tsx`), so the in-memory
+  // locale survives `/api/auth/user` resolving regardless of what
+  // `preferred_locale` the seeded user happens to carry. That means
+  // these snapshots no longer depend on `dashboard-shell.setup.ts`
+  // anchoring `preferred_locale` to 'en' to keep `LocaleSync`'s
+  // preloaded-localStorage guard from misfiring on the AR variants.
+  //
+  // Theme is still safe to seed via localStorage because nothing
+  // reconciles it from the server.
+  await page.addInitScript((theme) => {
+    window.localStorage.setItem("app.theme", theme);
+  }, theme);
+  await page.goto(`/app?lang=${locale}`, { waitUntil: "networkidle" });
   await page
     .locator('[data-testid="kpi-strip"]')
     .waitFor({ state: "visible", timeout: 15_000 });

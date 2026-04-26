@@ -793,11 +793,22 @@ test.describe("delivery-alert banner @alerts", () => {
     });
     try {
       const page = await ctx.newPage();
+      // Pin English via the `?lang=` URL override so the shell mounts in
+      // a known locale even though our assertions only target locale-
+      // agnostic testids — it keeps any failure screenshots readable.
+      // Seeding `localStorage["app.locale"]` alone isn't enough here:
+      // the viewer's stored `preferredLocale` may still be Arabic, and
+      // `LocaleSync` (in `client/src/components/layout/main-layout.tsx`)
+      // would clobber the localStorage value moments after first paint
+      // when `/api/auth/user` resolves. The URL override is honoured by
+      // both `LocaleProvider`'s initializer AND `LocaleSync`'s early-
+      // return guard, so the locale stays English for the lifetime of
+      // the page. Theme is still safe to seed via localStorage because
+      // nothing reconciles it from the server.
       await page.addInitScript(() => {
-        window.localStorage.setItem("app.locale", "en");
         window.localStorage.setItem("app.theme", "light");
       });
-      await page.goto("/app", { waitUntil: "domcontentloaded" });
+      await page.goto("/app?lang=en", { waitUntil: "domcontentloaded" });
       // Wait for the shell to mount before asserting absence so we're not
       // racing the initial render.
       await expect(page.locator('[data-testid="app-topbar"]').first()).toBeVisible({

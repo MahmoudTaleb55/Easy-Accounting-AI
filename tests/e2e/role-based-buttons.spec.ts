@@ -35,12 +35,23 @@ const READ_ONLY_TOOLTIP = "You don't have permission to make changes here";
 const OWNER_ONLY_TOOLTIP = "Only the workspace owner can do this";
 
 async function gotoApp(page: Page, urlPath: string) {
-  // Pin locale + theme so the tooltip text we assert below is in English.
+  // Pin English via the `?lang=` URL override so the tooltip text we
+  // assert below stays in English. Seeding `localStorage["app.locale"]`
+  // alone isn't enough: each role's user row carries its own
+  // `preferredLocale`, and `LocaleSync` (in
+  // `client/src/components/layout/main-layout.tsx`) reads it off
+  // `/api/auth/user` once the auth query resolves and would call
+  // `setLocale()` with it, clobbering any localStorage-seeded value
+  // moments after first paint. The URL override is honoured by both
+  // `LocaleProvider`'s initializer AND `LocaleSync`'s early-return
+  // guard, so the locale stays English for the lifetime of the page.
+  // Theme is still safe to seed via localStorage because nothing
+  // reconciles it from the server.
   await page.addInitScript(() => {
-    window.localStorage.setItem("app.locale", "en");
     window.localStorage.setItem("app.theme", "light");
   });
-  await page.goto(urlPath, { waitUntil: "networkidle" });
+  const sep = urlPath.includes("?") ? "&" : "?";
+  await page.goto(`${urlPath}${sep}lang=en`, { waitUntil: "networkidle" });
 }
 
 /**
