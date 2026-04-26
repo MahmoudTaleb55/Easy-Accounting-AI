@@ -24,6 +24,25 @@ export default defineConfig({
         timeout: 60_000,
         stdout: "ignore",
         stderr: "pipe",
+        // Task #244: escalate the runtime workspace-isolation guard from
+        // "warn once per call site" to "throw" inside the dev server that
+        // backs the e2e suite. The static lint at
+        // tests/e2e/db-isolation-allowlist.spec.ts pins the *set of files*
+        // allowed to import `db`, but it cannot catch a regression where
+        // an already-allowlisted file (e.g. server/storage.ts,
+        // server/routes.ts) gains a *new* `db.` call site that runs
+        // outside withCompanyScope / withRlsBypass / withUnscopedDb.
+        // Wiring WORKSPACE_ISOLATION_GUARD=throw into the e2e webServer
+        // turns that regression into a 500 on the offending request,
+        // which fails the e2e suite with a stack trace pointing at the
+        // unwrapped call site instead of buried in stderr where it would
+        // be missed. The env var is set on the webServer process only —
+        // Playwright workers do NOT inherit it, so the in-process
+        // companion spec at tests/e2e/db-unscoped-runtime-guard.spec.ts
+        // can still exercise both the warn and throw paths deterministically.
+        env: {
+          WORKSPACE_ISOLATION_GUARD: "throw",
+        },
       },
   projects: [
     {

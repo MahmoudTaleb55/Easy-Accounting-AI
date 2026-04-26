@@ -35,6 +35,18 @@ import {
  * The guard runs only when `process.env.NODE_ENV !== "production"`.
  * Playwright workers run with NODE_ENV unset (or `"test"`), so the
  * warning code path is live in this spec.
+ *
+ * Task #244 escalates the same guard for CI: when
+ * `WORKSPACE_ISOLATION_GUARD=throw` is in the environment, the warning
+ * is replaced by a thrown `Error`, so a regression — a new unwrapped
+ * `db.` call in a request handler — fails the e2e suite with a clear
+ * stack trace instead of merely printing to stderr. The env var is
+ * plumbed into the dev server that backs the suite via
+ * `playwright.config.ts → webServer.env`. The companion describe block
+ * below ("WORKSPACE_ISOLATION_GUARD=throw escalation") exercises the
+ * throw path in-process — it stands in for the planted-regression
+ * scenario the task calls for, without permanently leaving an
+ * unwrapped `db.` call inside `server/`.
  */
 
 test.describe("workspace isolation runtime guard", () => {
@@ -120,5 +132,84 @@ test.describe("workspace isolation runtime guard", () => {
       void db.insert;
     });
     expect(warnings, `unexpected warnings: ${warnings.join("\n---\n")}`).toEqual([]);
+  });
+});
+
+/**
+ * Task #244: opt-in CI escalation. With `WORKSPACE_ISOLATION_GUARD=throw`
+ * in the environment, the runtime guard inside `activeDb()` swaps its
+ * `console.warn` for a thrown `Error` carrying the same message + stack
+ * trace. That is what the e2e webServer (see
+ * `playwright.config.ts → webServer.env`) runs with, so a regression in
+ * an already-allowlisted file (a new `db.select(...)` that forgets to
+ * sit inside `withCompanyScope` / `withRlsBypass` / `withUnscopedDb`)
+ * surfaces as a 500 on the offending request and fails the e2e suite —
+ * exactly the planted-regression scenario the task calls for. The
+ * worker process running this spec does NOT inherit the env var (it is
+ * set on the webServer child only), so we toggle it ourselves around
+ * each test and restore it on cleanup. That keeps the warn-path block
+ * above deterministic and lets us stand in for the planted regression
+ * here without ever leaving an unwrapped `db.` call inside `server/`.
+ */
+test.describe("WORKSPACE_ISOLATION_GUARD=throw escalation", () => {
+  let originalGuard: string | undefined;
+
+  test.beforeEach(() => {
+    __resetUnscopedDbWarningsForTesting();
+    originalGuard = process.env.WORKSPACE_ISOLATION_GUARD;
+    process.env.WORKSPACE_ISOLATION_GUARD = "throw";
+  });
+
+  test.afterEach(() => {
+    if (originalGuard === undefined) {
+      delete process.env.WORKSPACE_ISOLATION_GUARD;
+    } else {
+      process.env.WORKSPACE_ISOLATION_GUARD = originalGuard;
+    }
+    __resetUnscopedDbWarningsForTesting();
+  });
+
+  test("an unscoped db. access throws with a call-site-pointing message", () => {
+    // Stand-in for the planted-regression scenario the task describes:
+    // an unwrapped `db.select(...)` inside a request handler. Under
+    // throw mode the access raises a clear error rather than logging
+    // to stderr, so the e2e suite would fail loudly instead of silently
+    // accruing the warning.
+    let caught: unknown;
+    try {
+      void db.select;
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught, "expected an Error to be thrown").toBeInstanceOf(Error);
+    const message = (caught as Error).message;
+    expect(message).toContain("[workspace-isolation] Unscoped db. call detected");
+    // The thrown message carries the same stack-frame call-site marker
+    // as the warn-path message — that is what points a future reviewer
+    // at the offending file/line.
+    expect(message).toContain("db-unscoped-runtime-guard.spec.ts");
+  });
+
+  test("db. access inside withCompanyScope does not throw under WORKSPACE_ISOLATION_GUARD=throw", async () => {
+    // The legitimate happy path: code reached from inside the per-request
+    // workspace scope continues to work even when the guard is escalated
+    // to throw mode. This is what protects the existing e2e suite from
+    // turning into a noise floor of 500s once the env var is wired in.
+    await withCompanyScope(1, async () => {
+      void db.select;
+      void db.insert;
+      void db.update;
+    });
+  });
+
+  test("db. access inside withUnscopedDb does not throw under WORKSPACE_ISOLATION_GUARD=throw", async () => {
+    // The deliberate-cross-tenant marker (used by pre-membership lookups
+    // in server/auth/middleware.ts) silences the throw the same way it
+    // silences the warning. This is the property that lets the e2e
+    // webServer run with the env var set without breaking sign-in.
+    await withUnscopedDb("test:audited-cross-tenant", async () => {
+      void db.select;
+      void db.insert;
+    });
   });
 });
