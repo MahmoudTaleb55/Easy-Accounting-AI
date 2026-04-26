@@ -1100,7 +1100,11 @@ export const extractedDocumentSchema = z.object({
   // receipts are vendor-side.
   direction: z.enum(["sales", "purchase"]).default("purchase"),
   counterparty: z.string().nullable().optional(),
-  language: z.enum(["ar", "en", "mixed"]).default("ar"),
+  // Smart Inbox officially supports four document languages plus a "mixed"
+  // bucket for bilingual receipts (very common for GCC VAT invoices that
+  // print Arabic and English side-by-side, or Swiss receipts that mix
+  // German and French). See task #345.
+  language: z.enum(["ar", "en", "de", "fr", "mixed"]).default("en"),
   lineItems: z
     .array(
       z.object({

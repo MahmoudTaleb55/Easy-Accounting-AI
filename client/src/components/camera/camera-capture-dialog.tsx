@@ -23,6 +23,7 @@ import {
   enhanceAndCompressDataUrl,
   enhanceAndCompressImageFile,
 } from "@/lib/image-enhance";
+import { isScannerSupported, scanDataUrl } from "@/lib/document-scanner";
 
 type Strings = {
   title: string;
@@ -46,6 +47,13 @@ type Strings = {
   insecureContext: string;
   tryAgain: string;
   uploadInstead: string;
+  // Scanner-stage micro-copy (task #345). Each badge is shown briefly
+  // under the captured preview so the operator can see whether the
+  // automatic edge-detection / perspective-correction pass succeeded
+  // before they hit Accept.
+  scanning: string;
+  scanReady: string;
+  scanRaw: string;
 };
 
 const I18N: Record<Locale, Strings> = {
@@ -78,6 +86,9 @@ const I18N: Record<Locale, Strings> = {
       "تتطلب الكاميرا اتصالاً آمناً (HTTPS) أو localhost.",
     tryAgain: "إعادة المحاولة",
     uploadInstead: "رفع صورة بدلاً من ذلك",
+    scanning: "جارٍ كشف حواف المستند…",
+    scanReady: "تم كشف حواف المستند",
+    scanRaw: "صورة خام (لم يتم كشف الحواف)",
   },
   en: {
     title: "Capture invoice with camera",
@@ -108,6 +119,9 @@ const I18N: Record<Locale, Strings> = {
     insecureContext: "Camera requires a secure connection (HTTPS) or localhost.",
     tryAgain: "Try again",
     uploadInstead: "Upload a file instead",
+    scanning: "Detecting document edges…",
+    scanReady: "Document edges detected",
+    scanRaw: "Raw image (no edges detected)",
   },
   de: {
     title: "Rechnung mit Kamera erfassen",
@@ -140,6 +154,9 @@ const I18N: Record<Locale, Strings> = {
       "Die Kamera erfordert eine sichere Verbindung (HTTPS) oder localhost.",
     tryAgain: "Erneut versuchen",
     uploadInstead: "Stattdessen Datei hochladen",
+    scanning: "Dokumentkanten werden erkannt…",
+    scanReady: "Dokumentkanten erkannt",
+    scanRaw: "Rohbild (keine Kanten erkannt)",
   },
   fr: {
     title: "Capturer la facture avec la caméra",
@@ -172,6 +189,9 @@ const I18N: Record<Locale, Strings> = {
       "La caméra nécessite une connexion sécurisée (HTTPS) ou localhost.",
     tryAgain: "Réessayer",
     uploadInstead: "Téléverser un fichier à la place",
+    scanning: "Détection des bords du document…",
+    scanReady: "Bords du document détectés",
+    scanRaw: "Image brute (aucun bord détecté)",
   },
 };
 
@@ -238,7 +258,20 @@ export function CameraCaptureDialog({
   const isRtl = locale === "ar";
   const webcamRef = useRef<Webcam>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // `rawSnapshot` is the unmodified data URL straight off the webcam,
+  // kept around so we always have a fallback the user can fall back to.
+  // `snapshot` is what we actually render (and ultimately upload) — it's
+  // the perspective-corrected output when the scanner succeeds, otherwise
+  // a copy of `rawSnapshot`. See task #345.
+  const [rawSnapshot, setRawSnapshot] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<string | null>(null);
+  // 'idle'      — no snapshot yet
+  // 'scanning'  — scanner pass in flight
+  // 'scanned'   — perspective-correction succeeded; preview is the output
+  // 'raw'       — scanner skipped/failed; preview is the unmodified frame
+  const [scanState, setScanState] = useState<
+    "idle" | "scanning" | "scanned" | "raw"
+  >("idle");
   const [facingMode, setFacingMode] = useState<"environment" | "user">(
     "environment",
   );
@@ -249,6 +282,13 @@ export function CameraCaptureDialog({
   // cleanest way to force a fresh getUserMedia() request after the user fixes
   // a permission issue or another app releases the camera.
   const [streamKey, setStreamKey] = useState(0);
+  // Monotonically-incrementing scan request id. Each capture / retake /
+  // close bumps this; the async scanner promise compares its captured id
+  // against the live one before applying its result. This kills the
+  // stale-result race where a user retakes (or closes the dialog) while
+  // a slow OpenCV.js pass is still pending and the late resolution would
+  // otherwise overwrite the new preview with the old corrected canvas.
+  const scanRequestIdRef = useRef(0);
 
   // Re-detect each time the dialog is opened so the user can fix permissions
   // and try again without a full reload.
@@ -283,30 +323,74 @@ export function CameraCaptureDialog({
       setError(t.unavailable);
       return;
     }
+    // Always show the raw frame immediately so the operator gets instant
+    // visual feedback while the (possibly slow, possibly WASM-bound)
+    // scanner runs in the background. If the scanner returns a perspective-
+    // corrected canvas, we silently swap the preview to it. If it bails
+    // out for any reason, the raw frame stays.
+    setRawSnapshot(shot);
     setSnapshot(shot);
+    // Bump first, then capture: any in-flight scan from the previous
+    // capture/retake now holds a stale id and its result will be ignored
+    // when it eventually resolves.
+    scanRequestIdRef.current += 1;
+    const myRequestId = scanRequestIdRef.current;
+    if (!isScannerSupported()) {
+      setScanState("raw");
+      return;
+    }
+    setScanState("scanning");
+    void scanDataUrl(shot, "image/jpeg", 0.95)
+      .then((scanned) => {
+        // Ignore any result that no longer belongs to the current capture.
+        if (scanRequestIdRef.current !== myRequestId) return;
+        if (scanned) {
+          setSnapshot(scanned);
+          setScanState("scanned");
+        } else {
+          setScanState("raw");
+        }
+      })
+      .catch(() => {
+        if (scanRequestIdRef.current !== myRequestId) return;
+        setScanState("raw");
+      });
   }, [t.unavailable]);
 
   const handleRetake = useCallback(() => {
+    // Invalidate any in-flight scan so its late resolution doesn't paint
+    // the just-discarded preview back over the live webcam view.
+    scanRequestIdRef.current += 1;
     setSnapshot(null);
+    setRawSnapshot(null);
+    setScanState("idle");
   }, []);
 
   const handleAccept = useCallback(async () => {
-    if (!snapshot) return;
+    // Prefer the scanned (perspective-corrected) frame if the scanner
+    // produced one; otherwise the raw frame. Both go through the same
+    // enhance/compress pipeline as drag-drop uploads so the back-end
+    // doesn't need to know which path produced the bytes — see
+    // server/routes.ts → registerDocumentRoutes.
+    const source = snapshot ?? rawSnapshot;
+    if (!source) return;
     setProcessing(true);
     try {
       const finalFile = await enhanceAndCompressDataUrl(
-        snapshot,
+        source,
         "invoice-camera",
       );
       onCapture(finalFile);
       setSnapshot(null);
+      setRawSnapshot(null);
+      setScanState("idle");
       onOpenChange(false);
     } catch {
       setError(t.processingFailed);
     } finally {
       setProcessing(false);
     }
-  }, [snapshot, onCapture, onOpenChange, t.processingFailed]);
+  }, [snapshot, rawSnapshot, onCapture, onOpenChange, t.processingFailed]);
 
   const handleSwitch = useCallback(() => {
     setFacingMode((m) => (m === "environment" ? "user" : "environment"));
@@ -455,7 +539,13 @@ export function CameraCaptureDialog({
       open={open}
       onOpenChange={(o) => {
         if (!o) {
+          // Bump the request id so any in-flight scanner promise from a
+          // capture taken before close resolves into a no-op instead of
+          // re-painting state on the *next* time this dialog is opened.
+          scanRequestIdRef.current += 1;
           setSnapshot(null);
+          setRawSnapshot(null);
+          setScanState("idle");
           setError(null);
           setProcessing(false);
         }
@@ -496,12 +586,33 @@ export function CameraCaptureDialog({
                 {error}
               </div>
             ) : snapshot ? (
-              <img
-                src={snapshot}
-                alt={t.previewAlt}
-                className="h-full w-full object-contain"
-                data-testid="img-camera-preview"
-              />
+              <>
+                <img
+                  src={snapshot}
+                  alt={t.previewAlt}
+                  className="h-full w-full object-contain"
+                  data-testid="img-camera-preview"
+                />
+                {scanState !== "idle" && (
+                  <div
+                    className={
+                      "pointer-events-none absolute bottom-2 left-2 right-2 mx-auto w-fit rounded px-2 py-1 text-xs " +
+                      (scanState === "scanned"
+                        ? "bg-emerald-600/90 text-white"
+                        : scanState === "scanning"
+                          ? "bg-black/60 text-white"
+                          : "bg-amber-600/90 text-white")
+                    }
+                    data-testid={`badge-camera-scan-${scanState}`}
+                  >
+                    {scanState === "scanning"
+                      ? t.scanning
+                      : scanState === "scanned"
+                        ? t.scanReady
+                        : t.scanRaw}
+                  </div>
+                )}
+              </>
             ) : (
               <Webcam
                 key={streamKey}

@@ -1,0 +1,100 @@
+/**
+ * Centralised localisation for Smart Inbox extraction error messages.
+ *
+ * The server (`server/services/document-extraction.ts` →
+ * `DocumentExtractionError`) persists a stable machine-readable code in
+ * `documents.errorMessage` instead of free-form text whenever it can.
+ * This module maps those codes to friendly, locale-specific copy.
+ *
+ * Codes are deliberately a closed set so we never silently render a
+ * server-controlled string. Anything not in the set is shown with a
+ * generic localized fallback plus the raw text underneath, which keeps
+ * us safe from prompt-injection-style content showing up in the UI but
+ * still gives the user something to copy/paste into a support request.
+ *
+ * See task #345.
+ */
+
+import type { Locale } from "@/contexts/locale-context";
+
+/**
+ * Stable codes the server may emit. Keep in sync with
+ * `ExtractionErrorCode` in `server/services/document-extraction.ts`.
+ */
+export type InboxErrorCode = "unsupported_language";
+
+const KNOWN_CODES: ReadonlySet<string> = new Set<InboxErrorCode>([
+  "unsupported_language",
+]);
+
+type ErrorCopy = {
+  /** Bold heading shown in the destructive callout. */
+  title: string;
+  /** Body explanation of what happened. */
+  body: string;
+  /** Suggested next action shown beneath the body, dimmer. */
+  hint: string;
+};
+
+const FALLBACK_TITLE: Record<Locale, string> = {
+  ar: "تعذّر قراءة المستند",
+  en: "Couldn't read this document",
+  de: "Dokument konnte nicht gelesen werden",
+  fr: "Impossible de lire ce document",
+};
+
+const FALLBACK_HINT: Record<Locale, string> = {
+  ar: "جرب صورة أوضح أو ملف أقل حجماً.",
+  en: "Try a clearer image or a smaller file.",
+  de: "Versuchen Sie es mit einem schärferen Bild oder einer kleineren Datei.",
+  fr: "Essayez une image plus nette ou un fichier plus petit.",
+};
+
+const COPY: Record<InboxErrorCode, Record<Locale, ErrorCopy>> = {
+  unsupported_language: {
+    ar: {
+      title: "لغة المستند غير مدعومة",
+      body: "ندعم حالياً المستندات بالعربية والإنجليزية والألمانية والفرنسية فقط.",
+      hint: "حاول رفع نسخة PDF الأصلية أو ترجم المستند إلى إحدى اللغات المدعومة.",
+    },
+    en: {
+      title: "Unsupported document language",
+      body: "We currently support documents in Arabic, English, German, and French only.",
+      hint: "Try uploading the original PDF or a version translated into one of the supported languages.",
+    },
+    de: {
+      title: "Nicht unterstützte Dokumentsprache",
+      body: "Derzeit werden nur Dokumente auf Arabisch, Englisch, Deutsch und Französisch unterstützt.",
+      hint: "Laden Sie das Original-PDF hoch oder eine in einer der unterstützten Sprachen übersetzte Version.",
+    },
+    fr: {
+      title: "Langue de document non prise en charge",
+      body: "Nous prenons actuellement en charge uniquement les documents en arabe, anglais, allemand et français.",
+      hint: "Essayez de téléverser le PDF original ou une version traduite dans l'une des langues prises en charge.",
+    },
+  },
+};
+
+export function isKnownInboxErrorCode(value: string): value is InboxErrorCode {
+  return KNOWN_CODES.has(value);
+}
+
+/**
+ * Resolve the error block copy for a given persisted `errorMessage`
+ * value and UI locale. Falls back to a generic localized message with
+ * the raw server text shown verbatim underneath.
+ */
+export function resolveInboxError(
+  errorMessage: string | null | undefined,
+  locale: Locale,
+): { title: string; body: string; hint: string } {
+  const raw = (errorMessage ?? "").trim();
+  if (raw && isKnownInboxErrorCode(raw)) {
+    return COPY[raw][locale] ?? COPY[raw].en;
+  }
+  return {
+    title: FALLBACK_TITLE[locale] ?? FALLBACK_TITLE.en,
+    body: raw || FALLBACK_TITLE[locale],
+    hint: FALLBACK_HINT[locale] ?? FALLBACK_HINT.en,
+  };
+}

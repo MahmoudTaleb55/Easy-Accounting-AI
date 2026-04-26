@@ -60,7 +60,11 @@ import {
 } from "./replit_integrations/object_storage";
 import { ASSISTANT_TOOLS, executeTool, type ToolArtifact } from "./services/assistant-tools";
 import { readFile as readGeneratedFile } from "./services/assistant-files";
-import { extractDocument, suggestJournalForDocument } from "./services/document-extraction";
+import {
+  extractDocument,
+  suggestJournalForDocument,
+  DocumentExtractionError,
+} from "./services/document-extraction";
 import {
   saveDocumentFile,
   readDocumentFile,
@@ -2039,10 +2043,19 @@ function registerDocumentRoutes(app: Express) {
         });
         res.status(201).json(updated);
       } catch (err: any) {
-        const msg = err?.message ?? "Extraction failed";
+        // Persist a machine-readable code when the extractor signalled a
+        // structured failure (e.g. `unsupported_language`). The Smart
+        // Inbox UI maps these codes to localized friendly copy in all
+        // four supported languages — see `client/src/pages/inbox.tsx`
+        // and task #345. For unstructured failures we fall back to the
+        // exception message so the user still sees something actionable.
+        const errorMessage =
+          err instanceof DocumentExtractionError
+            ? err.code
+            : String(err?.message ?? "Extraction failed");
         const failed = await storage.updateDocumentExtraction(companyId, created.id, {
           status: "error",
-          errorMessage: String(msg).slice(0, 500),
+          errorMessage: errorMessage.slice(0, 500),
         });
         res.status(201).json(failed);
       }

@@ -66,6 +66,7 @@
     "express-session": "^1.19.0",
     "framer-motion": "^11.13.1",
     "input-otp": "^1.4.2",
+    "jscanify": "^1.4.2",
     "jsdom": "^29.0.2",
     "lucide-react": "^0.453.0",
     "memoizee": "^0.4.17",

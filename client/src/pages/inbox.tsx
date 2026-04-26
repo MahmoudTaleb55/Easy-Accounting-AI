@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
-import { useLocale } from "@/contexts/locale-context";
+import { useLocale, type Locale } from "@/contexts/locale-context";
 import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,7 @@ import {
   Camera,
 } from "lucide-react";
 import { CameraCaptureDialog } from "@/components/camera/camera-capture-dialog";
+import { resolveInboxError } from "@/lib/inbox-error-i18n";
 import type {
   DocumentRow,
   ExtractedDocument,
@@ -620,6 +621,7 @@ export default function InboxPage() {
               doc={selected}
               accounts={accounts}
               ar={ar}
+              locale={locale}
               pileIndex={
                 docs.filter((d) => d.status === "ready").findIndex((d) => d.id === selected.id) + 1
               }
@@ -778,6 +780,7 @@ function DocumentDetail({
   doc,
   accounts,
   ar,
+  locale,
   onDelete,
   onPosted,
   pileIndex,
@@ -786,6 +789,11 @@ function DocumentDetail({
   doc: DocumentRow;
   accounts: Account[];
   ar: boolean;
+  // Full 4-language locale handle (separate from the legacy `ar` boolean
+  // most of this component still keys off). Required so the localized
+  // error block can resolve `unsupported_language` copy in DE/FR too —
+  // task #345.
+  locale: Locale;
   onDelete: () => void;
   onPosted: () => void;
   pileIndex: number;
@@ -974,26 +982,39 @@ function DocumentDetail({
         <div className="overflow-y-auto">
           {status === "extracting" && <ExtractingSkeleton ar={ar} />}
 
-          {status === "error" && (
-            <div className="p-6">
-              <div className="rounded-sm border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive flex gap-3">
-                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                <div className="space-y-1">
-                  <div className="font-medium">
-                    {ar ? "تعذّر قراءة المستند" : "Couldn't read this document"}
-                  </div>
-                  <div className="text-xs opacity-90 leading-relaxed">
-                    {doc.errorMessage}
-                  </div>
-                  <div className="text-xs opacity-75 mt-2">
-                    {ar
-                      ? "جرب صورة أوضح أو ملف أقل حجماً."
-                      : "Try a clearer image or smaller file."}
+          {status === "error" && (() => {
+            // Map persisted server error code → friendly localized copy.
+            // The server may store a stable code (e.g. `unsupported_language`)
+            // OR a free-form message; the helper handles both.
+            const copy = resolveInboxError(doc.errorMessage, locale);
+            return (
+              <div className="p-6">
+                <div
+                  className="rounded-sm border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive flex gap-3"
+                  data-testid="callout-document-error"
+                >
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <div className="font-medium" data-testid="text-document-error-title">
+                      {copy.title}
+                    </div>
+                    <div
+                      className="text-xs opacity-90 leading-relaxed"
+                      data-testid="text-document-error-body"
+                    >
+                      {copy.body}
+                    </div>
+                    <div
+                      className="text-xs opacity-75 mt-2"
+                      data-testid="text-document-error-hint"
+                    >
+                      {copy.hint}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {ext && (status === "ready" || status === "posted" || status === "posting") && (
             <div className="p-6 space-y-7">

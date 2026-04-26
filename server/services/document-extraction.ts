@@ -27,23 +27,37 @@ const openai = new OpenAI({
 // gpt-4o reads images natively and returns json reliably with response_format.
 const MODEL = "gpt-4o";
 
-const EXTRACTION_SYSTEM = `You are an Arabic-English bilingual accounting assistant.
-You extract structured data from photos/scans of receipts and invoices for an
-IFRS-compliant accounting platform used across the GCC and MENA region.
+const EXTRACTION_SYSTEM = `You are a multilingual accounting assistant that
+reads receipts, invoices and credit notes for an IFRS-compliant platform.
+
+The platform officially supports four document languages — Arabic (ar),
+English (en), German (de) and French (fr) — plus bilingual receipts that
+mix any two of those four (e.g. Arabic+English GCC VAT invoices, or
+German+French Swiss receipts). It does NOT support documents written in
+other languages (Spanish, Italian, Russian, Chinese, Hindi, Turkish,
+etc.) — for those you MUST signal the special value described below.
 
 Rules:
-- Read both Arabic and English text on the same document. Many receipts are
-  bilingual or VAT invoices in either language.
+- Read text in any of the four supported languages. Many receipts are
+  bilingual; if you see two of the supported languages on the same
+  document, return "language": "mixed".
+- If the dominant language of the visible text is NOT one of the four
+  supported languages, return "language": "unsupported" and leave every
+  other field null/zero/empty. Do not attempt to translate or guess.
 - Return amounts as plain numbers (no currency symbols, no thousands
   separators). Use a dot for decimals.
 - "documentDate" must be ISO YYYY-MM-DD. If only a partial date is visible,
-  use the most plausible interpretation (e.g. dd/mm/yyyy is the GCC default).
+  use the most plausible interpretation. dd/mm/yyyy is the GCC and
+  European default; mm/dd/yyyy is occasionally used on US-style invoices.
 - "currency" is the ISO 4217 code on the document (SAR, AED, KWD, QAR, BHD,
-  OMR, EGP, JOD, USD, EUR, GBP). If missing, leave null.
-- "vatRate" is a fraction (0.15 for 15%, 0.05 for 5%). Compute it from
-  vatAmount/subtotal if not printed.
-- "category" is a short Arabic or English label that best describes the
-  spend (e.g. "Fuel", "وقود", "Office supplies", "ضيافة", "اتصالات").
+  OMR, EGP, JOD, USD, EUR, GBP, CHF). If missing, leave null.
+- "vatRate" is a fraction (0.15 for 15%, 0.19 for 19%, 0.20 for 20%, 0.05
+  for 5%). Compute it from vatAmount/subtotal if not printed. German
+  invoices commonly use "MwSt." or "USt." for VAT; French invoices use
+  "TVA"; Arabic invoices use "ض.ق.م." or "ضريبة القيمة المضافة".
+- "category" is a short label in the document's language describing the
+  spend (e.g. "Fuel", "وقود", "Kraftstoff", "Carburant", "Office supplies",
+  "ضيافة", "Bürobedarf", "Fournitures de bureau").
 - "documentType": receipt for cash receipts, invoice for vendor invoices
   with payment terms, credit_note for refunds, other for anything else.
 - "direction" classifies whose document this is:
@@ -101,7 +115,7 @@ const EXTRACTION_JSON_SHAPE = `{
   "documentType": "receipt" | "invoice" | "credit_note" | "other",
   "direction": "sales" | "purchase",
   "counterparty": string | null,
-  "language": "ar" | "en" | "mixed",
+  "language": "ar" | "en" | "de" | "fr" | "mixed" | "unsupported",
   "lineItems": [{ "description": string, "quantity": number | null, "unitPrice": number | null, "total": number | null }],
   "confidence": number,
   "notes": string | null
@@ -115,6 +129,29 @@ const SUGGESTION_JSON_SHAPE = `{
   ],
   "reasoning": string
 }`;
+
+/**
+ * Machine-readable error codes the document-extraction service can raise.
+ * The route handler persists `code` into `documents.errorMessage`, and the
+ * Smart Inbox UI maps it back to localized friendly copy in all four
+ * supported UI languages. Keep the code list short and stable — adding a
+ * new code is a cross-cutting change (server prompt + UI mapping +
+ * tests). See task #345.
+ */
+export type ExtractionErrorCode =
+  | "unsupported_language"
+  // Reserved for future use — generic extraction failures still surface
+  // through the catch block as plain `Error` instances.
+  ;
+
+export class DocumentExtractionError extends Error {
+  readonly code: ExtractionErrorCode;
+  constructor(code: ExtractionErrorCode, message?: string) {
+    super(message ?? code);
+    this.code = code;
+    this.name = "DocumentExtractionError";
+  }
+}
 
 function bufferToDataUrl(buffer: Buffer, mime: string): string {
   return `data:${mime};base64,${buffer.toString("base64")}`;
@@ -192,6 +229,17 @@ export async function extractDocument(
 
   const raw = response.choices[0]?.message?.content ?? "{}";
   const parsed = JSON.parse(raw);
+
+  // The model is instructed to return `language: "unsupported"` (a value
+  // outside the schema enum) when the document isn't in one of the four
+  // officially supported languages. Detect that BEFORE handing the
+  // payload to Zod, so the user sees a clear "we don't speak this
+  // language" message instead of a generic schema-parse failure. See
+  // task #345.
+  if (typeof parsed === "object" && parsed && parsed.language === "unsupported") {
+    throw new DocumentExtractionError("unsupported_language");
+  }
+
   return extractedDocumentSchema.parse(parsed);
 }
 
