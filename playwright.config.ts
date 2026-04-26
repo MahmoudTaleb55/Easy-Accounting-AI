@@ -56,6 +56,7 @@ export default defineConfig({
         /journal-entry-deeplinks\.spec\.ts/,
         /dev-only-routes-production-gate\.spec\.ts/,
         /avatar-crop\.spec\.ts/,
+        /dashboard-quick-create\.spec\.ts/,
       ],
     },
     {
@@ -380,6 +381,28 @@ export default defineConfig({
       use: {
         viewport: { width: 1280, height: 800 },
         storageState: ".playwright/avatar-crop-state.json",
+      },
+    },
+    {
+      // One-time setup that provisions a dedicated workspace whose only
+      // transaction is older than 7 days, so the dashboard's attention
+      // queue renders the inactivity card the spec then clicks. See
+      // `dashboard-quick-create.setup.ts`.
+      name: "dashboard-quick-create-setup",
+      testMatch: /dashboard-quick-create\.setup\.ts/,
+    },
+    {
+      // Locks in the dashboard inactivity attention card's
+      // `?new=1` deep-link to /app/transactions. The topbar Plus-menu
+      // and command-palette quick-create paths are already covered by
+      // `quick-actions.spec.ts`; this spec closes the gap on the
+      // dashboard-card click path. See `dashboard-quick-create.spec.ts`.
+      name: "dashboard-quick-create",
+      testMatch: /dashboard-quick-create\.spec\.ts/,
+      dependencies: ["dashboard-quick-create-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+        storageState: ".playwright/dashboard-quick-create-state.json",
       },
     },
   ],
