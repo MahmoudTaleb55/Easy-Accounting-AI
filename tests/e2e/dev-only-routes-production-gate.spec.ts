@@ -7,10 +7,15 @@
  * e2e block could simulate per-address Resend success / failure without
  * a real provider:
  *
- *   1. `POST /api/dev/email-stub` (server/auth/local-routes.ts) installs
- *      / clears an in-memory transport stub via
- *      `setEmailTestStub` / `getEmailTestStub` from server/auth/email.ts.
- *      The route is hard-gated by `process.env.NODE_ENV !== "production"`.
+ *   1. `POST /api/dev/email-stub` (registered by
+ *      `server/auth/email-dev-stub.ts` via the dev-only branch in
+ *      `registerLocalAuthRoutes`) installs / clears an in-memory
+ *      transport stub via `setEmailTestStub` / `getEmailTestStub`.
+ *      Defense-in-depth (task #242): the route is NOT REGISTERED at
+ *      all in production — Express's terminal middleware returns the
+ *      default 404 instead of a custom in-handler 404 — and the
+ *      setter / getter live in a dev-only module that the production
+ *      bundle never loads.
  *   2. `POST /api/auth/email-delivery-alerts/evaluate?skipCooldown=1`
  *      bypasses the per-workspace cooldown so a single test case can
  *      re-fire the evaluator twice. Also gated to non-production.
@@ -24,12 +29,13 @@
  * `NODE_ENV=production` so a regression to either gate fails CI loudly.
  *
  * Why the email-stub case uses the real route while the skipCooldown
- * case uses the exported helper: the email-stub gate is the very first
- * line of the route handler (returns 404 before any auth runs), so it
- * can be exercised with a no-op auth shim. The evaluator route runs
- * `requireAuth` + `requireRole("owner")` and then calls into the DB
- * (which is RLS-scoped to the signed-in user); rather than forge a
- * full session for a one-line gate, the gate itself is extracted into
+ * case uses the exported helper: the email-stub case asserts that the
+ * route does not exist on the registered Express app at all (so the
+ * default 404 is the signal), which can be exercised with a no-op
+ * auth shim. The evaluator route runs `requireAuth` +
+ * `requireRole("owner")` and then calls into the DB (which is
+ * RLS-scoped to the signed-in user); rather than forge a full session
+ * for a one-line gate, the gate itself is extracted into
  * `readDevSkipCooldownFromQuery` and asserted directly. The route
  * handler itself uses that helper, so the assertions cover the same
  * production behaviour.
@@ -50,7 +56,16 @@ import {
   registerLocalAuthRoutes,
   readDevSkipCooldownFromQuery,
 } from "../../server/auth/local-routes";
-import { getEmailTestStub, setEmailTestStub } from "../../server/auth/email";
+// Import the setter / getter from the dev-only module — task #242 moved
+// them out of `server/auth/email.ts` so production code can no longer
+// reach them. The spec is itself a test artefact (not production code),
+// so loading the dev module here is fine; the assertions below verify
+// that the in-process route did NOT install / clear / mutate any state
+// when running under `NODE_ENV=production`.
+import {
+  getEmailTestStub,
+  setEmailTestStub,
+} from "../../server/auth/email-dev-stub";
 
 let server: http.Server;
 let baseUrl = "";
@@ -128,11 +143,15 @@ test.describe("dev-only routes are gated off in production", () => {
       }),
     });
     expect(res.status).toBe(404);
-    // Body must be empty — the gate uses `res.status(404).end()`, no JSON.
-    expect(await res.text()).toBe("");
+    // Task #242: the route is no longer registered at all in
+    // production, so the response is Express's terminal 404 — not the
+    // (now-removed) custom in-handler 404. Asserting the default body
+    // proves the request reached Express's terminal middleware rather
+    // than any route-specific code path.
+    expect(await res.text()).toContain("Cannot POST /api/dev/email-stub");
     // The crucial invariant: even though the request was syntactically a
-    // valid install payload, the handler's first line short-circuited and
-    // never reached `setEmailTestStub`.
+    // valid install payload, no route handler exists to even reach
+    // `setEmailTestStub` — so the stub state is unchanged.
     expect(getEmailTestStub()).toBeNull();
   });
 
@@ -152,25 +171,28 @@ test.describe("dev-only routes are gated off in production", () => {
       body: JSON.stringify({ clear: true }),
     });
     expect(res.status).toBe(404);
-    expect(await res.text()).toBe("");
-    // Stub state untouched — the route returned 404 before any mutation.
+    expect(await res.text()).toContain("Cannot POST /api/dev/email-stub");
+    // Stub state untouched — there is no registered route, so Express's
+    // terminal 404 fires before any mutation could occur.
     const after = getEmailTestStub();
     expect(after).not.toBeNull();
     expect(after).toBe(before);
   });
 
   test("POST /api/dev/email-stub with an empty body still returns 404", async () => {
-    // Defends against a refactor that moves the body parse before the
-    // gate — a subtle regression that would still 404 on the install
-    // path because the parsed body is empty, but would silently *clear*
-    // the stub (bodyless request → falsy `clear` → empty
-    // `failAddresses` → `setEmailTestStub({ failAddresses: [] })`).
+    // Defends against a refactor that re-introduces the route under a
+    // different (or missing) gate. A bodyless request used to be the
+    // most subtle regression — falsy `clear` + missing `failAddresses`
+    // collapses to `setEmailTestStub({ failAddresses: [] })`, silently
+    // CLEARING any pre-installed stub. With the route physically
+    // absent in production, the request hits Express's terminal 404
+    // and the pre-installed stub is preserved.
     setEmailTestStub({ failAddresses: ["seeded@example.test"] });
     const res = await fetch(`${baseUrl}/api/dev/email-stub`, {
       method: "POST",
     });
     expect(res.status).toBe(404);
-    expect(await res.text()).toBe("");
+    expect(await res.text()).toContain("Cannot POST /api/dev/email-stub");
     expect(getEmailTestStub()).not.toBeNull();
   });
 

@@ -38,37 +38,35 @@ export function isEmailConfigured(): boolean {
  * Lets the delivery-alert dedupe + retry e2e spec drive `sendEmail` to a
  * deterministic per-address outcome (success or `send_failed`) without
  * standing up a real Resend account or talking to the network. The state
- * is mutated through a NODE_ENV-gated route (`POST /api/dev/email-stub`)
- * so a Playwright test running in a separate process can install / clear
- * it between cases.
+ * is installed by the dev-only `POST /api/dev/email-stub` route, which
+ * is registered exclusively when `NODE_ENV !== "production"` (see
+ * `server/auth/email-dev-stub.ts`).
  *
- * When non-null, *every* `sendEmail` call short-circuits — the real
- * provider is never invoked. Cleared by passing `null` (or an explicit
- * `{ failAddresses: [], successOnly: true }` no-op). Production builds
- * should never reach the route that sets this; the stub state is also
- * ignored implicitly because production callers never POST the route.
+ * The setter / getter / route handler all live in the dev-only module.
+ * This file only *reads* the state — and it does so via a process-wide
+ * `Symbol.for` key so it never has to import the dev module. When the
+ * dev module is never loaded (production), the global slot is
+ * `undefined`, so this read returns `null` and `sendEmail` falls
+ * through to the real Resend transport (or the `not_configured`
+ * no-op). That means the production bundle physically does not contain
+ * the stub setter, the route handler, or any closure capable of
+ * mutating this state.
  */
 type EmailTestStub = {
   failAddresses: Set<string>;
 };
-let emailTestStub: EmailTestStub | null = null;
 
-export function setEmailTestStub(
-  opts: { failAddresses: string[] } | null,
-): void {
-  if (opts === null) {
-    emailTestStub = null;
-    return;
-  }
-  emailTestStub = {
-    failAddresses: new Set(
-      opts.failAddresses.map((e) => e.trim().toLowerCase()),
-    ),
-  };
-}
+const EMAIL_TEST_STUB_KEY = Symbol.for("tahasab.auth.email.testStub");
 
-export function getEmailTestStub(): EmailTestStub | null {
-  return emailTestStub;
+type EmailTestStubGlobalSlot = {
+  [EMAIL_TEST_STUB_KEY]?: EmailTestStub | null;
+};
+
+function readEmailTestStub(): EmailTestStub | null {
+  return (
+    (globalThis as unknown as EmailTestStubGlobalSlot)[EMAIL_TEST_STUB_KEY] ??
+    null
+  );
 }
 
 /** Coerce any string into a supported locale, defaulting to Arabic. */
@@ -80,9 +78,10 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   // Test stub short-circuit: when installed, every send is resolved against
   // an in-memory map so the delivery-alert dedupe + retry e2e spec can drive
   // per-address success / failure deterministically without a real provider.
-  // Only the route that sets the stub is NODE_ENV-gated; production never
-  // installs it, so this branch is inert there.
-  const stub = emailTestStub;
+  // The stub is installed exclusively from the dev-only module
+  // (`server/auth/email-dev-stub.ts`) which is never loaded in production —
+  // so this read returns `null` and the branch is inert there.
+  const stub = readEmailTestStub();
   if (stub) {
     const addr = input.to.trim().toLowerCase();
     if (stub.failAddresses.has(addr)) {

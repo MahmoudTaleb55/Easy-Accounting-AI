@@ -28,8 +28,8 @@ import {
   sendInvitationEmail,
   sendPasswordResetEmail,
   normalizeLocale,
-  setEmailTestStub,
 } from "./email";
+import { createRequire } from "node:module";
 import {
   evaluateEmailDeliveryAlertsForCompany,
   retryEmailDeliveryAlertRecipient,
@@ -1115,32 +1115,32 @@ export function registerLocalAuthRoutes(app: Express) {
 
   // Test-only stub installer for the email transport. Lets the dedupe +
   // retry spec drive `sendEmail` to a deterministic per-address outcome
-  // (success or `send_failed`) without hitting Resend. The route is
-  // hard-gated to non-production NODE_ENV — production builds return 404
-  // exactly as if the route didn't exist, so even an authenticated owner
-  // can't poison the live transport.
+  // (success or `send_failed`) without hitting Resend.
   //
-  // Body shape:
-  //   { failAddresses: string[] }   install — listed addresses fail, others succeed
-  //   { clear: true }               clear — falls back to the real Resend transport
-  app.post("/api/dev/email-stub", (req, res) => {
-    if (process.env.NODE_ENV === "production") {
-      return res.status(404).end();
-    }
-    const body = (req.body ?? {}) as {
-      failAddresses?: unknown;
-      clear?: unknown;
-    };
-    if (body.clear === true) {
-      setEmailTestStub(null);
-      return res.json({ ok: true, cleared: true });
-    }
-    const failAddresses = Array.isArray(body.failAddresses)
-      ? body.failAddresses.filter((x): x is string => typeof x === "string")
-      : [];
-    setEmailTestStub({ failAddresses });
-    res.json({ ok: true, failAddresses });
-  });
+  // Defense-in-depth: the route is NOT registered at all when
+  // `NODE_ENV === "production"` (Express returns its default 404 from
+  // its terminal middleware), AND the setter / getter live in a
+  // dev-only module (`./email-dev-stub`) that is loaded lazily inside
+  // this conditional. That means the production esbuild bundle
+  // (`script/build.ts` defines `process.env.NODE_ENV` as
+  // `"production"`) tree-shakes the entire branch — neither the route
+  // handler closure nor any reference to `setEmailTestStub` ends up in
+  // the running production process. A future refactor that re-orders
+  // the gate, runs body parsing too early, or accidentally exposes the
+  // setter to a production code path therefore cannot poison the live
+  // transport.
+  if (process.env.NODE_ENV !== "production") {
+    // Use createRequire so esbuild's NODE_ENV define folds the entire
+    // `if` branch (including this resolution) to a no-op in the
+    // production bundle. A top-level `import` from "./email-dev-stub"
+    // would survive bundling even though the conditional caller is
+    // dead, defeating the goal of physically excluding the dev module
+    // from production.
+    const devRequire = createRequire(import.meta.url);
+    const { registerEmailStubDevRoute } =
+      devRequire("./email-dev-stub.ts") as typeof import("./email-dev-stub");
+    registerEmailStubDevRoute(app);
+  }
 
   // Per-recipient outcome log for one alert. Surfaces *which* owners
   // received the alert email and which didn't, so an owner who suspects
