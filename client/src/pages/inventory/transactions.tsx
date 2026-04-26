@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -141,12 +141,12 @@ export default function InventoryTransactionsPage() {
     <div className="space-y-6 p-6" data-testid="page-inventory-transactions">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{t("nav_inv_transactions")}</h1>
+        <WriteGuard>
+          <Button data-testid="button-create-transaction" onClick={() => setCreateOpen(true)}>
+            <Plus className="me-1 h-4 w-4" /> {t("inv_create")}
+          </Button>
+        </WriteGuard>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <WriteGuard>
-              <Button data-testid="button-create-transaction"><Plus className="me-1 h-4 w-4" /> {t("inv_create")}</Button>
-            </WriteGuard>
-          </DialogTrigger>
           <DialogContent className="max-w-3xl">
             <DialogHeader><DialogTitle>{t("inv_create")}</DialogTitle></DialogHeader>
             <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>

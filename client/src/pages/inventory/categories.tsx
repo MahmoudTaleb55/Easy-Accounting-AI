@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { WriteGuard } from "@/components/auth/write-guard";
 import { Plus, Tag } from "lucide-react";
@@ -54,12 +54,12 @@ export default function InventoryCategoriesPage() {
     <div className="space-y-6 p-6" data-testid="page-inventory-categories">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{t("nav_inv_categories")}</h1>
+        <WriteGuard>
+          <Button data-testid="button-create-category" onClick={() => setCreateOpen(true)}>
+            <Plus className="me-1 h-4 w-4" /> {t("inv_create")}
+          </Button>
+        </WriteGuard>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <WriteGuard>
-              <Button data-testid="button-create-category"><Plus className="me-1 h-4 w-4" /> {t("inv_create")}</Button>
-            </WriteGuard>
-          </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>{t("nav_inv_categories")}</DialogTitle></DialogHeader>
             <Form {...form}>

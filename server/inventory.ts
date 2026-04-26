@@ -780,7 +780,7 @@ export async function applySaleConsumption(
     sourceInvoiceId: number;
     invoiceNumber: string;
     invoiceDate: string;
-    journalEntryId: number;
+    journalEntryId: number | null;
     locationId: number;
     lines: Array<{ productId: number; quantity: number }>;
   },
@@ -935,7 +935,7 @@ export async function consumeStockForSaleStandalone(
       sourceInvoiceId: args.invoiceId,
       invoiceNumber: args.invoiceNumber,
       invoiceDate: args.invoiceDate,
-      journalEntryId: 0, // placeholder; sales.ts will patch in via linkSaleTransactionToJournalEntry
+      journalEntryId: null, // patched in later by linkSaleTransactionToJournalEntry once JE id is known
       locationId: loc.id,
       lines: args.lines,
     });
@@ -1347,7 +1347,7 @@ export async function listLocations(companyId: number) {
 
 export async function createLocation(
   companyId: number,
-  input: { nameAr: string; nameEn?: string | null; isDefault?: boolean },
+  input: { nameAr: string; nameEn?: string | null; address?: string | null; isDefault?: boolean; isActive?: boolean },
 ) {
   return db.transaction(async (tx) => {
     if (input.isDefault) {
@@ -1374,8 +1374,9 @@ export async function createLocation(
         companyId,
         nameAr: input.nameAr.trim(),
         nameEn: input.nameEn?.trim() ?? "",
-        address: "",
+        address: input.address?.trim() ?? "",
         isDefault,
+        isActive: input.isActive ?? true,
       })
       .returning();
     return row;
@@ -1385,7 +1386,7 @@ export async function createLocation(
 export async function updateLocation(
   companyId: number,
   id: number,
-  input: { nameAr?: string; nameEn?: string | null; isDefault?: boolean },
+  input: { nameAr?: string; nameEn?: string | null; address?: string | null; isDefault?: boolean; isActive?: boolean },
 ) {
   return db.transaction(async (tx) => {
     if (input.isDefault === true) {
@@ -1397,7 +1398,9 @@ export async function updateLocation(
     const set: Record<string, unknown> = {};
     if (input.nameAr !== undefined) set.nameAr = input.nameAr.trim();
     if (input.nameEn !== undefined) set.nameEn = input.nameEn?.trim() ?? null;
+    if (input.address !== undefined) set.address = input.address?.trim() ?? "";
     if (input.isDefault !== undefined) set.isDefault = input.isDefault;
+    if (input.isActive !== undefined) set.isActive = input.isActive;
     const [row] = await tx
       .update(inventoryLocations)
       .set(set)
@@ -1566,7 +1569,7 @@ export async function listLowStockAlerts(companyId: number): Promise<AlertRow[]>
       products.unit,
       products.minimumStock,
     )
-    .having(sql`coalesce(sum(${inventoryStockLevels.qty}), 0) < ${products.minimumStock}::numeric`)
+    .having(sql`coalesce(sum(${inventoryStockLevels.qty}), 0) <= ${products.minimumStock}::numeric`)
     .orderBy(asc(products.nameAr));
   return rows.map((r) => ({
     ...r,

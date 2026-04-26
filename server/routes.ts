@@ -3190,7 +3190,9 @@ function registerInventoryRoutes(app: Express) {
       const input = z.object({
         nameAr: z.string().trim().min(1).max(120),
         nameEn: z.string().trim().max(120).optional().nullable(),
+        address: z.string().trim().max(500).optional().nullable(),
         isDefault: z.boolean().optional(),
+        isActive: z.boolean().optional(),
       }).parse(req.body);
       res.status(201).json(await inventory.createLocation(cid(req), input));
     } catch (err: any) {
@@ -3203,7 +3205,9 @@ function registerInventoryRoutes(app: Express) {
       const input = z.object({
         nameAr: z.string().trim().min(1).max(120).optional(),
         nameEn: z.string().trim().max(120).optional().nullable(),
+        address: z.string().trim().max(500).optional().nullable(),
         isDefault: z.boolean().optional(),
+        isActive: z.boolean().optional(),
       }).parse(req.body);
       res.json(await inventory.updateLocation(cid(req), Number(req.params.id), input));
     } catch (err: any) {
