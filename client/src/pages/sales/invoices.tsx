@@ -135,14 +135,16 @@ export default function SalesInvoicesPage() {
           </p>
         </div>
         <WriteGuard>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-new-invoice">
-                <Plus className="size-4 me-2" />
-                {isAr ? "فاتورة جديدة" : "New invoice"}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <Button
+            data-testid="button-new-invoice"
+            onClick={() => setOpen(true)}
+          >
+            <Plus className="size-4 me-2" />
+            {isAr ? "فاتورة جديدة" : "New invoice"}
+          </Button>
+        </WriteGuard>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
                   {isAr ? "فاتورة جديدة" : "New invoice"}
@@ -405,7 +407,6 @@ export default function SalesInvoicesPage() {
               </Form>
             </DialogContent>
           </Dialog>
-        </WriteGuard>
       </header>
 
       <Card>

@@ -88,14 +88,16 @@ export default function SalesCustomersPage() {
           </p>
         </div>
         <WriteGuard>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-new-customer">
-                <Plus className="size-4 me-2" />
-                {isAr ? "عميل جديد" : "New customer"}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
+          <Button
+            data-testid="button-new-customer"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="size-4 me-2" />
+            {isAr ? "عميل جديد" : "New customer"}
+          </Button>
+        </WriteGuard>
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>{isAr ? "عميل جديد" : "New customer"}</DialogTitle>
               </DialogHeader>
@@ -195,7 +197,6 @@ export default function SalesCustomersPage() {
               </Form>
             </DialogContent>
           </Dialog>
-        </WriteGuard>
       </header>
 
       <Card>
