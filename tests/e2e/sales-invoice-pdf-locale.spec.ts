@@ -112,12 +112,18 @@ function hdrs(companyId: number): Record<string, string> {
  *  - Anything else (Arabic, German diacritics, …): also parenthesised,
  *    but the contents are raw UTF-16BE bytes with a leading FEFF byte-
  *    order mark, e.g. `(þÿ\x06A\x06'…)` when read as latin1.
- *    NOTE: pdfkit does NOT emit `<FEFF…>` hex strings here — observed
- *    via direct inspection of the output bytes.
+ *    Any data byte that happens to equal `0x28` (`(`), `0x29` (`)`),
+ *    or `0x5c` (`\`) is backslash-escaped per PDF 1.7 §7.3.4.2 so the
+ *    parser can find the real string terminator. For example "ة"
+ *    (U+0629) encodes to bytes `06 29`, and the `29` is written as
+ *    `\)` — i.e. `06 5c 29` on the wire.
+ *
+ * NOTE: pdfkit does NOT emit `<FEFF…>` hex strings here — observed via
+ * direct inspection of the output bytes.
  *
  * For the test we look for whichever form is appropriate. The PDF body
  * is binary, so we read it as latin1 (1-byte-per-codepoint round-trip)
- * and search byte-for-byte.
+ * and search byte-for-byte for the literal needle the PDF would emit.
  */
 function utf16BeBytesAsLatin1(s: string): string {
   let out = "";
@@ -137,14 +143,28 @@ function utf16BeBytesAsLatin1(s: string): string {
   return out;
 }
 
+/** Apply the PDF literal-string backslash escapes pdfkit applies on
+ *  the raw byte stream. Unescaped `(` `)` `\` would otherwise
+ *  prematurely close the literal-string token. */
+function escapePdfLiteralBytes(raw: string): string {
+  let out = "";
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i);
+    if (code === 0x28 || code === 0x29 || code === 0x5c) out += "\\";
+    out += raw[i];
+  }
+  return out;
+}
+
 function bodyContainsTitle(buf: Buffer, expectedTitle: string): boolean {
   const ascii = buf.toString("latin1");
   // Pure-ASCII parenthesised literal — pdfkit's path for Latin-only titles.
   if (ascii.includes(`(${expectedTitle}`)) return true;
-  // UTF-16BE bytes inside parens, with the FEFF BOM prefix.
-  // BOM as latin1 = "\xFE\xFF".
-  const utf16Bytes = "\xFE\xFF" + utf16BeBytesAsLatin1(expectedTitle);
-  return ascii.includes(`(${utf16Bytes}`);
+  // UTF-16BE bytes inside parens, with the FEFF BOM prefix and
+  // per-byte literal-string escapes for `(`, `)` and `\`.
+  const rawBytes = "\xFE\xFF" + utf16BeBytesAsLatin1(expectedTitle);
+  const escaped = escapePdfLiteralBytes(rawBytes);
+  return ascii.includes(`(${escaped}`);
 }
 
 test.describe("sales invoice PDF — locale", () => {
