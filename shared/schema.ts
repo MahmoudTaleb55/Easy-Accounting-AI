@@ -274,6 +274,9 @@ export const settings = pgTable("settings", {
   vatRate: numeric("vat_rate", { precision: 5, scale: 4 }).notNull().default("0"),
   zakatEnabled: boolean("zakat_enabled").notNull().default(false),
   fiscalYearStartMonth: integer("fiscal_year_start_month").notNull().default(1),
+  // Workspace-default costing method for inventory items whose own
+  // `products.costingMethod` is null. Added by migration 0023.
+  defaultCostingMethod: text("default_costing_method").notNull().default("avg"),
 });
 
 export const upsertSettingsSchema = z.object({
@@ -285,6 +288,7 @@ export const upsertSettingsSchema = z.object({
   vatRate: z.coerce.number().min(0).max(0.99),
   zakatEnabled: z.boolean(),
   fiscalYearStartMonth: z.coerce.number().int().min(1).max(12),
+  defaultCostingMethod: z.enum(["fifo", "avg"]).default("avg"),
 });
 export type OrgSettings = typeof settings.$inferSelect;
 export type UpsertOrgSettings = z.infer<typeof upsertSettingsSchema>;
@@ -1220,6 +1224,11 @@ export const products = pgTable(
     // no COGS leg is posted and no stock decrement runs on invoice posting.
     isService: boolean("is_service").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
+    // -- Inventory portal (task #346) — added by migration 0023 -----------
+    unit: text("unit").notNull().default("pcs"),
+    minimumStock: numeric("minimum_stock", { precision: 14, scale: 4 }).notNull().default("0"),
+    categoryId: integer("category_id"),                      // FK declared after inventory_categories below
+    costingMethod: text("costing_method"),                   // null = use settings.defaultCostingMethod
     createdAt: timestamp("created_at").defaultNow(),
   },
   (t) => ({
@@ -1240,6 +1249,10 @@ export const insertProductSchema = createInsertSchema(products)
     stockQty: z.coerce.number().default(0),
     isService: z.boolean().default(false),
     isActive: z.boolean().default(true),
+    unit: z.string().trim().min(1).max(16).default("pcs"),
+    minimumStock: z.coerce.number().nonnegative().default(0),
+    categoryId: z.coerce.number().int().positive().optional().nullable(),
+    costingMethod: z.enum(["fifo", "avg"]).optional().nullable(),
   });
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
@@ -1393,4 +1406,395 @@ export type SalesInvoiceWithLines = SalesInvoice & {
   lines: SalesInvoiceLine[];
   customer?: Pick<Customer, "id" | "code" | "nameAr" | "nameEn"> | null;
   journalEntryReference?: string | null;
+};
+
+// ============================================================================
+// Inventory & Costing Portal — task #346
+// ============================================================================
+//
+// Extends the flat products table with rich item master + per-(item, location)
+// stock tracking + a FIFO/Weighted-Average costing engine. The four pre-existing
+// product columns (sku, nameAr, nameEn, description, unitPrice, unitCost,
+// vatRate, stockQty, isService, isActive) keep their meaning; the additions
+// below are append-only:
+//   - `unit`              — UoM display label ("pcs", "kg", "hr", …)
+//   - `minimumStock`      — re-order threshold the Stock Alerts panel checks
+//   - `categoryId`        — FK to inventory_categories (nullable: existing rows
+//                           start uncategorised)
+//   - `costingMethod`     — per-item override of settings.defaultCostingMethod
+//                           ("fifo" | "avg" | null=use workspace default)
+//
+// The same workspace-isolation recipe used by Sales / Fixed Assets applies:
+// every table carries a NOT-NULL companyId with no column default, every
+// parent declares unique(id, company_id), every child uses composite FKs.
+// New table names are appended to RLS_TABLES so the boot helper installs the
+// canonical workspace_isolation policy.
+
+export const INVENTORY_COSTING_METHODS = ["fifo", "avg"] as const;
+export type InventoryCostingMethod = (typeof INVENTORY_COSTING_METHODS)[number];
+
+// ---- inventory_categories --------------------------------------------------
+
+export const inventoryCategories = pgTable(
+  "inventory_categories",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    nameAr: text("name_ar").notNull(),
+    nameEn: text("name_en").notNull().default(""),
+    // Optional CoA overrides — when set, items in this category use these
+    // accounts instead of the workspace defaults (4100 Sales / 5100 COGS).
+    defaultIncomeAccountId: integer("default_income_account_id"),
+    defaultCogsAccountId: integer("default_cogs_account_id"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("inventory_categories_id_company_uq").on(t.id, t.companyId),
+    nameCompanyUq: unique("inventory_categories_name_company_uq").on(t.companyId, t.nameAr),
+    incomeAccountFk: foreignKey({
+      columns: [t.defaultIncomeAccountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "inventory_categories_income_account_company_fk",
+    }),
+    cogsAccountFk: foreignKey({
+      columns: [t.defaultCogsAccountId, t.companyId],
+      foreignColumns: [accounts.id, accounts.companyId],
+      name: "inventory_categories_cogs_account_company_fk",
+    }),
+  }),
+);
+export const insertInventoryCategorySchema = createInsertSchema(inventoryCategories)
+  .omit({ id: true, createdAt: true, companyId: true })
+  .extend({
+    nameAr: z.string().trim().min(1, "اسم التصنيف مطلوب").max(120),
+    nameEn: z.string().trim().max(120).default(""),
+    defaultIncomeAccountId: z.coerce.number().int().positive().optional().nullable(),
+    defaultCogsAccountId: z.coerce.number().int().positive().optional().nullable(),
+    isActive: z.boolean().default(true),
+  });
+export type InventoryCategory = typeof inventoryCategories.$inferSelect;
+export type InsertInventoryCategory = z.infer<typeof insertInventoryCategorySchema>;
+
+// ---- inventory_locations ---------------------------------------------------
+
+export const inventoryLocations = pgTable(
+  "inventory_locations",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    nameAr: text("name_ar").notNull(),
+    nameEn: text("name_en").notNull().default(""),
+    address: text("address").notNull().default(""),
+    isDefault: boolean("is_default").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("inventory_locations_id_company_uq").on(t.id, t.companyId),
+    nameCompanyUq: unique("inventory_locations_name_company_uq").on(t.companyId, t.nameAr),
+  }),
+);
+export const insertInventoryLocationSchema = createInsertSchema(inventoryLocations)
+  .omit({ id: true, createdAt: true, companyId: true, isDefault: true })
+  .extend({
+    nameAr: z.string().trim().min(1, "اسم الموقع مطلوب").max(120),
+    nameEn: z.string().trim().max(120).default(""),
+    address: z.string().trim().max(400).default(""),
+    isActive: z.boolean().default(true),
+  });
+export type InventoryLocation = typeof inventoryLocations.$inferSelect;
+export type InsertInventoryLocation = z.infer<typeof insertInventoryLocationSchema>;
+
+// ---- inventory_stock_levels ------------------------------------------------
+// Canonical (qty, avgCost) per (product, location). Maintained for both
+// FIFO and WAvg items. For FIFO items, avgCost is a snapshot derived from
+// the layer queue (`sum(remainingQty * unitCost) / sum(remainingQty)`) so
+// the valuation report doesn't have to re-aggregate layers per row. The
+// authoritative cost source for FIFO outbound is `inventory_cost_layers`.
+
+export const inventoryStockLevels = pgTable(
+  "inventory_stock_levels",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    productId: integer("product_id").notNull(),
+    locationId: integer("location_id").notNull(),
+    qty: numeric("qty", { precision: 18, scale: 4 }).notNull().default("0"),
+    avgCost: numeric("avg_cost", { precision: 14, scale: 4 }).notNull().default("0"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pairUq: unique("inventory_stock_levels_pair_uq").on(
+      t.companyId, t.productId, t.locationId,
+    ),
+    productCompanyFk: foreignKey({
+      columns: [t.productId, t.companyId],
+      foreignColumns: [products.id, products.companyId],
+      name: "inventory_stock_levels_product_company_fk",
+    }),
+    locationCompanyFk: foreignKey({
+      columns: [t.locationId, t.companyId],
+      foreignColumns: [inventoryLocations.id, inventoryLocations.companyId],
+      name: "inventory_stock_levels_location_company_fk",
+    }),
+    productIdx: index("inventory_stock_levels_product_idx").on(t.companyId, t.productId),
+  }),
+);
+export type InventoryStockLevel = typeof inventoryStockLevels.$inferSelect;
+
+// ---- inventory_transactions ------------------------------------------------
+
+export const INVENTORY_TXN_TYPES = ["purchase", "sale", "adjustment", "transfer"] as const;
+export type InventoryTxnType = (typeof INVENTORY_TXN_TYPES)[number];
+
+export const INVENTORY_TXN_STATUSES = ["posted", "reversed"] as const;
+export type InventoryTxnStatus = (typeof INVENTORY_TXN_STATUSES)[number];
+
+export const ADJUSTMENT_REASONS = ["shrinkage", "count", "writeoff", "other"] as const;
+export type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number];
+
+export const inventoryTransactions = pgTable(
+  "inventory_transactions",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    number: text("number").notNull(),                     // TXN-PUR-0001, TXN-ADJ-0001, …
+    type: text("type").notNull(),                         // purchase|sale|adjustment|transfer
+    txnDate: text("txn_date").notNull(),                  // YYYY-MM-DD
+    locationId: integer("location_id"),                   // src location for purchase/sale/adjustment/transfer
+    destLocationId: integer("dest_location_id"),          // transfer destination
+    reference: text("reference").notNull().default(""),   // user-supplied ref (PO #, vendor invoice #)
+    vendorName: text("vendor_name").notNull().default(""),// purchase only — free-text (no vendor master)
+    reason: text("reason").notNull().default(""),         // adjustment only
+    notes: text("notes").notNull().default(""),
+    status: text("status").notNull().default("posted"),
+    totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    journalEntryId: integer("journal_entry_id"),
+    sourceInvoiceId: integer("source_invoice_id"),        // sale: links to sales_invoices.id
+    reversalOfId: integer("reversal_of_id"),              // self-FK: a 'reversed' txn points at the original
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("inventory_transactions_id_company_uq").on(t.id, t.companyId),
+    numberCompanyUq: unique("inventory_transactions_number_company_uq").on(t.companyId, t.number),
+    locationFk: foreignKey({
+      columns: [t.locationId, t.companyId],
+      foreignColumns: [inventoryLocations.id, inventoryLocations.companyId],
+      name: "inventory_transactions_location_company_fk",
+    }),
+    destLocationFk: foreignKey({
+      columns: [t.destLocationId, t.companyId],
+      foreignColumns: [inventoryLocations.id, inventoryLocations.companyId],
+      name: "inventory_transactions_dest_location_company_fk",
+    }),
+    journalEntryFk: foreignKey({
+      columns: [t.journalEntryId, t.companyId],
+      foreignColumns: [journalEntries.id, journalEntries.companyId],
+      name: "inventory_transactions_journal_entry_company_fk",
+    }),
+    sourceInvoiceFk: foreignKey({
+      columns: [t.sourceInvoiceId, t.companyId],
+      foreignColumns: [salesInvoices.id, salesInvoices.companyId],
+      name: "inventory_transactions_source_invoice_company_fk",
+    }),
+    reversalFk: foreignKey({
+      columns: [t.reversalOfId, t.companyId],
+      foreignColumns: [t.id, t.companyId],
+      name: "inventory_transactions_reversal_company_fk",
+    }),
+    typeIdx: index("inventory_transactions_type_idx").on(t.companyId, t.type, t.txnDate),
+    dateIdx: index("inventory_transactions_date_idx").on(t.companyId, t.txnDate),
+  }),
+);
+export type InventoryTransaction = typeof inventoryTransactions.$inferSelect;
+
+export const inventoryTransactionLines = pgTable(
+  "inventory_transaction_lines",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    transactionId: integer("transaction_id").notNull(),
+    productId: integer("product_id").notNull(),
+    description: text("description").notNull().default(""),
+    quantity: numeric("quantity", { precision: 18, scale: 4 }).notNull(),  // signed: +inbound, -outbound (adjustment may be either)
+    unitCost: numeric("unit_cost", { precision: 14, scale: 4 }).notNull().default("0"),
+    costAmount: numeric("cost_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  },
+  (t) => ({
+    transactionFk: foreignKey({
+      columns: [t.transactionId, t.companyId],
+      foreignColumns: [inventoryTransactions.id, inventoryTransactions.companyId],
+      name: "inventory_transaction_lines_txn_company_fk",
+    }),
+    productFk: foreignKey({
+      columns: [t.productId, t.companyId],
+      foreignColumns: [products.id, products.companyId],
+      name: "inventory_transaction_lines_product_company_fk",
+    }),
+    transactionIdx: index("inventory_transaction_lines_txn_idx").on(t.transactionId),
+  }),
+);
+export type InventoryTransactionLine = typeof inventoryTransactionLines.$inferSelect;
+
+// ---- inventory_cost_layers -------------------------------------------------
+// FIFO layer queue per (product, location). Inbound creates a layer with
+// originalQty == remainingQty; outbound walks oldest-first (createdAt ASC,
+// id ASC) and decrements remainingQty. WAvg items don't create layers —
+// their cost lives in inventory_stock_levels.avgCost only.
+
+export const inventoryCostLayers = pgTable(
+  "inventory_cost_layers",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    productId: integer("product_id").notNull(),
+    locationId: integer("location_id").notNull(),
+    originalQty: numeric("original_qty", { precision: 18, scale: 4 }).notNull(),
+    remainingQty: numeric("remaining_qty", { precision: 18, scale: 4 }).notNull(),
+    unitCost: numeric("unit_cost", { precision: 14, scale: 4 }).notNull(),
+    sourceTransactionId: integer("source_transaction_id"),
+    sourceTransactionLineId: integer("source_transaction_line_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    productCompanyFk: foreignKey({
+      columns: [t.productId, t.companyId],
+      foreignColumns: [products.id, products.companyId],
+      name: "inventory_cost_layers_product_company_fk",
+    }),
+    locationCompanyFk: foreignKey({
+      columns: [t.locationId, t.companyId],
+      foreignColumns: [inventoryLocations.id, inventoryLocations.companyId],
+      name: "inventory_cost_layers_location_company_fk",
+    }),
+    sourceTxnFk: foreignKey({
+      columns: [t.sourceTransactionId, t.companyId],
+      foreignColumns: [inventoryTransactions.id, inventoryTransactions.companyId],
+      name: "inventory_cost_layers_source_txn_company_fk",
+    }),
+    queueIdx: index("inventory_cost_layers_queue_idx").on(
+      t.companyId, t.productId, t.locationId, t.createdAt, t.id,
+    ),
+  }),
+);
+export type InventoryCostLayer = typeof inventoryCostLayers.$inferSelect;
+
+// ---- Composite create payloads --------------------------------------------
+
+const inventoryTxnLineInputSchema = z.object({
+  productId: z.coerce.number().int().positive(),
+  description: z.string().max(300).default(""),
+  quantity: z.coerce.number(),         // signed for adjustment; positive for purchase/sale/transfer
+  unitCost: z.coerce.number().nonnegative().default(0),
+});
+
+export const createInventoryPurchaseSchema = z.object({
+  txnDate: z.string().min(1, "التاريخ مطلوب"),
+  locationId: z.coerce.number().int().positive(),
+  reference: z.string().max(60).default(""),
+  vendorName: z.string().max(160).default(""),
+  notes: z.string().max(800).default(""),
+  paymentMethod: z.enum(["cash", "credit"]).default("credit"),
+  lines: z.array(z.object({
+    productId: z.coerce.number().int().positive(),
+    description: z.string().max(300).default(""),
+    quantity: z.coerce.number().positive(),
+    unitCost: z.coerce.number().nonnegative(),
+  })).min(1, "أضف بنداً واحداً على الأقل"),
+});
+export type CreateInventoryPurchaseInput = z.infer<typeof createInventoryPurchaseSchema>;
+
+export const createInventoryAdjustmentSchema = z.object({
+  txnDate: z.string().min(1),
+  locationId: z.coerce.number().int().positive(),
+  reason: z.enum(ADJUSTMENT_REASONS).default("other"),
+  notes: z.string().max(800).default(""),
+  lines: z.array(z.object({
+    productId: z.coerce.number().int().positive(),
+    description: z.string().max(300).default(""),
+    quantity: z.coerce.number().refine((v) => v !== 0, "الكمية لا يمكن أن تكون صفراً"),
+    unitCost: z.coerce.number().nonnegative().default(0),  // ignored for negative lines (uses costing engine)
+  })).min(1),
+});
+export type CreateInventoryAdjustmentInput = z.infer<typeof createInventoryAdjustmentSchema>;
+
+export const createInventoryTransferSchema = z.object({
+  txnDate: z.string().min(1),
+  locationId: z.coerce.number().int().positive(),         // source
+  destLocationId: z.coerce.number().int().positive(),     // destination
+  notes: z.string().max(800).default(""),
+  lines: z.array(z.object({
+    productId: z.coerce.number().int().positive(),
+    description: z.string().max(300).default(""),
+    quantity: z.coerce.number().positive(),
+  })).min(1),
+}).refine((v) => v.locationId !== v.destLocationId, {
+  message: "يجب اختيار موقعين مختلفين",
+  path: ["destLocationId"],
+});
+export type CreateInventoryTransferInput = z.infer<typeof createInventoryTransferSchema>;
+
+// API hydrated views ---------------------------------------------------------
+
+export type InventoryTransactionWithLines = InventoryTransaction & {
+  lines: InventoryTransactionLine[];
+  location?: { id: number; nameAr: string; nameEn: string } | null;
+  destLocation?: { id: number; nameAr: string; nameEn: string } | null;
+  journalEntryReference?: string | null;
+};
+
+export type StockLevelWithProduct = InventoryStockLevel & {
+  product: Pick<Product, "id" | "sku" | "nameAr" | "nameEn" | "unitCost" | "isService"> & {
+    unit?: string;
+    minimumStock?: string;
+    categoryId?: number | null;
+    costingMethod?: string | null;
+  };
+  location: Pick<InventoryLocation, "id" | "nameAr" | "nameEn">;
+};
+
+export type StockMovement = {
+  id: number;
+  txnId: number;
+  txnNumber: string;
+  txnType: InventoryTxnType;
+  txnDate: string;
+  locationId: number | null;
+  locationName: string | null;
+  destLocationId: number | null;
+  destLocationName: string | null;
+  quantity: string;
+  unitCost: string;
+  costAmount: string;
+  runningBalance: string;
+  journalEntryId: number | null;
+  journalEntryReference: string | null;
+  sourceInvoiceId: number | null;
+  reference: string;
+  status: InventoryTxnStatus;
+};
+
+export type InventoryStockAlert = {
+  productId: number;
+  sku: string;
+  nameAr: string;
+  nameEn: string;
+  unit: string;
+  minimumStock: string;
+  totalQty: string;
+};
+
+export type InventoryValuationRow = {
+  productId: number;
+  sku: string;
+  nameAr: string;
+  nameEn: string;
+  unit: string;
+  categoryId: number | null;
+  categoryNameAr: string | null;
+  categoryNameEn: string | null;
+  qty: string;
+  avgCost: string;
+  totalValue: string;
 };

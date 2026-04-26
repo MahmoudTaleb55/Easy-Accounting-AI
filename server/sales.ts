@@ -32,6 +32,11 @@ import {
 } from "@shared/schema";
 import { storage, type AuditContext } from "./storage";
 import { and, eq, inArray } from "drizzle-orm";
+import {
+  consumeStockForSaleStandalone,
+  linkSaleTransactionToJournalEntry,
+  reverseSaleConsumptionStandalone,
+} from "./inventory";
 
 // Standard chart-of-accounts codes that the auto-posting JE references.
 // All five codes are part of the default seed (`shared/coa-seed.ts`); if a
@@ -357,7 +362,41 @@ export async function postSalesInvoice(
   const subtotal = Number(inv.subtotal);
   const vatAmount = Number(inv.vatAmount);
   const totalAmount = Number(inv.totalAmount);
-  const cogsAmount = Number(inv.cogsAmount);
+
+  // Engine-driven COGS (task #346): consume layers from the workspace's
+  // default location for every goods line and use the returned cost in the
+  // JE. Service-only invoices return `cogsAmount=0, transactionId=null` and
+  // skip the COGS / Inventory legs as before. Service products / free-form
+  // lines (productId=null) are filtered out by the engine.
+  const goodsLinesForEngine: Array<{ productId: number; quantity: number }> = [];
+  {
+    const allProductIds = inv.lines
+      .map((l) => l.productId)
+      .filter((v): v is number => v != null);
+    const productCatalog = allProductIds.length === 0
+      ? []
+      : await db
+          .select({ id: products.id, isService: products.isService })
+          .from(products)
+          .where(
+            and(eq(products.companyId, companyId), inArray(products.id, allProductIds)),
+          );
+    const isServiceById = new Map(productCatalog.map((p) => [p.id, p.isService]));
+    for (const l of inv.lines) {
+      if (l.productId == null) continue;
+      if (isServiceById.get(l.productId)) continue;
+      const qty = Number(l.quantity);
+      if (qty <= 0) continue;
+      goodsLinesForEngine.push({ productId: l.productId, quantity: qty });
+    }
+  }
+  const consumed = await consumeStockForSaleStandalone(companyId, {
+    invoiceId,
+    invoiceNumber: inv.number,
+    invoiceDate: inv.invoiceDate,
+    lines: goodsLinesForEngine,
+  });
+  const cogsAmount = consumed.cogsAmount;
 
   // Build journal lines:
   //   Dr AR (or Cash if cash sale)               total
@@ -430,50 +469,51 @@ export async function postSalesInvoice(
     );
   }
 
-  const je = await storage.createJournalEntry(
-    companyId,
-    {
-      entryDate: inv.invoiceDate,
-      description: `فاتورة مبيعات ${inv.number} — ${customer.nameAr}`,
-      source: "manual",
-      lines,
-    },
-    ctx,
-  );
-
-  // Inventory adjustments only for goods lines that point at a real product
-  // (the storage helper sums them up + decrements stockQty per row in the
-  // same tx that links the JE).
-  const allProductIds = inv.lines
-    .map((l) => l.productId)
-    .filter((v): v is number => v != null);
-  const productCatalog = allProductIds.length === 0
-    ? []
-    : await db
-        .select()
-        .from(products)
-        .where(
-          and(
-            eq(products.companyId, companyId),
-            inArray(products.id, allProductIds),
-          ),
-        );
-  const isServiceById = new Map(productCatalog.map((p) => [p.id, p.isService]));
-  const inventoryAdjustments: Array<{ productId: number; quantity: number }> = [];
-  for (const l of inv.lines) {
-    if (l.productId == null) continue;
-    if (isServiceById.get(l.productId)) continue;
-    const qty = Number(l.quantity);
-    if (qty <= 0) continue;
-    inventoryAdjustments.push({ productId: l.productId, quantity: qty });
+  // Try to write the JE. If it fails for any reason (CoA missing,
+  // unbalanced, audit row blocked, …) we MUST roll the engine consumption
+  // back so we don't strand the workspace with consumed layers + missing
+  // accounting. The roll-back path also clears `products.stockQty`.
+  let je;
+  try {
+    je = await storage.createJournalEntry(
+      companyId,
+      {
+        entryDate: inv.invoiceDate,
+        description: `فاتورة مبيعات ${inv.number} — ${customer.nameAr}`,
+        source: "manual",
+        lines,
+      },
+      ctx,
+    );
+  } catch (jeErr) {
+    if (consumed.transactionId != null) {
+      try {
+        await reverseSaleConsumptionStandalone(companyId, invoiceId);
+      } catch {
+        /* swallow — surfacing JE error is more informative than the rollback failure */
+      }
+    }
+    throw jeErr;
   }
 
+  // Engine has already consumed stock + recorded the sale-side
+  // inventory_transactions row. Patch the JE id onto that row so the
+  // ledger and the inventory ITX are bidirectionally linked.
+  if (consumed.transactionId != null) {
+    await linkSaleTransactionToJournalEntry(companyId, consumed.transactionId, je.id);
+  }
+
+  // markSalesInvoicePosted now ONLY links the JE + flips status (stock is
+  // already decremented by the engine above). Pass an empty adjustments
+  // array to keep the back-compat signature; the storage method has been
+  // updated to short-circuit on `length === 0`.
   await storage.markSalesInvoicePosted(
     companyId,
     invoiceId,
     je.id,
-    inventoryAdjustments,
+    [],
     ctx,
+    cogsAmount,
   );
   const refreshed = await storage.getSalesInvoice(companyId, invoiceId);
   return refreshed!;

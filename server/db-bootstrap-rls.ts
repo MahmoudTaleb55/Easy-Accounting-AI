@@ -110,6 +110,13 @@ export const RLS_TABLES: readonly string[] = [
   "products",
   "sales_invoices",
   "sales_invoice_lines",
+  // Inventory & Costing Portal — added by task #346 (migration 0023).
+  "inventory_categories",
+  "inventory_locations",
+  "inventory_stock_levels",
+  "inventory_transactions",
+  "inventory_transaction_lines",
+  "inventory_cost_layers",
 ] as const;
 
 /**

@@ -79,6 +79,13 @@ import {
 import { postDocumentSchema } from "@shared/schema";
 import { db, withCompanyScope } from "./db";
 import { assetComponents, type AssetComponent } from "@shared/schema";
+import * as inventory from "./inventory";
+import * as inventoryTypes from "@shared/schema";
+import {
+  createInventoryPurchaseSchema,
+  createInventoryAdjustmentSchema,
+  createInventoryTransferSchema,
+} from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import type { PeriodKey } from "./fixed-assets";
 import {
@@ -1963,6 +1970,11 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
   // ============================================================================
   await registerFixedAssetRoutes(app);
 
+  // ============================================================================
+  // Inventory & Costing (FIFO + Weighted Average) — task #346
+  // ============================================================================
+  registerInventoryRoutes(app);
+
   return httpServer;
 }
 
@@ -3122,4 +3134,204 @@ async function registerFixedAssetRoutes(app: Express) {
       res.status(500).json({ message: err?.message || "تعذر استبعاد الأصل" });
     }
   });
+}
+
+// ----------------------------------------------------------------------------
+// Inventory & costing routes (task #346)
+// ----------------------------------------------------------------------------
+function registerInventoryRoutes(app: Express) {
+  // ---- categories ---------------------------------------------------------
+  app.get("/api/inventory/categories", async (req, res) => {
+    try {
+      res.json(await inventory.listCategories(cid(req)));
+    } catch (err: any) {
+      res.status(err?.status ?? 500).json({ message: err?.message || "تعذر تحميل التصنيفات" });
+    }
+  });
+  app.post("/api/inventory/categories", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      const input = z.object({ nameAr: z.string().trim().min(1).max(120), nameEn: z.string().trim().max(120).optional().nullable() }).parse(req.body);
+      res.status(201).json(await inventory.createCategory(cid(req), input));
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(err?.status ?? 500).json({ message: err?.message || "تعذر إنشاء التصنيف" });
+    }
+  });
+  app.patch("/api/inventory/categories/:id", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      const input = z.object({ nameAr: z.string().trim().min(1).max(120).optional(), nameEn: z.string().trim().max(120).optional().nullable() }).parse(req.body);
+      res.json(await inventory.updateCategory(cid(req), Number(req.params.id), input));
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      const status = err?.message?.includes("غير موجود") ? 404 : (err?.status ?? 500);
+      res.status(status).json({ message: err?.message || "تعذر تحديث التصنيف" });
+    }
+  });
+  app.delete("/api/inventory/categories/:id", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      await inventory.deleteCategory(cid(req), Number(req.params.id));
+      res.status(204).send();
+    } catch (err: any) {
+      const status = err?.status ?? (err?.message?.includes("غير موجود") ? 404 : 500);
+      res.status(status).json({ message: err?.message || "تعذر حذف التصنيف" });
+    }
+  });
+
+  // ---- locations ----------------------------------------------------------
+  app.get("/api/inventory/locations", async (req, res) => {
+    try {
+      res.json(await inventory.listLocations(cid(req)));
+    } catch (err: any) {
+      res.status(err?.status ?? 500).json({ message: err?.message || "تعذر تحميل المخازن" });
+    }
+  });
+  app.post("/api/inventory/locations", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      const input = z.object({
+        nameAr: z.string().trim().min(1).max(120),
+        nameEn: z.string().trim().max(120).optional().nullable(),
+        isDefault: z.boolean().optional(),
+      }).parse(req.body);
+      res.status(201).json(await inventory.createLocation(cid(req), input));
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(err?.status ?? 500).json({ message: err?.message || "تعذر إنشاء المخزن" });
+    }
+  });
+  app.patch("/api/inventory/locations/:id", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      const input = z.object({
+        nameAr: z.string().trim().min(1).max(120).optional(),
+        nameEn: z.string().trim().max(120).optional().nullable(),
+        isDefault: z.boolean().optional(),
+      }).parse(req.body);
+      res.json(await inventory.updateLocation(cid(req), Number(req.params.id), input));
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      const status = err?.message?.includes("غير موجود") ? 404 : (err?.status ?? 500);
+      res.status(status).json({ message: err?.message || "تعذر تحديث المخزن" });
+    }
+  });
+  app.delete("/api/inventory/locations/:id", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      await inventory.deleteLocation(cid(req), Number(req.params.id));
+      res.status(204).send();
+    } catch (err: any) {
+      const status = err?.status ?? (err?.message?.includes("غير موجود") ? 404 : 500);
+      res.status(status).json({ message: err?.message || "تعذر حذف المخزن" });
+    }
+  });
+
+  // ---- transactions list/get + create + reverse --------------------------
+  app.get("/api/inventory/transactions", async (req, res) => {
+    try {
+      const type = req.query.type as inventoryTypes.InventoryTxnType | undefined;
+      const locationId = req.query.locationId ? Number(req.query.locationId) : undefined;
+      res.json(await inventory.listTransactions(cid(req), { type, locationId }));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تحميل الحركات" });
+    }
+  });
+  app.get("/api/inventory/transactions/:id", async (req, res) => {
+    try {
+      const row = await inventory.getTransaction(cid(req), Number(req.params.id));
+      if (!row) return res.status(404).json({ message: "الحركة غير موجودة" });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تحميل الحركة" });
+    }
+  });
+  app.post("/api/inventory/purchases", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      const input = createInventoryPurchaseSchema.parse(req.body);
+      const row = await inventory.recordPurchase(cid(req), input, userCtx(req));
+      res.status(201).json(row);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(err?.status ?? 500).json({ message: err?.message || "تعذر تسجيل المشتريات" });
+    }
+  });
+  app.post("/api/inventory/adjustments", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      const input = createInventoryAdjustmentSchema.parse(req.body);
+      const row = await inventory.recordAdjustment(cid(req), input, userCtx(req));
+      res.status(201).json(row);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(err?.status ?? 500).json({ message: err?.message || "تعذر تسجيل التسوية" });
+    }
+  });
+  app.post("/api/inventory/transfers", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      const input = createInventoryTransferSchema.parse(req.body);
+      const row = await inventory.recordTransfer(cid(req), input, userCtx(req));
+      res.status(201).json(row);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(err?.status ?? 500).json({ message: err?.message || "تعذر تسجيل التحويل" });
+    }
+  });
+  app.post("/api/inventory/transactions/:id/reverse", requireRole("owner", "accountant"), async (req, res) => {
+    try {
+      await inventory.reverseInventoryTransaction(cid(req), Number(req.params.id), userCtx(req));
+      res.status(204).send();
+    } catch (err: any) {
+      const status = err?.status ?? (err?.message?.includes("غير موجود") ? 404 : 500);
+      res.status(status).json({ message: err?.message || "تعذر عكس الحركة" });
+    }
+  });
+
+  // ---- read-side: stock levels, alerts, valuation ------------------------
+  app.get("/api/inventory/stock-levels", async (req, res) => {
+    try {
+      res.json(await inventory.listStockLevels(cid(req)));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تحميل الأرصدة" });
+    }
+  });
+  app.get("/api/inventory/alerts", async (req, res) => {
+    try {
+      res.json(await inventory.listLowStockAlerts(cid(req)));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تحميل التنبيهات" });
+    }
+  });
+  app.get("/api/inventory/valuation", async (req, res) => {
+    try {
+      res.json(await inventory.getValuationReport(cid(req)));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تحميل التقييم" });
+    }
+  });
+  app.get("/api/inventory/valuation.csv", async (req, res) => {
+    try {
+      const report = await inventory.getValuationReport(cid(req));
+      const header = ["sku", "nameAr", "nameEn", "unit", "method", "qty", "value"];
+      const lines = [header.join(",")];
+      for (const r of report.rows) {
+        lines.push([
+          csvCell(r.productSku),
+          csvCell(r.productNameAr),
+          csvCell(r.productNameEn ?? ""),
+          csvCell(r.unit),
+          r.costingMethod,
+          r.totalQty,
+          r.totalValue,
+        ].join(","));
+      }
+      lines.push(["", "", "", "", "TOTAL", report.grandTotalQty, report.grandTotalValue].join(","));
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="inventory-valuation.csv"`);
+      // Excel needs the BOM to interpret Arabic in UTF-8 reliably.
+      res.send("\uFEFF" + lines.join("\n"));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تنزيل التقييم" });
+    }
+  });
+}
+
+function csvCell(v: string): string {
+  if (v == null) return "";
+  if (/[",\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+  return v;
 }

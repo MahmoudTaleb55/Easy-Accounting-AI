@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { accounts, journalEntries, journalLines, transactions } from "@shared/schema";
-import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode, PAYROLL_EXTRA_ACCOUNTS, FIXED_ASSETS_EXTRA_ACCOUNTS, FA_CATEGORY_DEFAULTS, FA_ACCUM_IMP_CODE, FA_DEP_EXPENSE_CODE, FA_IMP_LOSS_CODE, FA_REVAL_SURPLUS_CODE, FA_GAIN_LOSS_DISPOSAL_CODE } from "@shared/coa-seed";
+import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode, PAYROLL_EXTRA_ACCOUNTS, FIXED_ASSETS_EXTRA_ACCOUNTS, INVENTORY_EXTRA_ACCOUNTS, FA_CATEGORY_DEFAULTS, FA_ACCUM_IMP_CODE, FA_DEP_EXPENSE_CODE, FA_IMP_LOSS_CODE, FA_REVAL_SURPLUS_CODE, FA_GAIN_LOSS_DISPOSAL_CODE } from "@shared/coa-seed";
 import { companies, assetCategories } from "@shared/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { storage, type AuditContext } from "./storage";
@@ -81,7 +81,7 @@ export async function seedDefaultCoaInTx(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   companyId: number,
 ): Promise<void> {
-  const allSeed = [...DEFAULT_COA, ...PAYROLL_EXTRA_ACCOUNTS, ...FIXED_ASSETS_EXTRA_ACCOUNTS];
+  const allSeed = [...DEFAULT_COA, ...PAYROLL_EXTRA_ACCOUNTS, ...FIXED_ASSETS_EXTRA_ACCOUNTS, ...INVENTORY_EXTRA_ACCOUNTS];
   const seedByCode = new Map(allSeed.map((s) => [s.code, s]));
 
   {

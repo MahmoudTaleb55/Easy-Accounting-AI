@@ -190,6 +190,19 @@ export const FIXED_ASSETS_EXTRA_ACCOUNTS: SeedAccount[] = [
   { code: "6160", nameAr: "خسائر الانخفاض في قيمة الأصول", nameEn: "Impairment Loss", type: "expense", subtype: "operating_expense", parentCode: "6000" },
 ];
 
+// Extra inventory-related accounts to merge into the seed at startup (in init-coa).
+// Account 5200 is the bilateral "Inventory Adjustments" P&L account: a positive
+// adjustment (count > book) credits 5200 (gain), a negative adjustment (loss/
+// shrinkage) debits 5200 (expense). Sits in the COGS band so it rolls up under
+// "Cost of Sales" on the income statement.
+export const INVENTORY_EXTRA_ACCOUNTS: SeedAccount[] = [
+  { code: "5200", nameAr: "تسويات المخزون", nameEn: "Inventory Adjustments", type: "expense", subtype: "cogs", parentCode: "5000" },
+];
+
+export const INVENTORY_ADJUSTMENT_CODE = "5200";
+export const INVENTORY_ACCOUNT_CODE = "1300";
+export const AP_ACCOUNT_CODE = "2110";
+
 // Extra payroll-related accounts to merge into the seed at startup (in init-coa).
 export const PAYROLL_EXTRA_ACCOUNTS: SeedAccount[] = [
   { code: "6110", nameAr: "اشتراكات التأمينات الاجتماعية", nameEn: "Social Insurance Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },

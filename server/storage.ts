@@ -436,6 +436,13 @@ export interface IStorage {
     journalEntryId: number,
     inventoryAdjustments: Array<{ productId: number; quantity: number }>,
     ctx?: AuditContext,
+    /**
+     * Engine-computed cost (task #346). When supplied, the invoice's
+     * `cogsAmount` is rewritten to this value so the report sums match the
+     * JE COGS leg. When omitted (legacy callers), `cogsAmount` is left
+     * unchanged.
+     */
+    engineCogsAmount?: number,
   ): Promise<SalesInvoiceWithLines>;
   /** Reverses a posted invoice. `mode === 'cancel'` keeps the row with
    *  `status='cancelled'` (and `paidAmount=0`); `mode === 'delete'` removes
@@ -2492,6 +2499,7 @@ export class DatabaseStorage implements IStorage {
           unitCost: String(input.unitCost ?? 0),
           stockQty: String(input.stockQty ?? 0),
           vatRate: input.vatRate == null ? null : String(input.vatRate),
+          minimumStock: String(input.minimumStock ?? 0),
         })
         .returning();
       await recordAudit(tx, {
@@ -2911,6 +2919,7 @@ export class DatabaseStorage implements IStorage {
     journalEntryId: number,
     inventoryAdjustments: Array<{ productId: number; quantity: number }>,
     ctx?: AuditContext,
+    engineCogsAmount?: number,
   ): Promise<SalesInvoiceWithLines> {
     return await db.transaction(async (tx) => {
       const [before] = await tx
@@ -2923,20 +2932,26 @@ export class DatabaseStorage implements IStorage {
       if (before.status !== "draft") throw new Error("الفاتورة ليست مسودة");
       const total = Number(before.totalAmount);
       const paidAmount = before.paymentMethod === "cash" ? total : 0;
+      const updateSet: Record<string, unknown> = {
+        status: "posted",
+        journalEntryId,
+        paidAmount: paidAmount.toFixed(2),
+      };
+      if (engineCogsAmount != null) {
+        updateSet.cogsAmount = engineCogsAmount.toFixed(2);
+      }
       const [updated] = await tx
         .update(salesInvoices)
-        .set({
-          status: "posted",
-          journalEntryId,
-          paidAmount: paidAmount.toFixed(2),
-        })
+        .set(updateSet)
         .where(
           and(eq(salesInvoices.id, invoiceId), eq(salesInvoices.companyId, companyId)),
         )
         .returning();
-      // Decrement inventory for each goods line. Service products / free-form
-      // lines arrive here with `productId: null` (the sales service strips
-      // them) so we only ever touch real product rows.
+      // Legacy stockQty decrement path. With the inventory portal (task
+      // #346) this is bypassed: sales.ts passes an empty array because the
+      // engine has already moved stock + maintained the per-location
+      // levels. Older callers (none today) can still rely on the per-row
+      // decrement by passing a non-empty array.
       for (const adj of inventoryAdjustments) {
         await tx
           .update(products)
@@ -2956,6 +2971,9 @@ export class DatabaseStorage implements IStorage {
           { field: "status", from: "draft", to: "posted" },
           { field: "journalEntryId", to: journalEntryId },
           { field: "paidAmount", to: paidAmount.toFixed(2) },
+          ...(engineCogsAmount != null
+            ? [{ field: "cogsAmount", from: String(before.cogsAmount), to: engineCogsAmount.toFixed(2) }]
+            : []),
           { field: "inventoryAdjustments", to: inventoryAdjustments.length },
         ],
         ctx,
@@ -3012,20 +3030,29 @@ export class DatabaseStorage implements IStorage {
       conflictMessage: (conflicts) =>
         `لا يمكن عكس الفاتورة لأن قيدها المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
       extraDelete: async (tx) => {
-        // Restore stock for goods lines (service / free-form lines have
-        // `productId === null` and were never decremented at posting time).
-        for (const l of lineRows) {
-          if (l.productId == null) continue;
-          const qty = Number(l.quantity);
-          if (qty <= 0) continue;
-          await tx
-            .update(products)
-            .set({
-              stockQty: sql`${products.stockQty} + ${qty.toFixed(4)}`,
-            })
-            .where(
-              and(eq(products.id, l.productId), eq(products.companyId, companyId)),
-            );
+        // Restore stock. Try the engine first (task #346): for invoices
+        // posted after the inventory portal landed, the engine has a
+        // matching `inventory_transactions` row + cost layers we want to
+        // walk in reverse so FIFO queues stay coherent. The engine call
+        // also mirrors back to `products.stockQty`. If `found` is false
+        // (legacy / pre-engine invoice), fall through to the per-line
+        // stockQty restore so the totals tile keeps working.
+        const { reverseSaleConsumption } = await import("./inventory");
+        const { found } = await reverseSaleConsumption(tx as any, companyId, invoiceId);
+        if (!found) {
+          for (const l of lineRows) {
+            if (l.productId == null) continue;
+            const qty = Number(l.quantity);
+            if (qty <= 0) continue;
+            await tx
+              .update(products)
+              .set({
+                stockQty: sql`${products.stockQty} + ${qty.toFixed(4)}`,
+              })
+              .where(
+                and(eq(products.id, l.productId), eq(products.companyId, companyId)),
+              );
+          }
         }
         if (mode === "cancel") {
           await tx
