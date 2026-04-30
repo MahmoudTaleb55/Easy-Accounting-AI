@@ -299,7 +299,6 @@ export default function Reports() {
 
       {viewMode === "ifrs" && (
         <IfrsIncomeStatement
-          transactions={filteredTx}
           periodStart={range.start}
           periodEnd={range.end}
         />

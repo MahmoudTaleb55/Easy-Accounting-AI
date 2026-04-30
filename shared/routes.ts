@@ -180,6 +180,30 @@ export const api = {
         200: z.any(),
       },
     },
+    incomeStatement: {
+      method: 'GET' as const,
+      path: '/api/reports/income-statement' as const,
+      query: z.object({
+        from: z.string().optional(),
+        to: z.string().optional(),
+      }),
+      responses: {
+        200: z.object({
+          revenueItems: z.array(z.object({ category: z.string(), amount: z.number() })),
+          totalRevenue: z.number(),
+          cogsItems: z.array(z.object({ category: z.string(), amount: z.number() })),
+          totalCogs: z.number(),
+          grossProfit: z.number(),
+          operatingExpenseItems: z.array(
+            z.object({ category: z.string(), amount: z.number() })
+          ),
+          totalOperatingExpenses: z.number(),
+          otherIncomeItems: z.array(z.object({ category: z.string(), amount: z.number() })),
+          totalOtherIncome: z.number(),
+          netProfit: z.number(),
+        }),
+      },
+    },
   },
   analysis: {
     generate: {

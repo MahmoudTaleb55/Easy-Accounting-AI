@@ -1,24 +1,57 @@
-import { buildIfrsStatement, formatMoney, type IfrsLineItem } from "@/lib/ifrs-classifier";
-import { useSettings } from "@/lib/format";
-import type { Transaction } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 
+import { api } from "@shared/routes";
+import { useSettings } from "@/lib/format";
+import { formatMoney, type IfrsLineItem, type IfrsStatement } from "@/lib/ifrs-classifier";
+
 interface Props {
-  transactions: Transaction[];
   periodStart: Date | null;
   periodEnd: Date | null;
   companyName?: string;
 }
 
 export function IfrsIncomeStatement({
-  transactions,
   periodStart,
   periodEnd,
   companyName = "منشأتي",
 }: Props) {
-  const stmt = buildIfrsStatement(transactions);
   const settings = useSettings();
+
+  // Build a stable query key that changes when the period changes so the
+  // statement refetches whenever the user picks a new range.
+  const fromIso = periodStart ? periodStart.toISOString() : "";
+  const toIso = periodEnd ? periodEnd.toISOString() : "";
+  const params = new URLSearchParams();
+  if (fromIso) params.set("from", fromIso);
+  if (toIso) params.set("to", toIso);
+  const url = params.toString()
+    ? `${api.reports.incomeStatement.path}?${params.toString()}`
+    : api.reports.incomeStatement.path;
+
+  const { data, isLoading, isError } = useQuery<IfrsStatement>({
+    queryKey: [api.reports.incomeStatement.path, fromIso, toIso],
+    queryFn: async () => {
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to load income statement (${res.status})`);
+      return res.json();
+    },
+  });
+
+  const empty: IfrsStatement = {
+    revenueItems: [],
+    totalRevenue: 0,
+    cogsItems: [],
+    totalCogs: 0,
+    grossProfit: 0,
+    operatingExpenseItems: [],
+    totalOperatingExpenses: 0,
+    otherIncomeItems: [],
+    totalOtherIncome: 0,
+    netProfit: 0,
+  };
+  const stmt = data ?? empty;
 
   return (
     <div
@@ -41,109 +74,139 @@ export function IfrsIncomeStatement({
         </p>
       </div>
 
-      {/* Statement table */}
-      <div className="overflow-x-auto table-sticky-first">
-        <table className="w-full text-sm" dir="rtl">
-          <thead>
-            <tr className="bg-muted/40 text-foreground/70 text-xs uppercase tracking-wider">
-              <th className="p-3 text-right font-bold w-3/4">الحساب</th>
-              <th className="p-3 text-left font-bold">{`الإجمالي (${settings.currencySymbol})`}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/40">
-            {/* Operating Revenue */}
-            <SectionHeader title="إيرادات التشغيل" />
-            {stmt.revenueItems.length === 0 ? (
-              <EmptyRow label="لا توجد إيرادات" />
-            ) : (
-              stmt.revenueItems.map((it) => (
-                <LineRow key={`rev-${it.category}`} item={it} testId={`row-rev-${it.category}`} />
-              ))
-            )}
-            <SubtotalRow
-              label="إجمالي إيرادات التشغيل"
-              value={stmt.totalRevenue}
-              testId="row-total-revenue"
-            />
+      {/* Loading / error states */}
+      {isLoading && (
+        <div
+          className="p-8 text-center text-muted-foreground text-sm"
+          data-testid="status-ifrs-loading"
+        >
+          جاري تحميل قائمة الدخل…
+        </div>
+      )}
+      {isError && (
+        <div
+          className="p-8 text-center text-rose-600 text-sm"
+          data-testid="status-ifrs-error"
+        >
+          تعذّر تحميل قائمة الدخل. حاول مرة أخرى.
+        </div>
+      )}
 
-            {/* COGS */}
-            <SectionHeader title="تكلفة البضائع المباعة" />
-            {stmt.cogsItems.length === 0 ? (
-              <EmptyRow label="لا توجد تكلفة بضائع مسجلة" />
-            ) : (
-              stmt.cogsItems.map((it) => (
-                <LineRow key={`cogs-${it.category}`} item={it} testId={`row-cogs-${it.category}`} />
-              ))
-            )}
-            <SubtotalRow
-              label="إجمالي تكلفة البضائع المباعة"
-              value={stmt.totalCogs}
-              testId="row-total-cogs"
-            />
-
-            {/* Gross Profit */}
-            <TotalRow
-              label="إجمالي الربح"
-              value={stmt.grossProfit}
-              tone="primary"
-              testId="row-gross-profit"
-            />
-
-            {/* Operating Expenses */}
-            <SectionHeader title="مصروفات التشغيل" />
-            {stmt.operatingExpenseItems.length === 0 ? (
-              <EmptyRow label="لا توجد مصروفات تشغيلية" />
-            ) : (
-              stmt.operatingExpenseItems.map((it) => (
-                <LineRow
-                  key={`opex-${it.category}`}
-                  item={it}
-                  testId={`row-opex-${it.category}`}
-                />
-              ))
-            )}
-            <SubtotalRow
-              label="إجمالي مصروفات التشغيل"
-              value={stmt.totalOperatingExpenses}
-              testId="row-total-opex"
-            />
-
-            {/* Other Income (only if present) */}
-            {stmt.otherIncomeItems.length > 0 && (
-              <>
-                <SectionHeader title="إيرادات أخرى" />
-                {stmt.otherIncomeItems.map((it) => (
-                  <LineRow
-                    key={`oi-${it.category}`}
-                    item={it}
-                    testId={`row-other-inc-${it.category}`}
-                  />
-                ))}
+      {!isLoading && !isError && (
+        <>
+          {/* Statement table */}
+          <div className="overflow-x-auto table-sticky-first">
+            <table className="w-full text-sm" dir="rtl">
+              <thead>
+                <tr className="bg-muted/40 text-foreground/70 text-xs uppercase tracking-wider">
+                  <th className="p-3 text-right font-bold w-3/4">الحساب</th>
+                  <th className="p-3 text-left font-bold">{`الإجمالي (${settings.currencySymbol})`}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {/* Operating Revenue */}
+                <SectionHeader title="إيرادات التشغيل" />
+                {stmt.revenueItems.length === 0 ? (
+                  <EmptyRow label="لا توجد إيرادات" />
+                ) : (
+                  stmt.revenueItems.map((it) => (
+                    <LineRow
+                      key={`rev-${it.category}`}
+                      item={it}
+                      testId={`row-rev-${it.category}`}
+                    />
+                  ))
+                )}
                 <SubtotalRow
-                  label="إجمالي الإيرادات الأخرى"
-                  value={stmt.totalOtherIncome}
-                  testId="row-total-other-inc"
+                  label="إجمالي إيرادات التشغيل"
+                  value={stmt.totalRevenue}
+                  testId="row-total-revenue"
                 />
-              </>
-            )}
 
-            {/* Net Profit */}
-            <TotalRow
-              label="صافي الربح / الخسارة"
-              value={stmt.netProfit}
-              tone={stmt.netProfit >= 0 ? "success" : "danger"}
-              testId="row-net-profit"
-              emphasized
-            />
-          </tbody>
-        </table>
-      </div>
+                {/* COGS */}
+                <SectionHeader title="تكلفة البضائع المباعة" />
+                {stmt.cogsItems.length === 0 ? (
+                  <EmptyRow label="لا توجد تكلفة بضائع مسجلة" />
+                ) : (
+                  stmt.cogsItems.map((it) => (
+                    <LineRow
+                      key={`cogs-${it.category}`}
+                      item={it}
+                      testId={`row-cogs-${it.category}`}
+                    />
+                  ))
+                )}
+                <SubtotalRow
+                  label="إجمالي تكلفة البضائع المباعة"
+                  value={stmt.totalCogs}
+                  testId="row-total-cogs"
+                />
 
-      {/* Footer note */}
-      <div className="p-4 bg-muted/20 text-xs text-muted-foreground text-center font-medium border-t border-border/40">
-        تم إعداد هذا البيان وفق المبادئ العامة للمعايير الدولية لإعداد التقارير المالية (IFRS) -
-        التصنيف التلقائي للحسابات بناءً على الأسماء.
-      </div>
+                {/* Gross Profit */}
+                <TotalRow
+                  label="إجمالي الربح"
+                  value={stmt.grossProfit}
+                  tone="primary"
+                  testId="row-gross-profit"
+                />
+
+                {/* Operating Expenses */}
+                <SectionHeader title="مصروفات التشغيل" />
+                {stmt.operatingExpenseItems.length === 0 ? (
+                  <EmptyRow label="لا توجد مصروفات تشغيلية" />
+                ) : (
+                  stmt.operatingExpenseItems.map((it) => (
+                    <LineRow
+                      key={`opex-${it.category}`}
+                      item={it}
+                      testId={`row-opex-${it.category}`}
+                    />
+                  ))
+                )}
+                <SubtotalRow
+                  label="إجمالي مصروفات التشغيل"
+                  value={stmt.totalOperatingExpenses}
+                  testId="row-total-opex"
+                />
+
+                {/* Other Income (only if present) */}
+                {stmt.otherIncomeItems.length > 0 && (
+                  <>
+                    <SectionHeader title="إيرادات أخرى" />
+                    {stmt.otherIncomeItems.map((it) => (
+                      <LineRow
+                        key={`oi-${it.category}`}
+                        item={it}
+                        testId={`row-other-inc-${it.category}`}
+                      />
+                    ))}
+                    <SubtotalRow
+                      label="إجمالي الإيرادات الأخرى"
+                      value={stmt.totalOtherIncome}
+                      testId="row-total-other-inc"
+                    />
+                  </>
+                )}
+
+                {/* Net Profit */}
+                <TotalRow
+                  label="صافي الربح / الخسارة"
+                  value={stmt.netProfit}
+                  tone={stmt.netProfit >= 0 ? "success" : "danger"}
+                  testId="row-net-profit"
+                  emphasized
+                />
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer note */}
+          <div className="p-4 bg-muted/20 text-xs text-muted-foreground text-center font-medium border-t border-border/40">
+            تم إعداد هذا البيان وفق المبادئ العامة للمعايير الدولية لإعداد التقارير المالية (IFRS) -
+            مبني على قيود اليومية المرحّلة.
+          </div>
+        </>
+      )}
     </div>
   );
 }

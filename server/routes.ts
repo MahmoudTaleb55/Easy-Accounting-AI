@@ -808,6 +808,117 @@ export async function registerRoutes(
     });
   });
 
+  // ----- Reports: Income Statement (built from posted journal entries) -----
+  // Aggregates all journal lines whose account is type=revenue or type=expense,
+  // grouped by account name and classified by subtype:
+  //   revenue / operating_revenue   -> revenueItems         (credit - debit)
+  //   revenue / contra_revenue      -> revenueItems (negative; sales discounts post as debit)
+  //   revenue / other_income        -> otherIncomeItems     (credit - debit)
+  //   expense / cogs                -> cogsItems            (debit - credit)
+  //   expense / *                   -> operatingExpenseItems (debit - credit)
+  // This replaces the legacy keyword-based classifier so auto-posted invoice
+  // JEs (and every other posted JE) appear in قائمة الأرباح والخسائر.
+  app.get(api.reports.incomeStatement.path, async (req, res) => {
+    const fromRaw = typeof req.query.from === "string" ? req.query.from : undefined;
+    const toRaw = typeof req.query.to === "string" ? req.query.to : undefined;
+    const from = fromRaw ? new Date(fromRaw) : null;
+    const to = toRaw ? new Date(toRaw) : null;
+    if (from && Number.isNaN(from.getTime())) {
+      return res.status(400).json({ message: "Invalid 'from' date" });
+    }
+    if (to && Number.isNaN(to.getTime())) {
+      return res.status(400).json({ message: "Invalid 'to' date" });
+    }
+    // Make `to` inclusive of the entire day when the caller passed a
+    // date-only string (e.g., "2026-04-30"). Without this, a JE timestamped
+    // at 15:00 on the requested last day would be excluded.
+    if (to && /^\d{4}-\d{2}-\d{2}$/.test(toRaw ?? "")) {
+      to.setUTCHours(23, 59, 59, 999);
+    }
+
+    const allAccounts = await storage.getAccounts(cid(req));
+    const entries = await storage.getJournalEntries(cid(req));
+    // Skip header (rollup) accounts — they should never receive postings, but
+    // filtering defensively keeps the report clean if a stray line exists.
+    const accById = new Map(
+      allAccounts.filter((a) => !a.isHeader).map((a) => [a.id, a] as const)
+    );
+
+    const inRange = entries.filter((je) => {
+      const d = new Date(je.entryDate);
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+
+    const revenue = new Map<string, number>();
+    const otherIncome = new Map<string, number>();
+    const cogs = new Map<string, number>();
+    const opex = new Map<string, number>();
+
+    for (const je of inRange) {
+      for (const l of je.lines) {
+        const a = accById.get(l.accountId);
+        if (!a) continue;
+        const debit = Number(l.debit || 0);
+        const credit = Number(l.credit || 0);
+        const label = a.nameAr || a.nameEn || a.code;
+
+        if (a.type === "revenue") {
+          const amt = credit - debit; // revenue normal balance = credit
+          if (amt === 0) continue;
+          if (a.subtype === "other_income") {
+            otherIncome.set(label, (otherIncome.get(label) || 0) + amt);
+          } else {
+            // operating_revenue, contra_revenue, header → revenue section
+            // contra-revenue accounts post as debit, so amt is naturally negative.
+            revenue.set(label, (revenue.get(label) || 0) + amt);
+          }
+        } else if (a.type === "expense") {
+          const amt = debit - credit; // expense normal balance = debit
+          if (amt === 0) continue;
+          if (a.subtype === "cogs") {
+            cogs.set(label, (cogs.get(label) || 0) + amt);
+          } else {
+            opex.set(label, (opex.get(label) || 0) + amt);
+          }
+        }
+        // assets / liabilities / equity → not part of the income statement
+      }
+    }
+
+    const toItems = (m: Map<string, number>) =>
+      Array.from(m.entries())
+        .map(([category, amount]) => ({ category, amount }))
+        .filter((i) => i.amount !== 0)
+        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+
+    const revenueItems = toItems(revenue);
+    const cogsItems = toItems(cogs);
+    const operatingExpenseItems = toItems(opex);
+    const otherIncomeItems = toItems(otherIncome);
+
+    const totalRevenue = revenueItems.reduce((s, i) => s + i.amount, 0);
+    const totalCogs = cogsItems.reduce((s, i) => s + i.amount, 0);
+    const totalOperatingExpenses = operatingExpenseItems.reduce((s, i) => s + i.amount, 0);
+    const totalOtherIncome = otherIncomeItems.reduce((s, i) => s + i.amount, 0);
+    const grossProfit = totalRevenue - totalCogs;
+    const netProfit = grossProfit - totalOperatingExpenses + totalOtherIncome;
+
+    res.json({
+      revenueItems,
+      totalRevenue,
+      cogsItems,
+      totalCogs,
+      grossProfit,
+      operatingExpenseItems,
+      totalOperatingExpenses,
+      otherIncomeItems,
+      totalOtherIncome,
+      netProfit,
+    });
+  });
+
   // ============================================================================
   // Settings (singleton org settings)
   // ============================================================================
