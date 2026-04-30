@@ -3,6 +3,7 @@ import { type WorkspaceRole, ROLES } from "@shared/schema";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { authBizStorage } from "./auth/storage";
 import { resolveActiveCompanyId } from "./auth/middleware";
+import { withUnscopedDb } from "./db";
 
 /**
  * Projected identity for the signed-in user, attached to `req.member` for
@@ -70,22 +71,31 @@ function getSessionUserId(req: Request): string | null {
  * (server/auth/local-routes.ts).
  */
 async function resolveCurrentMember(req: Request): Promise<CurrentMember | null> {
-  const userId = getSessionUserId(req);
-  if (!userId) return null;
-  const u = await authStorage.getUser(userId);
-  if (!u || !u.email) return null;
+  // `rbacMiddleware` runs *before* the global /api gate that attaches
+  // `withCompanyScope` (see server/index.ts mount order), so every db
+  // call here is pre-scope by construction. The reads only touch
+  // auth-tier `users` / `memberships` — both intentionally out of
+  // `workspace_isolation` RLS scope — so wrap in `withUnscopedDb` to
+  // silence the task #193 runtime guard while keeping a grep-able
+  // audit marker.
+  return withUnscopedDb("auth:resolve-current-member", async () => {
+    const userId = getSessionUserId(req);
+    if (!userId) return null;
+    const u = await authStorage.getUser(userId);
+    if (!u || !u.email) return null;
 
-  const companyId = await resolveActiveCompanyId(req, userId);
-  let mappedRole: WorkspaceRole = "viewer";
-  if (companyId) {
-    const m = await authBizStorage.getMembership(userId, companyId);
-    if (m) mappedRole = mapRole(m.role);
-  }
+    const companyId = await resolveActiveCompanyId(req, userId);
+    let mappedRole: WorkspaceRole = "viewer";
+    if (companyId) {
+      const m = await authBizStorage.getMembership(userId, companyId);
+      if (m) mappedRole = mapRole(m.role);
+    }
 
-  const email = u.email.trim().toLowerCase();
-  const display = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || email;
+    const email = u.email.trim().toLowerCase();
+    const display = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || email;
 
-  return { name: display, email, role: mappedRole, status: "active" };
+    return { name: display, email, role: mappedRole, status: "active" };
+  });
 }
 
 /**

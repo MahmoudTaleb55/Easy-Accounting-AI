@@ -24,6 +24,7 @@ import {
 } from "@shared/schema";
 import { authBizStorage, hashPassword, verifyPassword } from "./storage";
 import { authStorage } from "../replit_integrations/auth/storage";
+import { withUnscopedDb } from "../db";
 import {
   sendInvitationEmail,
   sendPasswordResetEmail,
@@ -209,86 +210,143 @@ function handleZod(err: unknown, res: Response): boolean {
 }
 
 export function registerLocalAuthRoutes(app: Express) {
+  // Defense for task #321: every route registered in this file (and the
+  // Resend webhook below) operates on auth-tier tables that are
+  // *intentionally* out of `workspace_isolation` RLS scope (see
+  // `docs/design/workspace-isolation-defense-in-depth.md` →
+  // "Tables intentionally out of scope" — `users`, `memberships`,
+  // `invitations`, `password_reset_*`, `email_delivery_*`, sessions).
+  //
+  // Because `registerLocalAuthRoutes` is mounted *before* the global
+  // `/api` gate in `server/index.ts`, the global `withCompanyScope`
+  // wrapper never runs for these handlers, so each `db.` call inside
+  // would otherwise trip the task #193 runtime guard
+  // (`WORKSPACE_ISOLATION_GUARD=throw`) and throw mid-handler.
+  //
+  // Mark the request as deliberate-unscoped at the very front of this
+  // file's middleware chain so the runtime guard stays silent for every
+  // handler below — without granting any RLS bypass. The `withUnscopedDb`
+  // marker is preserved by `AsyncLocalStorage` across every async
+  // continuation spawned inside `next()`, so a single mount point covers
+  // the whole file. Per-handler `withUnscopedDb(...)` calls below are
+  // kept as documentation/grep anchors for the highest-traffic auth
+  // endpoints (signup/signin/etc.) and remain a no-op overlay.
+  const AUTH_LOCAL_PREFIXES = ["/api/auth/", "/api/webhooks/resend"] as const;
+  app.use((req, res, next) => {
+    if (
+      !AUTH_LOCAL_PREFIXES.some(
+        (p) => req.path === p || req.path.startsWith(p),
+      )
+    ) {
+      return next();
+    }
+    void withUnscopedDb(
+      "auth:local-routes",
+      () =>
+        new Promise<void>((resolve) => {
+          res.on("finish", resolve);
+          res.on("close", resolve);
+          next();
+        }),
+    );
+  });
+
   // ---------- email + password sign-up ----------
   app.post("/api/auth/signup", signupLimiter, async (req, res, next) => {
-    try {
-      const input = signUpSchema.parse(req.body);
-      const existing = await authBizStorage.getUserByEmail(input.email);
-      if (existing) {
-        return res.status(409).json({ message: "هذا البريد الإلكتروني مسجل بالفعل / Email already registered", field: "email" });
-      }
-
-      const passwordHash = await hashPassword(input.password);
-      const user = await authBizStorage.createLocalUser({
-        email: input.email,
-        passwordHash,
-        firstName: input.firstName ?? null,
-        lastName: input.lastName ?? null,
-        preferredLocale: input.preferredLocale ?? "ar",
-      });
-
-      // If the signup carries an invitation token, accept it (creates membership for that company).
-      let bootstrapped: "adopted" | "created" | "invited" = "created";
-      if (input.invitationToken) {
-        const inv = await authBizStorage.getInvitationByToken(input.invitationToken);
-        if (
-          inv &&
-          inv.status === "pending" &&
-          inv.expiresAt.getTime() > Date.now() &&
-          inv.email.toLowerCase() === user.email!.toLowerCase()
-        ) {
-          await authBizStorage.createMembership({ userId: user.id, companyId: inv.companyId, role: inv.role as Role });
-          await authBizStorage.acceptInvitation(inv.token, user.id);
-          bootstrapped = "invited";
+    // Pre-membership: there is no workspace to scope to yet — the whole
+    // point is to create the user (and, on first signup, their first
+    // workspace). Wrap in `withUnscopedDb` so the task #193 runtime guard
+    // (server/db.ts) does not flag the `users` / `invitations` /
+    // `memberships` lookups that happen here. The reason string doubles
+    // as a grep marker for the audited unscoped paths.
+    return withUnscopedDb("auth:signup", async () => {
+      try {
+        const input = signUpSchema.parse(req.body);
+        const existing = await authBizStorage.getUserByEmail(input.email);
+        if (existing) {
+          return res.status(409).json({ message: "هذا البريد الإلكتروني مسجل بالفعل / Email already registered", field: "email" });
         }
-      }
-      if (bootstrapped === "created") {
-        const display = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email!;
-        await authBizStorage.bootstrapWorkspaceForUser(user.id, display, {
-          currencyCode: input.currencyCode,
-        });
-      }
 
-      const session = buildLocalSession(user);
-      req.login(session, (err) => {
-        if (err) return next(err);
-        res.status(201).json({ user, bootstrapped });
-      });
-    } catch (err) {
-      if (handleZod(err, res)) return;
-      next(err);
-    }
+        const passwordHash = await hashPassword(input.password);
+        const user = await authBizStorage.createLocalUser({
+          email: input.email,
+          passwordHash,
+          firstName: input.firstName ?? null,
+          lastName: input.lastName ?? null,
+          preferredLocale: input.preferredLocale ?? "ar",
+        });
+
+        // If the signup carries an invitation token, accept it (creates membership for that company).
+        let bootstrapped: "adopted" | "created" | "invited" = "created";
+        if (input.invitationToken) {
+          const inv = await authBizStorage.getInvitationByToken(input.invitationToken);
+          if (
+            inv &&
+            inv.status === "pending" &&
+            inv.expiresAt.getTime() > Date.now() &&
+            inv.email.toLowerCase() === user.email!.toLowerCase()
+          ) {
+            await authBizStorage.createMembership({ userId: user.id, companyId: inv.companyId, role: inv.role as Role });
+            await authBizStorage.acceptInvitation(inv.token, user.id);
+            bootstrapped = "invited";
+          }
+        }
+        if (bootstrapped === "created") {
+          const display = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email!;
+          await authBizStorage.bootstrapWorkspaceForUser(user.id, display, {
+            currencyCode: input.currencyCode,
+          });
+        }
+
+        const session = buildLocalSession(user);
+        req.login(session, (err) => {
+          if (err) return next(err);
+          res.status(201).json({ user, bootstrapped });
+        });
+      } catch (err) {
+        if (handleZod(err, res)) return;
+        next(err);
+      }
+    });
   });
 
   // ---------- email + password sign-in ----------
   app.post("/api/auth/signin", signinLimiter, async (req, res, next) => {
-    try {
-      const input = signInSchema.parse(req.body);
-      const user = await authBizStorage.getUserByEmail(input.email);
-      if (!user || !user.passwordHash) {
-        return res.status(401).json({ message: "بيانات الدخول غير صحيحة / Invalid credentials" });
-      }
-      const ok = await verifyPassword(input.password, user.passwordHash);
-      if (!ok) {
-        return res.status(401).json({ message: "بيانات الدخول غير صحيحة / Invalid credentials" });
-      }
+    // Pre-membership: user identity is verified from the email/password
+    // pair *before* any workspace can be selected. The lookups touch the
+    // auth-tier `users` / `memberships` tables which are intentionally out
+    // of `workspace_isolation` RLS scope; wrap in `withUnscopedDb` to
+    // silence the task #193 runtime guard while keeping a grep-able
+    // audit marker.
+    return withUnscopedDb("auth:signin", async () => {
+      try {
+        const input = signInSchema.parse(req.body);
+        const user = await authBizStorage.getUserByEmail(input.email);
+        if (!user || !user.passwordHash) {
+          return res.status(401).json({ message: "بيانات الدخول غير صحيحة / Invalid credentials" });
+        }
+        const ok = await verifyPassword(input.password, user.passwordHash);
+        if (!ok) {
+          return res.status(401).json({ message: "بيانات الدخول غير صحيحة / Invalid credentials" });
+        }
 
-      // Ensure the user has at least one workspace (legacy users created before bootstrap).
-      const memberships = await authBizStorage.listMembershipsForUser(user.id);
-      if (memberships.length === 0) {
-        const display = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email!;
-        await authBizStorage.bootstrapWorkspaceForUser(user.id, display);
-      }
+        // Ensure the user has at least one workspace (legacy users created before bootstrap).
+        const memberships = await authBizStorage.listMembershipsForUser(user.id);
+        if (memberships.length === 0) {
+          const display = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email!;
+          await authBizStorage.bootstrapWorkspaceForUser(user.id, display);
+        }
 
-      const session = buildLocalSession(user);
-      req.login(session, (err) => {
-        if (err) return next(err);
-        res.json({ user });
-      });
-    } catch (err) {
-      if (handleZod(err, res)) return;
-      next(err);
-    }
+        const session = buildLocalSession(user);
+        req.login(session, (err) => {
+          if (err) return next(err);
+          res.json({ user });
+        });
+      } catch (err) {
+        if (handleZod(err, res)) return;
+        next(err);
+      }
+    });
   });
 
   // ---------- session sign-out (POST so SPA can call from JS) ----------
@@ -303,6 +361,12 @@ export function registerLocalAuthRoutes(app: Express) {
 
   // ---------- request password reset ----------
   app.post("/api/auth/forgot-password", resetLimiter, async (req, res) => {
+    // Pre-membership: callers know an email but no workspace id (and we
+    // explicitly do not want to leak whether the email is registered, so
+    // we cannot return a 401/404 to "force" the caller to authenticate).
+    // Wrap in `withUnscopedDb` so the task #193 runtime guard does not
+    // flag the legitimate `users` / `password_reset_tokens` writes here.
+    return withUnscopedDb("auth:forgot-password", async () => {
     try {
       const { email } = requestResetSchema.parse(req.body);
       const user = await authBizStorage.getUserByEmail(email);
@@ -380,66 +444,96 @@ export function registerLocalAuthRoutes(app: Express) {
       if (handleZod(err, res)) return;
       throw err;
     }
+    });
   });
 
   // ---------- confirm reset ----------
   app.post("/api/auth/reset-password", resetConfirmLimiter, async (req, res) => {
-    try {
-      const { token, password } = confirmResetSchema.parse(req.body);
-      const consumed = await authBizStorage.consumePasswordResetToken(token);
-      if (!consumed) return res.status(400).json({ message: "رمز الاستعادة غير صالح أو منتهي / Invalid or expired token" });
-      const passwordHash = await hashPassword(password);
-      await authBizStorage.setPasswordHash(consumed.userId, passwordHash);
-      // Invalidate all existing sessions for this user as a security best practice.
-      await authBizStorage.deleteSessionsForUserExcept(consumed.userId);
-      res.json({ ok: true });
-    } catch (err) {
-      if (handleZod(err, res)) return;
-      throw err;
-    }
+    // Pre-membership: a password-reset token only identifies a user, not
+    // a workspace. Wrap in `withUnscopedDb` so the runtime guard does
+    // not flag the `password_reset_tokens` consume + `users` password
+    // update + session-sweep that this handler legitimately performs.
+    return withUnscopedDb("auth:reset-password", async () => {
+      try {
+        const { token, password } = confirmResetSchema.parse(req.body);
+        const consumed = await authBizStorage.consumePasswordResetToken(token);
+        if (!consumed) return res.status(400).json({ message: "رمز الاستعادة غير صالح أو منتهي / Invalid or expired token" });
+        const passwordHash = await hashPassword(password);
+        await authBizStorage.setPasswordHash(consumed.userId, passwordHash);
+        // Invalidate all existing sessions for this user as a security best practice.
+        await authBizStorage.deleteSessionsForUserExcept(consumed.userId);
+        res.json({ ok: true });
+      } catch (err) {
+        if (handleZod(err, res)) return;
+        throw err;
+      }
+    });
   });
 
   // ---------- bootstrap a workspace for OIDC sessions on first hit ----------
   // The blueprint's /api/auth/user returns the user row. We extend it: if the
   // signed-in OIDC user has no membership yet, create/adopt a workspace.
   app.use("/api/auth/user", async (req, _res, next) => {
-    try {
-      const user = req.user as any;
-      if (req.isAuthenticated() && user?.claims?.sub && !user._local) {
-        const id = user.claims.sub as string;
-        const u = await authStorage.getUser(id);
-        if (u) {
-          const ms = await authBizStorage.listMembershipsForUser(id);
-          if (ms.length === 0) {
-            const display = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "User";
-            await authBizStorage.bootstrapWorkspaceForUser(id, display);
+    // Pre-membership: this hook fires before the user's first workspace
+    // exists (and is the moment we create it for fresh OIDC accounts).
+    // The `users` / `memberships` reads here are intentionally outside
+    // workspace scope; wrap in `withUnscopedDb` so the runtime guard
+    // does not flag this every-request bootstrap path.
+    await withUnscopedDb("auth:user-bootstrap-on-first-hit", async () => {
+      try {
+        const user = req.user as any;
+        if (req.isAuthenticated() && user?.claims?.sub && !user._local) {
+          const id = user.claims.sub as string;
+          const u = await authStorage.getUser(id);
+          if (u) {
+            const ms = await authBizStorage.listMembershipsForUser(id);
+            if (ms.length === 0) {
+              const display = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "User";
+              await authBizStorage.bootstrapWorkspaceForUser(id, display);
+            }
           }
         }
+      } catch (err) {
+        console.error("workspace bootstrap error:", err);
       }
-    } catch (err) {
-      console.error("workspace bootstrap error:", err);
-    }
+    });
     next();
   });
 
   // ---------- current user (override the blueprint route to also accept local sessions) ----------
   app.get("/api/auth/user", requireAuth, async (req, res) => {
-    try {
-      const userId = getUserIdOrThrow(req);
-      const user = await authStorage.getUser(userId);
-      res.json(user);
-    } catch (err) {
-      console.error("Error fetching user:", err);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
+    // `/api/auth/user` is in PUBLIC_API_PREFIXES (server/routes.ts) so
+    // the global gate does not attach a workspace scope before this
+    // handler runs — even authenticated users hit it without scope.
+    // The `users` table is auth-tier (intentionally out of workspace
+    // RLS scope), so wrap in `withUnscopedDb` to keep the audit trail
+    // explicit and avoid tripping the runtime guard.
+    return withUnscopedDb("auth:get-current-user", async () => {
+      try {
+        const userId = getUserIdOrThrow(req);
+        const user = await authStorage.getUser(userId);
+        res.json(user);
+      } catch (err) {
+        console.error("Error fetching user:", err);
+        res.status(500).json({ message: "Failed to fetch user" });
+      }
+    });
   });
 
   // ---------- list my memberships (drives company switcher + permissions) ----------
   app.get("/api/auth/memberships", requireAuth, async (req, res) => {
-    const userId = getUserIdOrThrow(req);
-    const rows = await authBizStorage.listMembershipsForUser(userId);
-    const active = await resolveActiveCompanyId(req, userId);
-    res.json({ memberships: rows, activeCompanyId: active });
+    // The whole point of this endpoint is "what workspaces can this user
+    // see?" — so it inherently spans every workspace the user holds a
+    // membership in, not just the active scope. `memberships` is
+    // intentionally out of `workspace_isolation` RLS scope; wrap in
+    // `withUnscopedDb` so the runtime guard doesn't flag this even when
+    // the global gate happened to attach a workspace scope first.
+    return withUnscopedDb("auth:list-my-memberships", async () => {
+      const userId = getUserIdOrThrow(req);
+      const rows = await authBizStorage.listMembershipsForUser(userId);
+      const active = await resolveActiveCompanyId(req, userId);
+      res.json({ memberships: rows, activeCompanyId: active });
+    });
   });
 
   // ---------- profile ----------
@@ -676,11 +770,19 @@ export function registerLocalAuthRoutes(app: Express) {
 
   // Public preview of an invitation by token (no auth required, used by sign-up form).
   app.get("/api/auth/invitations/by-token/:token", async (req, res) => {
-    const inv = await authBizStorage.getInvitationByToken(req.params.token);
-    if (!inv || inv.status !== "pending" || inv.expiresAt.getTime() < Date.now()) {
-      return res.status(404).json({ message: "Invitation not found or expired" });
-    }
-    res.json({ email: inv.email, role: inv.role, companyId: inv.companyId });
+    // Public route in PUBLIC_API_PREFIXES — runs without any workspace
+    // scope. The lookup uses an opaque random token (32 bytes of
+    // crypto.randomBytes hex) which is unguessable; revealing the
+    // companyId for a known-pending invitation token to its bearer is
+    // the whole point of the endpoint. Wrap in `withUnscopedDb` so the
+    // runtime guard doesn't flag this audited cross-tenant lookup.
+    return withUnscopedDb("auth:invitation-by-token", async () => {
+      const inv = await authBizStorage.getInvitationByToken(req.params.token);
+      if (!inv || inv.status !== "pending" || inv.expiresAt.getTime() < Date.now()) {
+        return res.status(404).json({ message: "Invitation not found or expired" });
+      }
+      res.json({ email: inv.email, role: inv.role, companyId: inv.companyId });
+    });
   });
 
   // Authenticated accept (for users who are already signed-in and click the link).
