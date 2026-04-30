@@ -69,6 +69,7 @@ export default defineConfig({
         /email-delivery-count-cache\.setup\.ts/,
         /email-delivery-count-cache\.spec\.ts/,
         /email-delivery-count-chip-refresh\.spec\.ts/,
+        /email-delivery-count-chip-refresh-ar\.spec\.ts/,
         /delivery-alert-audit\.setup\.ts/,
         /delivery-alert-audit\.spec\.ts/,
         /payroll-journal-link\.spec\.ts/,
@@ -241,6 +242,28 @@ export default defineConfig({
       },
     },
     {
+      // Arabic-locale mirror of `email-delivery-count-chip-refresh`.
+      // Walks the same status / recipient / date filter flow on
+      // /app/settings/email-delivery under `localStorage.app.locale = "ar"`
+      // and asserts the chip's Arabic strings (singular, plural, capped
+      // >10,000) match the production translations exactly. The chip's
+      // English copy is already locked in by the sibling project — this
+      // closes the gap on the Arabic branch so a regression in the RTL
+      // pluralization or digit shaping can't ship silently. Reuses the
+      // dedicated workspace + owner storage state from
+      // `email-delivery-alerts-setup`; the spec anchors its seeds on the
+      // same accountant user_id as the English mirror but in a
+      // non-overlapping deep-past year (2021 vs 2020) and with a
+      // disjoint `message_id` prefix so the two specs can run in
+      // parallel without their counts polluting each other.
+      name: "email-delivery-count-chip-refresh-ar",
+      testMatch: /email-delivery-count-chip-refresh-ar\.spec\.ts/,
+      dependencies: ["email-delivery-alerts-setup"],
+      use: {
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
       // One-time setup that provisions a *dedicated* workspace +
       // dedicated owner for the email-delivery-count-cache spec.
       // Sharing the workspace from `email-delivery-alerts-setup` would
@@ -324,6 +347,7 @@ export default defineConfig({
         "email-delivery-filters-persist",
         "email-delivery-count-cache",
         "email-delivery-count-chip-refresh",
+        "email-delivery-count-chip-refresh-ar",
         "delivery-alert-audit",
       ],
     },
