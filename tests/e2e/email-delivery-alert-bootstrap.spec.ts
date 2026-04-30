@@ -303,4 +303,83 @@ test.describe("ensureEmailDeliveryAlertTablesOnStartup defense-in-depth @bootstr
     // Idempotent re-run, same as the column case above.
     await bootstrap();
   });
+
+  test("re-stages the dedupe_hours + retry_minutes columns from migration 0022", async () => {
+    // Sanity check — the helper is supposed to ensure both columns
+    // exist. If the precondition already fails the rest of the test
+    // is meaningless.
+    await bootstrap();
+
+    await withClient(async (c) => {
+      for (const column of ["dedupe_hours", "retry_minutes"]) {
+        const before = await readColumnMeta(
+          c,
+          "email_delivery_alert_settings",
+          column,
+        );
+        expect(
+          before,
+          `precondition: helper must have ensured ${column} exists`,
+        ).not.toBeNull();
+      }
+
+      // Yank both columns directly. Once committed, the rest of the
+      // process — including the helper's pool clients — sees them
+      // missing, the same way a fresh dev DB / pre-migration boot
+      // would.
+      await c.query(
+        `ALTER TABLE "email_delivery_alert_settings" DROP COLUMN "dedupe_hours"`,
+      );
+      await c.query(
+        `ALTER TABLE "email_delivery_alert_settings" DROP COLUMN "retry_minutes"`,
+      );
+
+      for (const column of ["dedupe_hours", "retry_minutes"]) {
+        const dropped = await readColumnMeta(
+          c,
+          "email_delivery_alert_settings",
+          column,
+        );
+        expect(
+          dropped,
+          `drop must have succeeded — ${column} should be gone before re-bootstrap`,
+        ).toBeNull();
+      }
+    });
+
+    // Re-invoke the helper exactly the way server/index.ts does on
+    // boot: inside `withRlsBypass`. The helper is the only contract
+    // under test here.
+    await bootstrap();
+
+    await withClient(async (c) => {
+      for (const column of ["dedupe_hours", "retry_minutes"]) {
+        const restored = await readColumnMeta(
+          c,
+          "email_delivery_alert_settings",
+          column,
+        );
+        expect(
+          restored,
+          `helper must re-stage migration 0022 — ${column} should exist after re-bootstrap`,
+        ).not.toBeNull();
+        // Migration 0022 declares both columns as nullable `integer`.
+        // Pin both facets so a future edit that swaps the type (e.g.
+        // to `numeric`) or drops the nullability (which would force
+        // every workspace onto the per-workspace value and break the
+        // env-var fallback the evaluator relies on) is caught here.
+        expect(
+          restored!.data_type,
+          `${column} must remain a plain integer (the evaluator parses it as Number(...))`,
+        ).toBe("integer");
+        expect(
+          restored!.is_nullable,
+          `${column} must remain nullable — the evaluator falls back to the env var only when it's null`,
+        ).toBe("YES");
+      }
+    });
+
+    // Idempotent re-run, same as the column / table cases above.
+    await bootstrap();
+  });
 });

@@ -324,11 +324,12 @@ export default defineConfig({
     {
       // Defense-in-depth coverage for `ensureEmailDeliveryAlertTablesOnStartup`
       // (server/auth/storage.ts). The spec drops the `cooldown_cleared_at`
-      // column from `email_delivery_alert_settings` and the
-      // `email_delivery_alert_recipients` table, then re-invokes the
-      // helper via `withRlsBypass` and asserts each fragment is restored
-      // — pinning the contract that the helper re-stages migrations 0009,
-      // 0011, and 0013 on every boot. See
+      // column from `email_delivery_alert_settings`, the
+      // `email_delivery_alert_recipients` table, and the
+      // `dedupe_hours` / `retry_minutes` tuning columns, then re-invokes
+      // the helper via `withRlsBypass` and asserts each fragment is
+      // restored — pinning the contract that the helper re-stages
+      // migrations 0009, 0011, 0013, and 0022 on every boot. See
       // `tests/e2e/email-delivery-alert-bootstrap.spec.ts`.
       //
       // Listed as a dependent of every other alert-pipeline project so

@@ -1812,6 +1812,25 @@ export async function ensureEmailDeliveryAlertTablesOnStartup(): Promise<void> {
     ALTER TABLE email_delivery_alert_settings
       ADD COLUMN IF NOT EXISTS cooldown_cleared_at timestamp
   `);
+  // Migration 0022 — per-workspace dedupe / retry tuning knobs that
+  // promote the previously env-only `EMAIL_DELIVERY_ALERT_DEDUPE_HOURS`
+  // and `EMAIL_DELIVERY_ALERT_RETRY_MINUTES` windows into the settings
+  // UI. Both columns are nullable on purpose: the evaluator reads the
+  // per-workspace value first and falls back to the env var only when
+  // the column is null, so a freshly-added column leaves existing
+  // workspaces (and env-driven environments) behaving exactly as they
+  // did before this change. Without re-staging both here, a fresh dev
+  // DB or a deploy that boots ahead of the migration runner would
+  // 500 on the first read from the settings page with
+  // `column "dedupe_hours" does not exist`.
+  await db.execute(sql`
+    ALTER TABLE email_delivery_alert_settings
+      ADD COLUMN IF NOT EXISTS dedupe_hours integer
+  `);
+  await db.execute(sql`
+    ALTER TABLE email_delivery_alert_settings
+      ADD COLUMN IF NOT EXISTS retry_minutes integer
+  `);
 }
 
 export async function hashPassword(plain: string): Promise<string> {
