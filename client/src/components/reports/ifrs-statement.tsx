@@ -30,13 +30,22 @@ export function IfrsIncomeStatement({
     ? `${api.reports.incomeStatement.path}?${params.toString()}`
     : api.reports.incomeStatement.path;
 
-  const { data, isLoading, isError } = useQuery<IfrsStatement>({
+  // The global QueryClient defaults to `retry: false` and `staleTime: Infinity`,
+  // which means a transient failure (e.g. a 401 fired right before a session
+  // refresh) would stick as a cached error until the component unmounts. The
+  // income statement is mounted continuously while the user is on /reports,
+  // so we opt back in to a single retry + refetch-on-mount so the report
+  // self-heals after the user signs back in or the network blips.
+  const { data, isLoading, isError, refetch } = useQuery<IfrsStatement>({
     queryKey: [api.reports.incomeStatement.path, fromIso, toIso],
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error(`Failed to load income statement (${res.status})`);
       return res.json();
     },
+    retry: 1,
+    refetchOnMount: "always",
+    staleTime: 0,
   });
 
   const empty: IfrsStatement = {
@@ -85,10 +94,18 @@ export function IfrsIncomeStatement({
       )}
       {isError && (
         <div
-          className="p-8 text-center text-rose-600 text-sm"
+          className="p-8 text-center text-rose-600 text-sm flex flex-col items-center gap-3"
           data-testid="status-ifrs-error"
         >
-          تعذّر تحميل قائمة الدخل. حاول مرة أخرى.
+          <span>تعذّر تحميل قائمة الدخل.</span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="px-4 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 text-sm font-semibold transition-colors"
+            data-testid="button-ifrs-retry"
+          >
+            إعادة المحاولة
+          </button>
         </div>
       )}
 
