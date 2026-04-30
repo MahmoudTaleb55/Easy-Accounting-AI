@@ -189,7 +189,8 @@ async function fetchSeedAccounts(
 
 /** Post a balanced manual JE (debit asset / credit revenue) on the
  *  given date so the test can dial in whether it falls inside or
- *  outside the requested period. */
+ *  outside the requested period. Returns the persisted JE id so a
+ *  caller can later reverse it via `DELETE /api/journal-entries/:id`. */
 async function postBalancedJE(
   request: APIRequestContext,
   companyId: number,
@@ -197,7 +198,7 @@ async function postBalancedJE(
   amount: number,
   entryDate: Date,
   description: string,
-): Promise<void> {
+): Promise<number> {
   const res = await request.post("/api/journal-entries", {
     headers: { "X-Company-Id": String(companyId) },
     data: {
@@ -214,6 +215,12 @@ async function postBalancedJE(
     res.status(),
     `POST /api/journal-entries (${description}): ${await res.text()}`,
   ).toBe(201);
+  const body = (await res.json()) as { id: number };
+  expect(
+    typeof body.id,
+    `POST /api/journal-entries (${description}) must return a numeric id`,
+  ).toBe("number");
+  return body.id;
 }
 
 interface BalanceRow {
@@ -253,6 +260,61 @@ test.describe("/api/accounts/balances aggregation @api", () => {
 
     try {
       await runScenario(ownerA, ownerB);
+    } finally {
+      await Promise.all([ownerA.context.close(), ownerB.context.close()]);
+    }
+  });
+
+  /**
+   * Task #280 — reversal regression net.
+   *
+   * The aggregation tested above only covers the *posting* path: a
+   * balanced JE goes in, debits/credits surface in the response. The
+   * reversal path is the highest-risk untested branch: a buggy
+   * `deleteJournalEntry` (the reversal storage helper backing
+   * `DELETE /api/journal-entries/:id`) could leave half-deleted lines
+   * behind, doubling or stranding balances on the chart-of-accounts
+   * trailing-balance column AND on the trial balance.
+   *
+   * This test pins three invariants the reversal flow must preserve:
+   *
+   *   1. After reversal, both the asset (debit-normal) and revenue
+   *      (credit-normal) row must net to a 0 balance under
+   *      `?period=all`. The aggregator groups by `accountId` *after*
+   *      joining `journal_lines → journal_entries`, so a JE whose
+   *      lines have been deleted simply drops out of the response —
+   *      we accept either "row absent" or "row present with zero
+   *      debit / credit / balance" because both are observationally
+   *      indistinguishable from a never-posted account, which is the
+   *      contract this test locks in.
+   *
+   *   2. The same 0-balance invariant must hold under `?period=month`,
+   *      because the period filter is layered on *top* of the join.
+   *      A bug that leaks a stray line into the month-window
+   *      aggregation (without leaking into `all`) would silently flip
+   *      the chart-of-accounts month column non-zero while the
+   *      "all-time" column stays clean — exactly the kind of partial
+   *      reversal that's hardest to spot in the UI.
+   *
+   *   3. Workspace scoping is preserved across the reversal. A peer
+   *      workspace's identical posting must remain *fully present* in
+   *      its own balances response after workspace A reverses.
+   *      Because `deleteJournalEntry` issues a DELETE keyed on
+   *      `(id, companyId)`, a refactor that drops either half of that
+   *      composite would either no-op (if it filtered too tightly) or
+   *      cross-tenant delete (if it filtered too loosely). The
+   *      assertion below catches the cross-tenant case directly: B's
+   *      asset+revenue rows must still show the original posted
+   *      amount and the same `balance` after A reverses.
+   */
+  test("after reversal the asset and revenue rows net to zero without disturbing peer workspaces", async ({
+    browser,
+  }) => {
+    const ownerA = await signupOwner(browser, "rev-a");
+    const ownerB = await signupOwner(browser, "rev-b");
+
+    try {
+      await runReversalScenario(ownerA, ownerB);
     } finally {
       await Promise.all([ownerA.context.close(), ownerB.context.close()]);
     }
@@ -433,4 +495,168 @@ async function runScenario(ownerA: Owner, ownerB: Owner): Promise<void> {
         `ws-b balances must not surface ws-a account id ${peerId}`,
       ).toBeUndefined();
     }
+}
+
+/**
+ * After-reversal invariant: a row that the aggregator either dropped
+ * entirely (because no `journal_lines` remain for that accountId post-
+ * delete) or kept with zeroed totals must look identical to a never-
+ * posted account. Any non-zero residual debit / credit / balance is a
+ * partial-reversal bug — exactly what task #280 is here to catch.
+ */
+function expectZeroedRow(
+  rows: BalanceRow[],
+  accountId: number,
+  label: string,
+): void {
+  const row = rows.find((r) => r.accountId === accountId);
+  if (row === undefined) return; // dropped from GROUP BY → zero by construction
+  expect(row.debit, `${label} debit must be zero after reversal`).toBe(0);
+  expect(row.credit, `${label} credit must be zero after reversal`).toBe(0);
+  expect(row.balance, `${label} balance must be zero after reversal`).toBe(0);
+}
+
+async function runReversalScenario(ownerA: Owner, ownerB: Owner): Promise<void> {
+  const accountsA = await fetchSeedAccounts(ownerA.request, ownerA.companyId);
+  const accountsB = await fetchSeedAccounts(ownerB.request, ownerB.companyId);
+
+  // Pick an in-month/in-year date so the same posting is visible to
+  // both `?period=all` and `?period=month`. This is what lets a single
+  // reversal exercise both windows in one fixture: if the reversal
+  // mishandles either window, the corresponding assertion below will
+  // be the one that fires.
+  const now = new Date();
+  const inPeriod = new Date(now.getFullYear(), now.getMonth(), 15, 12, 0, 0, 0);
+  expect(inPeriod.getMonth()).toBe(now.getMonth());
+  expect(inPeriod.getFullYear()).toBe(now.getFullYear());
+
+  const reversedAmount = 4321;
+  const peerAmount = 8765;
+
+  // ---- (a) Workspace A posts the JE that will later be reversed.
+  // Workspace B posts an identical-shape JE concurrently so the
+  // reversal-scoping assertion has something to *prove* didn't move. ----
+  const reversedJeId = await postBalancedJE(
+    ownerA.request,
+    ownerA.companyId,
+    accountsA,
+    reversedAmount,
+    inPeriod,
+    "ws-a JE to be reversed",
+  );
+  await postBalancedJE(
+    ownerB.request,
+    ownerB.companyId,
+    accountsB,
+    peerAmount,
+    inPeriod,
+    "ws-b peer JE (must survive ws-a reversal)",
+  );
+
+  // ---- (b) Pre-reversal sanity: workspace A's posting really did
+  // hit both `?period=all` and `?period=month`. Without this we could
+  // not distinguish "reversal cleared the balances" from "the JE was
+  // never visible to the aggregator in the first place" (e.g. if a
+  // future bug stamped the entryDate in the wrong timezone). ----
+  const beforeAll = await fetchBalances(ownerA.request, ownerA.companyId, "all");
+  const beforeMonth = await fetchBalances(
+    ownerA.request,
+    ownerA.companyId,
+    "month",
+  );
+  for (const [label, snapshot] of [
+    ["period=all", beforeAll],
+    ["period=month", beforeMonth],
+  ] as const) {
+    const asset = snapshot.rows.find((r) => r.accountId === accountsA.assetId);
+    const revenue = snapshot.rows.find(
+      (r) => r.accountId === accountsA.revenueId,
+    );
+    expect(
+      asset?.balance,
+      `pre-reversal ws-a asset balance under ${label} must equal the posted amount`,
+    ).toBe(reversedAmount);
+    expect(
+      revenue?.balance,
+      `pre-reversal ws-a revenue balance under ${label} must equal the posted amount`,
+    ).toBe(reversedAmount);
+  }
+
+  // ---- (c) Reverse via the same route the chart-of-accounts UI
+  // (and the JE-history drawer) hit when an owner clicks "delete".
+  // The route delegates to `storage.deleteJournalEntry`, which is the
+  // reversal storage helper for manual JEs: it removes the JE +
+  // lines + writes the reversal audit row in one transaction. ----
+  const reversalRes = await ownerA.request.delete(
+    `/api/journal-entries/${reversedJeId}`,
+    { headers: { "X-Company-Id": String(ownerA.companyId) } },
+  );
+  expect(
+    reversalRes.status(),
+    `DELETE /api/journal-entries/${reversedJeId} (reversal) must succeed: ${await reversalRes.text()}`,
+  ).toBe(204);
+
+  // ---- (d) Both `?period=all` and `?period=month` must report a
+  // 0 balance on the asset *and* the revenue side after reversal.
+  // Asserting both periods catches the partial-reversal class of bug
+  // where a refactor accidentally exempts one window from the join
+  // (e.g. a new "fast path" for the all-time view that stops looking
+  // at deletes). ----
+  const afterAll = await fetchBalances(ownerA.request, ownerA.companyId, "all");
+  expect(afterAll.period).toBe("all");
+  expectZeroedRow(afterAll.rows, accountsA.assetId, "ws-a asset (period=all)");
+  expectZeroedRow(
+    afterAll.rows,
+    accountsA.revenueId,
+    "ws-a revenue (period=all)",
+  );
+
+  const afterMonth = await fetchBalances(
+    ownerA.request,
+    ownerA.companyId,
+    "month",
+  );
+  expect(afterMonth.period).toBe("month");
+  expectZeroedRow(
+    afterMonth.rows,
+    accountsA.assetId,
+    "ws-a asset (period=month)",
+  );
+  expectZeroedRow(
+    afterMonth.rows,
+    accountsA.revenueId,
+    "ws-a revenue (period=month)",
+  );
+
+  // ---- (e) Workspace scoping under reversal — workspace B's
+  // identical-shape posting must remain fully present, with its
+  // original posted amounts and signs. A `deleteJournalEntry` that
+  // dropped the `companyId` half of its WHERE would either silently
+  // fail (no-op) or cross-tenant delete; the latter would zero out
+  // B's rows alongside A's, which this block detects. ----
+  const peerAfter = await fetchBalances(
+    ownerB.request,
+    ownerB.companyId,
+    "all",
+  );
+  const peerAsset = peerAfter.rows.find(
+    (r) => r.accountId === accountsB.assetId,
+  );
+  const peerRevenue = peerAfter.rows.find(
+    (r) => r.accountId === accountsB.revenueId,
+  );
+  expect(
+    peerAsset,
+    "ws-b asset row must survive the ws-a reversal",
+  ).toBeTruthy();
+  expect(
+    peerRevenue,
+    "ws-b revenue row must survive the ws-a reversal",
+  ).toBeTruthy();
+  expect(peerAsset!.debit).toBe(peerAmount);
+  expect(peerAsset!.credit).toBe(0);
+  expect(peerAsset!.balance).toBe(peerAmount);
+  expect(peerRevenue!.debit).toBe(0);
+  expect(peerRevenue!.credit).toBe(peerAmount);
+  expect(peerRevenue!.balance).toBe(peerAmount);
 }
