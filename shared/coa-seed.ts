@@ -96,6 +96,11 @@ export const DEFAULT_COA: SeedAccount[] = [
 
 // Map free-text Arabic categories to default account codes (used to auto-classify
 // quick transactions into proper IFRS journal entries).
+//
+// Matching is hamza/diacritic-insensitive (see normalizeForMatch below): a user
+// typing "اتعاب" (no hamza) matches a keyword stored as "أتعاب" so we don't
+// fall through to "Other Expenses" just because of an Arabic input-method
+// variation.
 export const CATEGORY_TO_ACCOUNT_CODE: { keywords: string[]; code: string }[] = [
   // Income side
   { keywords: ["مبيعات", "بيع"], code: "4100" },
@@ -104,29 +109,59 @@ export const CATEGORY_TO_ACCOUNT_CODE: { keywords: string[]; code: string }[] = 
   { keywords: ["راتب", "مرتب", "أجر"], code: "4990" }, // personal salary income → other income
   // Expense side
   { keywords: ["تكلفة البضائع", "تكلفة البضاعة", "بضاعة", "مشتريات"], code: "5100" },
-  { keywords: ["رواتب", "أجور", "مرتبات"], code: "6100" },
-  { keywords: ["إيجار", "ايجار"], code: "6200" },
-  { keywords: ["كهرباء", "ماء", "مرافق", "فواتير"], code: "6300" },
-  { keywords: ["إنترنت", "انترنت", "اتصالات", "هاتف", "جوال"], code: "6400" },
-  { keywords: ["شحن", "توصيل", "نقل بضاعة", "مواصلات", "بنزين", "وقود", "تاكسي", "أوبر", "كريم"], code: "6500" },
-  { keywords: ["تسويق", "إعلان", "اعلان"], code: "6600" },
-  { keywords: ["مكتب", "قرطاسية", "أدوات مكتبية"], code: "6700" },
-  { keywords: ["عمولة", "بنك", "رسوم"], code: "6800" },
-  { keywords: ["إهلاك", "اهلاك"], code: "6150" },
+  { keywords: ["رواتب", "أجور", "مرتبات", "wages", "salary", "salaries", "payroll"], code: "6100" },
+  { keywords: ["إيجار", "ايجار", "rent"], code: "6200" },
+  { keywords: ["كهرباء", "ماء", "مرافق", "فواتير", "utilities", "electricity", "water"], code: "6300" },
+  { keywords: ["إنترنت", "انترنت", "اتصالات", "هاتف", "جوال", "internet", "phone", "mobile"], code: "6400" },
+  { keywords: ["شحن", "توصيل", "نقل بضاعة", "مواصلات", "بنزين", "وقود", "تاكسي", "أوبر", "كريم", "transport", "shipping", "fuel", "uber"], code: "6500" },
+  // Marketing / advertising — covers both the action ("تسويق", "إعلان") and the
+  // person performing it ("مسوق" digital marketer), plus the digital-channel
+  // vocabulary users actually type ("ديجيتال", "رقمي", "سوشال", and the common
+  // English equivalents).
+  { keywords: ["تسويق", "إعلان", "اعلان", "إعلانات", "اعلانات", "مسوق", "ديجيتال", "رقمي", "سوشال", "marketing", "advertising", "ads", "social", "digital"], code: "6600" },
+  { keywords: ["مكتب", "قرطاسية", "أدوات مكتبية", "office", "stationery"], code: "6700" },
+  { keywords: ["عمولة", "بنك", "رسوم", "bank", "commission", "fees"], code: "6800" },
+  { keywords: ["إهلاك", "اهلاك", "depreciation"], code: "6150" },
 ];
 
+// Normalize Arabic text for keyword matching: collapse hamza variants
+// (أ/إ/آ → ا and ئ → ي), tāʾ marbūṭa → hāʾ (ة → ه), alif maqṣūra → yāʾ
+// (ى → ي), strip diacritics, and strip zero-width joiners (ZWNJ/ZWJ)
+// that some Arabic IMEs and copy-pastes inject silently. Lowercase the
+// result so English keywords match too.
+// This mirrors how non-technical Arabic users actually type — they often
+// drop the hamza on alif (writing "اتعاب" instead of "أتعاب"), and the
+// classifier should not punish them for it by routing every such expense
+// to "Other Expenses".
+function normalizeForMatch(s: string): string {
+  return s
+    .replace(/[\u200C\u200D]/g, "")        // ZWNJ + ZWJ
+    .replace(/[\u064B-\u0652\u0670]/g, "") // tashkeel + dagger alif
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ئ/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .toLowerCase();
+}
+
 export function pickExpenseAccountCode(category: string, description: string): string {
-  const haystack = `${category} ${description}`;
+  const haystack = normalizeForMatch(`${category} ${description}`);
+  // Only consider expense-side codes (5xxx COGS, 6xxx operating expenses) so
+  // a description like "اتعاب مسوق الكتروني" doesn't match the income-side
+  // keyword "أتعاب" (4200 Services Revenue) and incorrectly post an expense
+  // to a revenue account. This mirrors how `pickRevenueAccountCode` filters
+  // by `code.startsWith("4")` for the symmetric reason.
   for (const map of CATEGORY_TO_ACCOUNT_CODE) {
-    if (map.keywords.some((k) => haystack.includes(k))) return map.code;
+    if (!(map.code.startsWith("5") || map.code.startsWith("6"))) continue;
+    if (map.keywords.some((k) => haystack.includes(normalizeForMatch(k)))) return map.code;
   }
   return "6900"; // other operating expense
 }
 
 export function pickRevenueAccountCode(category: string, description: string): string {
-  const haystack = `${category} ${description}`;
+  const haystack = normalizeForMatch(`${category} ${description}`);
   for (const map of CATEGORY_TO_ACCOUNT_CODE) {
-    if (map.code.startsWith("4") && map.keywords.some((k) => haystack.includes(k))) {
+    if (map.code.startsWith("4") && map.keywords.some((k) => haystack.includes(normalizeForMatch(k)))) {
       return map.code;
     }
   }
