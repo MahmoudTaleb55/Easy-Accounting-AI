@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   useInfiniteQuery,
   useMutation,
@@ -261,10 +262,18 @@ export default function EmailDeliveryPage() {
     "",
     isString,
   );
-  // Seed `emailFilter` from the hydrated input so the first fetch after a
-  // page reload is already scoped to the restored recipient. Otherwise it
-  // would briefly run unfiltered until the 250ms debounce effect fires.
-  const [emailFilter, setEmailFilter] = useState(() => emailInput.trim());
+  // Debounce the recipient input so each keystroke doesn't slam the API.
+  // Both the on-screen list query and the row-count chip near Download CSV
+  // re-issue when this value changes — wiring them to the *debounced*
+  // value caps the request volume to one probe per ~250ms idle window
+  // (vs one per keystroke, which on busy workspaces hammers the in-memory
+  // count cache and the underlying CTE for no user benefit).
+  //
+  // `useDebouncedValue` seeds its first returned value synchronously,
+  // so the first fetch after a page reload is already scoped to the
+  // restored recipient (otherwise the chip would briefly run unfiltered
+  // until the 250ms timer fires).
+  const emailFilter = useDebouncedValue(emailInput.trim(), 250);
   const [selected, setSelected] = useState<DeliveryRow | null>(null);
   const [trendWindow, setTrendWindow] = useSessionStorageState<TrendWindow>(
     TREND_WINDOW_STORAGE_KEY,
@@ -294,12 +303,6 @@ export default function EmailDeliveryPage() {
     "",
     isStoredDateString,
   );
-
-  // Debounce the email input so each keystroke doesn't slam the API.
-  useEffect(() => {
-    const t = window.setTimeout(() => setEmailFilter(emailInput.trim()), 250);
-    return () => window.clearTimeout(t);
-  }, [emailInput]);
 
   const dateBounds = useMemo(
     () => resolveRangeBounds(range, customFrom, customTo),
