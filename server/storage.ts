@@ -70,6 +70,7 @@ import {
   type JournalEntry,
   type JournalLine,
   type CreateJournalEntryInput,
+  type UpdateJournalEntryInput,
   type Budget,
   type InsertBudget,
   type OrgSettings,
@@ -177,6 +178,20 @@ export interface IStorage {
   // Journal entries
   getJournalEntries(companyId: number): Promise<JournalEntryWithLines[]>;
   createJournalEntry(companyId: number, input: CreateJournalEntryInput, ctx?: AuditContext): Promise<JournalEntryWithLines>;
+  /**
+   * Replace the header (entryDate, description) and full set of lines on an
+   * existing journal entry. Refuses to touch transaction-sourced JEs and any
+   * JE referenced by an upstream module (payroll, fixed-asset events, sales,
+   * documents) — those rows must be edited through their owning source. Runs
+   * the header update, line wipe-and-reinsert, and audit row inside a single
+   * transaction so the GL and history stay aligned.
+   */
+  updateJournalEntry(
+    companyId: number,
+    id: number,
+    input: UpdateJournalEntryInput,
+    ctx?: AuditContext,
+  ): Promise<JournalEntryWithLines>;
   deleteJournalEntry(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
   getAccountBalances(
     companyId: number,
@@ -635,6 +650,14 @@ export class JournalEntryReferenceConflictError extends Error {
 
 /** @deprecated Use `JournalEntryReferenceConflictError` — the same class. */
 export const PayrollRunDeleteConflictError = JournalEntryReferenceConflictError;
+
+/** Thrown by `updateJournalEntry` when the JE is owned by another module. */
+export class JournalEntryNotEditableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "JournalEntryNotEditableError";
+  }
+}
 
 /**
  * Thrown by the impairment / revaluation / disposal delete paths when the
@@ -2028,6 +2051,102 @@ export class DatabaseStorage implements IStorage {
 
       return {
         ...je,
+        lines: insertedLines.map((l) => ({ ...l, account: accountById.get(l.accountId) })),
+      };
+    });
+  }
+
+  async updateJournalEntry(
+    companyId: number,
+    id: number,
+    input: UpdateJournalEntryInput,
+    ctx?: AuditContext,
+  ): Promise<JournalEntryWithLines> {
+    const [before] = await db
+      .select()
+      .from(journalEntries)
+      .where(and(eq(journalEntries.id, id), eq(journalEntries.companyId, companyId)));
+    if (!before) {
+      throw Object.assign(new Error("Journal entry not found"), { status: 404 });
+    }
+    if (before.source === "transaction") {
+      throw new JournalEntryNotEditableError(
+        "لا يمكن تعديل قيد مرتبط بمعاملة تلقائية. عدّل المعاملة المصدر بدلاً من ذلك.",
+      );
+    }
+    const conflicts = await detectJournalEntryReferences(id);
+    if (conflicts.length > 0) {
+      throw new JournalEntryNotEditableError(
+        `لا يمكن تعديل هذا القيد لأنه مرتبط بـ: ${conflicts.join("، ")}. عدّل السجل المصدر بدلاً من ذلك.`,
+      );
+    }
+    const beforeLines = await db
+      .select()
+      .from(journalLines)
+      .where(eq(journalLines.journalEntryId, id));
+
+    const allAccounts = await this.getAccounts(companyId);
+    const accountById = new Map(allAccounts.map((a) => [a.id, a]));
+    const linesSummary = (
+      lines: Array<{ accountId: number; debit: string | number; credit: string | number }>,
+    ) =>
+      lines.map((l) => {
+        const acc = accountById.get(l.accountId);
+        const label = acc ? `${acc.code} ${acc.nameAr}` : `account#${l.accountId}`;
+        const debit = Number(l.debit);
+        const credit = Number(l.credit);
+        const value = debit > 0 ? `Dr ${debit.toFixed(2)}` : `Cr ${credit.toFixed(2)}`;
+        return { field: label, to: value };
+      });
+
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(journalEntries)
+        .set({
+          entryDate: input.entryDate ? new Date(input.entryDate) : before.entryDate,
+          description: input.description,
+        })
+        .where(and(eq(journalEntries.id, id), eq(journalEntries.companyId, companyId)))
+        .returning();
+
+      await tx.delete(journalLines).where(eq(journalLines.journalEntryId, id));
+      const linesToInsert = input.lines.map((l) => ({
+        companyId,
+        journalEntryId: id,
+        accountId: l.accountId,
+        debit: Number(l.debit || 0).toFixed(2),
+        credit: Number(l.credit || 0).toFixed(2),
+        description: l.description,
+      }));
+      const insertedLines = await tx.insert(journalLines).values(linesToInsert).returning();
+
+      const headerChanges: AuditChange[] = [];
+      if (
+        before.description !== updated.description ||
+        before.entryDate.getTime() !== updated.entryDate.getTime()
+      ) {
+        headerChanges.push(
+          ...diffChanges(
+            { description: before.description, entryDate: before.entryDate },
+            { description: updated.description, entryDate: updated.entryDate },
+          ),
+        );
+      }
+      await recordAudit(tx, {
+        companyId,
+        entityType: "journal_entry",
+        entityId: id,
+        action: "update",
+        changes: [
+          ...headerChanges,
+          { field: "lines (before)", to: linesSummary(beforeLines) },
+          { field: "lines (after)", to: linesSummary(insertedLines) },
+        ],
+        ctx,
+      });
+
+      return {
+        ...updated,
         lines: insertedLines.map((l) => ({ ...l, account: accountById.get(l.accountId) })),
       };
     });

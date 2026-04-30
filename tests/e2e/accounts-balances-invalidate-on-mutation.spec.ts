@@ -7,41 +7,9 @@ import {
   requireDbUrl,
 } from "./_helpers/forge-session";
 
-/**
- * Regression net for Task #225 — every frontend mutation that changes
- * journal lines must invalidate the React-Query cache for
- * `["/api/accounts/balances", period]` so the chart-of-accounts page
- * (`/app/accounts`) refetches its trailing balances on the next visit.
- *
- * Why this matters:
- *   The COA balances query is keyed by *period* (one cache entry per
- *   `month` / `year` / `all` toggle). Before this task the only thing
- *   that invalidated those entries was the user changing the period
- *   chip or hard-refreshing — so an owner who posted a JE on
- *   `/app/journal` and then flipped back to `/app/accounts` saw the
- *   *previous* balance until they hit reload. Easy to plug now,
- *   hard to track down later.
- *
- * What this spec exercises end-to-end:
- *   1. The freshly seeded workspace has a balance of 0 on the cash
- *      account (1110-style asset). The COA page renders that 0.
- *   2. The user navigates to `/app/journal` *via SPA routing* — no
- *      page reload — so the React-Query cache for the balances query
- *      is preserved across the navigation.
- *   3. The user opens the JE create dialog, fills in a balanced
- *      Dr cash / Cr revenue entry, and submits. The success handler
- *      now invalidates `/api/accounts/balances` for every period (see
- *      `invalidateAccountBalances` in `client/src/lib/queryClient.ts`).
- *   4. The user navigates back to `/app/accounts` via SPA routing.
- *      Without the invalidation the cached zero would render. With
- *      the invalidation, the page refetches and the cash row shows
- *      the JE amount.
- *
- * The seeded accounts use namespaced codes (`E2E-CASH-${companyId}`,
- * `E2E-REV-${companyId}`) so re-runs don't collide with other suites
- * sharing the dev database. Both are non-header, isActive accounts so
- * the JE form's account selector picks them up.
- */
+// Asserts that JE create / edit on /app/journal invalidates the React-Query
+// cache for /api/accounts/balances so the COA refetches trailing balances on
+// SPA navigation back to /app/accounts (no hard refresh).
 
 const TEST_EMAIL = "e2e-balances-invalidate@example.test";
 const TEST_PASSWORD = "playwright-balances-invalidate-pw-2026";
@@ -185,11 +153,7 @@ async function seedWorkspaceFixtures(page: Page): Promise<SeededWorkspace> {
 
 test.describe("/api/accounts/balances cache invalidation @api @ui", () => {
   // The repo-wide playwright.config defaults to a 360px mobile viewport, which
-  // hides the desktop sidebar (`sidebar-link-nav_*` testids). This spec depends
-  // on those sidebar links to drive *SPA* navigation between /app/accounts and
-  // /app/journal — anything that triggers a full reload would defeat the cache-
-  // invalidation assertion. Override to a desktop viewport instead of fighting
-  // the mobile drawer toggle.
+  // hides the desktop sidebar links the SPA-navigation steps below depend on.
   test.use({ viewport: { width: 1280, height: 800 } });
 
   test("posting a JE on /app/journal refreshes /app/accounts balances without a hard refresh", async ({
@@ -197,10 +161,6 @@ test.describe("/api/accounts/balances cache invalidation @api @ui", () => {
   }) => {
     const { cashCode, revenueCode } = await seedWorkspaceFixtures(page);
 
-    // ---- (1) Land on /app/accounts and wait for the balances query
-    // to settle. The cash row should render its initial 0 — with the
-    // workspace's journal lines wiped above, this is the "before"
-    // state of the cache we are about to invalidate. ----
     await page.goto("/app/accounts", { waitUntil: "domcontentloaded" });
     await page
       .getByTestId("page-chart-of-accounts")
@@ -208,26 +168,15 @@ test.describe("/api/accounts/balances cache invalidation @api @ui", () => {
 
     const cashBalanceLocator = page.getByTestId(`text-balance-${cashCode}`);
     await cashBalanceLocator.waitFor({ state: "visible", timeout: 15_000 });
-    await expect(
-      cashBalanceLocator,
-      "before posting any JE the cash row must render a zero balance — " +
-        "the seeded workspace has no journal lines",
-    ).toContainText("0");
+    await expect(cashBalanceLocator).toContainText("0");
 
-    // ---- (2) SPA-navigate to /app/journal by clicking the sidebar
-    // link. Using `page.goto` would full-reload and reset the React-
-    // Query cache, which is the very thing we want to assert is
-    // refreshed by the mutation — not by the navigation. ----
+    // SPA-navigate (not page.goto) so the React-Query cache is preserved.
     await page.getByTestId("sidebar-link-nav_journal").click();
     await expect.poll(() => new URL(page.url()).pathname).toBe("/app/journal");
     await page
       .getByTestId("page-journal-entries")
       .waitFor({ state: "visible", timeout: 15_000 });
 
-    // ---- (3) Open the create dialog and submit a balanced
-    // Dr cash / Cr revenue entry. The createMutation's success
-    // handler is the code path under test: it now calls
-    // `invalidateAccountBalances()` after every JE create. ----
     await page.getByTestId("button-new-entry").click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible({ timeout: 10_000 });
@@ -253,26 +202,15 @@ test.describe("/api/accounts/balances cache invalidation @api @ui", () => {
     await expect(dialog).toBeHidden({ timeout: 10_000 });
     await expect(
       page.locator("[data-testid^='card-entry-']").filter({ hasText: description }),
-      "the just-submitted JE must land in the journal-entries list — " +
-        "if this fails the mutation itself didn't succeed and the cache " +
-        "assertion below would be misleading",
     ).toBeVisible();
 
-    // ---- (4) SPA-navigate back to /app/accounts. The page mounts,
-    // notices the balances query is invalid, and refetches — only
-    // because the mutation's onSuccess handler invalidated every
-    // `["/api/accounts/balances", period]` cache entry. Without that
-    // invalidation the cached `0` would render here and the
-    // assertion would fail. ----
     await page.getByTestId("sidebar-link-nav_accounts").click();
     await expect.poll(() => new URL(page.url()).pathname).toBe("/app/accounts");
     await page
       .getByTestId("page-chart-of-accounts")
       .waitFor({ state: "visible", timeout: 15_000 });
 
-    // The balance text is locale-formatted (e.g. "250.00", "$250.00",
-    // "٢٥٠٫٠٠"). Match on the digit run rather than a hard-coded
-    // formatting so a future locale tweak doesn't churn this spec.
+    // Locale-formatted balance ("250.00", "$250.00", "٢٥٠٫٠٠"); match digits.
     await expect
       .poll(
         async () =>
@@ -282,5 +220,191 @@ test.describe("/api/accounts/balances cache invalidation @api @ui", () => {
         { timeout: 15_000 },
       )
       .toMatch(/2\D?5\D?0/);
+  });
+
+  test("editing a JE on /app/journal refreshes /app/accounts balances without a hard refresh", async ({
+    page,
+  }) => {
+    const { cashCode, revenueCode } = await seedWorkspaceFixtures(page);
+
+    await page.goto("/app/accounts", { waitUntil: "domcontentloaded" });
+    await page
+      .getByTestId("page-chart-of-accounts")
+      .waitFor({ state: "visible", timeout: 15_000 });
+    const cashBalanceLocator = page.getByTestId(`text-balance-${cashCode}`);
+    await cashBalanceLocator.waitFor({ state: "visible", timeout: 15_000 });
+    await expect(cashBalanceLocator).toContainText("0");
+
+    // Seed a JE so the edit step has something to mutate.
+    await page.getByTestId("sidebar-link-nav_journal").click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe("/app/journal");
+    await page
+      .getByTestId("page-journal-entries")
+      .waitFor({ state: "visible", timeout: 15_000 });
+
+    await page.getByTestId("button-new-entry").click();
+    const createDialog = page.getByRole("dialog");
+    await expect(createDialog).toBeVisible({ timeout: 10_000 });
+
+    const description = `bal-invalidate edit-roundtrip ${Date.now()}`;
+    await page.getByTestId("input-entry-description").fill(description);
+
+    await page.getByTestId("select-line-account-0").click();
+    await page.getByRole("option").filter({ hasText: cashCode }).click();
+    await page.getByTestId("input-line-debit-0").fill(String(JE_AMOUNT));
+
+    await page.getByTestId("select-line-account-1").click();
+    await page.getByRole("option").filter({ hasText: revenueCode }).click();
+    await page.getByTestId("input-line-credit-1").fill(String(JE_AMOUNT));
+
+    await page.getByTestId("button-save-entry").click();
+    await expect(createDialog).toBeHidden({ timeout: 10_000 });
+    const entryCard = page
+      .locator("[data-testid^='card-entry-']")
+      .filter({ hasText: description });
+    await expect(entryCard).toBeVisible();
+
+    // Confirm the create path landed the seed amount on the COA so the
+    // post-edit assertion is unambiguous: 250 → 500 only happens because
+    // the *edit* invalidation fired, not the create one.
+    await page.getByTestId("sidebar-link-nav_accounts").click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe("/app/accounts");
+    await page
+      .getByTestId("page-chart-of-accounts")
+      .waitFor({ state: "visible", timeout: 15_000 });
+    await expect
+      .poll(
+        async () =>
+          (await page
+            .getByTestId(`text-balance-${cashCode}`)
+            .textContent({ timeout: 5_000 })) ?? "",
+        { timeout: 15_000 },
+      )
+      .toMatch(/2\D?5\D?0/);
+
+    await page.getByTestId("sidebar-link-nav_journal").click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe("/app/journal");
+    await page
+      .getByTestId("page-journal-entries")
+      .waitFor({ state: "visible", timeout: 15_000 });
+
+    const refreshedCard = page
+      .locator("[data-testid^='card-entry-']")
+      .filter({ hasText: description });
+    await refreshedCard.locator("[data-testid^='button-edit-entry-']").click();
+    const editDialog = page.getByTestId("dialog-edit-entry");
+    await expect(editDialog).toBeVisible({ timeout: 10_000 });
+
+    const NEW_AMOUNT = JE_AMOUNT * 2;
+    const debitInput = page.getByTestId("input-edit-line-debit-0");
+    await debitInput.fill("");
+    await debitInput.fill(String(NEW_AMOUNT));
+    const creditInput = page.getByTestId("input-edit-line-credit-1");
+    await creditInput.fill("");
+    await creditInput.fill(String(NEW_AMOUNT));
+
+    await page.getByTestId("button-save-edit-entry").click();
+    await expect(editDialog).toBeHidden({ timeout: 10_000 });
+
+    await page.getByTestId("sidebar-link-nav_accounts").click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe("/app/accounts");
+    await page
+      .getByTestId("page-chart-of-accounts")
+      .waitFor({ state: "visible", timeout: 15_000 });
+
+    await expect
+      .poll(
+        async () =>
+          (await page
+            .getByTestId(`text-balance-${cashCode}`)
+            .textContent({ timeout: 5_000 })) ?? "",
+        { timeout: 15_000 },
+      )
+      .toMatch(/5\D?0\D?0/);
+  });
+
+  // Server-side guard: a JE referenced by an upstream source row (payroll
+  // here) must not be editable through PATCH even if the UI gate is bypassed.
+  test("PATCH /api/journal-entries/:id refuses to edit a JE referenced by a payroll run", async ({
+    page,
+  }) => {
+    const { companyId, cashCode, revenueCode } = await seedWorkspaceFixtures(page);
+
+    const dbUrl = requireDbUrl("the source-link refusal spec");
+    const client = new pg.Client({ connectionString: dbUrl });
+    await client.connect();
+    let jeId: number;
+    let cashAccountId: number;
+    let revenueAccountId: number;
+    try {
+      cashAccountId = Number(
+        (
+          await client.query(`SELECT id FROM accounts WHERE code = $1 LIMIT 1`, [cashCode])
+        ).rows[0].id,
+      );
+      revenueAccountId = Number(
+        (
+          await client.query(`SELECT id FROM accounts WHERE code = $1 LIMIT 1`, [revenueCode])
+        ).rows[0].id,
+      );
+      const today = new Date().toISOString();
+      const ref = `JE-LOCKED-${Date.now()}`;
+      jeId = Number(
+        (
+          await client.query(
+            `INSERT INTO journal_entries (company_id, reference, entry_date, description, source)
+             VALUES ($1, $2, $3::timestamp, 'locked by payroll', 'manual')
+             RETURNING id`,
+            [companyId, ref, today],
+          )
+        ).rows[0].id,
+      );
+      await client.query(
+        `INSERT INTO journal_lines (company_id, journal_entry_id, account_id, debit, credit, description)
+         VALUES ($1, $2, $3, '100.00', '0', 'cash leg'),
+                ($1, $2, $4, '0', '100.00', 'revenue leg')`,
+        [companyId, jeId, cashAccountId, revenueAccountId],
+      );
+      // Link a payroll run at the JE so detectJournalEntryReferences()
+      // surfaces a conflict on the next PATCH attempt.
+      await client.query(
+        `INSERT INTO payroll_runs (company_id, year, month, status, total_gross, total_net, journal_entry_id)
+         VALUES ($1, 2026, 4, 'posted', '100.00', '100.00', $2)`,
+        [companyId, jeId],
+      );
+    } finally {
+      await client.end();
+    }
+
+    // The seedWorkspaceFixtures helper already planted the auth cookie
+    // on the page, so page.request reuses the same session.
+    const res = await page.request.patch(`/api/journal-entries/${jeId}`, {
+      data: {
+        entryDate: new Date().toISOString().slice(0, 10),
+        description: "attempted edit through public route",
+        lines: [
+          { accountId: cashAccountId, debit: 999, credit: 0 },
+          { accountId: revenueAccountId, debit: 0, credit: 999 },
+        ],
+      },
+    });
+    expect(res.status(), "source-linked JE must not be editable via PATCH").toBe(400);
+
+    // And the lines on disk must still carry the original 100/100 amounts.
+    const verify = new pg.Client({ connectionString: dbUrl });
+    await verify.connect();
+    try {
+      const lines = (
+        await verify.query(
+          `SELECT account_id, debit::text AS debit, credit::text AS credit
+           FROM journal_lines WHERE journal_entry_id = $1 ORDER BY id`,
+          [jeId],
+        )
+      ).rows;
+      expect(lines).toHaveLength(2);
+      expect(lines.map((l) => Number(l.debit) + Number(l.credit))).toEqual([100, 100]);
+    } finally {
+      await verify.end();
+    }
   });
 });

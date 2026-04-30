@@ -7,6 +7,7 @@ import {
   accounts,
   insertAccountSchema,
   createJournalEntrySchema,
+  updateJournalEntrySchema,
   journalEntries,
   type TransactionWithJournal,
   insertCustomerSchema,
@@ -141,6 +142,16 @@ export const api = {
       responses: {
         201: z.any(),
         400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/journal-entries/:id' as const,
+      input: updateJournalEntrySchema,
+      responses: {
+        200: z.any(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
       },
     },
     delete: {

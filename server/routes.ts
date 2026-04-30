@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
-import { storage, isAuditEntityType, assertAllOwnedByCompany, JournalEntryReferenceConflictError, LegacyAssetEventBalanceMissingError, AssetEventLaterDependencyError, type AuditContext } from "./storage";
+import { storage, isAuditEntityType, assertAllOwnedByCompany, JournalEntryReferenceConflictError, JournalEntryNotEditableError, LegacyAssetEventBalanceMissingError, AssetEventLaterDependencyError, type AuditContext } from "./storage";
 import { accounts as accountsTable, employees as employeesTable } from "@shared/schema";
 
 // Build an AuditContext for user-initiated mutations. The `actor` is derived
@@ -527,6 +527,35 @@ export async function registerRoutes(
       }
       console.error("Journal create error", err);
       res.status(500).json({ message: "تعذّر إنشاء القيد" });
+    }
+  });
+
+  app.patch(api.journal.update.path, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    try {
+      const input = api.journal.update.input.parse(req.body);
+      const lineAccountIds = input.lines.map((l) => l.accountId);
+      if (!(await assertAllOwnedByCompany(accountsTable, cid(req), lineAccountIds))) {
+        return res.status(400).json({ message: "حساب غير صالح", field: "lines.accountId" });
+      }
+      const updated = await storage.updateJournalEntry(cid(req), id, input, userCtx(req));
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      if (err instanceof JournalEntryNotEditableError) {
+        return res.status(400).json({ message: err.message });
+      }
+      if ((err as { status?: number }).status === 404) {
+        return res.status(404).json({ message: "القيد غير موجود" });
+      }
+      console.error("Journal update error", err);
+      res.status(500).json({ message: "تعذّر تعديل القيد" });
     }
   });
 

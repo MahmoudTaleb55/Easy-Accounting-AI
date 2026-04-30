@@ -189,6 +189,38 @@ export const createJournalEntrySchema = z.object({
 });
 export type CreateJournalEntryInput = z.infer<typeof createJournalEntrySchema>;
 
+// `source` is intentionally omitted so an edit can't relabel an AI-posted
+// entry as manual or vice-versa.
+export const updateJournalEntrySchema = z.object({
+  entryDate: z.string().or(z.date()).optional(),
+  description: z.string().min(1).max(300),
+  lines: z
+    .array(
+      z.object({
+        accountId: z.number().int().positive(),
+        debit: z.coerce.number().nonnegative().default(0),
+        credit: z.coerce.number().nonnegative().default(0),
+        description: z.string().max(300).optional(),
+      })
+    )
+    .min(2, "يجب أن يحتوي القيد على سطرين على الأقل")
+    .refine((lines) => {
+      const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+      const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+      return Math.abs(totalDebit - totalCredit) < 0.005 && totalDebit > 0;
+    }, "إجمالي المدين يجب أن يساوي إجمالي الدائن وأكبر من صفر")
+    .refine(
+      (lines) =>
+        lines.every(
+          (l) =>
+            (Number(l.debit) > 0 && Number(l.credit) === 0) ||
+            (Number(l.credit) > 0 && Number(l.debit) === 0)
+        ),
+      "كل سطر يجب أن يكون إما مدين أو دائن، وليس كلاهما"
+    ),
+});
+export type UpdateJournalEntryInput = z.infer<typeof updateJournalEntrySchema>;
+
 // ============================================================================
 // Simple Transactions (legacy/quick entry — auto-posted to journal)
 // ============================================================================

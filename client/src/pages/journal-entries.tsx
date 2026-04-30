@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Scale } from "lucide-react"
+import { Plus, Trash2, Scale, Pencil } from "lucide-react"
 import { HistoryTimeline } from "@/components/audit/history-drawer"
 import { EmptyState } from "@/components/feedback/empty-state"
 import { ErrorState } from "@/components/feedback/error-state"
@@ -67,6 +67,7 @@ export default function JournalEntriesPage() {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [detailEntry, setDetailEntry] = useState<JE | null>(null)
+  const [editEntry, setEditEntry] = useState<JE | null>(null)
   const [location, setLocation] = useLocation()
   const [highlightId, setHighlightId] = useState<number | null>(null)
   const canWrite = useCanWrite()
@@ -130,6 +131,15 @@ export default function JournalEntriesPage() {
           : "Entry lines and change history in one place.",
       tabLines: locale === "ar" ? "الأسطر" : "Lines",
       tabChanges: locale === "ar" ? "التغييرات" : "Changes",
+      edit: locale === "ar" ? "تعديل" : "Edit",
+      editTitle: locale === "ar" ? "تعديل قيد اليومية" : "Edit journal entry",
+      editDesc:
+        locale === "ar"
+          ? "عدّل التاريخ أو البيان أو سطور المدين والدائن. القيد لا يُحفظ إلا متوازناً."
+          : "Update date, memo, or debit/credit lines. The entry only saves when balanced.",
+      saveEdit: locale === "ar" ? "حفظ التغييرات" : "Save changes",
+      edited: locale === "ar" ? "تم تحديث القيد" : "Entry updated",
+      editFailed: locale === "ar" ? "فشل تعديل القيد" : "Could not update entry",
     }),
     [locale]
   )
@@ -271,6 +281,32 @@ export default function JournalEntriesPage() {
       invalidateAccountBalances()
       toast({ title: t.deleted })
     },
+  })
+
+  const editMutation = useMutation({
+    mutationFn: async (vars: {
+      id: number
+      entryDate: string
+      description: string
+      lines: JELine[]
+    }) => {
+      const res = await apiRequest("PATCH", `/api/journal-entries/${vars.id}`, {
+        entryDate: vars.entryDate,
+        description: vars.description,
+        lines: vars.lines.filter((l) => l.accountId && (l.debit > 0 || l.credit > 0)),
+      })
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] })
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/trial-balance"] })
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/balance-sheet"] })
+      invalidateAccountBalances()
+      toast({ title: t.edited })
+      setEditEntry(null)
+    },
+    onError: (err: any) =>
+      toast({ title: t.editFailed, description: err.message, variant: "destructive" }),
   })
 
   return (
@@ -582,6 +618,25 @@ export default function JournalEntriesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    {/* Edits are only allowed on unlinked manual/AI JEs:
+                        anything that was auto-posted from a source row
+                        (transaction, payroll run, fixed-asset event,
+                        sales invoice, posted document) must be edited
+                        through that source so the GL can't drift. */}
+                    {je.source !== "transaction" && !je.sourceLink && (
+                      <WriteGuard>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setEditEntry(je)}
+                          data-testid={`button-edit-entry-${je.id}`}
+                          aria-label={t.edit}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      </WriteGuard>
+                    )}
                     {je.source !== "transaction" && (
                       <WriteGuard>
                         <Button
@@ -653,6 +708,33 @@ export default function JournalEntriesPage() {
           }}
           dfLocale={dfLocale}
           fmt={fmt}
+        />
+      )}
+
+      {editEntry && (
+        <EditJournalEntryDialog
+          entry={editEntry}
+          accounts={postable}
+          onClose={() => setEditEntry(null)}
+          onSave={(vars) => editMutation.mutate({ id: editEntry.id, ...vars })}
+          isSaving={editMutation.isPending}
+          fmt={fmt}
+          labels={{
+            title: t.editTitle,
+            description: t.editDesc,
+            date: t.date,
+            memo: t.memo,
+            memoPh: t.memoPh,
+            account: t.account,
+            debit: t.debit,
+            credit: t.credit,
+            total: t.total,
+            addLine: t.addLine,
+            balanced: t.balanced,
+            diff: t.diff,
+            save: t.saveEdit,
+            pickAccount: t.pickAccount,
+          }}
         />
       )}
 
@@ -797,6 +879,250 @@ function JournalEntryDetailDialog({ entry, onClose, labels, dfLocale, fmt }: Jou
             </div>
           </TabsContent>
         </Tabs>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface EditJournalEntryDialogProps {
+  entry: JE
+  accounts: Account[]
+  onClose: () => void
+  onSave: (vars: { entryDate: string; description: string; lines: JELine[] }) => void
+  isSaving: boolean
+  fmt: ReturnType<typeof useFormatMoney>
+  labels: {
+    title: string
+    description: string
+    date: string
+    memo: string
+    memoPh: string
+    account: string
+    debit: string
+    credit: string
+    total: string
+    addLine: string
+    balanced: string
+    diff: string
+    save: string
+    pickAccount: string
+  }
+}
+
+// Edit-an-entry dialog. Mirrors the inline create-dialog above, but seeded
+// with the existing JE's snapshot so the user can amend a single line
+// (correct a typo, swap the account, fix an amount) without having to
+// delete-and-repost the entry. Submits a balanced PATCH to
+// `/api/journal-entries/:id`.
+function EditJournalEntryDialog({
+  entry,
+  accounts,
+  onClose,
+  onSave,
+  isSaving,
+  fmt,
+  labels,
+}: EditJournalEntryDialogProps) {
+  const [description, setDescription] = useState(entry.description)
+  const [entryDate, setEntryDate] = useState<string>(
+    new Date(entry.entryDate).toISOString().slice(0, 10),
+  )
+  const [lines, setLines] = useState<JELine[]>(
+    entry.lines.map((l) => ({
+      accountId: l.accountId,
+      debit: Number(l.debit || 0),
+      credit: Number(l.credit || 0),
+      description: l.description ?? undefined,
+    })),
+  )
+
+  const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0)
+  const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0)
+  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.005 && totalDebit > 0
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        className="sm:max-w-2xl max-h-[90vh] overflow-y-auto"
+        data-testid="dialog-edit-entry"
+      >
+        <DialogHeader>
+          <DialogTitle>{labels.title}</DialogTitle>
+          <DialogDescription>{labels.description}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>{labels.date}</Label>
+              <Input
+                type="date"
+                value={entryDate}
+                onChange={(e) => setEntryDate(e.target.value)}
+                className="font-numeric"
+                data-testid="input-edit-entry-date"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{labels.memo}</Label>
+              <Input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={labels.memoPh}
+                data-testid="input-edit-entry-description"
+              />
+            </div>
+          </div>
+
+          <div className="border border-border rounded-md table-sticky-first">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-start font-medium">{labels.account}</th>
+                  <th className="px-3 py-2 text-end font-medium w-28">{labels.debit}</th>
+                  <th className="px-3 py-2 text-end font-medium w-28">{labels.credit}</th>
+                  <th className="px-2 py-2 w-8"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {lines.map((l, i) => (
+                  <tr key={i}>
+                    <td className="px-2 py-1.5">
+                      <Select
+                        value={l.accountId ? String(l.accountId) : ""}
+                        onValueChange={(v) => {
+                          const next = [...lines]
+                          next[i].accountId = Number(v)
+                          setLines(next)
+                        }}
+                      >
+                        <SelectTrigger
+                          className="h-9"
+                          data-testid={`select-edit-line-account-${i}`}
+                        >
+                          <SelectValue placeholder={labels.pickAccount} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accounts.map((a) => (
+                            <SelectItem key={a.id} value={String(a.id)}>
+                              <span className="font-numeric text-xs text-muted-foreground me-2">
+                                {a.code}
+                              </span>
+                              {a.nameAr}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={l.debit || ""}
+                        onChange={(e) => {
+                          const v = Number(e.target.value || 0)
+                          const next = [...lines]
+                          next[i].debit = v
+                          if (v > 0) next[i].credit = 0
+                          setLines(next)
+                        }}
+                        className="h-9 text-end font-numeric tabular-nums"
+                        data-testid={`input-edit-line-debit-${i}`}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={l.credit || ""}
+                        onChange={(e) => {
+                          const v = Number(e.target.value || 0)
+                          const next = [...lines]
+                          next[i].credit = v
+                          if (v > 0) next[i].debit = 0
+                          setLines(next)
+                        }}
+                        className="h-9 text-end font-numeric tabular-nums"
+                        data-testid={`input-edit-line-credit-${i}`}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      {lines.length > 2 && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() =>
+                            setLines(lines.filter((_, idx) => idx !== i))
+                          }
+                          data-testid={`button-edit-remove-line-${i}`}
+                          aria-label="Remove line"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-muted/40 text-sm font-semibold border-t border-border">
+                <tr>
+                  <td className="px-3 py-2 text-start text-muted-foreground uppercase tracking-wider text-[11px]">
+                    {labels.total}
+                  </td>
+                  <td
+                    className="px-3 py-2 text-end font-numeric tabular-nums"
+                    data-testid="text-edit-total-debit"
+                  >
+                    {fmt(totalDebit)}
+                  </td>
+                  <td
+                    className="px-3 py-2 text-end font-numeric tabular-nums"
+                    data-testid="text-edit-total-credit"
+                  >
+                    {fmt(totalCredit)}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setLines([...lines, { accountId: 0, debit: 0, credit: 0 }])
+              }
+              data-testid="button-edit-add-line"
+            >
+              <Plus className="w-3.5 h-3.5" /> {labels.addLine}
+            </Button>
+            <div
+              className={cn(
+                "flex items-center gap-2 text-xs font-medium",
+                isBalanced ? "text-success" : "text-warning",
+              )}
+            >
+              <Scale className="w-3.5 h-3.5" />
+              <span className="font-numeric tabular-nums">
+                {isBalanced
+                  ? labels.balanced
+                  : `${labels.diff}: ${fmt(Math.abs(totalDebit - totalCredit))}`}
+              </span>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            onClick={() => onSave({ entryDate, description, lines })}
+            disabled={!isBalanced || !description.trim() || isSaving}
+            data-testid="button-save-edit-entry"
+          >
+            {labels.save}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

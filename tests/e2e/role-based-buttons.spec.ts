@@ -157,13 +157,17 @@ test.describe("role-based button gating @rbac", () => {
       await expect(txDelete).toBeEnabled();
     });
 
-    test("journal: 'New entry' + per-row manual delete are enabled", async ({ page }) => {
+    test("journal: 'New entry' + per-row manual edit/delete are enabled", async ({ page }) => {
       await gotoApp(page, "/app/journal");
       await expectUnguarded(page, "button-new-entry");
       await expect(page.locator('[data-testid="button-new-entry"]').first()).toBeEnabled();
 
-      // Only manual entries render `button-delete-entry-{id}` — the
-      // setup seeds exactly one such entry inside the current period.
+      const jeEdit = page.locator('[data-testid^="button-edit-entry-"]').first();
+      await expect(jeEdit).toBeVisible();
+      const jeEditId = await jeEdit.getAttribute("data-testid");
+      await expectUnguarded(page, jeEditId!);
+      await expect(jeEdit).toBeEnabled();
+
       const jeDelete = page.locator('[data-testid^="button-delete-entry-"]').first();
       await expect(jeDelete).toBeVisible();
       const jeButtonId = await jeDelete.getAttribute("data-testid");
@@ -629,10 +633,16 @@ test.describe("role-based button gating @rbac", () => {
       await expect(txDelete).toBeEnabled();
     });
 
-    test("journal: header + per-row manual delete stay enabled", async ({ page }) => {
+    test("journal: header + per-row manual edit/delete stay enabled", async ({ page }) => {
       await gotoApp(page, "/app/journal");
       await expectUnguarded(page, "button-new-entry");
       await expect(page.locator('[data-testid="button-new-entry"]').first()).toBeEnabled();
+
+      const jeEdit = page.locator('[data-testid^="button-edit-entry-"]').first();
+      await expect(jeEdit).toBeVisible();
+      const jeEditId = await jeEdit.getAttribute("data-testid");
+      await expectUnguarded(page, jeEditId!);
+      await expect(jeEdit).toBeEnabled();
 
       const jeDelete = page.locator('[data-testid^="button-delete-entry-"]').first();
       await expect(jeDelete).toBeVisible();
@@ -973,9 +983,14 @@ test.describe("role-based button gating @rbac", () => {
       await expectGuarded(page, txButtonId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
     });
 
-    test("journal: header + per-row manual delete are read-only guarded", async ({ page }) => {
+    test("journal: header + per-row manual edit/delete are read-only guarded", async ({ page }) => {
       await gotoApp(page, "/app/journal");
       await expectGuarded(page, "button-new-entry", "write-guard-disabled", READ_ONLY_TOOLTIP);
+
+      const jeEdit = page.locator('[data-testid^="button-edit-entry-"]').first();
+      await expect(jeEdit).toBeVisible();
+      const jeEditId = await jeEdit.getAttribute("data-testid");
+      await expectGuarded(page, jeEditId!, "write-guard-disabled", READ_ONLY_TOOLTIP);
 
       const jeDelete = page.locator('[data-testid^="button-delete-entry-"]').first();
       await expect(jeDelete).toBeVisible();
