@@ -18,6 +18,7 @@ import {
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -69,9 +70,11 @@ interface ScheduleRow {
   plannedAmount: string;
   status: string;
 }
-interface ImpairmentEvent { id: number; eventDate: string; recoverableAmount: string; lossAmount: string; journalEntryId: number | null; notes?: string }
-interface RevaluationEvent { id: number; eventDate: string; fairValue: string; method: string; surplusDelta: string; plImpact: string; journalEntryId: number | null; notes?: string }
-interface DisposalEvent { id: number; eventDate: string; proceeds: string; method: string; gainLoss: string; surplusTransferred: string; journalEntryId: number | null; notes?: string }
+type AssetEventKind = "impairment" | "revaluation" | "disposal";
+
+interface ImpairmentEvent { id: number; eventDate: string; recoverableAmount: string; lossAmount: string; journalEntryId: number | null; notes?: string; createdAt?: string | null }
+interface RevaluationEvent { id: number; eventDate: string; fairValue: string; method: string; surplusDelta: string; plImpact: string; journalEntryId: number | null; notes?: string; createdAt?: string | null }
+interface DisposalEvent { id: number; eventDate: string; proceeds: string; method: string; gainLoss: string; surplusTransferred: string; journalEntryId: number | null; notes?: string; createdAt?: string | null }
 
 interface DepreciationRunListItem {
   id: number;
@@ -663,6 +666,20 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
   // until they explicitly close it.
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
 
+  // Task #336: cascade-delete confirmation. When the user clicks delete on an
+  // event that has later siblings on the same asset, show a modal that says
+  // exactly how many later events will be reversed and asks them to confirm
+  // before we hit the route with `?cascade=true`. Without later siblings the
+  // plain delete path runs unchanged.
+  const [cascadePending, setCascadePending] = useState<
+    | {
+        kind: AssetEventKind;
+        id: number;
+        laterCount: number;
+      }
+    | null
+  >(null);
+
   const eventDeleteOptions = (path: string) => {
     const fallback = "تعذّر حذف الحدث: مرتبط بسجلات لاحقة على نفس الأصل.";
     return {
@@ -690,6 +707,108 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
   const deleteImpairment = useMutation(eventDeleteOptions("impairment-events"));
   const deleteRevaluation = useMutation(eventDeleteOptions("revaluation-events"));
   const deleteDisposal = useMutation(eventDeleteOptions("disposals"));
+
+  // Task #336: cascade variants — same routes with `?cascade=true`. The
+  // server reverses every later event on the same asset (latest first) and
+  // the target row inside one transaction. The 409 guards (legacy snapshot,
+  // JE-orphan) still apply, so we route those into the same conflict modal
+  // the per-event delete uses.
+  const cascadeDeleteOptions = (path: string) => {
+    const fallback = "تعذّر تنفيذ التراجع المتسلسل: مرتبط بسجلات أخرى.";
+    return {
+      mutationFn: async (id: number) =>
+        apiRequest("DELETE", `/api/${path}/${id}?cascade=true`),
+      onSuccess: () => {
+        const reversedCount = (cascadePending?.laterCount ?? 0) + 1;
+        const laterCount = cascadePending?.laterCount ?? 0;
+        queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets", assetId, "detail"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
+        invalidateAccountBalances();
+        toast({
+          title: "تم",
+          description: `تم حذف الحدث وعكس ${laterCount} حدث لاحق على نفس الأصل (${reversedCount} قيد إجمالاً).`,
+        });
+        setCascadePending(null);
+      },
+      onError: (e: Error) => {
+        setCascadePending(null);
+        if (e instanceof ApiError && e.status === 409) {
+          const body = e.body as { message?: unknown } | null | undefined;
+          const raw = body?.message;
+          const serverMsg = typeof raw === "string" && raw.trim().length > 0 ? raw : fallback;
+          setConflictMessage(serverMsg);
+          return;
+        }
+        toast({ title: "خطأ", description: e.message, variant: "destructive" });
+      },
+    };
+  };
+
+  const cascadeImpairment = useMutation(cascadeDeleteOptions("impairment-events"));
+  const cascadeRevaluation = useMutation(cascadeDeleteOptions("revaluation-events"));
+  const cascadeDisposal = useMutation(cascadeDeleteOptions("disposals"));
+
+  // Mirrors `loadLaterEventsForCascade` in server/storage.ts — count any
+  // event of any kind on the same asset whose `createdAt` is >= the target's
+  // (server-side cascade cutoff is `gte(createdAt, cutoff)` excluding the
+  // target row itself). Without a `createdAt` (legacy fixture) we can't tell
+  // ordering, so fall back to the plain delete path; the server will run its
+  // normal guards against that.
+  const countLaterEventsOnAsset = (
+    target: { kind: AssetEventKind; id: number; createdAt: string | null | undefined },
+  ): number => {
+    if (!data || !target.createdAt) return 0;
+    const cutoff = new Date(target.createdAt).getTime();
+    if (Number.isNaN(cutoff)) return 0;
+    let count = 0;
+    const consider = (
+      kind: AssetEventKind,
+      id: number,
+      createdAt: string | null | undefined,
+    ) => {
+      if (kind === target.kind && id === target.id) return;
+      if (!createdAt) return;
+      const t = new Date(createdAt).getTime();
+      if (Number.isNaN(t)) return;
+      if (t >= cutoff) count += 1;
+    };
+    data.impairments.forEach((e) => consider("impairment", e.id, e.createdAt));
+    data.revaluations.forEach((e) => consider("revaluation", e.id, e.createdAt));
+    data.disposals.forEach((e) => consider("disposal", e.id, e.createdAt));
+    return count;
+  };
+
+  const handleEventDelete = (
+    kind: AssetEventKind,
+    e: { id: number; createdAt?: string | null },
+  ) => {
+    const laterCount = countLaterEventsOnAsset({
+      kind,
+      id: e.id,
+      createdAt: e.createdAt ?? null,
+    });
+    if (laterCount === 0) {
+      // No later siblings — plain delete path stays as it was.
+      if (kind === "impairment") deleteImpairment.mutate(e.id);
+      else if (kind === "revaluation") deleteRevaluation.mutate(e.id);
+      else deleteDisposal.mutate(e.id);
+      return;
+    }
+    setCascadePending({ kind, id: e.id, laterCount });
+  };
+
+  const cascadeIsPending =
+    cascadeImpairment.isPending ||
+    cascadeRevaluation.isPending ||
+    cascadeDisposal.isPending;
+
+  const confirmCascade = () => {
+    if (!cascadePending) return;
+    if (cascadePending.kind === "impairment") cascadeImpairment.mutate(cascadePending.id);
+    else if (cascadePending.kind === "revaluation") cascadeRevaluation.mutate(cascadePending.id);
+    else cascadeDisposal.mutate(cascadePending.id);
+  };
 
   // Build a unified history of journal-bearing events sorted by date
   const history = useMemo(() => {
@@ -821,8 +940,8 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => deleteImpairment.mutate(e.id)}
-                            disabled={deleteImpairment.isPending}
+                            onClick={() => handleEventDelete("impairment", e)}
+                            disabled={deleteImpairment.isPending || cascadeIsPending}
                             data-testid={`button-delete-impairment-${e.id}`}
                             title="حذف الحدث وعكس قيده المحاسبي"
                           >
@@ -859,8 +978,8 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => deleteRevaluation.mutate(e.id)}
-                            disabled={deleteRevaluation.isPending}
+                            onClick={() => handleEventDelete("revaluation", e)}
+                            disabled={deleteRevaluation.isPending || cascadeIsPending}
                             data-testid={`button-delete-revaluation-${e.id}`}
                             title="حذف الحدث وعكس قيده المحاسبي"
                           >
@@ -896,8 +1015,8 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => deleteDisposal.mutate(e.id)}
-                            disabled={deleteDisposal.isPending}
+                            onClick={() => handleEventDelete("disposal", e)}
+                            disabled={deleteDisposal.isPending || cascadeIsPending}
                             data-testid={`button-delete-disposal-${e.id}`}
                             title="حذف الحدث وعكس قيده المحاسبي"
                           >
@@ -935,6 +1054,53 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
       few seconds and leave the user staring at a row that didn't go
       away with no explanation.
     */}
+    {/*
+      Task #336: cascade-delete confirmation. When the row the user clicked
+      has later siblings on the same asset, we open this dialog instead of
+      firing the plain delete (which would 409 with the task #209 guard).
+      Confirming sends the same DELETE with `?cascade=true`, which reverses
+      every later event (latest first) and the target row in one tx; the
+      success toast names the count so the user has a single, clear summary
+      of what was undone.
+    */}
+    <AlertDialog
+      open={!!cascadePending}
+      onOpenChange={(o) => { if (!o && !cascadeIsPending) setCascadePending(null); }}
+    >
+      <AlertDialogContent dir="rtl" data-testid="dialog-asset-event-cascade-confirm">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2 text-right">
+            <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
+            تراجع متسلسل عن سلسلة من الأحداث
+          </AlertDialogTitle>
+          <AlertDialogDescription
+            className="text-sm leading-relaxed text-foreground text-right whitespace-pre-line"
+            data-testid="text-asset-event-cascade-message"
+          >
+            {`هذا الحدث مسبوق بـ ${cascadePending?.laterCount ?? 0} حدث لاحق على نفس الأصل. ` +
+              "لحذفه يجب عكس كل تلك الأحداث أولاً (من الأحدث إلى الأقدم) ثم حذف هذا الحدث، وكل ذلك ضمن معاملة واحدة."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            disabled={cascadeIsPending}
+            data-testid="button-asset-event-cascade-cancel"
+          >
+            إلغاء
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(ev) => {
+              ev.preventDefault();
+              confirmCascade();
+            }}
+            disabled={cascadeIsPending}
+            data-testid="button-asset-event-cascade-confirm"
+          >
+            {`حذف الحدث وعكس ${cascadePending?.laterCount ?? 0} حدث لاحق`}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <AlertDialog
       open={!!conflictMessage}
       onOpenChange={(o) => { if (!o) setConflictMessage(null); }}
