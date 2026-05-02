@@ -173,6 +173,13 @@ export interface IStorage {
   // Chart of accounts
   getAccounts(companyId: number): Promise<Account[]>;
   createAccount(companyId: number, input: InsertAccount, ctx?: AuditContext): Promise<Account>;
+  // Delete a single account from the workspace's chart of accounts. Throws
+  // an Error with `.status === 404` when the id does not belong to the
+  // workspace, and `.status === 409` when the account still has journal
+  // lines posted to it or has child accounts beneath it. The audit row is
+  // written in the same transaction as the deletion so history can never
+  // grow out of sync with the chart.
+  deleteAccount(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
   getAccountByCode(companyId: number, code: string): Promise<Account | undefined>;
 
   // Journal entries
@@ -1957,6 +1964,87 @@ export class DatabaseStorage implements IStorage {
       const [created] = await tx.insert(accounts).values({ ...input, companyId }).returning();
       await recordAudit(tx, { companyId, entityType: "account", entityId: created.id, action: "create", changes: snapshotChanges(created), ctx });
       return created;
+    });
+  }
+
+  async deleteAccount(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
+    // The chart of accounts is load-bearing: every journal line points at an
+    // account row, and child accounts inherit display position from a parent
+    // row. Deleting either an account that holds postings, or a header that
+    // still has children, would silently break the books or hide a subtree.
+    // We refuse those cases with a typed `status: 409` error so the route
+    // can surface a clear message; otherwise we delete the row + record an
+    // audit entry in a single transaction so history can never drift from
+    // the chart.
+    return await db.transaction(async (tx) => {
+      // Lock the row inside the workspace so two concurrent deletes can't
+      // race past each other and double-count. `FOR UPDATE` releases on
+      // COMMIT/ROLLBACK.
+      const [existing] = await tx
+        .select()
+        .from(accounts)
+        .where(and(eq(accounts.id, id), eq(accounts.companyId, companyId)))
+        .for("update");
+      if (!existing) {
+        const err: Error & { status?: number } = new Error("الحساب غير موجود");
+        err.status = 404;
+        throw err;
+      }
+
+      // 1) Refuse if the account has any journal-line postings. We only
+      //    need to know whether at least one row exists, so a LIMIT 1
+      //    select is cheaper than a COUNT(*).
+      const [posting] = await tx
+        .select({ id: journalLines.id })
+        .from(journalLines)
+        .where(
+          and(
+            eq(journalLines.companyId, companyId),
+            eq(journalLines.accountId, id),
+          ),
+        )
+        .limit(1);
+      if (posting) {
+        const err: Error & { status?: number } = new Error(
+          "لا يمكن حذف حساب له قيود مسجلة. أعد ترحيل أو احذف القيود أولاً.",
+        );
+        err.status = 409;
+        throw err;
+      }
+
+      // 2) Refuse if the account is a parent for any other account in the
+      //    same workspace. Cross-tenant FKs are physically impossible
+      //    (composite (id, company_id) FK), so workspace-scoping the
+      //    parent lookup is a defense-in-depth correctness check.
+      const [child] = await tx
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.companyId, companyId),
+            eq(accounts.parentId, id),
+          ),
+        )
+        .limit(1);
+      if (child) {
+        const err: Error & { status?: number } = new Error(
+          "لا يمكن حذف حساب يحتوي على حسابات فرعية. احذف الحسابات الفرعية أولاً.",
+        );
+        err.status = 409;
+        throw err;
+      }
+
+      await tx
+        .delete(accounts)
+        .where(and(eq(accounts.id, id), eq(accounts.companyId, companyId)));
+      await recordAudit(tx, {
+        companyId,
+        entityType: "account",
+        entityId: id,
+        action: "delete",
+        changes: snapshotChanges(existing),
+        ctx,
+      });
     });
   }
 

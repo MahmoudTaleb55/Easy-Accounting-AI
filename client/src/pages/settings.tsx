@@ -54,6 +54,7 @@ const formSchema = z.object({
   vatRate: z.coerce.number({ invalid_type_error: "أدخل رقماً صحيحاً" }).min(0, "لا يمكن أن تكون النسبة سالبة").max(99, "النسبة كبيرة جداً"),
   zakatEnabled: z.boolean(),
   fiscalYearStartMonth: z.coerce.number({ invalid_type_error: "أدخل رقم شهر بين 1 و 12" }).int("يجب أن يكون رقم شهر صحيح").min(1, "الشهر بين 1 و 12").max(12, "الشهر بين 1 و 12"),
+  businessType: z.enum(["service", "trading", "manufacturing"]),
 });
 type FormVals = z.infer<typeof formSchema>;
 
@@ -393,6 +394,7 @@ export default function SettingsPage() {
       vatRate: 0,
       zakatEnabled: false,
       fiscalYearStartMonth: 1,
+      businessType: "service",
     },
   });
 
@@ -409,6 +411,11 @@ export default function SettingsPage() {
         vatRate: Number(settings.vatRate) * 100, // store as % in form
         zakatEnabled: settings.zakatEnabled,
         fiscalYearStartMonth: settings.fiscalYearStartMonth,
+        businessType: ((["service", "trading", "manufacturing"] as const) as readonly string[]).includes(
+          settings.businessType,
+        )
+          ? (settings.businessType as "service" | "trading" | "manufacturing")
+          : "service",
       });
     }
   }, [settings, form]);
@@ -542,6 +549,44 @@ export default function SettingsPage() {
                 <FormItem>
                   <FormLabel>أول شهر في السنة المالية</FormLabel>
                   <FormControl><Input type="number" min="1" max="12" {...field} data-testid="input-fiscal-month" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="w-5 h-5" />
+                نوع النشاط
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <FormField control={form.control} name="businessType" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>نوع المنشأة</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-business-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="service" data-testid="option-business-type-service">
+                        شركة خدمات (بدون تكلفة بضائع مباعة)
+                      </SelectItem>
+                      <SelectItem value="trading" data-testid="option-business-type-trading">
+                        شركة تجارية (تشمل تكلفة البضائع المباعة)
+                      </SelectItem>
+                      <SelectItem value="manufacturing" data-testid="option-business-type-manufacturing">
+                        شركة تصنيع (تشمل تكلفة البضائع المباعة)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    شركات الخدمات لا يظهر فيها قسم "تكلفة البضائع المباعة" في قائمة الدخل، بينما تظهر تلقائياً للشركات التجارية والصناعية.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )} />

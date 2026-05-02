@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
+export type BusinessType = "service" | "trading" | "manufacturing";
+
 export interface OrgSettings {
   id: number;
   orgName: string;
@@ -10,11 +12,17 @@ export interface OrgSettings {
   vatRate: string | number;
   zakatEnabled: boolean;
   fiscalYearStartMonth: number;
+  // Drives which sections appear in the income statement. A service workspace
+  // hides the COGS block; trading/manufacturing keep it. Defaults to
+  // "service" so an unconfigured client never accidentally surfaces a COGS
+  // section that the owner did not opt into.
+  businessType: BusinessType;
 }
 
 const DEFAULTS: OrgSettings = {
   id: 1, orgName: "My Business", countryCode: "INTL", locale: "ar",
   currencyCode: "USD", currencySymbol: "$", vatRate: 0, zakatEnabled: false, fiscalYearStartMonth: 1,
+  businessType: "service",
 };
 
 export interface FormatMoneyOptions {

@@ -412,6 +412,27 @@ export async function registerRoutes(
     }
   });
 
+  // Delete a single account from the workspace's chart of accounts. Owner/
+  // accountant only — both roles already have full chart write access via
+  // the create + restore-defaults endpoints, so we keep the gate symmetric.
+  // The storage layer enforces the safety rules (no postings, no children)
+  // and throws a typed `status` so we can map cleanly to 404 / 409 / 500.
+  app.delete(api.accounts.delete.path, requireRole("owner", "accountant"), async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: "معرّف الحساب غير صالح" });
+    }
+    try {
+      await storage.deleteAccount(cid(req), id, userCtx(req));
+      res.status(204).send();
+    } catch (err: any) {
+      const status = typeof err?.status === "number" ? err.status : 500;
+      res
+        .status(status)
+        .json({ message: err?.message || "تعذّر حذف الحساب" });
+    }
+  });
+
   // Restore the default IFRS chart of accounts for a workspace whose chart
   // is completely empty. Refuses with 409 the moment any account already
   // exists in the workspace, so this can never silently merge into / muddle

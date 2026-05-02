@@ -309,6 +309,16 @@ export const settings = pgTable("settings", {
   // Workspace-default costing method for inventory items whose own
   // `products.costingMethod` is null. Added by migration 0023.
   defaultCostingMethod: text("default_costing_method").notNull().default("avg"),
+  // Workspace business type drives which sections appear in the IFRS reports.
+  // - "service":       no Cost of Goods Sold section (a service company has no
+  //                    inventory to consume), so the income statement collapses
+  //                    revenue → operating expenses → net profit.
+  // - "trading":       buys finished goods and resells them — full COGS section.
+  // - "manufacturing": produces goods — full COGS section + (future) WIP.
+  // Default "service" is the safest assumption for a brand-new workspace
+  // because it never accidentally implies inventory the user doesn't track.
+  // See migration 0024_settings_business_type.sql for the column definition.
+  businessType: text("business_type").notNull().default("service"),
 });
 
 export const upsertSettingsSchema = z.object({
@@ -321,6 +331,7 @@ export const upsertSettingsSchema = z.object({
   zakatEnabled: z.boolean(),
   fiscalYearStartMonth: z.coerce.number().int().min(1).max(12),
   defaultCostingMethod: z.enum(["fifo", "avg"]).default("avg"),
+  businessType: z.enum(["service", "trading", "manufacturing"]).default("service"),
 });
 export type OrgSettings = typeof settings.$inferSelect;
 export type UpsertOrgSettings = z.infer<typeof upsertSettingsSchema>;

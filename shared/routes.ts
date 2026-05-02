@@ -126,6 +126,21 @@ export const api = {
         }),
       },
     },
+    // Delete a single account from the workspace's chart of accounts. Refuses
+    // (409) when the account has any journal-line postings or any child
+    // accounts beneath it — in either case the row is load-bearing for
+    // existing books and removing it would orphan postings or hide a subtree.
+    // Header rows can still be deleted, but only after their leaves are
+    // either reassigned or themselves deleted.
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/accounts/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
   },
   journal: {
     list: {

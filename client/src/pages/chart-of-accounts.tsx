@@ -46,7 +46,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { BookOpen, ChevronDown, ChevronLeft, ChevronRight, Download, Plus, Search, Sparkles } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronLeft, ChevronRight, Download, Plus, Search, Sparkles, Trash2 } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import type { Account } from "@shared/schema"
 import {
   buildLedgerCsv,
@@ -409,6 +419,36 @@ export default function ChartOfAccountsPage() {
       }),
   })
 
+  // Track which account the user is about to delete so the confirm dialog
+  // can render the account name + code, and so the dialog can stay closed
+  // until the user actually clicks the trash icon. Stored as the full
+  // Account row (not just an id) because the alert dialog needs the human-
+  // readable code/name to surface a clear "you're about to delete X" line.
+  const [accountToDelete, setAccountToDelete] = useState<Account | null>(null)
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/accounts/${id}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] })
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts/balances"] })
+      toast({
+        title: locale === "ar" ? "تم الحذف" : "Account deleted",
+      })
+      setAccountToDelete(null)
+    },
+    onError: (err: any) => {
+      // The server returns Arabic messages with status 404 (missing account)
+      // or 409 (still has postings or children). Surface the message verbatim
+      // so the owner knows exactly which safety rule blocked the delete.
+      toast({
+        title: locale === "ar" ? "تعذّر الحذف" : "Delete failed",
+        description: err?.message,
+        variant: "destructive",
+      })
+    },
+  })
+
   /* ------------------------------------------------------------------ */
   /* Tree build — group by type, link parent → children via parentId.    */
   /* When searching, only matching accounts (and all their ancestors)    */
@@ -759,6 +799,8 @@ export default function ChartOfAccountsPage() {
                       net: t.balanceBreakdownNet,
                       aria: t.balanceBreakdownAria,
                     }}
+                    canDelete={canWrite}
+                    onDelete={setAccountToDelete}
                   />
                 ))}
               </ul>
@@ -766,6 +808,82 @@ export default function ChartOfAccountsPage() {
           ))}
         </div>
       )}
+
+      {/*
+        Confirm dialog for deleting a single account. Driven by
+        `accountToDelete`: opening it requires clicking the row's trash
+        icon (so accidental keyboard navigation can never trigger it),
+        and closing it via Cancel or backdrop click resets the state to
+        null. The action button stays in "Deleting…" state while the
+        mutation is pending so the user gets clear feedback that the
+        request is in flight.
+      */}
+      <AlertDialog
+        open={accountToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setAccountToDelete(null)
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-delete-account">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {locale === "ar" ? "حذف الحساب" : "Delete account"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {accountToDelete && (
+                locale === "ar" ? (
+                  <>
+                    سيتم حذف الحساب{" "}
+                    <span className="font-medium text-foreground">
+                      {accountToDelete.code} — {accountToDelete.nameAr}
+                    </span>
+                    . هذا الإجراء لا يمكن التراجع عنه. لا يمكن حذف حساب يحتوي
+                    على قيود مسجلة أو حسابات فرعية.
+                  </>
+                ) : (
+                  <>
+                    Account{" "}
+                    <span className="font-medium text-foreground">
+                      {accountToDelete.code} — {accountToDelete.nameEn}
+                    </span>
+                    {" "}will be deleted. This cannot be undone. Accounts with
+                    posted journal lines or sub-accounts cannot be deleted.
+                  </>
+                )
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-account">
+              {locale === "ar" ? "إلغاء" : "Cancel"}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                // Prevent the dialog from auto-closing — we close it from the
+                // mutation `onSuccess` so the spinner stays visible until the
+                // server actually confirms. If the request fails, the dialog
+                // stays open so the user can read the error toast and decide
+                // whether to retry.
+                e.preventDefault()
+                if (accountToDelete) {
+                  deleteMutation.mutate(accountToDelete.id)
+                }
+              }}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-account"
+            >
+              {deleteMutation.isPending
+                ? locale === "ar"
+                  ? "جارٍ الحذف…"
+                  : "Deleting…"
+                : locale === "ar"
+                ? "حذف"
+                : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AccountLedgerSheet
         account={ledgerAccount}
@@ -829,6 +947,13 @@ interface TreeRowProps {
   formatMoney: (n: number | string | null | undefined) => string
   balanceAria: string
   breakdownLabels: BreakdownLabels
+  // Delete affordance — wired only for users who can write (owner/accountant).
+  // Read-only viewers receive `canDelete=false` and never see the trash icon.
+  // The handler opens the confirm dialog at the page level; the actual
+  // network call lives in `deleteMutation` so the dialog can show "Deleting…"
+  // state without each row tracking its own pending flag.
+  canDelete: boolean
+  onDelete: (account: Account) => void
 }
 
 function TreeRow({
@@ -845,6 +970,8 @@ function TreeRow({
   formatMoney,
   balanceAria,
   breakdownLabels,
+  canDelete,
+  onDelete,
 }: TreeRowProps) {
   const { account } = node
   const hasChildren = node.children.length > 0
@@ -943,6 +1070,38 @@ function TreeRow({
         <span className="text-[11px] text-muted-foreground hidden sm:block truncate max-w-[30%]">
           {account.nameEn}
         </span>
+        {/*
+          Delete button — shown only for leaf accounts (no children) and only
+          when the viewer has write access. Header rows (`isHeader`) are
+          structural roll-up rows in the seeded chart; deleting them would
+          orphan their entire subtree and make periodic reports unreadable,
+          so we hide the affordance there. The button stays at zero opacity
+          until the row is hovered/focused so the long balance line remains
+          uncluttered for daily browsing.
+        */}
+        {canDelete && !account.isHeader && !hasChildren && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(account)
+            }}
+            className={cn(
+              "shrink-0 inline-flex items-center justify-center w-6 h-6 rounded",
+              "text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10",
+              "opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            )}
+            aria-label={
+              locale === "ar"
+                ? `حذف الحساب ${account.code} ${account.nameAr}`
+                : `Delete account ${account.code} ${account.nameAr}`
+            }
+            data-testid={`button-delete-account-${account.code}`}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
         {balancesLoading ? (
           <Skeleton
             className="h-4 w-20 ms-auto shrink-0"
@@ -1038,6 +1197,8 @@ function TreeRow({
             formatMoney={formatMoney}
             balanceAria={balanceAria}
             breakdownLabels={breakdownLabels}
+            canDelete={canDelete}
+            onDelete={onDelete}
           />
         ))}
     </>

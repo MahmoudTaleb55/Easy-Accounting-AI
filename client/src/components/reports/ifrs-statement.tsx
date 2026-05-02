@@ -18,6 +18,12 @@ export function IfrsIncomeStatement({
   companyName = "منشأتي",
 }: Props) {
   const settings = useSettings();
+  // Service workspaces have no inventory and therefore no Cost of Goods Sold,
+  // so we hide the COGS block + the gross-profit subtotal entirely. Trading
+  // and manufacturing workspaces keep the full layout. Default-safe: an
+  // unknown / legacy value falls through to "show COGS" so we never
+  // silently strip data from a workspace that has actual COGS postings.
+  const showCogs = settings.businessType !== "service";
 
   // Build a stable query key that changes when the period changes so the
   // statement refetches whenever the user picks a new range.
@@ -140,32 +146,67 @@ export function IfrsIncomeStatement({
                   testId="row-total-revenue"
                 />
 
-                {/* COGS */}
-                <SectionHeader title="تكلفة البضائع المباعة" />
-                {stmt.cogsItems.length === 0 ? (
-                  <EmptyRow label="لا توجد تكلفة بضائع مسجلة" />
-                ) : (
-                  stmt.cogsItems.map((it) => (
-                    <LineRow
-                      key={`cogs-${it.category}`}
-                      item={it}
-                      testId={`row-cogs-${it.category}`}
+                {/* COGS — service workspaces hide this entire section + the
+                    gross-profit subtotal because they have no inventory. */}
+                {showCogs && (
+                  <>
+                    <SectionHeader title="تكلفة البضائع المباعة" />
+                    {stmt.cogsItems.length === 0 ? (
+                      <EmptyRow label="لا توجد تكلفة بضائع مسجلة" />
+                    ) : (
+                      stmt.cogsItems.map((it) => (
+                        <LineRow
+                          key={`cogs-${it.category}`}
+                          item={it}
+                          testId={`row-cogs-${it.category}`}
+                        />
+                      ))
+                    )}
+                    <SubtotalRow
+                      label="إجمالي تكلفة البضائع المباعة"
+                      value={stmt.totalCogs}
+                      testId="row-total-cogs"
                     />
-                  ))
-                )}
-                <SubtotalRow
-                  label="إجمالي تكلفة البضائع المباعة"
-                  value={stmt.totalCogs}
-                  testId="row-total-cogs"
-                />
 
-                {/* Gross Profit */}
-                <TotalRow
-                  label="إجمالي الربح"
-                  value={stmt.grossProfit}
-                  tone="primary"
-                  testId="row-gross-profit"
-                />
+                    {/* Gross Profit — only meaningful when COGS is in play */}
+                    <TotalRow
+                      label="إجمالي الربح"
+                      value={stmt.grossProfit}
+                      tone="primary"
+                      testId="row-gross-profit"
+                    />
+                  </>
+                )}
+
+                {/*
+                  Service workspaces hide the COGS section above, but the
+                  server still returns and subtracts real COGS postings from
+                  net profit. If the workspace declared "service" yet the
+                  books actually contain COGS, the visible income/expense
+                  rows would not reconcile to net profit and the user would
+                  rightly be confused. Surface a clear, locale-only-Arabic
+                  warning naming the amount and pointing them at Settings,
+                  rather than silently fudging the math by zeroing it out
+                  on the client (which would hide a real bookkeeping issue).
+                */}
+                {!showCogs && stmt.totalCogs !== 0 && (
+                  <tr data-testid="row-cogs-warning-service">
+                    <td colSpan={2} className="px-4 py-3">
+                      <div className="rounded-lg border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 px-4 py-2.5 text-[12.5px] text-amber-900 dark:text-amber-200 leading-relaxed">
+                        <span className="font-semibold">تنبيه:</span>{" "}
+                        نوع المنشأة مُعرَّف كـ"شركة خدمات"، ومع ذلك توجد قيود
+                        بقيمة{" "}
+                        <span className="font-numeric tabular-nums font-semibold">
+                          {formatMoney(stmt.totalCogs)} {settings.currencySymbol}
+                        </span>{" "}
+                        مرحَّلة على حسابات تكلفة البضائع المباعة. هذه القيود
+                        ما زالت تُخصم من صافي الربح. لإظهار قسم تكلفة البضائع،
+                        غيِّر نوع النشاط من الإعدادات إلى "تجارية" أو "تصنيع"،
+                        أو أعد تصنيف هذه القيود إلى مصروفات تشغيلية.
+                      </div>
+                    </td>
+                  </tr>
+                )}
 
                 {/* Operating Expenses */}
                 <SectionHeader title="مصروفات التشغيل" />
