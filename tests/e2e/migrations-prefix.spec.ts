@@ -1,41 +1,29 @@
 import { test, expect } from "@playwright/test";
-import { readdirSync } from "node:fs";
-import path from "node:path";
+import { checkMigrationsPrefix } from "../../scripts/check-migrations-prefix";
 
-const MIGRATIONS_DIR = path.resolve(process.cwd(), "migrations");
-const PREFIX_RE = /^(\d{4})_/;
-
+// CI wrapper for `scripts/check-migrations-prefix.ts`. The script is
+// also invoked directly by `.husky/pre-commit`.
 test("every migrations/*.sql file has a unique NNNN_ prefix", () => {
-  const files = readdirSync(MIGRATIONS_DIR)
-    .filter((name) => name.endsWith(".sql"))
-    .sort();
+  const { files, unprefixed, collisions } = checkMigrationsPrefix();
 
-  expect(files.length, "expected at least one migration file").toBeGreaterThan(0);
+  expect(files.length, "expected at least one migration file").toBeGreaterThan(
+    0,
+  );
 
-  const unprefixed = files.filter((name) => !PREFIX_RE.test(name));
   expect(
     unprefixed,
     `migration files must start with a 4-digit prefix: ${unprefixed.join(", ")}`,
   ).toEqual([]);
 
-  const byPrefix = new Map<string, string[]>();
-  for (const name of files) {
-    const prefix = name.match(PREFIX_RE)![1];
-    const bucket = byPrefix.get(prefix) ?? [];
-    bucket.push(name);
-    byPrefix.set(prefix, bucket);
-  }
-
-  const collisions = [...byPrefix.entries()]
-    .filter(([, names]) => names.length > 1)
-    .map(([prefix, names]) => `${prefix}: ${names.join(", ")}`);
-
+  const collisionLines = collisions.map(
+    ({ prefix, files: names }) => `${prefix}: ${names.join(", ")}`,
+  );
   expect(
-    collisions,
+    collisionLines,
     [
       "duplicate migration prefix(es) detected — the runner keys on the",
       "numeric prefix and will silently drop one of these files:",
-      ...collisions.map((line) => `  - ${line}`),
+      ...collisionLines.map((line) => `  - ${line}`),
     ].join("\n"),
   ).toEqual([]);
 });

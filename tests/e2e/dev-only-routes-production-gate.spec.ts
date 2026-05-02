@@ -56,6 +56,10 @@ import {
   registerLocalAuthRoutes,
   readDevSkipCooldownFromQuery,
 } from "../../server/auth/local-routes";
+// Source-only static scan also invoked by `.husky/pre-commit`.
+import {
+  checkDevOnlyRoutesProductionGate,
+} from "../../scripts/check-dev-only-routes-production-gate";
 // Import the setter / getter from the dev-only module — task #242 moved
 // them out of `server/auth/email.ts` so production code can no longer
 // reach them. The spec is itself a test artefact (not production code),
@@ -237,5 +241,32 @@ test.describe("dev-only routes are gated off in production", () => {
     } finally {
       process.env.NODE_ENV = original;
     }
+  });
+
+  test("static gate scan over server/auth/local-routes.ts is clean", () => {
+    // Mirrors what `.husky/pre-commit` runs; keeps the hook's check
+    // and this spec from drifting.
+    const report = checkDevOnlyRoutesProductionGate();
+
+    expect(
+      report.devReferences.length,
+      "expected at least one dev-only-route reference in server/auth/local-routes.ts",
+    ).toBeGreaterThan(0);
+
+    const ungatedSummary = report.ungatedDevReferences.map(
+      (r) => `${r.description} at line ${r.pos.line}`,
+    );
+    expect(
+      ungatedSummary,
+      [
+        'dev-only-route reference(s) outside the required `if (process.env.NODE_ENV !== "production") { ... }` gate:',
+        ...ungatedSummary.map((line) => `  - ${line}`),
+      ].join("\n"),
+    ).toEqual([]);
+
+    expect(
+      report.skipCooldownHasProductionGuard,
+      '`readDevSkipCooldownFromQuery` must short-circuit with `return false` when NODE_ENV === "production".',
+    ).toBe(true);
   });
 });

@@ -282,31 +282,31 @@ function isMain(): boolean {
   );
 }
 
-if (isMain()) {
+export function runCheck(): { ok: boolean; message: string } {
   const report = checkReversalStampBackfillCoverage();
   if (report.uncovered.length === 0) {
     const optedOut = report.members.filter((m) => m.optOutReason !== null);
-    // eslint-disable-next-line no-console
-    console.log(
+    let message =
       `reversal-stamp backfill coverage OK — ${report.members.length} ` +
-        `${UNION_NAME} member(s): ` +
-        `${report.members.length - optedOut.length} covered by ` +
-        `per-source branch(es), ${optedOut.length} opted out`,
-    );
+      `${UNION_NAME} member(s): ` +
+      `${report.members.length - optedOut.length} covered by ` +
+      `per-source branch(es), ${optedOut.length} opted out`;
     if (report.orphanBranches.length > 0) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `note: ${report.orphanBranches.length} backfill branch(es) point ` +
-          `at kind(s) no longer in the union: ` +
-          `${report.orphanBranches
-            .map((b) => `${b.kind} (${b.file})`)
-            .join(", ")}`,
-      );
+      message +=
+        `\nnote: ${report.orphanBranches.length} backfill branch(es) point ` +
+        `at kind(s) no longer in the union: ` +
+        `${report.orphanBranches
+          .map((b) => `${b.kind} (${b.file})`)
+          .join(", ")}`;
     }
-    process.exit(0);
-  } else {
-    // eslint-disable-next-line no-console
-    console.error(formatFailure(report));
-    process.exit(1);
+    return { ok: true, message };
   }
+  return { ok: false, message: formatFailure(report) };
+}
+
+if (isMain()) {
+  const { ok, message } = runCheck();
+  // eslint-disable-next-line no-console
+  (ok ? console.log : console.error)(message);
+  process.exit(ok ? 0 : 1);
 }

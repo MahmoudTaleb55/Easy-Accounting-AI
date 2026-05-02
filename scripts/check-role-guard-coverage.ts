@@ -441,6 +441,17 @@ export function checkRoleGuardCoverage(): CoverageReport {
 // CLI
 // ---------------------------------------------------------------------------
 
+export function runCheck(): { ok: boolean; message: string } {
+  const report = checkRoleGuardCoverage();
+  if (report.missing.length === 0) {
+    return {
+      ok: true,
+      message: `role-guard coverage OK — ${report.surfaces.length} guarded test id(s) all have owner / accountant / viewer assertions`,
+    };
+  }
+  return { ok: false, message: formatMissing(report) };
+}
+
 function formatMissing(report: CoverageReport): string {
   const lines: string[] = [];
   lines.push(
@@ -470,16 +481,8 @@ function isMain(): boolean {
 }
 
 if (isMain()) {
-  const report = checkRoleGuardCoverage();
-  if (report.missing.length === 0) {
-    // eslint-disable-next-line no-console
-    console.log(
-      `role-guard coverage OK — ${report.surfaces.length} guarded test id(s) all have owner / accountant / viewer assertions`,
-    );
-    process.exit(0);
-  } else {
-    // eslint-disable-next-line no-console
-    console.error(formatMissing(report));
-    process.exit(1);
-  }
+  const { ok, message } = runCheck();
+  // eslint-disable-next-line no-console
+  (ok ? console.log : console.error)(message);
+  process.exit(ok ? 0 : 1);
 }
