@@ -1,8 +1,10 @@
 import { useLocation } from "wouter";
 import {
   Plus, Bell, Sun, Moon, Globe, ChevronDown, Bot, Building2, Check,
-  Calendar, LogOut,
+  Calendar, LogOut, Locate,
 } from "lucide-react";
+import { format } from "date-fns";
+import { ar, enUS, de, fr } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -21,6 +23,7 @@ import { useLocale } from "@/contexts/locale-context";
 import { useTheme } from "@/contexts/theme-context";
 import { useCompany } from "@/contexts/company-context";
 import { usePeriod, type PeriodKey } from "@/contexts/period-context";
+import { usePeriodEmptinessHint } from "@/hooks/use-period-emptiness";
 import { CommandPaletteTrigger } from "./command-palette";
 import { TrustCluster } from "@/components/trust/trust-cluster";
 import { useMutation } from "@tanstack/react-query";
@@ -47,7 +50,19 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
   const { locale, setLocale } = useLocale();
   const { theme, setTheme } = useTheme();
   const { companies, activeCompanyId, activeCompany, setActiveCompanyId } = useCompany();
-  const { period, setPeriodKey, compareToPrevious, setCompareToPrevious } = usePeriod();
+  const { period, setPeriodKey, setPeriodToInclude, compareToPrevious, setCompareToPrevious } = usePeriod();
+  // Workspace-wide "this period is empty — jump to the nearest
+  // posting?" hint (Task #320). Reuses `setPeriodToInclude`, the same
+  // jump primitive the per-account ledger empty state already calls.
+  const periodHint = usePeriodEmptinessHint(period);
+  const dfLocale = locale === "ar" ? ar : locale === "de" ? de : locale === "fr" ? fr : enUS;
+  const periodHintJumpLabel = periodHint.nearest
+    ? `${
+        periodHint.nearest.side === "past"
+          ? t("period_jump_past")
+          : t("period_jump_future")
+      } (${format(periodHint.nearest.date, "d MMM yyyy", { locale: dfLocale })})`
+    : "";
   const { role, user, signOut, isSigningOut } = useAuth();
   const [, setLocation] = useLocation();
 
@@ -103,12 +118,8 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
     { key: "30d", label: t("period_30d") },
   ];
 
-  // For preset keys, show the localised label. When the period was set
-  // programmatically to a custom calendar-month window (e.g. via
-  // `setPeriodToInclude` from the account-ledger empty-state jump), the
-  // key is "custom" and there is no PERIODS entry — render the actual
-  // start–end range instead so the chip still tells the user what
-  // window they're looking at.
+  // For preset keys, show the localised label. For "custom" (set via
+  // `setPeriodToInclude` jumps), render the actual start–end range.
   const intl = locale === "ar" ? "ar-SA" : "en-US";
   const presetLabel = PERIODS.find((p) => p.key === period.key)?.label;
   const periodLabel = presetLabel
@@ -159,13 +170,40 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
       {/* Period selector */}
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="h-9 gap-2" data-testid="button-period-selector">
+          <Button variant="outline" size="sm" className="h-9 gap-2 relative" data-testid="button-period-selector">
             <Calendar className="size-4 opacity-70" />
             <span className="text-small font-medium">{periodLabel}</span>
             <ChevronDown className="size-3.5 opacity-60" />
+            {/* Empty-period warning dot (Task #320). */}
+            {periodHint.isEmpty && periodHint.nearest && (
+              <span
+                className="absolute top-1.5 end-1.5 h-2 w-2 rounded-full bg-warning ring-2 ring-background"
+                aria-hidden
+                data-testid="indicator-period-empty"
+              />
+            )}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-64 p-2 shadow-md motion-enter" align="end">
+          {/* Jump-to-nearest banner (Task #320). */}
+          {periodHint.isEmpty && periodHint.nearest && (
+            <button
+              type="button"
+              onClick={() => setPeriodToInclude(periodHint.nearest!.date)}
+              className="w-full mb-2 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-2 text-start hover-elevate"
+              data-testid="button-period-popover-jump-nearest"
+            >
+              <Locate className="size-4 mt-0.5 text-warning shrink-0" aria-hidden />
+              <span className="flex flex-col min-w-0">
+                <span className="text-caption font-medium text-foreground">
+                  {t("period_empty_hint_short")}
+                </span>
+                <span className="text-caption text-muted-foreground truncate">
+                  {periodHintJumpLabel}
+                </span>
+              </span>
+            </button>
+          )}
           <div className="eyebrow text-muted-foreground/80 px-2 py-1">
             {t("period_month")} / {t("period_quarter")}
           </div>

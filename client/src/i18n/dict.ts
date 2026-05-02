@@ -107,6 +107,13 @@ export const STRINGS = {
   period_ytd:      { ar: "منذ بداية السنة", en: "Year to date", de: "Seit Jahresbeginn", fr: "Depuis le début de l'année" },
   period_30d:      { ar: "آخر 30 يوماً", en: "Last 30 days", de: "Letzte 30 Tage", fr: "30 derniers jours" },
   compare_prev:    { ar: "مقارنة بالفترة السابقة", en: "Compare to previous", de: "Mit Vorperiode vergleichen", fr: "Comparer à la période précédente" },
+  // Period-empty hint surfaced on the chip / topbar period popover when
+  // the active range contains no postings across the whole workspace
+  // but other periods do — clicking the hint snaps the period to the
+  // window containing the nearest posting (past or future).
+  period_empty_hint_short:  { ar: "لا حركات في هذه الفترة", en: "No postings in this period", de: "Keine Buchungen in diesem Zeitraum", fr: "Aucune écriture sur cette période" },
+  period_jump_past:         { ar: "الانتقال إلى أحدث حركة سابقة", en: "Jump to latest earlier posting", de: "Zur letzten früheren Buchung springen", fr: "Aller à la dernière écriture précédente" },
+  period_jump_future:       { ar: "الانتقال إلى أقرب حركة قادمة", en: "Jump to nearest upcoming posting", de: "Zur nächsten kommenden Buchung springen", fr: "Aller à la prochaine écriture à venir" },
   currency_label:  { ar: "العملة", en: "Currency", de: "Währung", fr: "Devise" },
   synced:          { ar: "آخر مزامنة", en: "Synced", de: "Synchronisiert", fr: "Synchronisé" },
 

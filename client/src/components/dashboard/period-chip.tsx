@@ -1,6 +1,15 @@
+import { format } from "date-fns";
+import { ar, enUS, de, fr } from "date-fns/locale";
+import { Locate } from "lucide-react";
 import { usePeriod, type PeriodKey } from "@/contexts/period-context";
 import { useLocale } from "@/contexts/locale-context";
 import { useT } from "@/i18n/dict";
+import { usePeriodEmptinessHint } from "@/hooks/use-period-emptiness";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface PeriodChipProps {
   showCompare?: boolean;
@@ -11,14 +20,32 @@ interface PeriodChipProps {
  * Compact period chip for in-page headers.
  * Mirrors the dashboard PeriodBar — selector + range + optional compare toggle —
  * but as a single inline pill so it can sit next to a page title and actions.
+ *
+ * When the workspace has zero postings inside the active range but has
+ * postings elsewhere, the chip surfaces a small "jump to nearest
+ * posting" arrow so users don't have to open a per-account drawer to
+ * discover the active period is empty (Task #320). The hint reuses the
+ * same helper and `setPeriodToInclude` jump as the per-account empty
+ * state in `chart-of-accounts.tsx`.
  */
 export function PeriodChip({ showCompare = true, className = "" }: PeriodChipProps) {
-  const { period, setPeriodKey, compareToPrevious, setCompareToPrevious } = usePeriod();
+  const { period, setPeriodKey, setPeriodToInclude, compareToPrevious, setCompareToPrevious } = usePeriod();
   const { locale } = useLocale();
   const t = useT();
   const intl = locale === "ar" ? "ar-SA" : "en-US";
   const start = period.start.toLocaleDateString(intl, { month: "short", day: "numeric" });
   const end = period.end.toLocaleDateString(intl, { month: "short", day: "numeric", year: "numeric" });
+
+  const hint = usePeriodEmptinessHint(period);
+  const dfLocale =
+    locale === "ar" ? ar : locale === "de" ? de : locale === "fr" ? fr : enUS;
+  const jumpAriaLabel = hint.nearest
+    ? `${
+        hint.nearest.side === "past"
+          ? t("period_jump_past")
+          : t("period_jump_future")
+      } (${format(hint.nearest.date, "d MMM yyyy", { locale: dfLocale })})`
+    : "";
 
   return (
     <div
@@ -57,6 +84,26 @@ export function PeriodChip({ showCompare = true, className = "" }: PeriodChipPro
       >
         {start} <span className="text-muted-foreground/60 mx-0.5">–</span> {end}
       </span>
+      {hint.isEmpty && hint.nearest && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => setPeriodToInclude(hint.nearest!.date)}
+              aria-label={jumpAriaLabel}
+              title={jumpAriaLabel}
+              className="inline-flex items-center justify-center h-6 w-6 rounded text-warning hover-elevate -mx-1"
+              data-testid="button-period-chip-jump-nearest"
+            >
+              <Locate className="size-3.5" aria-hidden />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="end" className="max-w-xs text-xs">
+            <div className="font-medium">{t("period_empty_hint_short")}</div>
+            <div className="text-muted-foreground mt-0.5">{jumpAriaLabel}</div>
+          </TooltipContent>
+        </Tooltip>
+      )}
       {showCompare && (
         <>
           <span className="hairline-v hidden md:inline-block h-4" />
