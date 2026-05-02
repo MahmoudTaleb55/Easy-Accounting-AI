@@ -30,6 +30,18 @@ import {
  * itself (so we can return 409 + a known message without seeding through
  * the real posting flows). Every other request hits the real server, which
  * is logged in via a forged session — same pattern as the payroll spec.
+ *
+ * Task #335: the "later event blocks delete" path (AssetEventLaterDependencyError
+ * from task #209) was the original case pinned here. The same DELETE route
+ * also returns 409 for two other reasons — `JournalEntryReferenceConflictError`
+ * (the JE is referenced by another module: depreciation, inbox, bank
+ * reconciliation, …) from task #111, and `LegacyAssetEventBalanceMissingError`
+ * (the row was posted before migration 0015 and has no `asset_balance_delta`
+ * snapshot) from task #208. Both branches go through the exact same `onError`
+ * handler in `AssetDetailDialog`, so the modal wiring is identical, but
+ * without UI-level coverage a future refactor that special-cases one of them
+ * into a toast would slip through. The two extra `test()` blocks below seed
+ * those messages and assert the modal renders them verbatim.
  */
 
 const TEST_EMAIL = "e2e-asset-event-conflict@example.test";
@@ -159,50 +171,58 @@ function buildAssetDetail(companyId: number) {
   };
 }
 
+// Shared GET-route mocks. Used by every test in this file because each one
+// drives the *same* asset-detail page; only the DELETE response differs
+// between cases. Extracted as a helper so the per-test bodies stay focused
+// on the specific 409 branch they're asserting.
+async function mockAssetReads(page: Page, companyId: number): Promise<void> {
+  // Mock the asset-list GET so the deep-link `#asset-<id>` opens the
+  // detail dialog (the effect in fixed-assets.tsx checks the asset
+  // exists in the list before opening). Both endpoints below are kept
+  // in sync so cache invalidations after a successful delete (which
+  // won't happen in these tests, but might in future regressions) keep
+  // returning the same shape.
+  await page.route("**/api/fixed-assets?**", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([buildAsset(companyId)]),
+    });
+  });
+
+  // The asset-detail GET drives the impairment / revaluation / disposal
+  // tabs. We seed two events on the same asset (an impairment and a
+  // later revaluation) so the earlier impairment is the one the server
+  // would refuse to delete in real life.
+  await page.route(`**/api/fixed-assets/${FAKE_ASSET_ID}`, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(buildAssetDetail(companyId)),
+    });
+  });
+
+  // The asset-categories GET is queried by the register card; respond
+  // with an empty list so the page doesn't 500 on fetch failure.
+  await page.route("**/api/asset-categories?**", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+}
+
 test.describe("Fixed Assets surfaces the 409 conflict reason for asset-event deletes", () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
   test("renders the server message in a modal alert (not a toast)", async ({ page }) => {
     const { companyId } = await seedAndLogin(page);
 
-    // Mock the asset-list GET so the deep-link `#asset-<id>` opens the
-    // detail dialog (the effect in fixed-assets.tsx checks the asset
-    // exists in the list before opening). Both endpoints below are kept
-    // in sync so cache invalidations after a successful delete (which
-    // won't happen in this test, but might in future regressions) keep
-    // returning the same shape.
-    await page.route("**/api/fixed-assets?**", async (route) => {
-      if (route.request().method() !== "GET") return route.fallback();
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([buildAsset(companyId)]),
-      });
-    });
-
-    // The asset-detail GET drives the impairment / revaluation / disposal
-    // tabs. We seed two events on the same asset (an impairment and a
-    // later revaluation) so the earlier impairment is the one the server
-    // would refuse to delete in real life.
-    await page.route(`**/api/fixed-assets/${FAKE_ASSET_ID}`, async (route) => {
-      if (route.request().method() !== "GET") return route.fallback();
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(buildAssetDetail(companyId)),
-      });
-    });
-
-    // The asset-categories GET is queried by the register card; respond
-    // with an empty list so the page doesn't 500 on fetch failure.
-    await page.route("**/api/asset-categories?**", async (route) => {
-      if (route.request().method() !== "GET") return route.fallback();
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([]),
-      });
-    });
+    await mockAssetReads(page, companyId);
 
     // Mock the DELETE so it answers exactly the way the real route would
     // when a later event on the same asset blocks the delete (task #209).
@@ -284,4 +304,117 @@ test.describe("Fixed Assets surfaces the 409 conflict reason for asset-event del
     // delete" dialog would suppress the request entirely.
     expect(deleteCalls).toBe(1);
   });
+
+  // Task #335: same modal must surface the OTHER two 409 reasons too. The
+  // server formats both with `JournalEntryReferenceConflictError` /
+  // `LegacyAssetEventBalanceMissingError` (see server/storage.ts lines
+  // 3850-3886), and the route in server/routes.ts maps both to 409 with the
+  // error's own `.message`. We mirror those exact strings here so a future
+  // refactor that special-cases either branch into a destructive toast (the
+  // pre-task #263 behaviour) trips this spec instead of slipping through.
+  // The wording matches `deleteImpairmentEvent` in server/storage.ts so a
+  // change there without updating the test is caught immediately.
+  const JE_REFERENCE_CONFLICT_MESSAGE =
+    "لا يمكن حذف خسارة الانخفاض لأن قيدها المحاسبي مرتبط بسجلات أخرى: " +
+    "تسوية بنكية #4242، فاتورة #909";
+  const LEGACY_BALANCE_MISSING_MESSAGE =
+    "لا يمكن حذف خسارة الانخفاض لأنها مُسجَّلة قبل تحديث تتبّع الأرصدة (task #157). " +
+    "يرجى تعديل أرصدة الأصل يدوياً.";
+
+  // Helper: the per-test bodies below only differ by the 409 message the
+  // mocked DELETE returns, so wrap the common steps (stub the DELETE,
+  // navigate, switch tab, click delete, assert modal verbatim, assert no
+  // toast, assert dialog persists past the toast auto-dismiss window, assert
+  // row stays put, dismiss, assert DELETE was tried exactly once) here.
+  // Keeps each new test() body to its essential difference: the message.
+  async function runDeleteAndAssertModalShowsServerMessage(
+    page: Page,
+    expectedMessage: string,
+  ): Promise<void> {
+    let deleteCalls = 0;
+    await page.route(
+      `**/api/impairment-events/${FAKE_EARLIER_IMPAIRMENT_ID}`,
+      async (route) => {
+        if (route.request().method() !== "DELETE") return route.fallback();
+        deleteCalls += 1;
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ message: expectedMessage }),
+        });
+      },
+    );
+
+    await page.goto(`/app/fixed-assets#asset-${FAKE_ASSET_ID}`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    const detailDialog = page.locator('[data-testid="dialog-asset-detail"]');
+    await expect(detailDialog).toBeVisible({ timeout: 15_000 });
+
+    await page.locator('[data-testid="tab-detail-impairments"]').click();
+    const row = page.locator(
+      `[data-testid="row-impairment-${FAKE_EARLIER_IMPAIRMENT_ID}"]`,
+    );
+    await expect(row).toBeVisible({ timeout: 10_000 });
+
+    const deleteBtn = page.locator(
+      `[data-testid="button-delete-impairment-${FAKE_EARLIER_IMPAIRMENT_ID}"]`,
+    );
+    await expect(deleteBtn).toBeVisible();
+    await deleteBtn.click();
+
+    const conflictDialog = page.locator(
+      '[data-testid="dialog-asset-event-delete-conflict"]',
+    );
+    await expect(conflictDialog).toBeVisible({ timeout: 10_000 });
+
+    const message = page.locator(
+      '[data-testid="text-asset-event-delete-conflict-message"]',
+    );
+    await expect(message).toHaveText(expectedMessage);
+
+    // Same toast-suppression and persistence guarantees as the original
+    // test: a regression that downgrades any of the three 409 branches
+    // into a toast would fire here too.
+    await expect(
+      page.getByRole("status").filter({ hasText: /^خطأ$/ }),
+    ).toHaveCount(0);
+    await page.waitForTimeout(5_500);
+    await expect(conflictDialog).toBeVisible();
+    await expect(message).toHaveText(expectedMessage);
+    await expect(row).toBeVisible();
+
+    await page
+      .locator('[data-testid="button-asset-event-delete-conflict-close"]')
+      .click();
+    await expect(conflictDialog).toHaveCount(0);
+    await expect(row).toBeVisible();
+
+    expect(deleteCalls).toBe(1);
+  }
+
+  test(
+    "renders the JE-reference conflict message verbatim (task #111 branch)",
+    async ({ page }) => {
+      const { companyId } = await seedAndLogin(page);
+      await mockAssetReads(page, companyId);
+      await runDeleteAndAssertModalShowsServerMessage(
+        page,
+        JE_REFERENCE_CONFLICT_MESSAGE,
+      );
+    },
+  );
+
+  test(
+    "renders the legacy asset-balance missing message verbatim (task #208 branch)",
+    async ({ page }) => {
+      const { companyId } = await seedAndLogin(page);
+      await mockAssetReads(page, companyId);
+      await runDeleteAndAssertModalShowsServerMessage(
+        page,
+        LEGACY_BALANCE_MISSING_MESSAGE,
+      );
+    },
+  );
 });
