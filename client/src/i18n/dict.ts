@@ -76,6 +76,11 @@ export const STRINGS = {
   inv_no_alerts:          { ar: "لا توجد تنبيهات",    en: "No low-stock alerts", de: "Keine Alarme",       fr: "Aucune alerte" },
   inv_save:               { ar: "حفظ",               en: "Save",                de: "Speichern",          fr: "Enregistrer" },
   inv_cancel:             { ar: "إلغاء",             en: "Cancel",              de: "Abbrechen",          fr: "Annuler" },
+  inv_edit:               { ar: "تعديل",             en: "Edit",                de: "Bearbeiten",         fr: "Modifier" },
+  inv_edit_item:          { ar: "تعديل الصنف",       en: "Edit item",           de: "Artikel bearbeiten", fr: "Modifier l'article" },
+  inv_actions:            { ar: "إجراءات",           en: "Actions",             de: "Aktionen",           fr: "Actions" },
+  inv_costing_default:    { ar: "افتراضي",           en: "Default",             de: "Standard",           fr: "Par défaut" },
+  inv_no_category:        { ar: "بدون تصنيف",        en: "No category",         de: "Keine Kategorie",    fr: "Aucune catégorie" },
   inv_confirm_reverse:    { ar: "هل تريد عكس هذه الحركة؟", en: "Reverse this transaction?", de: "Buchung stornieren?", fr: "Annuler ce mouvement ?" },
   inv_total_value:        { ar: "إجمالي قيمة المخزون", en: "Total stock value",   de: "Gesamtbestandswert", fr: "Valeur totale du stock" },
 
