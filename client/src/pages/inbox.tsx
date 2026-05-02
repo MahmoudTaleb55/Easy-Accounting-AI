@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useLocale, type Locale } from "@/contexts/locale-context";
 import { detectedLanguageLabel, resolveInboxError } from "@/lib/inbox-error-i18n";
+import { enhanceAndCompressImageFile } from "@/lib/image-enhance";
 import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -352,7 +353,16 @@ export default function InboxPage() {
         .filter(
           (f) => f.type.startsWith("image/") || f.type === "application/pdf",
         )
-        .forEach((f) => uploadMut.mutate(f));
+        .forEach(async (f) => {
+          // Enhance direct image uploads to match camera-capture output;
+          // PDFs and undecodable images fall through unchanged via the
+          // helper. Camera captures bypass this path entirely.
+          const processed =
+            f.type.startsWith("image/")
+              ? await enhanceAndCompressImageFile(f)
+              : f;
+          uploadMut.mutate(processed);
+        });
     },
     [uploadMut],
   );
