@@ -894,9 +894,13 @@ export async function reverseSaleConsumption(
       .set({ stockQty: sql`coalesce(${products.stockQty}, 0) + ${qty}` })
       .where(and(eq(products.companyId, companyId), eq(products.id, l.productId)));
   }
+  // Null the JE link before the caller deletes the journal entry — the
+  // composite FK `inventory_transactions_journal_entry_company_fk` is
+  // ON DELETE NO ACTION, so leaving it pointing at the about-to-be-deleted
+  // JE would block the cancel/delete-posted-invoice transaction.
   await tx
     .update(inventoryTransactions)
-    .set({ status: "reversed" })
+    .set({ status: "reversed", journalEntryId: null })
     .where(eq(inventoryTransactions.id, hdr.id));
   return { found: true };
 }
