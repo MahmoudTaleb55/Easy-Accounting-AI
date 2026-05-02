@@ -100,14 +100,29 @@ export const queryClient = new QueryClient({
   },
 });
 
+// Cross-tab balance refresh: a BroadcastChannel ping lets sibling tabs in
+// the same browser refetch their own /api/accounts/balances cache when
+// any tab mutates the ledger. Same-origin only — cross-machine
+// collaborators need a server-pushed channel.
+const balancesChannel: BroadcastChannel | null =
+  typeof window !== "undefined" && typeof BroadcastChannel !== "undefined"
+    ? new BroadcastChannel("accounts-balances")
+    : null;
+
+balancesChannel?.addEventListener("message", (event) => {
+  if ((event.data as { type?: string } | null)?.type !== "balances-invalidated") return;
+  queryClient.invalidateQueries({ queryKey: ["/api/accounts/balances"] });
+});
+
 /**
  * Invalidate every cached `/api/accounts/balances` query so the chart of
- * accounts page refetches its trailing balances on the next visit.
+ * accounts page refetches its trailing balances on the next visit, and
+ * broadcast the same signal to sibling tabs so they refetch too.
  *
  * The balances query is keyed by `["/api/accounts/balances", period]` (one
- * cache entry per period chip), so we pass only the path prefix here —
- * TanStack Query v5's `invalidateQueries` does prefix matching by default,
- * which means every period variant gets invalidated in a single call.
+ * cache entry per period chip); TanStack Query v5's `invalidateQueries`
+ * does prefix matching by default, so every period variant gets
+ * invalidated in a single call.
  *
  * Call this from any mutation that changes journal lines (manual JE
  * create/delete, transaction create/delete, AI auto-post, payroll run,
@@ -118,4 +133,5 @@ export const queryClient = new QueryClient({
  */
 export function invalidateAccountBalances(): void {
   queryClient.invalidateQueries({ queryKey: ["/api/accounts/balances"] });
+  balancesChannel?.postMessage({ type: "balances-invalidated" });
 }
