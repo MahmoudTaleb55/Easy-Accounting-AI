@@ -12,6 +12,9 @@ export const dashboardKeys = {
   journalEntries: ["/api/journal-entries"] as const,
   cashForecast: (days: number) =>
     ["/api/insights/cash-forecast", days] as const,
+  inventoryValuation: ["/api/inventory/valuation"] as const,
+  inventoryAlerts: ["/api/inventory/alerts"] as const,
+  inventoryTransactions: ["/api/inventory/transactions"] as const,
 };
 
 async function fetchCashForecast(days: number) {
@@ -48,4 +51,7 @@ export function prefetchDashboardData(qc: QueryClient, cashForecastDays = 30) {
   qc.prefetchQuery({ queryKey: dashboardKeys.alerts });
   qc.prefetchQuery({ queryKey: dashboardKeys.transactions });
   qc.prefetchQuery({ queryKey: dashboardKeys.journalEntries });
+  qc.prefetchQuery({ queryKey: dashboardKeys.inventoryValuation });
+  qc.prefetchQuery({ queryKey: dashboardKeys.inventoryAlerts });
+  qc.prefetchQuery({ queryKey: dashboardKeys.inventoryTransactions });
 }

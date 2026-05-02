@@ -84,6 +84,19 @@ export const STRINGS = {
   inv_confirm_reverse:    { ar: "هل تريد عكس هذه الحركة؟", en: "Reverse this transaction?", de: "Buchung stornieren?", fr: "Annuler ce mouvement ?" },
   inv_total_value:        { ar: "إجمالي قيمة المخزون", en: "Total stock value",   de: "Gesamtbestandswert", fr: "Valeur totale du stock" },
 
+  // Inventory dashboard widget
+  inv_dash_title:         { ar: "لقطة المخزون",        en: "Inventory snapshot",  de: "Bestandsübersicht",  fr: "Aperçu du stock" },
+  inv_dash_view_all:      { ar: "عرض الأصناف",         en: "View items",          de: "Artikel anzeigen",   fr: "Voir les articles" },
+  inv_dash_low_stock:     { ar: "تنبيهات نقص المخزون", en: "Low-stock alerts",    de: "Bestandsalarme",     fr: "Alertes stock bas" },
+  inv_dash_top_items:     { ar: "أعلى الأصناف قيمة",    en: "Top items by value",  de: "Top-Artikel nach Wert", fr: "Top articles par valeur" },
+  inv_dash_movements:     { ar: "حركات آخر 30 يوماً",   en: "Last 30 days",        de: "Letzte 30 Tage",     fr: "30 derniers jours" },
+  inv_dash_no_movements:  { ar: "لا حركات في آخر 30 يوماً.", en: "No movements in the last 30 days.", de: "Keine Bewegungen in den letzten 30 Tagen.", fr: "Aucun mouvement sur les 30 derniers jours." },
+  inv_dash_no_value:      { ar: "لا توجد أصناف بقيمة بعد.", en: "No valued items yet.", de: "Noch keine bewerteten Artikel.", fr: "Aucun article valorisé." },
+  inv_dash_setup:         { ar: "ابدأ بإدارة المخزون",  en: "Start managing inventory", de: "Bestandsverwaltung starten", fr: "Commencer à gérer le stock" },
+  inv_dash_setup_hint:    { ar: "سجّل أول حركة شراء لتظهر الأصناف هنا.", en: "Record a purchase to see items appear here.", de: "Erfassen Sie einen Einkauf, um Artikel hier zu sehen.", fr: "Enregistrez un achat pour voir vos articles ici." },
+  inv_dash_items_label:   { ar: "صنف",                 en: "items",               de: "Artikel",            fr: "articles" },
+  inv_dash_movements_label:{ ar: "حركة",               en: "movements",           de: "Bewegungen",         fr: "mouvements" },
+
   // Top bar
   search_placeholder:  { ar: "ابحث أو نفّذ أمراً…", en: "Search or run a command…", de: "Suchen oder Befehl ausführen…", fr: "Rechercher ou exécuter une commande…" },
   quick_create:        { ar: "إنشاء", en: "Create", de: "Neu",       fr: "Créer" },

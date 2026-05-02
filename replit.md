@@ -21,11 +21,10 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-The application is a full-stack TypeScript monorepo utilizing a React frontend and an Express backend, with shared schema and route definitions for consistency.
+The application is a full-stack TypeScript monorepo with a React frontend and an Express backend, using shared schema and route definitions for consistency.
 
 ### Frontend Architecture
-- **Framework**: React with Vite.
-- **Routing**: `wouter` for client-side navigation.
+- **Framework & Routing**: React with Vite, utilizing `wouter` for navigation.
 - **State Management**: TanStack React Query (v5) for server state with optimistic updates.
 - **UI Components**: `shadcn/ui` based on Radix UI primitives.
 - **Visual Design System**: Emphasizes a premium fintech aesthetic with:
@@ -44,14 +43,13 @@ The application is a full-stack TypeScript monorepo utilizing a React frontend a
 - **Forms**: React Hook Form with Zod resolvers for validation.
 
 ### Backend Architecture
-
 - **Framework**: Express 5 (TypeScript, ESM).
 - **API Contract**: Shared `shared/routes.ts` defines API paths, HTTP methods, and Zod schemas for input/response validation.
 - **Storage Layer**: `server/storage.ts` provides an `IStorage` interface for database abstraction.
 - **AI Integration**: OpenAI client integrated for AI chat assistance.
+- **Build System**: Vite for frontend development and esbuild for backend production builds.
 
 ### Data Storage
-
 - **Database**: PostgreSQL, accessed via `drizzle-orm/node-postgres`.
 - **ORM**: Drizzle ORM with schema defined in `shared/schema.ts`.
 - **Migrations**: Managed by Drizzle Kit.

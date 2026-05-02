@@ -7,6 +7,7 @@ import { AttentionQueue } from "@/components/dashboard/attention-queue";
 import { ActivityChart } from "@/components/dashboard/activity-chart";
 import { CategoryList } from "@/components/dashboard/category-list";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
+import { InventorySummary } from "@/components/dashboard/inventory-summary";
 import { WidgetBoundary } from "@/components/dashboard/widget-boundary";
 import {
   KpiStripSkeleton,
@@ -14,6 +15,7 @@ import {
   ActivityChartSkeleton,
   CategoryListSkeleton,
   RecentActivitySkeleton,
+  InventorySummarySkeleton,
 } from "@/components/dashboard/skeletons";
 
 export default function Dashboard() {
@@ -49,6 +51,10 @@ export default function Dashboard() {
           </WidgetBoundary>
         </div>
       </div>
+
+      <WidgetBoundary fallback={<InventorySummarySkeleton />} label="Inventory snapshot">
+        <InventorySummary />
+      </WidgetBoundary>
 
       <WidgetBoundary fallback={<RecentActivitySkeleton />} label="Recent activity">
         <RecentActivity />

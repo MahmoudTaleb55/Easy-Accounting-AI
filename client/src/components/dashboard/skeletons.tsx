@@ -134,6 +134,58 @@ export function CategoryListSkeleton() {
   );
 }
 
+export function InventorySummarySkeleton() {
+  return (
+    <section data-testid="inventory-summary-loading" className="space-y-3">
+      <div className="flex items-baseline justify-between">
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="h-3 w-20" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="border border-border bg-card rounded-xl p-4 flex flex-col gap-3 min-h-[7rem]"
+          >
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-4 w-4 rounded-sm" />
+            </div>
+            <Skeleton className="h-7 w-28" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="border border-border bg-card rounded-md p-4 space-y-3 min-h-[12rem]">
+          <Skeleton className="h-3.5 w-32" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-baseline justify-between gap-2">
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+          ))}
+        </div>
+        <div className="border border-border bg-card rounded-md p-4 space-y-3 min-h-[12rem]">
+          <Skeleton className="h-3.5 w-32" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="space-y-1.5">
+              <div className="flex items-baseline justify-between">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-10" />
+              </div>
+              <Skeleton
+                className="h-1.5 rounded-full"
+                style={{ width: `${85 - i * 15}%` }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function RecentActivitySkeleton() {
   return (
     <section
