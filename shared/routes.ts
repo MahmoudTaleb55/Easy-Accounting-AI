@@ -19,6 +19,15 @@ import {
   type SalesInvoice,
   type SalesInvoiceWithLines,
   SALES_INVOICE_STATUSES,
+  insertVendorSchema,
+  createPurchaseInvoiceSchema,
+  updatePurchaseInvoiceSchema,
+  createPurchasePaymentSchema,
+  type Vendor,
+  type PurchaseInvoice,
+  type PurchaseInvoiceWithLines,
+  type PurchasePaymentWithAllocations,
+  type ApAgingReport,
 } from './schema';
 
 export const errorSchemas = {
@@ -521,6 +530,165 @@ export const api = {
       method: 'GET' as const,
       path: '/api/sales/invoices/next-number' as const,
       responses: { 200: z.object({ number: z.string() }) },
+    },
+  },
+  purchases: {
+    // ----- Vendors -----
+    vendorsList: {
+      method: 'GET' as const,
+      path: '/api/purchases/vendors' as const,
+      responses: { 200: z.array(z.custom<Vendor>()) },
+    },
+    vendorGet: {
+      method: 'GET' as const,
+      path: '/api/purchases/vendors/:id' as const,
+      responses: { 200: z.custom<Vendor>(), 404: errorSchemas.notFound },
+    },
+    vendorCreate: {
+      method: 'POST' as const,
+      path: '/api/purchases/vendors' as const,
+      input: insertVendorSchema,
+      responses: { 201: z.custom<Vendor>(), 400: errorSchemas.validation },
+    },
+    vendorUpdate: {
+      method: 'PATCH' as const,
+      path: '/api/purchases/vendors/:id' as const,
+      input: insertVendorSchema.partial(),
+      responses: {
+        200: z.custom<Vendor>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    vendorDelete: {
+      method: 'DELETE' as const,
+      path: '/api/purchases/vendors/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    // Open AP balance for a vendor (sum of total - paid on posted credit bills).
+    vendorBalance: {
+      method: 'GET' as const,
+      path: '/api/purchases/vendors/:id/balance' as const,
+      responses: { 200: z.object({ balance: z.number() }) },
+    },
+    vendorHistory: {
+      method: 'GET' as const,
+      path: '/api/purchases/vendors/:id/history' as const,
+      responses: { 200: z.array(z.custom<PurchaseInvoice>()) },
+    },
+    // ----- Bills -----
+    billsList: {
+      method: 'GET' as const,
+      path: '/api/purchases/bills' as const,
+      responses: { 200: z.array(z.custom<PurchaseInvoiceWithLines>()) },
+    },
+    billGet: {
+      method: 'GET' as const,
+      path: '/api/purchases/bills/:id' as const,
+      responses: {
+        200: z.custom<PurchaseInvoiceWithLines>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    billCreate: {
+      method: 'POST' as const,
+      path: '/api/purchases/bills' as const,
+      input: createPurchaseInvoiceSchema,
+      responses: {
+        201: z.custom<PurchaseInvoiceWithLines>(),
+        400: errorSchemas.validation,
+      },
+    },
+    billUpdate: {
+      method: 'PATCH' as const,
+      path: '/api/purchases/bills/:id' as const,
+      input: updatePurchaseInvoiceSchema,
+      responses: {
+        200: z.custom<PurchaseInvoiceWithLines>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    billDelete: {
+      method: 'DELETE' as const,
+      path: '/api/purchases/bills/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    billPost: {
+      method: 'POST' as const,
+      path: '/api/purchases/bills/:id/post' as const,
+      responses: {
+        200: z.custom<PurchaseInvoiceWithLines>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    billCancel: {
+      method: 'POST' as const,
+      path: '/api/purchases/bills/:id/cancel' as const,
+      responses: {
+        200: z.custom<PurchaseInvoiceWithLines>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    billNextNumber: {
+      method: 'GET' as const,
+      path: '/api/purchases/bills/next-number' as const,
+      responses: { 200: z.object({ number: z.string() }) },
+    },
+    // ----- Payments (multi-bill allocation) -----
+    paymentsList: {
+      method: 'GET' as const,
+      path: '/api/purchases/payments' as const,
+      responses: { 200: z.array(z.custom<PurchasePaymentWithAllocations>()) },
+    },
+    paymentGet: {
+      method: 'GET' as const,
+      path: '/api/purchases/payments/:id' as const,
+      responses: {
+        200: z.custom<PurchasePaymentWithAllocations>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    paymentCreate: {
+      method: 'POST' as const,
+      path: '/api/purchases/payments' as const,
+      input: createPurchasePaymentSchema,
+      responses: {
+        201: z.custom<PurchasePaymentWithAllocations>(),
+        400: errorSchemas.validation,
+      },
+    },
+    paymentDelete: {
+      method: 'DELETE' as const,
+      path: '/api/purchases/payments/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    paymentNextNumber: {
+      method: 'GET' as const,
+      path: '/api/purchases/payments/next-number' as const,
+      responses: { 200: z.object({ number: z.string() }) },
+    },
+    // ----- AP Aging Report -----
+    apAging: {
+      method: 'GET' as const,
+      path: '/api/purchases/aging' as const,
+      responses: { 200: z.custom<ApAgingReport>() },
     },
   },
   chat: {

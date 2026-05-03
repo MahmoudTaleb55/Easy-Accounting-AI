@@ -1557,6 +1557,246 @@ export async function registerRoutes(
     });
   }
 
+  // ============================================================
+  // Purchases portal — vendors, bills, AP payments, AP aging.
+  // Mirrors the sales block above one-for-one (same shape so the
+  // chat tool list / role gate / write-guard treat them identically).
+  // ============================================================
+  {
+    const {
+      insertVendorSchema,
+      createPurchaseInvoiceSchema,
+      updatePurchaseInvoiceSchema,
+      createPurchasePaymentSchema,
+    } = await import("@shared/schema");
+    const purchases = await import("./purchases");
+
+    // ----- Vendors -----
+    app.get(api.purchases.vendorsList.path, async (req, res) => {
+      res.json(await storage.listVendors(cid(req)));
+    });
+
+    app.get("/api/purchases/vendors/:id", async (req, res) => {
+      const row = await storage.getVendor(cid(req), Number(req.params.id));
+      if (!row) return res.status(404).json({ message: "غير موجود" });
+      res.json(row);
+    });
+
+    app.post(api.purchases.vendorCreate.path, async (req, res) => {
+      try {
+        const input = insertVendorSchema.parse(req.body);
+        res.status(201).json(await storage.createVendor(cid(req), input, userCtx(req)));
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        res.status(500).json({ message: "تعذر حفظ المورد" });
+      }
+    });
+
+    app.patch("/api/purchases/vendors/:id", async (req, res) => {
+      try {
+        const input = insertVendorSchema.partial().parse(req.body);
+        const row = await storage.updateVendor(
+          cid(req),
+          Number(req.params.id),
+          input,
+          userCtx(req),
+        );
+        res.json(row);
+      } catch (err: any) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        if (err?.message?.includes("غير موجود")) {
+          return res.status(404).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر التحديث" });
+      }
+    });
+
+    app.delete("/api/purchases/vendors/:id", async (req, res) => {
+      try {
+        await storage.deleteVendor(cid(req), Number(req.params.id), userCtx(req));
+        res.status(204).send();
+      } catch (err: any) {
+        if (err?.message?.includes("مرتبط") || err?.message?.includes("فواتير")) {
+          return res.status(409).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر الحذف" });
+      }
+    });
+
+    app.get("/api/purchases/vendors/:id/balance", async (req, res) => {
+      const balance = await storage.getVendorBalance(cid(req), Number(req.params.id));
+      res.json({ balance });
+    });
+
+    app.get("/api/purchases/vendors/:id/history", async (req, res) => {
+      res.json(await storage.getVendorInvoices(cid(req), Number(req.params.id)));
+    });
+
+    // ----- Bills -----
+    // Live-preview helper for the "create bill" dialog. Declared
+    // BEFORE the `/:id` route so Express doesn't try to parse
+    // "next-number" as a numeric id.
+    app.get(api.purchases.billNextNumber.path, async (req, res) => {
+      res.json({ number: await storage.getNextPurchaseInvoiceNumber(cid(req)) });
+    });
+
+    app.get(api.purchases.billsList.path, async (req, res) => {
+      const status = req.query.status as
+        | "draft"
+        | "posted"
+        | "cancelled"
+        | undefined;
+      const vendorId = req.query.vendorId
+        ? Number(req.query.vendorId)
+        : undefined;
+      res.json(await storage.listPurchaseInvoices(cid(req), { status, vendorId }));
+    });
+
+    app.get("/api/purchases/bills/:id", async (req, res) => {
+      const inv = await storage.getPurchaseInvoice(cid(req), Number(req.params.id));
+      if (!inv) return res.status(404).json({ message: "الفاتورة غير موجودة" });
+      res.json(inv);
+    });
+
+    app.post(api.purchases.billCreate.path, async (req, res) => {
+      try {
+        const input = createPurchaseInvoiceSchema.parse(req.body);
+        const inv = await purchases.createPurchaseInvoice(cid(req), input, userCtx(req));
+        res.status(201).json(inv);
+      } catch (err: any) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر إنشاء الفاتورة" });
+      }
+    });
+
+    app.patch("/api/purchases/bills/:id", async (req, res) => {
+      try {
+        const input = updatePurchaseInvoiceSchema.parse(req.body);
+        const inv = await purchases.updatePurchaseInvoice(
+          cid(req),
+          Number(req.params.id),
+          input,
+          userCtx(req),
+        );
+        res.json(inv);
+      } catch (err: any) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        if (err instanceof JournalEntryReferenceConflictError) {
+          return res.status(409).json({ message: err.message });
+        }
+        if (err?.message?.includes("غير موجود")) {
+          return res.status(404).json({ message: err.message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر التحديث" });
+      }
+    });
+
+    app.delete("/api/purchases/bills/:id", async (req, res) => {
+      try {
+        await purchases.deletePurchaseInvoice(cid(req), Number(req.params.id), userCtx(req));
+        res.status(204).send();
+      } catch (err: any) {
+        if (err instanceof JournalEntryReferenceConflictError) {
+          return res.status(409).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر الحذف" });
+      }
+    });
+
+    app.post(api.purchases.billPost.path, async (req, res) => {
+      try {
+        const inv = await purchases.postPurchaseInvoice(
+          cid(req),
+          Number(req.params.id),
+          userCtx(req),
+        );
+        res.json(inv);
+      } catch (err: any) {
+        if (err?.message?.includes("غير موجود")) {
+          return res.status(404).json({ message: err.message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر ترحيل الفاتورة" });
+      }
+    });
+
+    app.post(api.purchases.billCancel.path, async (req, res) => {
+      try {
+        const inv = await purchases.cancelPurchaseInvoice(
+          cid(req),
+          Number(req.params.id),
+          userCtx(req),
+        );
+        res.json(inv);
+      } catch (err: any) {
+        if (err instanceof JournalEntryReferenceConflictError) {
+          return res.status(409).json({ message: err.message });
+        }
+        if (err?.message?.includes("غير موجود")) {
+          return res.status(404).json({ message: err.message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر إلغاء الفاتورة" });
+      }
+    });
+
+    // ----- AP Payments (multi-bill allocation) -----
+    app.get(api.purchases.paymentNextNumber.path, async (req, res) => {
+      res.json({ number: await storage.getNextPurchasePaymentNumber(cid(req)) });
+    });
+
+    app.get(api.purchases.paymentsList.path, async (req, res) => {
+      res.json(await storage.listPurchasePayments(cid(req)));
+    });
+
+    app.get("/api/purchases/payments/:id", async (req, res) => {
+      const pay = await storage.getPurchasePayment(cid(req), Number(req.params.id));
+      if (!pay) return res.status(404).json({ message: "الدفعة غير موجودة" });
+      res.json(pay);
+    });
+
+    app.post(api.purchases.paymentCreate.path, async (req, res) => {
+      try {
+        const input = createPurchasePaymentSchema.parse(req.body);
+        const pay = await purchases.createPurchasePayment(cid(req), input, userCtx(req));
+        res.status(201).json(pay);
+      } catch (err: any) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر تسجيل الدفعة" });
+      }
+    });
+
+    app.delete("/api/purchases/payments/:id", async (req, res) => {
+      try {
+        await purchases.reversePurchasePayment(
+          cid(req),
+          Number(req.params.id),
+          userCtx(req),
+        );
+        res.status(204).send();
+      } catch (err: any) {
+        if (err instanceof JournalEntryReferenceConflictError) {
+          return res.status(409).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر إلغاء الدفعة" });
+      }
+    });
+
+    // ----- AP Aging Report -----
+    app.get(api.purchases.apAging.path, async (req, res) => {
+      const asOf = (req.query.asOf as string) || new Date().toISOString().slice(0, 10);
+      res.json(await storage.getApAgingReport(cid(req), asOf));
+    });
+  }
+
   // AI Decision Coach (with simple per-IP rate limit to prevent abuse)
   const coachLimiter = new Map<string, number[]>();
   app.post("/api/insights/ai-coach", async (req, res) => {

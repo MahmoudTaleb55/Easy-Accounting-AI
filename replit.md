@@ -79,6 +79,17 @@ Modular, plug-in-style integrations in `server/replit_integrations/` and `client
 - **Pre-commit role-guard hook**: Husky hook runs `scripts/check-role-guard-coverage.ts` to ensure proper role-based access control for UI elements.
 - **Bilingual dashboard shell**: Playwright suite asserts visual snapshots, command palette functionality, keyboard navigation, and WCAG AA contrast for the dashboard in various locales and themes.
 
+### Purchases Portal (Task #368)
+
+End-to-end Purchase Invoices module mirroring the Sales Portal:
+- **Vendors** (`VEND-####`): code/name (ar+en)/tax/contact, RLS-scoped per workspace.
+- **Bills** (`BILL-####`): draft → posted → cancelled lifecycle. Posting auto-issues an IFRS journal entry via the inventory inbound engine (`Dr Expense / Dr 1230 Input VAT / Cr 2100 AP` for credit; `Cr 1100 Cash` for cash bills). Cancelling reverses the JE in place.
+- **AP Payments** (`APPAY-####`): multi-bill allocations against open bills, posts `Dr 2100 AP / Cr 1100 Cash`. Reversing un-allocates and re-opens the linked bills.
+- **AP Aging Report**: 0-30 / 31-60 / 61-90 / 90+ buckets per vendor.
+- Server: `server/purchases.ts` business logic + storage in `server/storage.ts`; routes under `/api/purchases/*`.
+- Frontend: `/app/purchases/{vendors,bills,bill-detail,payments,ap-aging}` with i18n (ar/en/de/fr) and `WriteGuard`-wrapped controls covered by `tests/e2e/role-based-buttons.spec.ts`.
+- Tests: `server/__tests__/purchases.test.ts` (vitest, 3 lifecycle round-trips) + `tests/e2e/purchases-portal.spec.ts` (Playwright, 2 happy-path + draft-delete).
+
 ### Locale-aware PDF rendering
 
 Server-generated PDFs render in the user's selected locale (`ar`/`en`/`de`/`fr`).

@@ -27,6 +27,11 @@ import FixedAssets from "@/pages/fixed-assets";
 import SalesInvoices from "@/pages/sales/invoices";
 import SalesInvoiceDetail from "@/pages/sales/invoice-detail";
 import SalesCustomers from "@/pages/sales/customers";
+import PurchaseBills from "@/pages/purchases/bills";
+import PurchaseBillDetail from "@/pages/purchases/bill-detail";
+import PurchaseVendors from "@/pages/purchases/vendors";
+import PurchasePayments from "@/pages/purchases/payments";
+import PurchaseApAging from "@/pages/purchases/ap-aging";
 import InventoryItems from "@/pages/inventory/items";
 import InventoryCategories from "@/pages/inventory/categories";
 import InventoryLocations from "@/pages/inventory/locations";
@@ -86,6 +91,11 @@ function AppShellRoutes() {
       <Route path="/app/sales/invoices" component={SalesInvoices} />
       <Route path="/app/sales/invoices/:id" component={SalesInvoiceDetail} />
       <Route path="/app/sales/customers" component={SalesCustomers} />
+      <Route path="/app/purchases/bills" component={PurchaseBills} />
+      <Route path="/app/purchases/bills/:id" component={PurchaseBillDetail} />
+      <Route path="/app/purchases/vendors" component={PurchaseVendors} />
+      <Route path="/app/purchases/payments" component={PurchasePayments} />
+      <Route path="/app/purchases/ap-aging" component={PurchaseApAging} />
       <Route path="/app/inventory/items" component={InventoryItems} />
       <Route path="/app/inventory/categories" component={InventoryCategories} />
       <Route path="/app/inventory/locations" component={InventoryLocations} />

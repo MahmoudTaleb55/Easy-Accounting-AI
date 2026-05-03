@@ -13,6 +13,7 @@ export const STRINGS = {
   group_people:       { ar: "الموارد والأصول", en: "People & Assets", de: "Personal & Vermögen", fr: "Personnel & Actifs" },
   group_intelligence: { ar: "الذكاء",       en: "Intelligence", de: "Intelligenz", fr: "Intelligence" },
   group_sales:        { ar: "المبيعات",      en: "Sales",     de: "Vertrieb",       fr: "Ventes" },
+  group_purchases:    { ar: "المشتريات",     en: "Purchases", de: "Einkauf",        fr: "Achats" },
   group_settings:     { ar: "الإعدادات",     en: "Settings",  de: "Einstellungen", fr: "Paramètres" },
 
   nav_dashboard:    { ar: "اللوحة الرئيسية", en: "Dashboard",          de: "Übersicht",            fr: "Tableau de bord" },
@@ -27,6 +28,10 @@ export const STRINGS = {
   nav_ai:           { ar: "المساعد الذكي",     en: "AI Assistant",       de: "KI-Assistent",         fr: "Assistant IA" },
   nav_sales_invoices: { ar: "فواتير المبيعات",  en: "Sales Invoices",     de: "Verkaufsrechnungen",   fr: "Factures de vente" },
   nav_sales_customers:{ ar: "العملاء",          en: "Customers",          de: "Kunden",               fr: "Clients" },
+  nav_purchases_bills:    { ar: "فواتير الشراء",   en: "Bills",              de: "Eingangsrechnungen",   fr: "Factures d'achat" },
+  nav_purchases_vendors:  { ar: "الموردون",        en: "Vendors",            de: "Lieferanten",          fr: "Fournisseurs" },
+  nav_purchases_payments: { ar: "دفعات الموردين",  en: "Vendor Payments",    de: "Lieferantenzahlungen", fr: "Paiements fournisseurs" },
+  nav_purchases_aging:    { ar: "أعمار الذمم الدائنة", en: "AP Aging",        de: "Verbindlichkeitsalter", fr: "Âge des dettes" },
   nav_settings:     { ar: "الإعدادات",         en: "Settings",           de: "Einstellungen",        fr: "Paramètres" },
 
   // Inventory

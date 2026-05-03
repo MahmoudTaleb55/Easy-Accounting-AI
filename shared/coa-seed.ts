@@ -238,6 +238,20 @@ export const INVENTORY_ADJUSTMENT_CODE = "5200";
 export const INVENTORY_ACCOUNT_CODE = "1300";
 export const AP_ACCOUNT_CODE = "2110";
 
+// Purchase Portal (task #368) — VAT recoverable on inputs sits on the asset side
+// (separate from the 2130 VAT Payable on outputs) so the net VAT position can
+// be computed at filing time as 2130 − 1230. Posted on every credit/cash bill
+// that carries a non-zero VAT amount.
+export const VAT_RECOVERABLE_CODE = "1230";
+
+// Extra purchases-related accounts merged into the seed at startup (init-coa).
+// Account 1230 fills the "VAT input recoverable" slot under the receivables
+// band so AP-driven JEs balance cleanly without colliding with the existing
+// 1210 (Customers AR) or 1220 sub-ledgers.
+export const PURCHASES_EXTRA_ACCOUNTS: SeedAccount[] = [
+  { code: "1230", nameAr: "ضريبة القيمة المضافة القابلة للاسترداد", nameEn: "VAT Recoverable (Input)", type: "asset", subtype: "current_asset", parentCode: "1200" },
+];
+
 // Extra payroll-related accounts to merge into the seed at startup (in init-coa).
 export const PAYROLL_EXTRA_ACCOUNTS: SeedAccount[] = [
   { code: "6110", nameAr: "اشتراكات التأمينات الاجتماعية", nameEn: "Social Insurance Expense", type: "expense", subtype: "operating_expense", parentCode: "6000" },

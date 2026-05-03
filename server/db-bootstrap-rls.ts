@@ -117,6 +117,12 @@ export const RLS_TABLES: readonly string[] = [
   "inventory_transactions",
   "inventory_transaction_lines",
   "inventory_cost_layers",
+  // Purchase Portal — added by task #368 (migration 0025).
+  "vendors",
+  "purchase_invoices",
+  "purchase_invoice_lines",
+  "purchase_payments",
+  "purchase_payment_allocations",
 ] as const;
 
 /**

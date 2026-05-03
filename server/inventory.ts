@@ -906,6 +906,200 @@ export async function reverseSaleConsumption(
 }
 
 // ---------------------------------------------------------------------------
+// Purchases-portal inventory helpers (task #368)
+// ---------------------------------------------------------------------------
+
+/**
+ * One-shot helper used by `server/purchases.ts` at posting time. Resolves
+ * the workspace's default location, applies an inbound for every goods
+ * line, mirrors to `products.stockQty`, and writes a single
+ * `inventory_transactions` row tagged with `sourcePurchaseInvoiceId` so the
+ * cancel flow can find and reverse it later.
+ *
+ * Mirrors `consumeStockForSaleStandalone` on the sale side — no JE work,
+ * just the engine + ITX bookkeeping. Callers compose the JE separately and
+ * patch the JE id back on via `linkPurchaseTransactionToJournalEntry`.
+ */
+export async function applyPurchaseInboundStandalone(
+  companyId: number,
+  args: {
+    invoiceId: number;
+    invoiceNumber: string;
+    invoiceDate: string;
+    vendorName: string;
+    lines: Array<{ productId: number; quantity: number; unitCost: number }>;
+  },
+): Promise<{ inboundCost: number; transactionId: number | null }> {
+  if (args.lines.length === 0) return { inboundCost: 0, transactionId: null };
+  const loc = await resolveDefaultLocation(db as any, companyId);
+  if (!loc) {
+    throw new Error("لا يوجد موقع مخزن — أنشئ مستودعاً أولاً قبل ترحيل فواتير المشتريات.");
+  }
+  // Pre-resolve costing methods (read settings once, outside the tx).
+  const productMap = await loadProducts(db as any, companyId, args.lines.map((l) => l.productId));
+  const methodByProduct = new Map<number, InventoryCostingMethod>();
+  for (const l of args.lines) {
+    const p = productMap.get(l.productId);
+    if (!p) throw new Error(`المنتج (${l.productId}) غير موجود في هذا الحساب`);
+    if (p.isService) {
+      // Service products never decrement / increment stock — caller filters
+      // them out, so reaching this branch is a contract violation.
+      throw new Error(`المنتج "${p.nameAr}" خدمي ولا يمكن إدخاله للمخزون`);
+    }
+    methodByProduct.set(l.productId, await effectiveCostingMethod(companyId, p));
+  }
+
+  return await db.transaction(async (tx) => {
+    const number = await nextTransactionNumber(tx, companyId, "purchase");
+    const total = r2(args.lines.reduce((s, l) => s + Number(l.quantity) * Number(l.unitCost), 0));
+    const [hdr] = await tx
+      .insert(inventoryTransactions)
+      .values({
+        companyId,
+        number,
+        type: "purchase",
+        txnDate: args.invoiceDate,
+        locationId: loc.id,
+        reference: args.invoiceNumber,
+        vendorName: args.vendorName,
+        notes: `فاتورة مشتريات ${args.invoiceNumber}`,
+        status: "posted",
+        totalAmount: total.toFixed(2),
+        sourcePurchaseInvoiceId: args.invoiceId,
+      })
+      .returning();
+    let inboundCost = 0;
+    for (const l of args.lines) {
+      const qty = Number(l.quantity);
+      const unitCost = Number(l.unitCost);
+      const costAmount = r2(qty * unitCost);
+      const [insertedLine] = await tx
+        .insert(inventoryTransactionLines)
+        .values({
+          companyId,
+          transactionId: hdr.id,
+          productId: l.productId,
+          description: "",
+          quantity: qty.toFixed(4),
+          unitCost: unitCost.toFixed(4),
+          costAmount: costAmount.toFixed(2),
+        })
+        .returning({ id: inventoryTransactionLines.id });
+      const method = methodByProduct.get(l.productId)!;
+      await applyInbound(tx, {
+        companyId,
+        productId: l.productId,
+        locationId: loc.id,
+        qty,
+        unitCost,
+        costingMethod: method,
+        sourceTransactionId: hdr.id,
+        sourceTransactionLineId: insertedLine.id,
+      });
+      // Mirror legacy products.stockQty so the existing Products page tile
+      // and any pre-inventory consumer keeps showing a sensible total.
+      await tx
+        .update(products)
+        .set({ stockQty: sql`coalesce(${products.stockQty}, 0) + ${qty}` })
+        .where(and(eq(products.companyId, companyId), eq(products.id, l.productId)));
+      inboundCost += costAmount;
+    }
+    return { inboundCost: r2(inboundCost), transactionId: hdr.id };
+  });
+}
+
+/**
+ * Patch an existing purchase-side `inventory_transactions` row with its
+ * journal-entry id (set in a separate tx by purchases.ts after the JE is
+ * created). Mirrors `linkSaleTransactionToJournalEntry`.
+ */
+export async function linkPurchaseTransactionToJournalEntry(
+  companyId: number,
+  transactionId: number,
+  journalEntryId: number,
+): Promise<void> {
+  await db
+    .update(inventoryTransactions)
+    .set({ journalEntryId })
+    .where(and(eq(inventoryTransactions.companyId, companyId), eq(inventoryTransactions.id, transactionId)));
+}
+
+/**
+ * Walks back the inbound a posted bill created. Mirrors
+ * `reverseSaleConsumption` — runs *inside* the caller's transaction (so it
+ * composes with `reverseAutoPostedJournalEntry`) and is a no-op for
+ * service-only bills (no inventory_transactions row exists).
+ *
+ * Note we apply an OUTBOUND for the original qty rather than touching cost
+ * layers directly: that way FIFO consumes the (oldest available) layers in
+ * normal order, the same way a sale would. For brand-new bills nothing
+ * else has consumed yet so the engine almost always picks the very layer
+ * the bill created. For mixed bills with intervening sales, FIFO picks the
+ * next-best layer and the workspace's stock-on-hand stays correct.
+ */
+export async function reversePurchaseInbound(
+  tx: Tx,
+  companyId: number,
+  sourcePurchaseInvoiceId: number,
+): Promise<{ found: boolean }> {
+  const [hdr] = await tx
+    .select()
+    .from(inventoryTransactions)
+    .where(
+      and(
+        eq(inventoryTransactions.companyId, companyId),
+        eq(inventoryTransactions.type, "purchase"),
+        eq(inventoryTransactions.sourcePurchaseInvoiceId, sourcePurchaseInvoiceId),
+        eq(inventoryTransactions.status, "posted"),
+      ),
+    )
+    .limit(1);
+  if (!hdr) return { found: false }; // bill was service-only / pre-engine
+  const lines = await tx
+    .select()
+    .from(inventoryTransactionLines)
+    .where(eq(inventoryTransactionLines.transactionId, hdr.id));
+  const productMap = await loadProducts(tx, companyId, lines.map((l) => l.productId));
+  for (const l of lines) {
+    const qty = Number(l.quantity);
+    if (qty <= 0) continue;
+    const p = productMap.get(l.productId);
+    if (!p) continue;
+    const method = await effectiveCostingMethod(companyId, p);
+    await applyOutbound(tx, {
+      companyId,
+      productId: l.productId,
+      locationId: hdr.locationId!,
+      qty,
+      costingMethod: method,
+    });
+    await tx
+      .update(products)
+      .set({ stockQty: sql`coalesce(${products.stockQty}, 0) - ${qty}` })
+      .where(and(eq(products.companyId, companyId), eq(products.id, l.productId)));
+  }
+  // Null the JE link before the caller deletes the JE — same FK
+  // ON DELETE NO ACTION concern as the sales-side reversal.
+  await tx
+    .update(inventoryTransactions)
+    .set({ status: "reversed", journalEntryId: null })
+    .where(eq(inventoryTransactions.id, hdr.id));
+  return { found: true };
+}
+
+/** Standalone reversal helper used from the recovery branch when JE
+ *  creation fails after `applyPurchaseInboundStandalone` has already
+ *  written the inbound. Opens its own tx. */
+export async function reversePurchaseInboundStandalone(
+  companyId: number,
+  invoiceId: number,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await reversePurchaseInbound(tx, companyId, invoiceId);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Standalone wrappers used by sales.ts (each opens its own tx)
 // ---------------------------------------------------------------------------
 

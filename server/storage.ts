@@ -25,6 +25,23 @@ import {
   type SalesInvoiceWithLines,
   type SalesInvoiceStatus,
   type SalesInvoicePaymentMethod,
+  vendors,
+  purchaseInvoices,
+  purchaseInvoiceLines,
+  purchasePayments,
+  purchasePaymentAllocations,
+  type Vendor,
+  type InsertVendor,
+  type PurchaseInvoice,
+  type PurchaseInvoiceLine,
+  type PurchaseInvoiceWithLines,
+  type PurchaseInvoiceStatus,
+  type PurchaseInvoicePaymentMethod,
+  type PurchasePayment,
+  type PurchasePaymentAllocation,
+  type PurchasePaymentWithAllocations,
+  type ApAgingReport,
+  type ApAgingRow,
   companies,
   fxRates,
   assetCategories,
@@ -128,6 +145,13 @@ export const AUDIT_ENTITY_TYPES = [
   "customer",
   "product",
   "sales_invoice",
+  // Purchase Portal — task #368. Vendors, bills, and AP payments each
+  // get their own audit thread; the History drawer keys on these strings.
+  // Workspace ownership is pinned via dedicated `entityBelongsToCompany`
+  // branches below.
+  "vendor",
+  "purchase_invoice",
+  "purchase_payment",
   // Workspace-scoped maintenance actions whose "entity" is the workspace
   // itself rather than a row in a domain table. Today: a single audit row
   // per invocation of `backfillJournalForLegacyTransactions`, with
@@ -485,6 +509,151 @@ export interface IStorage {
     ctx?: AuditContext,
   ): Promise<void>;
 
+  // ----- Purchase Portal (task #368) -----
+  // Mirrors the Sales Portal end-to-end: vendors, bills (purchase invoices)
+  // with a draft → posted → cancelled lifecycle, and AP payments that may
+  // settle multiple bills at once via `purchase_payment_allocations`. The
+  // auto-posting + reversal pipeline lives in `server/purchases.ts`; this
+  // interface stays a pure data layer.
+  listVendors(companyId: number): Promise<Vendor[]>;
+  getVendor(companyId: number, id: number): Promise<Vendor | undefined>;
+  createVendor(companyId: number, input: InsertVendor, ctx?: AuditContext): Promise<Vendor>;
+  updateVendor(companyId: number, id: number, input: Partial<InsertVendor>, ctx?: AuditContext): Promise<Vendor>;
+  deleteVendor(companyId: number, id: number, ctx?: AuditContext): Promise<void>;
+  /** Open AP balance for a vendor = sum(total - paid) over posted credit
+   *  bills. Cash bills settle at posting (their JE credits Cash, not AP)
+   *  so they do not appear here. */
+  getVendorBalance(companyId: number, vendorId: number): Promise<number>;
+  /** Posted/draft/cancelled bills for a vendor in reverse chronological
+   *  order. Powers the vendor detail "Recent activity" tab. */
+  getVendorInvoices(companyId: number, vendorId: number): Promise<PurchaseInvoice[]>;
+
+  listPurchaseInvoices(
+    companyId: number,
+    filters?: { status?: PurchaseInvoiceStatus; vendorId?: number },
+  ): Promise<PurchaseInvoiceWithLines[]>;
+  getPurchaseInvoice(companyId: number, id: number): Promise<PurchaseInvoiceWithLines | undefined>;
+  /** Returns the next "BILL-####" reference for the workspace; padded to 4
+   *  digits and monotonically increasing across the workspace's history. */
+  getNextPurchaseInvoiceNumber(companyId: number): Promise<string>;
+  /** Insert a draft bill (header + lines) and audit. Totals are expected
+   *  pre-computed by `server/purchases.ts`. The JE is *not* posted here. */
+  createDraftPurchaseInvoice(
+    companyId: number,
+    header: {
+      number: string;
+      vendorId: number;
+      invoiceDate: string;
+      dueDate?: string | null;
+      paymentMethod: PurchaseInvoicePaymentMethod;
+      vendorReference?: string;
+      notes?: string;
+      subtotal: number;
+      vatAmount: number;
+      totalAmount: number;
+    },
+    lines: Array<{
+      productId: number | null;
+      description: string;
+      quantity: number;
+      unitCost: number;
+      vatRate: number;
+      lineSubtotal: number;
+      lineVat: number;
+      lineTotal: number;
+      expenseAccountCode: string;
+    }>,
+    ctx?: AuditContext,
+  ): Promise<PurchaseInvoiceWithLines>;
+  /** Replace lines and re-compute totals on a draft bill. Refuses if not draft. */
+  updateDraftPurchaseInvoice(
+    companyId: number,
+    id: number,
+    header: {
+      vendorId?: number;
+      invoiceDate?: string;
+      dueDate?: string | null;
+      paymentMethod?: PurchaseInvoicePaymentMethod;
+      vendorReference?: string;
+      notes?: string;
+      subtotal: number;
+      vatAmount: number;
+      totalAmount: number;
+    },
+    lines: Array<{
+      productId: number | null;
+      description: string;
+      quantity: number;
+      unitCost: number;
+      vatRate: number;
+      lineSubtotal: number;
+      lineVat: number;
+      lineTotal: number;
+      expenseAccountCode: string;
+    }>,
+    ctx?: AuditContext,
+  ): Promise<PurchaseInvoiceWithLines>;
+  /** Atomically marks a bill posted: links the JE, sets paidAmount (= total
+   *  for cash bills, 0 for credit), audits the post. */
+  markPurchaseInvoicePosted(
+    companyId: number,
+    invoiceId: number,
+    journalEntryId: number,
+    ctx?: AuditContext,
+  ): Promise<PurchaseInvoiceWithLines>;
+  /** Reverses a posted bill. `mode='cancel'` keeps the row with
+   *  status='cancelled' and paidAmount=0; `mode='delete'` removes lines +
+   *  header. The linked JE is cascade-reversed and the inbound inventory
+   *  movement is rolled back inside the same transaction. */
+  reversePurchaseInvoicePosting(
+    companyId: number,
+    invoiceId: number,
+    mode: "cancel" | "delete",
+    ctx?: AuditContext,
+  ): Promise<void>;
+  deleteDraftOrCancelledPurchaseInvoice(
+    companyId: number,
+    invoiceId: number,
+    ctx?: AuditContext,
+  ): Promise<void>;
+
+  // ----- AP payments -----
+  listPurchasePayments(companyId: number): Promise<PurchasePaymentWithAllocations[]>;
+  getPurchasePayment(companyId: number, id: number): Promise<PurchasePaymentWithAllocations | undefined>;
+  getNextPurchasePaymentNumber(companyId: number): Promise<string>;
+  /** Insert payment header + allocation rows + bump each allocated bill's
+   *  paid_amount in a single transaction. Audits the create. The JE link
+   *  is filled by a follow-up `markPurchasePaymentPosted` call. */
+  createPurchasePayment(
+    companyId: number,
+    header: {
+      number: string;
+      vendorId: number;
+      paymentDate: string;
+      amount: number;
+      notes?: string;
+    },
+    allocations: Array<{ invoiceId: number; amount: number }>,
+    ctx?: AuditContext,
+  ): Promise<PurchasePaymentWithAllocations>;
+  markPurchasePaymentPosted(
+    companyId: number,
+    paymentId: number,
+    journalEntryId: number,
+    ctx?: AuditContext,
+  ): Promise<PurchasePaymentWithAllocations>;
+  /** Reverse a posted AP payment: cascade-reverse the JE and undo every
+   *  allocation's paid-amount bump in lockstep. */
+  reversePurchasePayment(
+    companyId: number,
+    paymentId: number,
+    ctx?: AuditContext,
+  ): Promise<void>;
+  /** AP aging report — bucketed open balances on posted credit bills,
+   *  drilled down per bill so the UI can render either grouped buckets
+   *  or the underlying invoices in a single query. */
+  getApAgingReport(companyId: number, asOfDate: string): Promise<ApAgingReport>;
+
   // Auto-posting fixed-asset deletes — same JE-orphan guard as payroll runs
   deleteDepreciationRun(
     companyId: number,
@@ -759,7 +928,9 @@ export type JournalEntrySourceKind =
   | "revaluation_event"
   | "disposal"
   | "document"
-  | "sales_invoice"; // reversal-backfill-opt-out: introduced in 0019_sales_portal.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
+  | "sales_invoice" // reversal-backfill-opt-out: introduced in 0019_sales_portal.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
+  | "purchase_invoice" // reversal-backfill-opt-out: introduced in 0025_purchases_portal.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
+  | "purchase_payment"; // reversal-backfill-opt-out: introduced in 0025_purchases_portal.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
 
 /**
  * Returns the human-readable list of modules that point at `journalEntryId`
@@ -892,6 +1063,36 @@ async function detectJournalEntryReferences(
     );
   if (sales.length > 0) {
     conflicts.push(`فواتير مبيعات (${sales.length})`);
+  }
+
+  // Purchase invoices (task #368). Same defence-in-depth: a posted bill's
+  // JE is owned 1:1 by that bill, so seeing a *different* bill point at the
+  // same JE id means a backfill or manual SQL fix-up has gone wrong, and
+  // we'd rather refuse than silently reverse the wrong row.
+  const purchases = await db
+    .select({ id: purchaseInvoices.id })
+    .from(purchaseInvoices)
+    .where(
+      and(
+        eq(purchaseInvoices.journalEntryId, journalEntryId),
+        exclude("purchase_invoice", purchaseInvoices.id),
+      ),
+    );
+  if (purchases.length > 0) {
+    conflicts.push(`فواتير مشتريات (${purchases.length})`);
+  }
+
+  const apPays = await db
+    .select({ id: purchasePayments.id })
+    .from(purchasePayments)
+    .where(
+      and(
+        eq(purchasePayments.journalEntryId, journalEntryId),
+        exclude("purchase_payment", purchasePayments.id),
+      ),
+    );
+  if (apPays.length > 0) {
+    conflicts.push(`دفعات موردين (${apPays.length})`);
   }
 
   return conflicts;
@@ -3357,6 +3558,1071 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  // ----- Purchase Portal (task #368) -----
+  //
+  // Mirrors the sales-portal block above. The auto-posting pipeline that
+  // turns a draft bill into a posted JE (and its reverse on cancel/delete)
+  // lives in `server/purchases.ts` so this layer stays a pure data layer.
+  // All writes are scoped by `companyId` and audited inside the same
+  // transaction as the entity write so a failed audit (eg an RLS
+  // rejection on `audit_log`) rolls the whole thing back.
+
+  async listVendors(companyId: number): Promise<Vendor[]> {
+    return await db
+      .select()
+      .from(vendors)
+      .where(eq(vendors.companyId, companyId))
+      .orderBy(vendors.code);
+  }
+
+  async getVendor(companyId: number, id: number): Promise<Vendor | undefined> {
+    const [row] = await db
+      .select()
+      .from(vendors)
+      .where(and(eq(vendors.id, id), eq(vendors.companyId, companyId)));
+    return row;
+  }
+
+  async createVendor(companyId: number, input: InsertVendor, ctx?: AuditContext): Promise<Vendor> {
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(vendors)
+        .values({ ...input, companyId })
+        .returning();
+      await recordAudit(tx, {
+        companyId,
+        entityType: "vendor",
+        entityId: created.id,
+        action: "create",
+        changes: snapshotChanges(created),
+        ctx,
+      });
+      return created;
+    });
+  }
+
+  async updateVendor(
+    companyId: number,
+    id: number,
+    input: Partial<InsertVendor>,
+    ctx?: AuditContext,
+  ): Promise<Vendor> {
+    return await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(vendors)
+        .where(and(eq(vendors.id, id), eq(vendors.companyId, companyId)));
+      const [updated] = await tx
+        .update(vendors)
+        .set(input)
+        .where(and(eq(vendors.id, id), eq(vendors.companyId, companyId)))
+        .returning();
+      if (before && updated) {
+        const changes = diffChanges(before, updated);
+        if (changes.length > 0) {
+          await recordAudit(tx, {
+            companyId,
+            entityType: "vendor",
+            entityId: id,
+            action: "update",
+            changes,
+            ctx,
+          });
+        }
+      }
+      return updated;
+    });
+  }
+
+  async deleteVendor(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
+    // Mirrors the customer guard: the composite FK on
+    // `purchase_invoices.vendor_id` would block the DELETE anyway, but a
+    // clean 409 from the route layer is much friendlier than a generic
+    // Postgres FK error. Same shape for AP payments.
+    const [{ count: billCount }] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(purchaseInvoices)
+      .where(and(eq(purchaseInvoices.companyId, companyId), eq(purchaseInvoices.vendorId, id)));
+    if (billCount > 0) {
+      throw new JournalEntryReferenceConflictError(
+        `لا يمكن حذف مورد لديه فواتير (${billCount}) — قم بإلغاء الفواتير أولاً.`,
+      );
+    }
+    const [{ count: payCount }] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(purchasePayments)
+      .where(and(eq(purchasePayments.companyId, companyId), eq(purchasePayments.vendorId, id)));
+    if (payCount > 0) {
+      throw new JournalEntryReferenceConflictError(
+        `لا يمكن حذف مورد لديه دفعات (${payCount}) — قم بإلغاء الدفعات أولاً.`,
+      );
+    }
+    await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(vendors)
+        .where(and(eq(vendors.id, id), eq(vendors.companyId, companyId)));
+      await tx
+        .delete(vendors)
+        .where(and(eq(vendors.id, id), eq(vendors.companyId, companyId)));
+      if (before) {
+        await recordAudit(tx, {
+          companyId,
+          entityType: "vendor",
+          entityId: id,
+          action: "delete",
+          changes: snapshotChanges(before),
+          ctx,
+        });
+      }
+    });
+  }
+
+  async getVendorBalance(companyId: number, vendorId: number): Promise<number> {
+    // Open AP = posted, non-cancelled, credit bills' (total - paid).
+    // Cash bills settle at posting (their JE credits Cash, not AP) and
+    // therefore do not appear on the open balance.
+    const rows = await db
+      .select({
+        total: purchaseInvoices.totalAmount,
+        paid: purchaseInvoices.paidAmount,
+      })
+      .from(purchaseInvoices)
+      .where(
+        and(
+          eq(purchaseInvoices.companyId, companyId),
+          eq(purchaseInvoices.vendorId, vendorId),
+          eq(purchaseInvoices.status, "posted"),
+          eq(purchaseInvoices.paymentMethod, "credit"),
+        ),
+      );
+    let sum = 0;
+    for (const r of rows) {
+      sum += Number(r.total) - Number(r.paid);
+    }
+    return Math.round(sum * 100) / 100;
+  }
+
+  async getVendorInvoices(companyId: number, vendorId: number): Promise<PurchaseInvoice[]> {
+    return await db
+      .select()
+      .from(purchaseInvoices)
+      .where(
+        and(
+          eq(purchaseInvoices.companyId, companyId),
+          eq(purchaseInvoices.vendorId, vendorId),
+        ),
+      )
+      .orderBy(desc(purchaseInvoices.invoiceDate), desc(purchaseInvoices.id));
+  }
+
+  async listPurchaseInvoices(
+    companyId: number,
+    filters: { status?: PurchaseInvoiceStatus; vendorId?: number } = {},
+  ): Promise<PurchaseInvoiceWithLines[]> {
+    const predicates = [eq(purchaseInvoices.companyId, companyId)];
+    if (filters.status) predicates.push(eq(purchaseInvoices.status, filters.status));
+    if (filters.vendorId) predicates.push(eq(purchaseInvoices.vendorId, filters.vendorId));
+    const headers = await db
+      .select()
+      .from(purchaseInvoices)
+      .where(and(...predicates))
+      .orderBy(desc(purchaseInvoices.invoiceDate), desc(purchaseInvoices.id));
+    if (headers.length === 0) return [];
+    return await this.hydratePurchaseInvoices(companyId, headers);
+  }
+
+  async getPurchaseInvoice(companyId: number, id: number): Promise<PurchaseInvoiceWithLines | undefined> {
+    const [row] = await db
+      .select()
+      .from(purchaseInvoices)
+      .where(and(eq(purchaseInvoices.id, id), eq(purchaseInvoices.companyId, companyId)));
+    if (!row) return undefined;
+    const [hydrated] = await this.hydratePurchaseInvoices(companyId, [row]);
+    return hydrated;
+  }
+
+  /**
+   * Bulk-hydrates bill headers with their lines, the vendor summary, and
+   * the linked JE reference — same shape and 3-query pattern as
+   * `hydrateSalesInvoices`.
+   */
+  private async hydratePurchaseInvoices(
+    companyId: number,
+    headers: PurchaseInvoice[],
+  ): Promise<PurchaseInvoiceWithLines[]> {
+    const ids = headers.map((h) => h.id);
+    const vendorIds = Array.from(new Set(headers.map((h) => h.vendorId)));
+    const jeIds = Array.from(
+      new Set(headers.map((h) => h.journalEntryId).filter((v): v is number => v != null)),
+    );
+
+    const [linesRows, vendorRows, jeRows] = await Promise.all([
+      db
+        .select()
+        .from(purchaseInvoiceLines)
+        .where(
+          and(
+            eq(purchaseInvoiceLines.companyId, companyId),
+            inArray(purchaseInvoiceLines.invoiceId, ids),
+          ),
+        )
+        .orderBy(purchaseInvoiceLines.id),
+      vendorIds.length === 0
+        ? Promise.resolve([] as Vendor[])
+        : db
+            .select()
+            .from(vendors)
+            .where(
+              and(
+                eq(vendors.companyId, companyId),
+                inArray(vendors.id, vendorIds),
+              ),
+            ),
+      jeIds.length === 0
+        ? Promise.resolve([] as { id: number; reference: string }[])
+        : db
+            .select({ id: journalEntries.id, reference: journalEntries.reference })
+            .from(journalEntries)
+            .where(
+              and(
+                eq(journalEntries.companyId, companyId),
+                inArray(journalEntries.id, jeIds),
+              ),
+            ),
+    ]);
+
+    const linesByInvoice = new Map<number, PurchaseInvoiceLine[]>();
+    for (const l of linesRows) {
+      const arr = linesByInvoice.get(l.invoiceId) ?? [];
+      arr.push(l);
+      linesByInvoice.set(l.invoiceId, arr);
+    }
+    const vendorById = new Map<number, Vendor>(vendorRows.map((v) => [v.id, v]));
+    const jeRefById = new Map<number, string>(jeRows.map((j) => [j.id, j.reference]));
+
+    return headers.map<PurchaseInvoiceWithLines>((h) => {
+      const v = vendorById.get(h.vendorId);
+      return {
+        ...h,
+        lines: linesByInvoice.get(h.id) ?? [],
+        vendor: v
+          ? { id: v.id, code: v.code, nameAr: v.nameAr, nameEn: v.nameEn }
+          : null,
+        journalEntryReference: h.journalEntryId ? jeRefById.get(h.journalEntryId) ?? null : null,
+      };
+    });
+  }
+
+  async getNextPurchaseInvoiceNumber(companyId: number): Promise<string> {
+    // Per-workspace counter scanned from existing BILL-#### refs (max+1).
+    // Same approach as INV-#### so an imported / recovered workspace keeps
+    // monotonically increasing without relying on a sequence.
+    const rows = await db
+      .select({ number: purchaseInvoices.number })
+      .from(purchaseInvoices)
+      .where(eq(purchaseInvoices.companyId, companyId));
+    let max = 0;
+    for (const r of rows) {
+      const m = /^BILL-(\d+)$/.exec(r.number);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+    }
+    return `BILL-${String(max + 1).padStart(4, "0")}`;
+  }
+
+  async createDraftPurchaseInvoice(
+    companyId: number,
+    header: {
+      number: string;
+      vendorId: number;
+      invoiceDate: string;
+      dueDate?: string | null;
+      paymentMethod: PurchaseInvoicePaymentMethod;
+      vendorReference?: string;
+      notes?: string;
+      subtotal: number;
+      vatAmount: number;
+      totalAmount: number;
+    },
+    lines: Array<{
+      productId: number | null;
+      description: string;
+      quantity: number;
+      unitCost: number;
+      vatRate: number;
+      lineSubtotal: number;
+      lineVat: number;
+      lineTotal: number;
+      expenseAccountCode: string;
+    }>,
+    ctx?: AuditContext,
+  ): Promise<PurchaseInvoiceWithLines> {
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(purchaseInvoices)
+        .values({
+          companyId,
+          number: header.number,
+          vendorId: header.vendorId,
+          invoiceDate: header.invoiceDate,
+          dueDate: header.dueDate ?? null,
+          status: "draft",
+          paymentMethod: header.paymentMethod,
+          vendorReference: header.vendorReference ?? "",
+          subtotal: header.subtotal.toFixed(2),
+          vatAmount: header.vatAmount.toFixed(2),
+          totalAmount: header.totalAmount.toFixed(2),
+          paidAmount: "0",
+          notes: header.notes ?? "",
+        })
+        .returning();
+      const insertedLines = lines.length === 0
+        ? []
+        : await tx
+            .insert(purchaseInvoiceLines)
+            .values(
+              lines.map((l) => ({
+                companyId,
+                invoiceId: created.id,
+                productId: l.productId ?? null,
+                description: l.description,
+                quantity: l.quantity.toFixed(4),
+                unitCost: l.unitCost.toFixed(2),
+                vatRate: l.vatRate.toFixed(4),
+                lineSubtotal: l.lineSubtotal.toFixed(2),
+                lineVat: l.lineVat.toFixed(2),
+                lineTotal: l.lineTotal.toFixed(2),
+                expenseAccountCode: l.expenseAccountCode ?? "",
+              })),
+            )
+            .returning();
+      await recordAudit(tx, {
+        companyId,
+        entityType: "purchase_invoice",
+        entityId: created.id,
+        action: "create",
+        changes: [
+          { field: "number", to: created.number },
+          { field: "vendorId", to: created.vendorId },
+          { field: "invoiceDate", to: created.invoiceDate },
+          { field: "paymentMethod", to: created.paymentMethod },
+          { field: "subtotal", to: created.subtotal },
+          { field: "vatAmount", to: created.vatAmount },
+          { field: "totalAmount", to: created.totalAmount },
+          { field: "lineCount", to: insertedLines.length },
+        ],
+        ctx,
+      });
+      return {
+        ...created,
+        lines: insertedLines,
+        vendor: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async updateDraftPurchaseInvoice(
+    companyId: number,
+    id: number,
+    header: {
+      vendorId?: number;
+      invoiceDate?: string;
+      dueDate?: string | null;
+      paymentMethod?: PurchaseInvoicePaymentMethod;
+      vendorReference?: string;
+      notes?: string;
+      subtotal: number;
+      vatAmount: number;
+      totalAmount: number;
+    },
+    lines: Array<{
+      productId: number | null;
+      description: string;
+      quantity: number;
+      unitCost: number;
+      vatRate: number;
+      lineSubtotal: number;
+      lineVat: number;
+      lineTotal: number;
+      expenseAccountCode: string;
+    }>,
+    ctx?: AuditContext,
+  ): Promise<PurchaseInvoiceWithLines> {
+    return await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(purchaseInvoices)
+        .where(and(eq(purchaseInvoices.id, id), eq(purchaseInvoices.companyId, companyId)));
+      if (!before) {
+        throw new Error("الفاتورة غير موجودة");
+      }
+      if (before.status !== "draft") {
+        throw new Error("لا يمكن تعديل فاتورة بعد ترحيلها");
+      }
+      const headerPatch: Record<string, unknown> = {
+        subtotal: header.subtotal.toFixed(2),
+        vatAmount: header.vatAmount.toFixed(2),
+        totalAmount: header.totalAmount.toFixed(2),
+      };
+      if (header.vendorId !== undefined) headerPatch.vendorId = header.vendorId;
+      if (header.invoiceDate !== undefined) headerPatch.invoiceDate = header.invoiceDate;
+      if (header.dueDate !== undefined) headerPatch.dueDate = header.dueDate;
+      if (header.paymentMethod !== undefined) headerPatch.paymentMethod = header.paymentMethod;
+      if (header.vendorReference !== undefined) headerPatch.vendorReference = header.vendorReference;
+      if (header.notes !== undefined) headerPatch.notes = header.notes;
+      const [updated] = await tx
+        .update(purchaseInvoices)
+        .set(headerPatch)
+        .where(and(eq(purchaseInvoices.id, id), eq(purchaseInvoices.companyId, companyId)))
+        .returning();
+      await tx
+        .delete(purchaseInvoiceLines)
+        .where(
+          and(
+            eq(purchaseInvoiceLines.companyId, companyId),
+            eq(purchaseInvoiceLines.invoiceId, id),
+          ),
+        );
+      const insertedLines = lines.length === 0
+        ? []
+        : await tx
+            .insert(purchaseInvoiceLines)
+            .values(
+              lines.map((l) => ({
+                companyId,
+                invoiceId: id,
+                productId: l.productId ?? null,
+                description: l.description,
+                quantity: l.quantity.toFixed(4),
+                unitCost: l.unitCost.toFixed(2),
+                vatRate: l.vatRate.toFixed(4),
+                lineSubtotal: l.lineSubtotal.toFixed(2),
+                lineVat: l.lineVat.toFixed(2),
+                lineTotal: l.lineTotal.toFixed(2),
+                expenseAccountCode: l.expenseAccountCode ?? "",
+              })),
+            )
+            .returning();
+      const changes = diffChanges(before, updated);
+      changes.push({ field: "lineCount", from: undefined, to: insertedLines.length });
+      await recordAudit(tx, {
+        companyId,
+        entityType: "purchase_invoice",
+        entityId: id,
+        action: "update",
+        changes,
+        ctx,
+      });
+      return {
+        ...updated,
+        lines: insertedLines,
+        vendor: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async markPurchaseInvoicePosted(
+    companyId: number,
+    invoiceId: number,
+    journalEntryId: number,
+    ctx?: AuditContext,
+  ): Promise<PurchaseInvoiceWithLines> {
+    return await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(purchaseInvoices)
+        .where(
+          and(eq(purchaseInvoices.id, invoiceId), eq(purchaseInvoices.companyId, companyId)),
+        );
+      if (!before) throw new Error("الفاتورة غير موجودة");
+      if (before.status !== "draft") throw new Error("الفاتورة ليست مسودة");
+      const total = Number(before.totalAmount);
+      // Cash bills settle at posting time — the JE credits Cash directly,
+      // so paid_amount equals the total. Credit bills start with no AP
+      // payments applied; they'll be increased one allocation at a time
+      // by `createPurchasePayment`.
+      const paidAmount = before.paymentMethod === "cash" ? total : 0;
+      const [updated] = await tx
+        .update(purchaseInvoices)
+        .set({
+          status: "posted",
+          journalEntryId,
+          paidAmount: paidAmount.toFixed(2),
+        })
+        .where(
+          and(eq(purchaseInvoices.id, invoiceId), eq(purchaseInvoices.companyId, companyId)),
+        )
+        .returning();
+      await recordAudit(tx, {
+        companyId,
+        entityType: "purchase_invoice",
+        entityId: invoiceId,
+        action: "post",
+        changes: [
+          { field: "status", from: "draft", to: "posted" },
+          { field: "journalEntryId", to: journalEntryId },
+          { field: "paidAmount", to: paidAmount.toFixed(2) },
+        ],
+        ctx,
+      });
+      const lineRows = await tx
+        .select()
+        .from(purchaseInvoiceLines)
+        .where(
+          and(
+            eq(purchaseInvoiceLines.companyId, companyId),
+            eq(purchaseInvoiceLines.invoiceId, invoiceId),
+          ),
+        )
+        .orderBy(purchaseInvoiceLines.id);
+      return {
+        ...updated,
+        lines: lineRows,
+        vendor: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async reversePurchaseInvoicePosting(
+    companyId: number,
+    invoiceId: number,
+    mode: "cancel" | "delete",
+    ctx?: AuditContext,
+  ): Promise<void> {
+    const [before] = await db
+      .select()
+      .from(purchaseInvoices)
+      .where(
+        and(eq(purchaseInvoices.id, invoiceId), eq(purchaseInvoices.companyId, companyId)),
+      );
+    if (!before) return;
+    if (before.status !== "posted") {
+      throw new Error("الفاتورة ليست مرحّلة");
+    }
+    // A bill that has been touched by AP payments cannot be cancelled
+    // without first reversing those payments — otherwise the allocation
+    // rows would still claim a paid amount on a non-posted bill. The
+    // route layer turns this into a 409.
+    const [{ allocCount }] = await db
+      .select({ allocCount: sql<number>`cast(count(*) as int)` })
+      .from(purchasePaymentAllocations)
+      .where(
+        and(
+          eq(purchasePaymentAllocations.companyId, companyId),
+          eq(purchasePaymentAllocations.invoiceId, invoiceId),
+        ),
+      );
+    if (allocCount > 0) {
+      throw new JournalEntryReferenceConflictError(
+        `لا يمكن عكس الفاتورة لأن لها دفعات (${allocCount}) — قم بإلغاء الدفعات أولاً.`,
+      );
+    }
+
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "purchase_invoice", id: invoiceId },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن عكس الفاتورة لأن قيدها المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        // Roll back the inventory inbound the bill posted: the inventory
+        // engine has a matching `inventory_transactions` row + cost
+        // layers we want to walk in reverse so FIFO/avg queues stay
+        // coherent. For service-only bills (no inventory lines), the
+        // engine is a no-op; we still try because mixed bills can have
+        // both kinds of lines.
+        const { reversePurchaseInbound } = await import("./inventory");
+        await reversePurchaseInbound(tx as any, companyId, invoiceId);
+        if (mode === "cancel") {
+          await tx
+            .update(purchaseInvoices)
+            .set({
+              status: "cancelled",
+              journalEntryId: null,
+              paidAmount: "0",
+            })
+            .where(
+              and(
+                eq(purchaseInvoices.id, invoiceId),
+                eq(purchaseInvoices.companyId, companyId),
+              ),
+            );
+          await recordAudit(tx, {
+            companyId,
+            entityType: "purchase_invoice",
+            entityId: invoiceId,
+            action: "update",
+            changes: [
+              { field: "status", from: "posted", to: "cancelled" },
+              { field: "journalEntryId", from: before.journalEntryId ?? null, to: null },
+            ],
+            ctx,
+          });
+        } else {
+          await tx
+            .delete(purchaseInvoiceLines)
+            .where(
+              and(
+                eq(purchaseInvoiceLines.companyId, companyId),
+                eq(purchaseInvoiceLines.invoiceId, invoiceId),
+              ),
+            );
+          await tx
+            .delete(purchaseInvoices)
+            .where(
+              and(
+                eq(purchaseInvoices.id, invoiceId),
+                eq(purchaseInvoices.companyId, companyId),
+              ),
+            );
+          await recordAudit(tx, {
+            companyId,
+            entityType: "purchase_invoice",
+            entityId: invoiceId,
+            action: "delete",
+            changes: snapshotChanges(before),
+            ctx,
+          });
+        }
+      },
+      ctx,
+    });
+  }
+
+  async deleteDraftOrCancelledPurchaseInvoice(
+    companyId: number,
+    invoiceId: number,
+    ctx?: AuditContext,
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(purchaseInvoices)
+        .where(
+          and(eq(purchaseInvoices.id, invoiceId), eq(purchaseInvoices.companyId, companyId)),
+        );
+      if (!before) return;
+      if (before.status === "posted") {
+        throw new Error("استخدم reversePurchaseInvoicePosting لحذف فاتورة مرحّلة");
+      }
+      await tx
+        .delete(purchaseInvoiceLines)
+        .where(
+          and(
+            eq(purchaseInvoiceLines.companyId, companyId),
+            eq(purchaseInvoiceLines.invoiceId, invoiceId),
+          ),
+        );
+      await tx
+        .delete(purchaseInvoices)
+        .where(
+          and(eq(purchaseInvoices.id, invoiceId), eq(purchaseInvoices.companyId, companyId)),
+        );
+      await recordAudit(tx, {
+        companyId,
+        entityType: "purchase_invoice",
+        entityId: invoiceId,
+        action: "delete",
+        changes: snapshotChanges(before),
+        ctx,
+      });
+    });
+  }
+
+  // ----- AP payments -----
+
+  async listPurchasePayments(companyId: number): Promise<PurchasePaymentWithAllocations[]> {
+    const headers = await db
+      .select()
+      .from(purchasePayments)
+      .where(eq(purchasePayments.companyId, companyId))
+      .orderBy(desc(purchasePayments.paymentDate), desc(purchasePayments.id));
+    if (headers.length === 0) return [];
+    return await this.hydratePurchasePayments(companyId, headers);
+  }
+
+  async getPurchasePayment(companyId: number, id: number): Promise<PurchasePaymentWithAllocations | undefined> {
+    const [row] = await db
+      .select()
+      .from(purchasePayments)
+      .where(and(eq(purchasePayments.id, id), eq(purchasePayments.companyId, companyId)));
+    if (!row) return undefined;
+    const [hydrated] = await this.hydratePurchasePayments(companyId, [row]);
+    return hydrated;
+  }
+
+  private async hydratePurchasePayments(
+    companyId: number,
+    headers: PurchasePayment[],
+  ): Promise<PurchasePaymentWithAllocations[]> {
+    const ids = headers.map((h) => h.id);
+    const vendorIds = Array.from(new Set(headers.map((h) => h.vendorId)));
+    const jeIds = Array.from(
+      new Set(headers.map((h) => h.journalEntryId).filter((v): v is number => v != null)),
+    );
+    const [allocRows, vendorRows, jeRows] = await Promise.all([
+      db
+        .select()
+        .from(purchasePaymentAllocations)
+        .where(
+          and(
+            eq(purchasePaymentAllocations.companyId, companyId),
+            inArray(purchasePaymentAllocations.paymentId, ids),
+          ),
+        )
+        .orderBy(purchasePaymentAllocations.id),
+      vendorIds.length === 0
+        ? Promise.resolve([] as Vendor[])
+        : db
+            .select()
+            .from(vendors)
+            .where(
+              and(
+                eq(vendors.companyId, companyId),
+                inArray(vendors.id, vendorIds),
+              ),
+            ),
+      jeIds.length === 0
+        ? Promise.resolve([] as { id: number; reference: string }[])
+        : db
+            .select({ id: journalEntries.id, reference: journalEntries.reference })
+            .from(journalEntries)
+            .where(
+              and(
+                eq(journalEntries.companyId, companyId),
+                inArray(journalEntries.id, jeIds),
+              ),
+            ),
+    ]);
+    const allocsByPayment = new Map<number, PurchasePaymentAllocation[]>();
+    for (const a of allocRows) {
+      const arr = allocsByPayment.get(a.paymentId) ?? [];
+      arr.push(a);
+      allocsByPayment.set(a.paymentId, arr);
+    }
+    const vendorById = new Map<number, Vendor>(vendorRows.map((v) => [v.id, v]));
+    const jeRefById = new Map<number, string>(jeRows.map((j) => [j.id, j.reference]));
+    return headers.map<PurchasePaymentWithAllocations>((h) => {
+      const v = vendorById.get(h.vendorId);
+      return {
+        ...h,
+        allocations: allocsByPayment.get(h.id) ?? [],
+        vendor: v
+          ? { id: v.id, code: v.code, nameAr: v.nameAr, nameEn: v.nameEn }
+          : null,
+        journalEntryReference: h.journalEntryId ? jeRefById.get(h.journalEntryId) ?? null : null,
+      };
+    });
+  }
+
+  async getNextPurchasePaymentNumber(companyId: number): Promise<string> {
+    const rows = await db
+      .select({ number: purchasePayments.number })
+      .from(purchasePayments)
+      .where(eq(purchasePayments.companyId, companyId));
+    let max = 0;
+    for (const r of rows) {
+      const m = /^APPAY-(\d+)$/.exec(r.number);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+    }
+    return `APPAY-${String(max + 1).padStart(4, "0")}`;
+  }
+
+  async createPurchasePayment(
+    companyId: number,
+    header: {
+      number: string;
+      vendorId: number;
+      paymentDate: string;
+      amount: number;
+      notes?: string;
+    },
+    allocations: Array<{ invoiceId: number; amount: number }>,
+    ctx?: AuditContext,
+  ): Promise<PurchasePaymentWithAllocations> {
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(purchasePayments)
+        .values({
+          companyId,
+          number: header.number,
+          vendorId: header.vendorId,
+          paymentDate: header.paymentDate,
+          amount: header.amount.toFixed(2),
+          notes: header.notes ?? "",
+          status: "posted",
+        })
+        .returning();
+      const insertedAllocs = allocations.length === 0
+        ? []
+        : await tx
+            .insert(purchasePaymentAllocations)
+            .values(
+              allocations.map((a) => ({
+                companyId,
+                paymentId: created.id,
+                invoiceId: a.invoiceId,
+                amount: a.amount.toFixed(2),
+              })),
+            )
+            .returning();
+      // Bump each allocated bill's paid_amount in lockstep — the per-bill
+      // composite-FK on `purchase_payment_allocations.invoice_id` already
+      // pinned the workspace, so the WHERE is redundant under RLS but is
+      // left in as defence-in-depth and to give the planner a hint.
+      for (const alloc of allocations) {
+        await tx
+          .update(purchaseInvoices)
+          .set({
+            paidAmount: sql`${purchaseInvoices.paidAmount} + ${alloc.amount.toFixed(2)}`,
+          })
+          .where(
+            and(
+              eq(purchaseInvoices.id, alloc.invoiceId),
+              eq(purchaseInvoices.companyId, companyId),
+            ),
+          );
+      }
+      await recordAudit(tx, {
+        companyId,
+        entityType: "purchase_payment",
+        entityId: created.id,
+        action: "create",
+        changes: [
+          { field: "number", to: created.number },
+          { field: "vendorId", to: created.vendorId },
+          { field: "paymentDate", to: created.paymentDate },
+          { field: "amount", to: created.amount },
+          { field: "allocationCount", to: insertedAllocs.length },
+        ],
+        ctx,
+      });
+      return {
+        ...created,
+        allocations: insertedAllocs,
+        vendor: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async markPurchasePaymentPosted(
+    companyId: number,
+    paymentId: number,
+    journalEntryId: number,
+    ctx?: AuditContext,
+  ): Promise<PurchasePaymentWithAllocations> {
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(purchasePayments)
+        .set({ journalEntryId })
+        .where(
+          and(eq(purchasePayments.id, paymentId), eq(purchasePayments.companyId, companyId)),
+        )
+        .returning();
+      if (!updated) throw new Error("الدفعة غير موجودة");
+      await recordAudit(tx, {
+        companyId,
+        entityType: "purchase_payment",
+        entityId: paymentId,
+        action: "post",
+        changes: [{ field: "journalEntryId", to: journalEntryId }],
+        ctx,
+      });
+      const allocRows = await tx
+        .select()
+        .from(purchasePaymentAllocations)
+        .where(
+          and(
+            eq(purchasePaymentAllocations.companyId, companyId),
+            eq(purchasePaymentAllocations.paymentId, paymentId),
+          ),
+        )
+        .orderBy(purchasePaymentAllocations.id);
+      return {
+        ...updated,
+        allocations: allocRows,
+        vendor: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async reversePurchasePayment(
+    companyId: number,
+    paymentId: number,
+    ctx?: AuditContext,
+  ): Promise<void> {
+    const [before] = await db
+      .select()
+      .from(purchasePayments)
+      .where(and(eq(purchasePayments.id, paymentId), eq(purchasePayments.companyId, companyId)));
+    if (!before) return;
+    const allocRows = await db
+      .select()
+      .from(purchasePaymentAllocations)
+      .where(
+        and(
+          eq(purchasePaymentAllocations.companyId, companyId),
+          eq(purchasePaymentAllocations.paymentId, paymentId),
+        ),
+      );
+
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "purchase_payment", id: paymentId },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن عكس الدفعة لأن قيدها المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        // Roll back every paid_amount bump in lockstep. The clamp at 0
+        // guards against floating-point drift from `numeric(14,2)` math
+        // that could otherwise leave a bill with a tiny negative paid
+        // amount after the subtract.
+        for (const alloc of allocRows) {
+          const amt = Number(alloc.amount);
+          await tx
+            .update(purchaseInvoices)
+            .set({
+              paidAmount: sql`greatest(0, ${purchaseInvoices.paidAmount} - ${amt.toFixed(2)})`,
+            })
+            .where(
+              and(
+                eq(purchaseInvoices.id, alloc.invoiceId),
+                eq(purchaseInvoices.companyId, companyId),
+              ),
+            );
+        }
+        await tx
+          .delete(purchasePaymentAllocations)
+          .where(
+            and(
+              eq(purchasePaymentAllocations.companyId, companyId),
+              eq(purchasePaymentAllocations.paymentId, paymentId),
+            ),
+          );
+        await tx
+          .delete(purchasePayments)
+          .where(
+            and(eq(purchasePayments.id, paymentId), eq(purchasePayments.companyId, companyId)),
+          );
+        await recordAudit(tx, {
+          companyId,
+          entityType: "purchase_payment",
+          entityId: paymentId,
+          action: "delete",
+          changes: snapshotChanges(before),
+          ctx,
+        });
+      },
+      ctx,
+    });
+  }
+
+  async getApAgingReport(companyId: number, asOfDate: string): Promise<ApAgingReport> {
+    // Posted credit bills only — cash bills settle at posting and never
+    // appear on AP. Cancelled bills are also out (status filter). The
+    // open balance is `total - paid`; rows with a fully-paid balance are
+    // dropped by the `> 0` filter at the end.
+    const billRows = await db
+      .select({
+        invoiceId: purchaseInvoices.id,
+        invoiceNumber: purchaseInvoices.number,
+        vendorId: purchaseInvoices.vendorId,
+        invoiceDate: purchaseInvoices.invoiceDate,
+        dueDate: purchaseInvoices.dueDate,
+        totalAmount: purchaseInvoices.totalAmount,
+        paidAmount: purchaseInvoices.paidAmount,
+      })
+      .from(purchaseInvoices)
+      .where(
+        and(
+          eq(purchaseInvoices.companyId, companyId),
+          eq(purchaseInvoices.status, "posted"),
+          eq(purchaseInvoices.paymentMethod, "credit"),
+        ),
+      );
+
+    const vendorIds = Array.from(new Set(billRows.map((r) => r.vendorId)));
+    const vendorRows = vendorIds.length === 0
+      ? []
+      : await db
+          .select({ id: vendors.id, code: vendors.code, nameAr: vendors.nameAr, nameEn: vendors.nameEn })
+          .from(vendors)
+          .where(and(eq(vendors.companyId, companyId), inArray(vendors.id, vendorIds)));
+    const vendorById = new Map(vendorRows.map((v) => [v.id, v]));
+
+    const asOf = new Date(asOfDate + "T00:00:00Z");
+    const rows: ApAgingRow[] = [];
+    const totals = { current: 0, bucket1_30: 0, bucket31_60: 0, bucket61_90: 0, over90: 0, total: 0 };
+    for (const b of billRows) {
+      const open = Math.round((Number(b.totalAmount) - Number(b.paidAmount)) * 100) / 100;
+      if (open <= 0) continue;
+      const due = b.dueDate ?? b.invoiceDate;
+      const dueDate = new Date(due + "T00:00:00Z");
+      const daysOverdue = Math.max(
+        0,
+        Math.floor((asOf.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)),
+      );
+      let bucket: ApAgingRow["bucket"];
+      if (daysOverdue === 0) {
+        bucket = "current";
+        totals.current += open;
+      } else if (daysOverdue <= 30) {
+        bucket = "1_30";
+        totals.bucket1_30 += open;
+      } else if (daysOverdue <= 60) {
+        bucket = "31_60";
+        totals.bucket31_60 += open;
+      } else if (daysOverdue <= 90) {
+        bucket = "61_90";
+        totals.bucket61_90 += open;
+      } else {
+        bucket = "over_90";
+        totals.over90 += open;
+      }
+      totals.total += open;
+      const v = vendorById.get(b.vendorId);
+      rows.push({
+        invoiceId: b.invoiceId,
+        invoiceNumber: b.invoiceNumber,
+        vendorId: b.vendorId,
+        vendorCode: v?.code ?? "",
+        vendorName: v?.nameAr || v?.nameEn || "",
+        invoiceDate: b.invoiceDate,
+        dueDate: b.dueDate,
+        daysOverdue,
+        totalAmount: Number(b.totalAmount),
+        paidAmount: Number(b.paidAmount),
+        openAmount: open,
+        bucket,
+      });
+    }
+    rows.sort((a, b) => b.daysOverdue - a.daysOverdue || a.vendorCode.localeCompare(b.vendorCode));
+    const round2 = (v: number) => Math.round(v * 100) / 100;
+    return {
+      asOfDate,
+      rows,
+      totals: {
+        current: round2(totals.current),
+        bucket1_30: round2(totals.bucket1_30),
+        bucket31_60: round2(totals.bucket31_60),
+        bucket61_90: round2(totals.bucket61_90),
+        over90: round2(totals.over90),
+        total: round2(totals.total),
+      },
+    };
+  }
+
   // ----- Companies -----
   async getCompanies(): Promise<Company[]> {
     return await db.select().from(companies).orderBy(companies.name);
@@ -4397,6 +5663,30 @@ export class DatabaseStorage implements IStorage {
           .select({ id: salesInvoices.id })
           .from(salesInvoices)
           .where(and(eq(salesInvoices.id, entityId), eq(salesInvoices.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "vendor": {
+        const rows = await db
+          .select({ id: vendors.id })
+          .from(vendors)
+          .where(and(eq(vendors.id, entityId), eq(vendors.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "purchase_invoice": {
+        const rows = await db
+          .select({ id: purchaseInvoices.id })
+          .from(purchaseInvoices)
+          .where(and(eq(purchaseInvoices.id, entityId), eq(purchaseInvoices.companyId, companyId)))
+          .limit(1);
+        return rows.length > 0;
+      }
+      case "purchase_payment": {
+        const rows = await db
+          .select({ id: purchasePayments.id })
+          .from(purchasePayments)
+          .where(and(eq(purchasePayments.id, entityId), eq(purchasePayments.companyId, companyId)))
           .limit(1);
         return rows.length > 0;
       }

@@ -1452,6 +1452,315 @@ export type SalesInvoiceWithLines = SalesInvoice & {
 };
 
 // ============================================================================
+// Purchase Portal — task #368
+//
+// Mirrors the Sales Portal end-to-end: vendors (VEND-####), purchase
+// invoices a.k.a. bills (BILL-####), and AP payments (APPAY-####). Same
+// composite-FK / RLS / audit recipe as `customers` and `sales_invoices` so
+// the cross-tenant guarantees apply uniformly.
+//
+// Lifecycle: bills move draft → posted → cancelled (no edits past `posted`,
+// the cancel path reverses the auto-posted JE through the same
+// `reverseAutoPostedJournalEntry` helper every other auto-posting source
+// uses). Posted credit bills credit AP (2110); cash bills credit Cash
+// (1110); inventory lines debit Inventory (1300); service lines debit a
+// purchases-driven expense account; and a non-zero VAT amount debits
+// VAT-Recoverable (1230).
+//
+// Multi-bill payment allocation: a single `purchase_payments` header may
+// settle several bills via `purchase_payment_allocations`. Each
+// allocation increments the matching bill's `paid_amount`. Cancelling /
+// deleting a payment reverses every allocation in lockstep.
+// ============================================================================
+
+export const vendors = pgTable(
+  "vendors",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    code: text("code").notNull(),                 // VEND-0001 — unique per workspace
+    nameAr: text("name_ar").notNull(),
+    nameEn: text("name_en").notNull().default(""),
+    email: text("email").notNull().default(""),
+    phone: text("phone").notNull().default(""),
+    taxNumber: text("tax_number").notNull().default(""),
+    address: text("address").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("vendors_id_company_uq").on(t.id, t.companyId),
+    codeCompanyUq: unique("vendors_code_company_uq").on(t.companyId, t.code),
+  }),
+);
+export const insertVendorSchema = createInsertSchema(vendors)
+  .omit({ id: true, createdAt: true, companyId: true })
+  .extend({
+    code: z.string().trim().min(1, "كود المورد مطلوب").max(40),
+    nameAr: z.string().trim().min(1, "اسم المورد مطلوب").max(160),
+    nameEn: z.string().trim().max(160).default(""),
+    email: z.string().trim().max(160).default(""),
+    phone: z.string().trim().max(40).default(""),
+    taxNumber: z.string().trim().max(40).default(""),
+    address: z.string().trim().max(400).default(""),
+    notes: z.string().trim().max(800).default(""),
+    isActive: z.boolean().default(true),
+  });
+export type Vendor = typeof vendors.$inferSelect;
+export type InsertVendor = z.infer<typeof insertVendorSchema>;
+
+export const PURCHASE_INVOICE_STATUSES = ["draft", "posted", "cancelled"] as const;
+export type PurchaseInvoiceStatus = (typeof PURCHASE_INVOICE_STATUSES)[number];
+
+export const PURCHASE_INVOICE_PAYMENT_METHODS = ["credit", "cash"] as const;
+export type PurchaseInvoicePaymentMethod = (typeof PURCHASE_INVOICE_PAYMENT_METHODS)[number];
+
+export const purchaseInvoices = pgTable(
+  "purchase_invoices",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    number: text("number").notNull(),             // BILL-0001 — unique per workspace
+    vendorId: integer("vendor_id").notNull(),
+    invoiceDate: text("invoice_date").notNull(),  // YYYY-MM-DD — bill date
+    dueDate: text("due_date"),                    // YYYY-MM-DD, nullable
+    status: text("status").notNull().default("draft"),                 // draft|posted|cancelled
+    paymentMethod: text("payment_method").notNull().default("credit"), // credit|cash
+    // Optional reference number on the supplier's paper bill (their invoice
+    // number). Useful when reconciling against the vendor statement.
+    vendorReference: text("vendor_reference").notNull().default(""),
+    subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+    vatAmount: numeric("vat_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    paidAmount: numeric("paid_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    notes: text("notes").notNull().default(""),
+    journalEntryId: integer("journal_entry_id"),  // set when status=posted
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("purchase_invoices_id_company_uq").on(t.id, t.companyId),
+    numberCompanyUq: unique("purchase_invoices_number_company_uq").on(t.companyId, t.number),
+    vendorCompanyFk: foreignKey({
+      columns: [t.vendorId, t.companyId],
+      foreignColumns: [vendors.id, vendors.companyId],
+      name: "purchase_invoices_vendor_company_fk",
+    }),
+    journalEntryCompanyFk: foreignKey({
+      columns: [t.journalEntryId, t.companyId],
+      foreignColumns: [journalEntries.id, journalEntries.companyId],
+      name: "purchase_invoices_journal_entry_company_fk",
+    }),
+    vendorIdx: index("purchase_invoices_vendor_idx").on(t.companyId, t.vendorId),
+    statusIdx: index("purchase_invoices_status_idx").on(t.companyId, t.status),
+  }),
+);
+export type PurchaseInvoice = typeof purchaseInvoices.$inferSelect;
+
+export const purchaseInvoiceLines = pgTable(
+  "purchase_invoice_lines",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    invoiceId: integer("invoice_id").notNull(),
+    productId: integer("product_id"),             // nullable — supports free-form / service lines
+    description: text("description").notNull().default(""),
+    quantity: numeric("quantity", { precision: 14, scale: 4 }).notNull().default("1"),
+    unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull().default("0"),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 4 }).notNull().default("0"),
+    lineSubtotal: numeric("line_subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+    lineVat: numeric("line_vat", { precision: 14, scale: 2 }).notNull().default("0"),
+    lineTotal: numeric("line_total", { precision: 14, scale: 2 }).notNull().default("0"),
+    // Service / expense lines bypass the inventory engine and post to a
+    // purchases-driven expense account (e.g. 6210 utilities, 6310 rent).
+    // The auto-posting layer in `server/purchases.ts` derives the code
+    // from the line description via `pickExpenseAccountCode` when this is
+    // empty; an explicit code here wins.
+    expenseAccountCode: text("expense_account_code").notNull().default(""),
+  },
+  (t) => ({
+    invoiceCompanyFk: foreignKey({
+      columns: [t.invoiceId, t.companyId],
+      foreignColumns: [purchaseInvoices.id, purchaseInvoices.companyId],
+      name: "purchase_invoice_lines_invoice_company_fk",
+    }),
+    productCompanyFk: foreignKey({
+      columns: [t.productId, t.companyId],
+      foreignColumns: [products.id, products.companyId],
+      name: "purchase_invoice_lines_product_company_fk",
+    }),
+    invoiceIdx: index("purchase_invoice_lines_invoice_idx").on(t.invoiceId),
+  }),
+);
+export const insertPurchaseInvoiceLineSchema = createInsertSchema(purchaseInvoiceLines)
+  .omit({
+    id: true,
+    companyId: true,
+    invoiceId: true,
+    lineSubtotal: true,
+    lineVat: true,
+    lineTotal: true,
+  })
+  .extend({
+    productId: z.coerce.number().int().positive().optional().nullable(),
+    description: z.string().max(300).default(""),
+    quantity: z.coerce.number().positive(),
+    unitCost: z.coerce.number().nonnegative(),
+    vatRate: z.coerce.number().min(0).max(0.99).default(0),
+    expenseAccountCode: z.string().trim().max(20).default(""),
+  });
+export type PurchaseInvoiceLine = typeof purchaseInvoiceLines.$inferSelect;
+export type InsertPurchaseInvoiceLine = z.infer<typeof insertPurchaseInvoiceLineSchema>;
+
+// Composite create payload accepted by POST /api/purchases/bills.
+export const createPurchaseInvoiceSchema = z.object({
+  vendorId: z.coerce.number().int().positive(),
+  invoiceDate: z.string().min(1),
+  dueDate: z.string().optional().nullable(),
+  status: z.enum(PURCHASE_INVOICE_STATUSES).default("draft"),
+  paymentMethod: z.enum(PURCHASE_INVOICE_PAYMENT_METHODS).default("credit"),
+  vendorReference: z.string().max(80).default(""),
+  notes: z.string().max(800).default(""),
+  // For credit bills the inventory lines need a target location to inbound
+  // into — defaults to the workspace's first active location server-side.
+  locationId: z.coerce.number().int().positive().optional().nullable(),
+  lines: z
+    .array(insertPurchaseInvoiceLineSchema)
+    .min(1, "يجب إضافة بند واحد على الأقل"),
+});
+export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
+
+// Update payload (mutates header + replaces lines). Same lifecycle rules
+// as sales: posted bills are read-only; status `cancelled` flows through
+// the dedicated reverse path.
+export const updatePurchaseInvoiceSchema = createPurchaseInvoiceSchema.partial({
+  vendorId: true,
+  invoiceDate: true,
+  paymentMethod: true,
+  lines: true,
+});
+export type UpdatePurchaseInvoiceInput = z.infer<typeof updatePurchaseInvoiceSchema>;
+
+export type PurchaseInvoiceWithLines = PurchaseInvoice & {
+  lines: PurchaseInvoiceLine[];
+  vendor?: Pick<Vendor, "id" | "code" | "nameAr" | "nameEn"> | null;
+  journalEntryReference?: string | null;
+};
+
+// ----- Purchase payments (multi-bill allocation) -----
+
+export const PURCHASE_PAYMENT_STATUSES = ["posted", "cancelled"] as const;
+export type PurchasePaymentStatus = (typeof PURCHASE_PAYMENT_STATUSES)[number];
+
+export const purchasePayments = pgTable(
+  "purchase_payments",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    number: text("number").notNull(),             // APPAY-0001 — unique per workspace
+    vendorId: integer("vendor_id").notNull(),
+    paymentDate: text("payment_date").notNull(),  // YYYY-MM-DD
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    notes: text("notes").notNull().default(""),
+    status: text("status").notNull().default("posted"),    // posted|cancelled
+    journalEntryId: integer("journal_entry_id"),  // set on post
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("purchase_payments_id_company_uq").on(t.id, t.companyId),
+    numberCompanyUq: unique("purchase_payments_number_company_uq").on(t.companyId, t.number),
+    vendorCompanyFk: foreignKey({
+      columns: [t.vendorId, t.companyId],
+      foreignColumns: [vendors.id, vendors.companyId],
+      name: "purchase_payments_vendor_company_fk",
+    }),
+    journalEntryCompanyFk: foreignKey({
+      columns: [t.journalEntryId, t.companyId],
+      foreignColumns: [journalEntries.id, journalEntries.companyId],
+      name: "purchase_payments_journal_entry_company_fk",
+    }),
+    vendorIdx: index("purchase_payments_vendor_idx").on(t.companyId, t.vendorId),
+  }),
+);
+export type PurchasePayment = typeof purchasePayments.$inferSelect;
+
+export const purchasePaymentAllocations = pgTable(
+  "purchase_payment_allocations",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    paymentId: integer("payment_id").notNull(),
+    invoiceId: integer("invoice_id").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  },
+  (t) => ({
+    paymentCompanyFk: foreignKey({
+      columns: [t.paymentId, t.companyId],
+      foreignColumns: [purchasePayments.id, purchasePayments.companyId],
+      name: "purchase_payment_allocations_payment_company_fk",
+    }),
+    invoiceCompanyFk: foreignKey({
+      columns: [t.invoiceId, t.companyId],
+      foreignColumns: [purchaseInvoices.id, purchaseInvoices.companyId],
+      name: "purchase_payment_allocations_invoice_company_fk",
+    }),
+    paymentIdx: index("purchase_payment_allocations_payment_idx").on(t.paymentId),
+    invoiceIdx: index("purchase_payment_allocations_invoice_idx").on(t.invoiceId),
+  }),
+);
+export type PurchasePaymentAllocation = typeof purchasePaymentAllocations.$inferSelect;
+
+export const createPurchasePaymentAllocationSchema = z.object({
+  invoiceId: z.coerce.number().int().positive(),
+  amount: z.coerce.number().positive(),
+});
+
+export const createPurchasePaymentSchema = z.object({
+  vendorId: z.coerce.number().int().positive(),
+  paymentDate: z.string().min(1),
+  notes: z.string().max(400).default(""),
+  allocations: z.array(createPurchasePaymentAllocationSchema).min(1, "يجب تحديد فاتورة واحدة على الأقل"),
+});
+export type CreatePurchasePaymentInput = z.infer<typeof createPurchasePaymentSchema>;
+
+export type PurchasePaymentWithAllocations = PurchasePayment & {
+  allocations: PurchasePaymentAllocation[];
+  vendor?: Pick<Vendor, "id" | "code" | "nameAr" | "nameEn"> | null;
+  journalEntryReference?: string | null;
+};
+
+// AP aging report — drilled-down per posted credit bill, then bucketed
+// by days-past-due of the open balance. Buckets follow the standard
+// 0/1-30/31-60/61-90/90+ presentation accountants expect.
+export interface ApAgingRow {
+  invoiceId: number;
+  invoiceNumber: string;
+  vendorId: number;
+  vendorCode: string;
+  vendorName: string;
+  invoiceDate: string;
+  dueDate: string | null;
+  daysOverdue: number;
+  totalAmount: number;
+  paidAmount: number;
+  openAmount: number;
+  bucket: "current" | "1_30" | "31_60" | "61_90" | "over_90";
+}
+
+export interface ApAgingReport {
+  asOfDate: string;
+  rows: ApAgingRow[];
+  totals: {
+    current: number;
+    bucket1_30: number;
+    bucket31_60: number;
+    bucket61_90: number;
+    over90: number;
+    total: number;
+  };
+}
+
+// ============================================================================
 // Inventory & Costing Portal — task #346
 // ============================================================================
 //
@@ -1615,6 +1924,11 @@ export const inventoryTransactions = pgTable(
     totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),
     journalEntryId: integer("journal_entry_id"),
     sourceInvoiceId: integer("source_invoice_id"),        // sale: links to sales_invoices.id
+    // purchase: links to purchase_invoices.id (task #368). Lets the
+    // bill-cancel flow find the inbound it originally created so it can
+    // walk it back via `reversePurchaseInbound` without re-deriving from
+    // the bill lines (which may have been edited in a re-post cycle).
+    sourcePurchaseInvoiceId: integer("source_purchase_invoice_id"),
     reversalOfId: integer("reversal_of_id"),              // self-FK: a 'reversed' txn points at the original
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -1640,6 +1954,11 @@ export const inventoryTransactions = pgTable(
       columns: [t.sourceInvoiceId, t.companyId],
       foreignColumns: [salesInvoices.id, salesInvoices.companyId],
       name: "inventory_transactions_source_invoice_company_fk",
+    }),
+    sourcePurchaseInvoiceFk: foreignKey({
+      columns: [t.sourcePurchaseInvoiceId, t.companyId],
+      foreignColumns: [purchaseInvoices.id, purchaseInvoices.companyId],
+      name: "inventory_transactions_source_purchase_invoice_company_fk",
     }),
     reversalFk: foreignKey({
       columns: [t.reversalOfId, t.companyId],
