@@ -5,6 +5,7 @@ import { usePeriod, type PeriodKey } from "@/contexts/period-context";
 import { useLocale } from "@/contexts/locale-context";
 import { useT } from "@/i18n/dict";
 import { usePeriodEmptinessHint } from "@/hooks/use-period-emptiness";
+import { useFormatMoney } from "@/lib/format";
 import {
   Tooltip,
   TooltipContent,
@@ -36,9 +37,10 @@ export function PeriodChip({ showCompare = true, className = "" }: PeriodChipPro
   const start = period.start.toLocaleDateString(intl, { month: "short", day: "numeric" });
   const end = period.end.toLocaleDateString(intl, { month: "short", day: "numeric", year: "numeric" });
 
-  const hint = usePeriodEmptinessHint(period);
+  const hint = usePeriodEmptinessHint(period, locale === "ar");
   const dfLocale =
     locale === "ar" ? ar : locale === "de" ? de : locale === "fr" ? fr : enUS;
+  const formatMoney = useFormatMoney();
   const jumpAriaLabel = hint.nearest
     ? `${
         hint.nearest.side === "past"
@@ -46,6 +48,25 @@ export function PeriodChip({ showCompare = true, className = "" }: PeriodChipPro
           : t("period_jump_future")
       } (${format(hint.nearest.date, "d MMM yyyy", { locale: dfLocale })})`
     : "";
+  // Compose the one-line "what am I about to land on?" preview from
+  // the fields the hook resolved (Task #367). Each segment is omitted
+  // independently so a JE missing a description or with an unresolved
+  // account never renders an empty `· ·` gap. The amount is formatted
+  // through the workspace currency settings so it matches every other
+  // money figure on the dashboard.
+  const previewSegments = hint.nearest
+    ? [
+        hint.nearest.accountName,
+        hint.nearest.reference,
+        hint.nearest.amount != null && hint.nearest.amount > 0
+          ? formatMoney(hint.nearest.amount)
+          : "",
+      ].filter(Boolean)
+    : [];
+  const previewLine = previewSegments.join(" · ");
+  const jumpAriaLabelWithPreview = previewLine
+    ? `${jumpAriaLabel} — ${previewLine}`
+    : jumpAriaLabel;
 
   return (
     <div
@@ -90,8 +111,8 @@ export function PeriodChip({ showCompare = true, className = "" }: PeriodChipPro
             <button
               type="button"
               onClick={() => setPeriodToInclude(hint.nearest!.date)}
-              aria-label={jumpAriaLabel}
-              title={jumpAriaLabel}
+              aria-label={jumpAriaLabelWithPreview}
+              title={jumpAriaLabelWithPreview}
               className="inline-flex items-center justify-center h-6 w-6 rounded text-warning hover-elevate -mx-1"
               data-testid="button-period-chip-jump-nearest"
             >
@@ -101,6 +122,14 @@ export function PeriodChip({ showCompare = true, className = "" }: PeriodChipPro
           <TooltipContent side="bottom" align="end" className="max-w-xs text-xs">
             <div className="font-medium">{t("period_empty_hint_short")}</div>
             <div className="text-muted-foreground mt-0.5">{jumpAriaLabel}</div>
+            {previewLine && (
+              <div
+                className="text-foreground/90 mt-1 truncate"
+                data-testid="text-period-chip-jump-preview"
+              >
+                {previewLine}
+              </div>
+            )}
           </TooltipContent>
         </Tooltip>
       )}

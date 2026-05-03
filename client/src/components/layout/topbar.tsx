@@ -24,6 +24,7 @@ import { useTheme } from "@/contexts/theme-context";
 import { useCompany } from "@/contexts/company-context";
 import { usePeriod, type PeriodKey } from "@/contexts/period-context";
 import { usePeriodEmptinessHint } from "@/hooks/use-period-emptiness";
+import { useFormatMoney } from "@/lib/format";
 import { CommandPaletteTrigger } from "./command-palette";
 import { TrustCluster } from "@/components/trust/trust-cluster";
 import { useMutation } from "@tanstack/react-query";
@@ -54,8 +55,12 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
   // Workspace-wide "this period is empty — jump to the nearest
   // posting?" hint (Task #320). Reuses `setPeriodToInclude`, the same
   // jump primitive the per-account ledger empty state already calls.
-  const periodHint = usePeriodEmptinessHint(period);
+  // The hint also resolves a one-line preview of the destination JE
+  // (account name · reference · amount) so owners can see *what*
+  // they're about to land on before clicking the banner (Task #367).
+  const periodHint = usePeriodEmptinessHint(period, locale === "ar");
   const dfLocale = locale === "ar" ? ar : locale === "de" ? de : locale === "fr" ? fr : enUS;
+  const formatMoney = useFormatMoney();
   const periodHintJumpLabel = periodHint.nearest
     ? `${
         periodHint.nearest.side === "past"
@@ -63,6 +68,18 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
           : t("period_jump_future")
       } (${format(periodHint.nearest.date, "d MMM yyyy", { locale: dfLocale })})`
     : "";
+  // Each segment is added independently so an unresolved account or a
+  // missing amount never produces a stray "·" separator on screen.
+  const periodHintPreviewSegments = periodHint.nearest
+    ? [
+        periodHint.nearest.accountName,
+        periodHint.nearest.reference,
+        periodHint.nearest.amount != null && periodHint.nearest.amount > 0
+          ? formatMoney(periodHint.nearest.amount)
+          : "",
+      ].filter(Boolean)
+    : [];
+  const periodHintPreviewLine = periodHintPreviewSegments.join(" · ");
   const { role, user, signOut, isSigningOut } = useAuth();
   const [, setLocation] = useLocation();
 
@@ -185,7 +202,10 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-64 p-2 shadow-md motion-enter" align="end">
-          {/* Jump-to-nearest banner (Task #320). */}
+          {/* Jump-to-nearest banner (Task #320). The optional third
+              line previews the destination JE (account · ref · amount)
+              so owners can confirm the jump is going somewhere
+              meaningful before committing (Task #367). */}
           {periodHint.isEmpty && periodHint.nearest && (
             <button
               type="button"
@@ -201,6 +221,14 @@ export function TopBar({ onOpenPalette, onToggleAiRail, aiRailOpen }: Props) {
                 <span className="text-caption text-muted-foreground truncate">
                   {periodHintJumpLabel}
                 </span>
+                {periodHintPreviewLine && (
+                  <span
+                    className="text-caption text-foreground/90 truncate mt-0.5"
+                    data-testid="text-period-popover-jump-preview"
+                  >
+                    {periodHintPreviewLine}
+                  </span>
+                )}
               </span>
             </button>
           )}

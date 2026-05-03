@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest";
 import {
   findNearestPostingOutsidePeriod,
   periodHasAnyPosting,
+  pickRepresentativeAccountName,
+  totalEntryAmount,
 } from "../use-period-emptiness";
 
 describe("periodHasAnyPosting", () => {
@@ -102,5 +104,94 @@ describe("findNearestPostingOutsidePeriod", () => {
     expect(got).not.toBeNull();
     expect(got!.side).toBe("past");
     expect(got!.date.toISOString()).toBe("2026-03-29T00:00:00.000Z");
+  });
+});
+
+describe("totalEntryAmount", () => {
+  test("returns 0 for missing or empty lines", () => {
+    expect(totalEntryAmount(undefined)).toBe(0);
+    expect(totalEntryAmount([])).toBe(0);
+  });
+
+  test("sums absolute debit values across the JE", () => {
+    // Total debits == total credits on a balanced JE; we sum debits.
+    const total = totalEntryAmount([
+      { accountId: 1, debit: "1500.00", credit: "0" },
+      { accountId: 2, debit: "0", credit: "1500.00" },
+    ]);
+    expect(total).toBe(1500);
+  });
+
+  test("tolerates string, number, and null debit fields", () => {
+    const total = totalEntryAmount([
+      { accountId: 1, debit: 100, credit: 0 },
+      { accountId: 2, debit: null, credit: "100" },
+      { accountId: 3, debit: "50.25", credit: null },
+    ]);
+    expect(total).toBe(150.25);
+  });
+});
+
+describe("pickRepresentativeAccountName", () => {
+  test("returns empty string on missing or empty lines", () => {
+    expect(pickRepresentativeAccountName(undefined, true)).toBe("");
+    expect(pickRepresentativeAccountName([], false)).toBe("");
+  });
+
+  test("picks the line with the largest |debit|+|credit| magnitude", () => {
+    const name = pickRepresentativeAccountName(
+      [
+        {
+          accountId: 1,
+          debit: "10",
+          credit: "0",
+          account: { nameAr: "حساب صغير", nameEn: "Small account" },
+        },
+        {
+          accountId: 2,
+          debit: "0",
+          credit: "1000",
+          account: { nameAr: "النقد", nameEn: "Cash on hand" },
+        },
+      ],
+      false,
+    );
+    expect(name).toBe("Cash on hand");
+  });
+
+  test("prefers Arabic name when preferAr=true and falls back to English", () => {
+    const ar = pickRepresentativeAccountName(
+      [
+        {
+          accountId: 1,
+          debit: "100",
+          credit: "0",
+          account: { nameAr: "النقد", nameEn: "Cash" },
+        },
+      ],
+      true,
+    );
+    expect(ar).toBe("النقد");
+
+    const fallback = pickRepresentativeAccountName(
+      [
+        {
+          accountId: 1,
+          debit: "100",
+          credit: "0",
+          account: { nameAr: null, nameEn: "Cash" },
+        },
+      ],
+      true,
+    );
+    expect(fallback).toBe("Cash");
+  });
+
+  test("returns empty string when the winning line has no resolved account", () => {
+    const name = pickRepresentativeAccountName(
+      [{ accountId: 99, debit: "100", credit: "0" }],
+      false,
+    );
+    expect(name).toBe("");
   });
 });
