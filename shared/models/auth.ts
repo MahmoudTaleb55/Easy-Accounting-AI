@@ -126,6 +126,20 @@ export const invitationEmailEvents = pgTable(
     // created_at) index lets the planner satisfy the inner ORDER BY
     // in the DISTINCT ON without resorting the whole UNION.
     index("invitation_email_events_msg_created_idx").on(t.messageId, t.createdAt),
+    // Companion to the per-invitation drilldown drawer in the Members
+    // UI (GET /api/auth/invitations/:id/events →
+    // `listInvitationEmailEvents` in server/auth/storage.ts). That
+    // helper fetches every event for one invitation and orders by
+    // `created_at DESC`. The single-column `*_inv_idx` above only
+    // helps the lookup, not the sort, so a noisy invitation with
+    // hundreds of webhook callbacks ends up doing the resort in
+    // memory. (invitation_id, created_at DESC) lets the planner
+    // satisfy the ORDER BY straight off the index — the same trick
+    // the (message_id, created_at) companion above plays for the
+    // unified list query. Mirrored in
+    // migrations/0026_email_delivery_event_drilldown_indexes.sql so
+    // dev DBs (which only see `drizzle-kit push`) match production.
+    index("invitation_email_events_inv_created_idx").on(t.invitationId, t.createdAt.desc()),
   ]
 );
 export type InvitationEmailEvent = typeof invitationEmailEvents.$inferSelect;
@@ -176,6 +190,14 @@ export const passwordResetEmailEvents = pgTable(
     // for the password-reset transport's branch of the unified
     // email-delivery feed's DISTINCT ON (transport, dedup_key) collapse.
     index("prt_email_events_msg_created_idx").on(t.messageId, t.createdAt),
+    // See `invitation_email_events_inv_created_idx` — same speed-up
+    // for the password-reset side. `listPasswordResetEmailEventsForUser`
+    // (in server/auth/storage.ts) walks every reset event for one
+    // user across all of their tokens and orders by `created_at DESC`;
+    // the single-column `*_user_idx` above only helps the lookup. This
+    // composite lets the planner satisfy the ORDER BY directly. Mirrored
+    // in migrations/0026_email_delivery_event_drilldown_indexes.sql.
+    index("prt_email_events_user_created_idx").on(t.userId, t.createdAt.desc()),
   ]
 );
 export type PasswordResetEmailEvent = typeof passwordResetEmailEvents.$inferSelect;
