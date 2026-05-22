@@ -32,6 +32,7 @@ export const STRINGS = {
   nav_purchases_vendors:  { ar: "الموردون",        en: "Vendors",            de: "Lieferanten",          fr: "Fournisseurs" },
   nav_purchases_payments: { ar: "دفعات الموردين",  en: "Vendor Payments",    de: "Lieferantenzahlungen", fr: "Paiements fournisseurs" },
   nav_purchases_aging:    { ar: "أعمار الذمم الدائنة", en: "AP Aging",        de: "Verbindlichkeitsalter", fr: "Âge des dettes" },
+  nav_sales_payments:     { ar: "سندات القبض",       en: "Customer Receipts", de: "Kundenzahlungen",     fr: "Encaissements clients" },
   nav_settings:     { ar: "الإعدادات",         en: "Settings",           de: "Einstellungen",        fr: "Paramètres" },
 
   // Inventory

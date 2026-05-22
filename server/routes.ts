@@ -1568,6 +1568,7 @@ export async function registerRoutes(
       createPurchaseInvoiceSchema,
       updatePurchaseInvoiceSchema,
       createPurchasePaymentSchema,
+      createSalesPaymentSchema,
     } = await import("@shared/schema");
     const purchases = await import("./purchases");
 
@@ -1787,6 +1788,48 @@ export async function registerRoutes(
           return res.status(409).json({ message: err.message });
         }
         res.status(500).json({ message: err?.message || "تعذر إلغاء الدفعة" });
+      }
+    });
+
+    // ----- AR Customer Receipt Vouchers (سند قبض) -----
+    app.get(api.sales.paymentNextNumber.path, async (req, res) => {
+      res.json({ number: await storage.getNextSalesPaymentNumber(cid(req)) });
+    });
+
+    app.get(api.sales.paymentsList.path, async (req, res) => {
+      res.json(await storage.listSalesPayments(cid(req)));
+    });
+
+    app.get("/api/sales/payments/:id", async (req, res) => {
+      const pay = await storage.getSalesPayment(cid(req), Number(req.params.id));
+      if (!pay) return res.status(404).json({ message: "سند القبض غير موجود" });
+      res.json(pay);
+    });
+
+    app.post(api.sales.paymentCreate.path, async (req, res) => {
+      try {
+        const input = createSalesPaymentSchema.parse(req.body);
+        const sales = await import("./sales");
+        const pay = await sales.createSalesPayment(cid(req), input, userCtx(req));
+        res.status(201).json(pay);
+      } catch (err: any) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({ message: err.errors[0].message });
+        }
+        res.status(400).json({ message: err?.message || "تعذر تسجيل سند القبض" });
+      }
+    });
+
+    app.delete("/api/sales/payments/:id", async (req, res) => {
+      try {
+        const sales = await import("./sales");
+        await sales.reverseSalesPayment(cid(req), Number(req.params.id), userCtx(req));
+        res.status(204).send();
+      } catch (err: any) {
+        if (err instanceof JournalEntryReferenceConflictError) {
+          return res.status(409).json({ message: err.message });
+        }
+        res.status(500).json({ message: err?.message || "تعذر إلغاء سند القبض" });
       }
     });
 

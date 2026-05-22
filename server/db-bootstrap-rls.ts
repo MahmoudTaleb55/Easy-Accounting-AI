@@ -123,6 +123,9 @@ export const RLS_TABLES: readonly string[] = [
   "purchase_invoice_lines",
   "purchase_payments",
   "purchase_payment_allocations",
+  // Customer Receipt Vouchers (سند قبض) — added by migration 0027.
+  "sales_payments",
+  "sales_payment_allocations",
 ] as const;
 
 /**

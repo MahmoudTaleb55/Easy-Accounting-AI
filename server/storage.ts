@@ -30,6 +30,8 @@ import {
   purchaseInvoiceLines,
   purchasePayments,
   purchasePaymentAllocations,
+  salesPayments,
+  salesPaymentAllocations,
   type Vendor,
   type InsertVendor,
   type PurchaseInvoice,
@@ -40,6 +42,9 @@ import {
   type PurchasePayment,
   type PurchasePaymentAllocation,
   type PurchasePaymentWithAllocations,
+  type SalesPayment,
+  type SalesPaymentAllocation,
+  type SalesPaymentWithAllocations,
   type ApAgingReport,
   type ApAgingRow,
   companies,
@@ -152,6 +157,8 @@ export const AUDIT_ENTITY_TYPES = [
   "vendor",
   "purchase_invoice",
   "purchase_payment",
+  // Customer Receipt Vouchers (سند قبض) — AR mirror of purchase_payment.
+  "sales_payment",
   // Workspace-scoped maintenance actions whose "entity" is the workspace
   // itself rather than a row in a domain table. Today: a single audit row
   // per invocation of `backfillJournalForLegacyTransactions`, with
@@ -649,6 +656,39 @@ export interface IStorage {
     paymentId: number,
     ctx?: AuditContext,
   ): Promise<void>;
+  // ----- AR receipt vouchers (سند قبض) -----
+  listSalesPayments(companyId: number): Promise<SalesPaymentWithAllocations[]>;
+  getSalesPayment(companyId: number, id: number): Promise<SalesPaymentWithAllocations | undefined>;
+  getNextSalesPaymentNumber(companyId: number): Promise<string>;
+  /** Insert receipt header + allocation rows + bump each allocated
+   *  invoice's paid_amount in one transaction. Audits the create. The JE
+   *  link is filled by a follow-up `markSalesPaymentPosted` call. */
+  createSalesPayment(
+    companyId: number,
+    header: {
+      number: string;
+      customerId: number;
+      paymentDate: string;
+      amount: number;
+      notes?: string;
+    },
+    allocations: Array<{ invoiceId: number; amount: number }>,
+    ctx?: AuditContext,
+  ): Promise<SalesPaymentWithAllocations>;
+  markSalesPaymentPosted(
+    companyId: number,
+    paymentId: number,
+    journalEntryId: number,
+    ctx?: AuditContext,
+  ): Promise<SalesPaymentWithAllocations>;
+  /** Reverse a posted AR receipt: cascade-reverse the JE and undo every
+   *  allocation's paid-amount bump in lockstep. */
+  reverseSalesPayment(
+    companyId: number,
+    paymentId: number,
+    ctx?: AuditContext,
+  ): Promise<void>;
+
   /** AP aging report — bucketed open balances on posted credit bills,
    *  drilled down per bill so the UI can render either grouped buckets
    *  or the underlying invoices in a single query. */
@@ -930,7 +970,8 @@ export type JournalEntrySourceKind =
   | "document"
   | "sales_invoice" // reversal-backfill-opt-out: introduced in 0019_sales_portal.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
   | "purchase_invoice" // reversal-backfill-opt-out: introduced in 0025_purchases_portal.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
-  | "purchase_payment"; // reversal-backfill-opt-out: introduced in 0025_purchases_portal.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
+  | "purchase_payment" // reversal-backfill-opt-out: introduced in 0025_purchases_portal.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
+  | "sales_payment"; // reversal-backfill-opt-out: introduced in 0027_sales_payments.sql, after `reverseAutoPostedJournalEntry`'s companyId-stamping behaviour was already in place — there are no historical pre-stamping reversal rows of this kind for a backfill to patch.
 
 /**
  * Returns the human-readable list of modules that point at `journalEntryId`
@@ -1093,6 +1134,20 @@ async function detectJournalEntryReferences(
     );
   if (apPays.length > 0) {
     conflicts.push(`دفعات موردين (${apPays.length})`);
+  }
+
+  // Customer Receipt Vouchers (سند قبض) — symmetric guard to apPays.
+  const arPays = await db
+    .select({ id: salesPayments.id })
+    .from(salesPayments)
+    .where(
+      and(
+        eq(salesPayments.journalEntryId, journalEntryId),
+        exclude("sales_payment", salesPayments.id),
+      ),
+    );
+  if (arPays.length > 0) {
+    conflicts.push(`سندات قبض عملاء (${arPays.length})`);
   }
 
   return conflicts;
@@ -3421,6 +3476,26 @@ export class DatabaseStorage implements IStorage {
     if (before.status !== "posted") {
       throw new Error("الفاتورة ليست مرحّلة");
     }
+    // An invoice that has been receipted via a Customer Receipt Voucher
+    // (سند قبض) cannot be cancelled without first reversing those
+    // vouchers — otherwise the AR ledger would double-decrease (the
+    // invoice's `Dr AR` reversal + the voucher's `Cr AR` would both
+    // hit AR with nothing on the other side). Symmetric to the AP-side
+    // guard in `reversePurchaseInvoicePosting`.
+    const [{ allocCount }] = await db
+      .select({ allocCount: sql<number>`cast(count(*) as int)` })
+      .from(salesPaymentAllocations)
+      .where(
+        and(
+          eq(salesPaymentAllocations.companyId, companyId),
+          eq(salesPaymentAllocations.invoiceId, invoiceId),
+        ),
+      );
+    if (allocCount > 0) {
+      throw new JournalEntryReferenceConflictError(
+        `لا يمكن عكس الفاتورة لأن لها سندات قبض (${allocCount}) — قم بإلغاء سندات القبض أولاً.`,
+      );
+    }
     const lineRows = await db
       .select()
       .from(salesInvoiceLines)
@@ -4518,6 +4593,298 @@ export class DatabaseStorage implements IStorage {
         await recordAudit(tx, {
           companyId,
           entityType: "purchase_payment",
+          entityId: paymentId,
+          action: "delete",
+          changes: snapshotChanges(before),
+          ctx,
+        });
+      },
+      ctx,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // AR receipt vouchers (سند قبض) — symmetric implementation of the AP
+  // payment methods directly above. JE recipe (Dr Cash / Cr AR) lives in
+  // `server/sales.ts`, this layer just owns the rows + paid-amount math.
+  // -------------------------------------------------------------------------
+  async listSalesPayments(companyId: number): Promise<SalesPaymentWithAllocations[]> {
+    const headers = await db
+      .select()
+      .from(salesPayments)
+      .where(eq(salesPayments.companyId, companyId))
+      .orderBy(desc(salesPayments.paymentDate), desc(salesPayments.id));
+    if (headers.length === 0) return [];
+    return await this.hydrateSalesPayments(companyId, headers);
+  }
+
+  async getSalesPayment(companyId: number, id: number): Promise<SalesPaymentWithAllocations | undefined> {
+    const [row] = await db
+      .select()
+      .from(salesPayments)
+      .where(and(eq(salesPayments.id, id), eq(salesPayments.companyId, companyId)));
+    if (!row) return undefined;
+    const [hydrated] = await this.hydrateSalesPayments(companyId, [row]);
+    return hydrated;
+  }
+
+  private async hydrateSalesPayments(
+    companyId: number,
+    headers: SalesPayment[],
+  ): Promise<SalesPaymentWithAllocations[]> {
+    const ids = headers.map((h) => h.id);
+    const customerIds = Array.from(new Set(headers.map((h) => h.customerId)));
+    const jeIds = Array.from(
+      new Set(headers.map((h) => h.journalEntryId).filter((v): v is number => v != null)),
+    );
+    const [allocRows, customerRows, jeRows] = await Promise.all([
+      db
+        .select()
+        .from(salesPaymentAllocations)
+        .where(
+          and(
+            eq(salesPaymentAllocations.companyId, companyId),
+            inArray(salesPaymentAllocations.paymentId, ids),
+          ),
+        )
+        .orderBy(salesPaymentAllocations.id),
+      customerIds.length === 0
+        ? Promise.resolve([] as Customer[])
+        : db
+            .select()
+            .from(customers)
+            .where(
+              and(
+                eq(customers.companyId, companyId),
+                inArray(customers.id, customerIds),
+              ),
+            ),
+      jeIds.length === 0
+        ? Promise.resolve([] as { id: number; reference: string }[])
+        : db
+            .select({ id: journalEntries.id, reference: journalEntries.reference })
+            .from(journalEntries)
+            .where(
+              and(
+                eq(journalEntries.companyId, companyId),
+                inArray(journalEntries.id, jeIds),
+              ),
+            ),
+    ]);
+    const allocsByPayment = new Map<number, SalesPaymentAllocation[]>();
+    for (const a of allocRows) {
+      const arr = allocsByPayment.get(a.paymentId) ?? [];
+      arr.push(a);
+      allocsByPayment.set(a.paymentId, arr);
+    }
+    const customerById = new Map<number, Customer>(customerRows.map((c) => [c.id, c]));
+    const jeRefById = new Map<number, string>(jeRows.map((j) => [j.id, j.reference]));
+    return headers.map<SalesPaymentWithAllocations>((h) => {
+      const c = customerById.get(h.customerId);
+      return {
+        ...h,
+        allocations: allocsByPayment.get(h.id) ?? [],
+        customer: c
+          ? { id: c.id, code: c.code, nameAr: c.nameAr, nameEn: c.nameEn }
+          : null,
+        journalEntryReference: h.journalEntryId ? jeRefById.get(h.journalEntryId) ?? null : null,
+      };
+    });
+  }
+
+  async getNextSalesPaymentNumber(companyId: number): Promise<string> {
+    const rows = await db
+      .select({ number: salesPayments.number })
+      .from(salesPayments)
+      .where(eq(salesPayments.companyId, companyId));
+    let max = 0;
+    for (const r of rows) {
+      const m = /^ARRCV-(\d+)$/.exec(r.number);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (Number.isFinite(n) && n > max) max = n;
+      }
+    }
+    return `ARRCV-${String(max + 1).padStart(4, "0")}`;
+  }
+
+  async createSalesPayment(
+    companyId: number,
+    header: {
+      number: string;
+      customerId: number;
+      paymentDate: string;
+      amount: number;
+      notes?: string;
+    },
+    allocations: Array<{ invoiceId: number; amount: number }>,
+    ctx?: AuditContext,
+  ): Promise<SalesPaymentWithAllocations> {
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(salesPayments)
+        .values({
+          companyId,
+          number: header.number,
+          customerId: header.customerId,
+          paymentDate: header.paymentDate,
+          amount: header.amount.toFixed(2),
+          notes: header.notes ?? "",
+          status: "posted",
+        })
+        .returning();
+      const insertedAllocs = allocations.length === 0
+        ? []
+        : await tx
+            .insert(salesPaymentAllocations)
+            .values(
+              allocations.map((a) => ({
+                companyId,
+                paymentId: created.id,
+                invoiceId: a.invoiceId,
+                amount: a.amount.toFixed(2),
+              })),
+            )
+            .returning();
+      // Bump each allocated invoice's paid_amount in lockstep. Composite
+      // FK on `sales_payment_allocations.invoice_id` already pinned the
+      // workspace, so the WHERE is redundant under RLS but is left as
+      // defence-in-depth and a planner hint.
+      for (const alloc of allocations) {
+        await tx
+          .update(salesInvoices)
+          .set({
+            paidAmount: sql`${salesInvoices.paidAmount} + ${alloc.amount.toFixed(2)}`,
+          })
+          .where(
+            and(
+              eq(salesInvoices.id, alloc.invoiceId),
+              eq(salesInvoices.companyId, companyId),
+            ),
+          );
+      }
+      await recordAudit(tx, {
+        companyId,
+        entityType: "sales_payment",
+        entityId: created.id,
+        action: "create",
+        changes: [
+          { field: "number", to: created.number },
+          { field: "customerId", to: created.customerId },
+          { field: "paymentDate", to: created.paymentDate },
+          { field: "amount", to: created.amount },
+          { field: "allocationCount", to: insertedAllocs.length },
+        ],
+        ctx,
+      });
+      return {
+        ...created,
+        allocations: insertedAllocs,
+        customer: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async markSalesPaymentPosted(
+    companyId: number,
+    paymentId: number,
+    journalEntryId: number,
+    ctx?: AuditContext,
+  ): Promise<SalesPaymentWithAllocations> {
+    return await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(salesPayments)
+        .set({ journalEntryId })
+        .where(
+          and(eq(salesPayments.id, paymentId), eq(salesPayments.companyId, companyId)),
+        )
+        .returning();
+      if (!updated) throw new Error("سند القبض غير موجود");
+      await recordAudit(tx, {
+        companyId,
+        entityType: "sales_payment",
+        entityId: paymentId,
+        action: "post",
+        changes: [{ field: "journalEntryId", to: journalEntryId }],
+        ctx,
+      });
+      const allocRows = await tx
+        .select()
+        .from(salesPaymentAllocations)
+        .where(
+          and(
+            eq(salesPaymentAllocations.companyId, companyId),
+            eq(salesPaymentAllocations.paymentId, paymentId),
+          ),
+        )
+        .orderBy(salesPaymentAllocations.id);
+      return {
+        ...updated,
+        allocations: allocRows,
+        customer: null,
+        journalEntryReference: null,
+      };
+    });
+  }
+
+  async reverseSalesPayment(
+    companyId: number,
+    paymentId: number,
+    ctx?: AuditContext,
+  ): Promise<void> {
+    const [before] = await db
+      .select()
+      .from(salesPayments)
+      .where(and(eq(salesPayments.id, paymentId), eq(salesPayments.companyId, companyId)));
+    if (!before) return;
+    const allocRows = await db
+      .select()
+      .from(salesPaymentAllocations)
+      .where(
+        and(
+          eq(salesPaymentAllocations.companyId, companyId),
+          eq(salesPaymentAllocations.paymentId, paymentId),
+        ),
+      );
+
+    await reverseAutoPostedJournalEntry({
+      companyId,
+      source: { kind: "sales_payment", id: paymentId },
+      journalEntryId: before.journalEntryId,
+      conflictMessage: (conflicts) =>
+        `لا يمكن عكس سند القبض لأن قيده المحاسبي مرتبط بسجلات أخرى: ${conflicts.join("، ")}`,
+      extraDelete: async (tx) => {
+        for (const alloc of allocRows) {
+          const amt = Number(alloc.amount);
+          await tx
+            .update(salesInvoices)
+            .set({
+              paidAmount: sql`greatest(0, ${salesInvoices.paidAmount} - ${amt.toFixed(2)})`,
+            })
+            .where(
+              and(
+                eq(salesInvoices.id, alloc.invoiceId),
+                eq(salesInvoices.companyId, companyId),
+              ),
+            );
+        }
+        await tx
+          .delete(salesPaymentAllocations)
+          .where(
+            and(
+              eq(salesPaymentAllocations.companyId, companyId),
+              eq(salesPaymentAllocations.paymentId, paymentId),
+            ),
+          );
+        await tx
+          .delete(salesPayments)
+          .where(
+            and(eq(salesPayments.id, paymentId), eq(salesPayments.companyId, companyId)),
+          );
+        await recordAudit(tx, {
+          companyId,
+          entityType: "sales_payment",
           entityId: paymentId,
           action: "delete",
           changes: snapshotChanges(before),

@@ -1451,6 +1451,94 @@ export type SalesInvoiceWithLines = SalesInvoice & {
   journalEntryReference?: string | null;
 };
 
+// ----- Customer Receipt Vouchers (سند قبض) — multi-invoice allocation -----
+//
+// AR mirror of `purchase_payments` + `purchase_payment_allocations`.
+// A single `sales_payments` header (ARRCV-####) can settle several
+// posted credit invoices for the same customer in one shot.
+// Posting auto-builds a balanced Dr Cash / Cr AR journal entry and
+// bumps each allocated invoice's `paidAmount` in lockstep.
+
+export const SALES_PAYMENT_STATUSES = ["posted", "cancelled"] as const;
+export type SalesPaymentStatus = (typeof SALES_PAYMENT_STATUSES)[number];
+
+export const salesPayments = pgTable(
+  "sales_payments",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    number: text("number").notNull(),             // ARRCV-0001 — unique per workspace
+    customerId: integer("customer_id").notNull(),
+    paymentDate: text("payment_date").notNull(),  // YYYY-MM-DD
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    notes: text("notes").notNull().default(""),
+    status: text("status").notNull().default("posted"),    // posted|cancelled
+    journalEntryId: integer("journal_entry_id"),  // set on post
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("sales_payments_id_company_uq").on(t.id, t.companyId),
+    numberCompanyUq: unique("sales_payments_number_company_uq").on(t.companyId, t.number),
+    customerCompanyFk: foreignKey({
+      columns: [t.customerId, t.companyId],
+      foreignColumns: [customers.id, customers.companyId],
+      name: "sales_payments_customer_company_fk",
+    }),
+    journalEntryCompanyFk: foreignKey({
+      columns: [t.journalEntryId, t.companyId],
+      foreignColumns: [journalEntries.id, journalEntries.companyId],
+      name: "sales_payments_journal_entry_company_fk",
+    }),
+    customerIdx: index("sales_payments_customer_idx").on(t.companyId, t.customerId),
+  }),
+);
+export type SalesPayment = typeof salesPayments.$inferSelect;
+
+export const salesPaymentAllocations = pgTable(
+  "sales_payment_allocations",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    paymentId: integer("payment_id").notNull(),
+    invoiceId: integer("invoice_id").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  },
+  (t) => ({
+    paymentCompanyFk: foreignKey({
+      columns: [t.paymentId, t.companyId],
+      foreignColumns: [salesPayments.id, salesPayments.companyId],
+      name: "sales_payment_allocations_payment_company_fk",
+    }),
+    invoiceCompanyFk: foreignKey({
+      columns: [t.invoiceId, t.companyId],
+      foreignColumns: [salesInvoices.id, salesInvoices.companyId],
+      name: "sales_payment_allocations_invoice_company_fk",
+    }),
+    paymentIdx: index("sales_payment_allocations_payment_idx").on(t.paymentId),
+    invoiceIdx: index("sales_payment_allocations_invoice_idx").on(t.invoiceId),
+  }),
+);
+export type SalesPaymentAllocation = typeof salesPaymentAllocations.$inferSelect;
+
+export const createSalesPaymentAllocationSchema = z.object({
+  invoiceId: z.coerce.number().int().positive(),
+  amount: z.coerce.number().positive(),
+});
+
+export const createSalesPaymentSchema = z.object({
+  customerId: z.coerce.number().int().positive(),
+  paymentDate: z.string().min(1),
+  notes: z.string().max(400).default(""),
+  allocations: z.array(createSalesPaymentAllocationSchema).min(1, "يجب تحديد فاتورة واحدة على الأقل"),
+});
+export type CreateSalesPaymentInput = z.infer<typeof createSalesPaymentSchema>;
+
+export type SalesPaymentWithAllocations = SalesPayment & {
+  allocations: SalesPaymentAllocation[];
+  customer?: Pick<Customer, "id" | "code" | "nameAr" | "nameEn"> | null;
+  journalEntryReference?: string | null;
+};
+
 // ============================================================================
 // Purchase Portal — task #368
 //

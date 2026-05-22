@@ -237,6 +237,8 @@ export const INVENTORY_EXTRA_ACCOUNTS: SeedAccount[] = [
 export const INVENTORY_ADJUSTMENT_CODE = "5200";
 export const INVENTORY_ACCOUNT_CODE = "1300";
 export const AP_ACCOUNT_CODE = "2110";
+export const AR_ACCOUNT_CODE = "1210";
+export const SALES_REVENUE_CODE = "4100";
 
 // Purchase Portal (task #368) — VAT recoverable on inputs sits on the asset side
 // (separate from the 2130 VAT Payable on outputs) so the net VAT position can

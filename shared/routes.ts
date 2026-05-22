@@ -23,10 +23,12 @@ import {
   createPurchaseInvoiceSchema,
   updatePurchaseInvoiceSchema,
   createPurchasePaymentSchema,
+  createSalesPaymentSchema,
   type Vendor,
   type PurchaseInvoice,
   type PurchaseInvoiceWithLines,
   type PurchasePaymentWithAllocations,
+  type SalesPaymentWithAllocations,
   type ApAgingReport,
 } from './schema';
 
@@ -529,6 +531,43 @@ export const api = {
     invoiceNextNumber: {
       method: 'GET' as const,
       path: '/api/sales/invoices/next-number' as const,
+      responses: { 200: z.object({ number: z.string() }) },
+    },
+    // ----- Customer Receipt Vouchers (سند قبض) -----
+    paymentsList: {
+      method: 'GET' as const,
+      path: '/api/sales/payments' as const,
+      responses: { 200: z.array(z.custom<SalesPaymentWithAllocations>()) },
+    },
+    paymentGet: {
+      method: 'GET' as const,
+      path: '/api/sales/payments/:id' as const,
+      responses: {
+        200: z.custom<SalesPaymentWithAllocations>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    paymentCreate: {
+      method: 'POST' as const,
+      path: '/api/sales/payments' as const,
+      input: createSalesPaymentSchema,
+      responses: {
+        201: z.custom<SalesPaymentWithAllocations>(),
+        400: errorSchemas.validation,
+      },
+    },
+    paymentDelete: {
+      method: 'DELETE' as const,
+      path: '/api/sales/payments/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+    paymentNextNumber: {
+      method: 'GET' as const,
+      path: '/api/sales/payments/next-number' as const,
       responses: { 200: z.object({ number: z.string() }) },
     },
   },

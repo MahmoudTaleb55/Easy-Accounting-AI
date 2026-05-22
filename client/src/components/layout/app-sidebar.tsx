@@ -46,6 +46,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { key: "nav_sales_invoices",  url: "/app/sales/invoices",  icon: FileText },
       { key: "nav_sales_customers", url: "/app/sales/customers", icon: UserCog },
+      { key: "nav_sales_payments",  url: "/app/sales/payments",  icon: Banknote },
     ],
   },
   {

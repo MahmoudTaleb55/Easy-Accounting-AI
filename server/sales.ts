@@ -564,3 +564,136 @@ export async function deleteSalesInvoice(
  * import it from the sales module rather than reaching into `@shared`.
  */
 export type { SalesInvoicePaymentMethod };
+
+// ============================================================================
+// Customer Receipt Vouchers (سند قبض) — AR mirror of `createPurchasePayment`
+// in `server/purchases.ts`. Posts a single Dr Cash / Cr AR journal entry that
+// settles 1..N posted credit invoices for the same customer in one shot, and
+// keeps each invoice's `paidAmount` in lockstep via storage.
+// ============================================================================
+
+import type {
+  CreateSalesPaymentInput,
+  SalesPaymentWithAllocations,
+} from "@shared/schema";
+
+export async function createSalesPayment(
+  companyId: number,
+  input: CreateSalesPaymentInput,
+  ctx?: AuditContext,
+): Promise<SalesPaymentWithAllocations> {
+  // (1) Customer must belong to this workspace.
+  const customer = await assertCustomerOwned(companyId, input.customerId);
+
+  // (2) Every invoice must belong to this customer, be posted+credit, and
+  // have enough open balance left to absorb the allocation. Mirror of the
+  // AP guard so the failure mode is identical (per-invoice).
+  if (input.allocations.length === 0) {
+    throw new Error("يجب تحديد فاتورة واحدة على الأقل");
+  }
+  for (const a of input.allocations) {
+    if (!(a.amount > 0)) throw new Error("مبلغ التوزيع يجب أن يكون أكبر من صفر");
+    const inv = await storage.getSalesInvoice(companyId, a.invoiceId);
+    if (!inv) throw new Error(`الفاتورة #${a.invoiceId} غير موجودة`);
+    if (inv.customerId !== input.customerId) {
+      throw new Error(`الفاتورة ${inv.number} لا تعود لهذا العميل`);
+    }
+    if (inv.status !== "posted") {
+      throw new Error(`الفاتورة ${inv.number} ليست مرحّلة`);
+    }
+    if (inv.paymentMethod !== "credit") {
+      throw new Error(`الفاتورة ${inv.number} مدفوعة نقداً ولا يمكن سدادها بسند قبض`);
+    }
+    const open = round2(Number(inv.totalAmount) - Number(inv.paidAmount));
+    if (a.amount > open + 0.01) {
+      throw new Error(
+        `قيمة التوزيع للفاتورة ${inv.number} (${a.amount}) تتجاوز المتبقي (${open})`,
+      );
+    }
+  }
+  const total = round2(input.allocations.reduce((s, a) => s + a.amount, 0));
+
+  // (3) Resolve CoA ids the JE will reference.
+  const allAccounts = await db
+    .select()
+    .from(accounts)
+    .where(eq(accounts.companyId, companyId));
+  const idOf = (code: string): number => {
+    const a = allAccounts.find((x) => x.code === code);
+    if (!a) {
+      throw new Error(
+        `حساب رقم (${code}) غير موجود — قم بإعادة تشغيل /api/accounts/seed لإنشاء الدليل المحاسبي القياسي.`,
+      );
+    }
+    return a.id;
+  };
+  const cashId = idOf(CASH_ACCOUNT_CODE);
+  const arId = idOf(AR_ACCOUNT_CODE);
+
+  // (4) Reserve the next ARRCV-#### and insert the header + allocations +
+  // paid_amount bumps in one transaction.
+  const number = await storage.getNextSalesPaymentNumber(companyId);
+  const created = await storage.createSalesPayment(
+    companyId,
+    {
+      number,
+      customerId: input.customerId,
+      paymentDate: input.paymentDate,
+      amount: total,
+      notes: input.notes ?? "",
+    },
+    input.allocations.map((a) => ({ invoiceId: a.invoiceId, amount: a.amount })),
+    ctx,
+  );
+
+  // (5) Build and post the auto-balanced JE. If the post fails we MUST
+  // reverse the header + allocation insert and undo the paid_amount bumps
+  // so the workspace isn't left with a stranded receipt + no GL entry.
+  let je;
+  try {
+    je = await storage.createJournalEntry(
+      companyId,
+      {
+        entryDate: input.paymentDate,
+        description: `سند قبض ${number} — ${customer.nameAr}`,
+        source: "manual",
+        lines: [
+          {
+            accountId: cashId,
+            debit: total,
+            credit: 0,
+            description: `تحصيل نقدي — سند قبض ${number}`,
+          },
+          {
+            accountId: arId,
+            debit: 0,
+            credit: total,
+            description: `تخفيض ذمم مدينة — ${customer.nameAr}`,
+          },
+        ],
+      },
+      ctx,
+    );
+  } catch (jeErr) {
+    try {
+      await storage.reverseSalesPayment(companyId, created.id, ctx);
+    } catch {
+      /* swallow — surfacing JE error is more useful than rollback failure */
+    }
+    throw jeErr;
+  }
+
+  const posted = await storage.markSalesPaymentPosted(companyId, created.id, je.id, ctx);
+  const refreshed = await storage.getSalesPayment(companyId, posted.id);
+  return refreshed!;
+}
+
+/** Reverse a posted receipt voucher: undoes JE, paid-amount bumps, and
+ *  deletes the header + allocation rows in one transaction. */
+export async function reverseSalesPayment(
+  companyId: number,
+  paymentId: number,
+  ctx?: AuditContext,
+): Promise<void> {
+  await storage.reverseSalesPayment(companyId, paymentId, ctx);
+}
