@@ -473,6 +473,166 @@ test.describe("migration runner reconciles renamed migrations @migrate", () => {
 });
 
 /**
+ * Dev-DB parity for the DESC-ordered composite indexes added in task #217.
+ *
+ * The per-attempt event drilldown on /settings/email-delivery relies on
+ * two composite indexes:
+ *
+ *   - `invitation_email_events (invitation_id, created_at DESC)`
+ *   - `password_reset_email_events (user_id, created_at DESC)`
+ *
+ * These are declared in *two* places that must agree:
+ *
+ *   - `migrations/0026_email_delivery_event_drilldown_indexes.sql` —
+ *     what production runs on top of the canonical schema.
+ *   - `shared/models/auth.ts` — what `drizzle-kit push` materialises on
+ *     every dev box (which never executes the migration files).
+ *
+ * The migrations-runner test above already proves the SQL migration
+ * applies cleanly on top of a pushed schema, but it doesn't actually
+ * inspect what `drizzle-kit push` *itself* emitted for these indexes.
+ * If a future drizzle-kit upgrade silently drops the column-direction
+ * modifier from generated DDL (i.e. emits an ASC index for a
+ * `.desc()`-decorated column), dev DBs would diverge from production
+ * for these indexes and the planner-friendly ORDER BY satisfaction
+ * the composite was meant to provide would silently regress on every
+ * dev box — exactly the parity gap the schema declaration was meant
+ * to close.
+ *
+ * What this spec verifies
+ * -----------------------
+ * On a freshly-pushed scratch DB (i.e. *no* migration files run), each
+ * of the two composite indexes exists and `pg_index.indoption` for the
+ * `created_at` column position encodes DESC ordering.
+ *
+ * `pg_index.indoption` is an int2vector with one entry per indexed
+ * column. The Postgres-defined bits are:
+ *
+ *   INDOPTION_DESC         = 1   (column sorts DESC)
+ *   INDOPTION_NULLS_FIRST  = 2   (NULLs come first)
+ *
+ * A DESC-ordered column therefore has bit 0 (value 1) set in its
+ * indoption entry. Drizzle's `.desc()` modifier compiles down to that.
+ */
+test.describe(
+  "drizzle-kit push materialises DESC-ordered composite indexes on dev DBs @migrate",
+  () => {
+    test.skip(
+      !DATABASE_URL,
+      "DATABASE_URL not set — drizzle-push parity test cannot run",
+    );
+
+    test.setTimeout(120_000);
+
+    test(
+      "the email-delivery drilldown composite indexes carry the DESC modifier on created_at after drizzle-kit push",
+      async () => {
+        const dbName = scratchDbName("desc_idx");
+        await createScratchDb(dbName);
+        const url = scratchUrl(dbName);
+        const pool = new pg.Pool({ connectionString: url });
+        try {
+          // Push the canonical schema only — deliberately do NOT run the
+          // migration files. The whole point is to verify what
+          // `drizzle-kit push` itself emits for the schema declaration,
+          // not what migration 0026 (which production uses) emits.
+          await runDrizzlePush(url);
+
+          // Pull pg_index.indoption for the column at the position of
+          // `created_at` in the index. We resolve the position via
+          // pg_attribute to avoid hardcoding "second column" in case
+          // someone reorders the declaration; we still pin the column
+          // name so the test fails loudly if `created_at` stops being
+          // part of the index entirely.
+          const indexes = [
+            {
+              indexName: "invitation_email_events_inv_created_idx",
+              tableName: "invitation_email_events",
+            },
+            {
+              indexName: "prt_email_events_user_created_idx",
+              tableName: "password_reset_email_events",
+            },
+          ];
+
+          for (const { indexName, tableName } of indexes) {
+            // `pg_index.indkey` and `.indoption` are int2vectors (0-indexed,
+            // not regular arrays), so naive `array_position` against
+            // indkey doesn't work. Cast indkey through text -> int2[] so
+            // we can `unnest WITH ORDINALITY` it; that gives us the
+            // 1-based position of each column within the index, which we
+            // then use to look up the matching indoption entry. Indoption
+            // is also int2vector but Postgres' [] subscript on it is
+            // 0-based, so we use `n - 1` to read the matching option.
+            const { rows } = await pool.query<{
+              attname: string;
+              pos: number;
+              option: number;
+            }>(
+              `
+              SELECT a.attname,
+                     k.n::int AS pos,
+                     i.indoption[k.n - 1]::int AS option
+                FROM pg_index i
+                JOIN pg_class c ON c.oid = i.indexrelid
+                JOIN pg_class t ON t.oid = i.indrelid
+                CROSS JOIN LATERAL
+                  unnest(string_to_array(i.indkey::text, ' ')::int2[])
+                    WITH ORDINALITY AS k(attnum, n)
+                JOIN pg_attribute a ON a.attrelid = t.oid
+                                   AND a.attnum = k.attnum
+               WHERE c.relname = $1
+                 AND t.relname = $2
+               ORDER BY k.n
+              `,
+              [indexName, tableName],
+            );
+
+            expect(
+              rows.length,
+              `index ${indexName} should exist on ${tableName} after drizzle-kit push — ` +
+                "if this fails, the schema declaration in shared/models/auth.ts is missing or " +
+                "drizzle-kit failed to materialise it",
+            ).toBeGreaterThan(0);
+
+            const createdAt = rows.find((r) => r.attname === "created_at");
+            expect(
+              createdAt,
+              `index ${indexName} must include the created_at column — ` +
+                "if this fails, the .on(...) call in shared/models/auth.ts no longer " +
+                "lists created_at as a key column",
+            ).toBeDefined();
+
+            // INDOPTION_DESC is bit 0 (value 1). A drizzle-kit upgrade
+            // that silently drops `.desc()` from the generated DDL will
+            // emit an ASC index here (option & 1 === 0) and trip this
+            // assertion — which is precisely the regression task #217's
+            // schema-declaration mirror was meant to prevent.
+            // eslint-disable-next-line no-bitwise
+            const isDesc = (createdAt!.option & 1) === 1;
+            expect(
+              isDesc,
+              `index ${indexName} must encode DESC ordering on created_at ` +
+                `(pg_index.indoption bit 0 set), got option=${createdAt!.option}. ` +
+                "If this fails, `drizzle-kit push` produced an ASC index for a " +
+                "`.desc()`-decorated column — dev DBs have just diverged from " +
+                "production. Either the schema declaration in shared/models/auth.ts " +
+                "lost the .desc() modifier, or a drizzle-kit version bump is no " +
+                "longer honouring it.",
+            ).toBe(true);
+          }
+        } finally {
+          await pool.end().catch(() => {
+            /* nothing else can use this pool now */
+          });
+          await dropScratchDb(dbName);
+        }
+      },
+    );
+  },
+);
+
+/**
  * The orphan-row contract test the task description calls out: every
  * row in `schema_migrations` after a runner pass must correspond to a
  * file currently on disk. Lives next to the apply-loop contract above
