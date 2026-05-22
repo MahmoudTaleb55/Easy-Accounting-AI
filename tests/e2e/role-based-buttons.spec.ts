@@ -613,6 +613,18 @@ test.describe("role-based button gating @rbac", () => {
         const id = await reverseBtn.getAttribute("data-testid");
         await expectUnguarded(page, id!);
       }
+
+      // AR receipts page — mirror of AP payments. "New receipt" trigger
+      // + per-row reverse (dynamic prefix `button-reverse-receipt-`).
+      await gotoApp(page, "/app/sales/payments");
+      await expectUnguarded(page, "button-new-receipt");
+      const reverseReceiptBtn = page
+        .locator('[data-testid^="button-reverse-receipt-"]')
+        .first();
+      if (await reverseReceiptBtn.count()) {
+        const id = await reverseReceiptBtn.getAttribute("data-testid");
+        await expectUnguarded(page, id!);
+      }
     });
 
     test("inventory categories: 'New category' is enabled", async ({ page }) => {
@@ -1008,6 +1020,16 @@ test.describe("role-based button gating @rbac", () => {
         .first();
       if (await reverseBtn.count()) {
         const id = await reverseBtn.getAttribute("data-testid");
+        await expectUnguarded(page, id!);
+      }
+
+      await gotoApp(page, "/app/sales/payments");
+      await expectUnguarded(page, "button-new-receipt");
+      const reverseReceiptBtn = page
+        .locator('[data-testid^="button-reverse-receipt-"]')
+        .first();
+      if (await reverseReceiptBtn.count()) {
+        const id = await reverseReceiptBtn.getAttribute("data-testid");
         await expectUnguarded(page, id!);
       }
     });
@@ -1477,6 +1499,21 @@ test.describe("role-based button gating @rbac", () => {
         .first();
       if (await reverseBtn.count()) {
         const id = await reverseBtn.getAttribute("data-testid");
+        await expectGuarded(page, id!, "write-guard-disabled", READ_ONLY_TOOLTIP);
+      }
+
+      await gotoApp(page, "/app/sales/payments");
+      await expectGuarded(
+        page,
+        "button-new-receipt",
+        "write-guard-disabled",
+        READ_ONLY_TOOLTIP,
+      );
+      const reverseReceiptBtn = page
+        .locator('[data-testid^="button-reverse-receipt-"]')
+        .first();
+      if (await reverseReceiptBtn.count()) {
+        const id = await reverseReceiptBtn.getAttribute("data-testid");
         await expectGuarded(page, id!, "write-guard-disabled", READ_ONLY_TOOLTIP);
       }
     });
