@@ -3763,6 +3763,115 @@ function registerInventoryRoutes(app: Express) {
       res.status(500).json({ message: err?.message || "تعذر تحميل التقييم" });
     }
   });
+  // ── Banking simulation ────────────────────────────────────────────────────
+  app.get("/api/banking/accounts", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      res.json(await banking.listBankAccounts(cid(req)));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تحميل الحسابات البنكية" });
+    }
+  });
+  app.post("/api/banking/accounts", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      const { insertBankAccountSchema } = await import("@shared/schema");
+      const parsed = insertBankAccountSchema.safeParse(req.body);
+      if (!parsed.success) return void res.status(400).json({ message: parsed.error.issues[0]?.message ?? "بيانات غير صحيحة" });
+      res.status(201).json(await banking.createBankAccount(cid(req), parsed.data));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر إنشاء الحساب البنكي" });
+    }
+  });
+  app.put("/api/banking/accounts/:id", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      const { insertBankAccountSchema } = await import("@shared/schema");
+      const parsed = insertBankAccountSchema.partial().safeParse(req.body);
+      if (!parsed.success) return void res.status(400).json({ message: parsed.error.issues[0]?.message ?? "بيانات غير صحيحة" });
+      res.json(await banking.updateBankAccount(cid(req), Number(req.params.id), parsed.data));
+    } catch (err: any) {
+      res.status(err?.message?.includes("غير موجود") ? 404 : 500).json({ message: err?.message || "تعذر تحديث الحساب" });
+    }
+  });
+  app.delete("/api/banking/accounts/:id", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      await banking.deleteBankAccount(cid(req), Number(req.params.id));
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر حذف الحساب" });
+    }
+  });
+  app.get("/api/banking/accounts/:id/balance", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      const balance = await banking.getBankAccountBalance(cid(req), Number(req.params.id));
+      res.json({ balance });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر احتساب الرصيد" });
+    }
+  });
+  app.get("/api/banking/transactions", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      const bankAccountId = req.query.bankAccountId ? Number(req.query.bankAccountId) : undefined;
+      res.json(await banking.listBankTransactions(cid(req), bankAccountId));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تحميل المعاملات البنكية" });
+    }
+  });
+  app.post("/api/banking/transactions", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      const { insertBankTransactionSchema } = await import("@shared/schema");
+      const parsed = insertBankTransactionSchema.safeParse(req.body);
+      if (!parsed.success) return void res.status(400).json({ message: parsed.error.issues[0]?.message ?? "بيانات غير صحيحة" });
+      res.status(201).json(await banking.createBankTransaction(cid(req), parsed.data, userCtx(req)));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تسجيل المعاملة" });
+    }
+  });
+  app.delete("/api/banking/transactions/:id", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      await banking.deleteBankTransaction(cid(req), Number(req.params.id));
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر حذف المعاملة" });
+    }
+  });
+
+  // ── ZATCA e-invoicing ─────────────────────────────────────────────────────
+  app.get("/api/zatca/config", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      res.json(await banking.getZatcaConfig(cid(req)));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر تحميل إعدادات ZATCA" });
+    }
+  });
+  app.post("/api/zatca/config", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      const { insertZatcaConfigSchema } = await import("@shared/schema");
+      const parsed = insertZatcaConfigSchema.safeParse(req.body);
+      if (!parsed.success) return void res.status(400).json({ message: parsed.error.issues[0]?.message ?? "بيانات غير صحيحة" });
+      res.json(await banking.upsertZatcaConfig(cid(req), parsed.data));
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر حفظ إعدادات ZATCA" });
+    }
+  });
+  app.delete("/api/zatca/config", async (req, res) => {
+    try {
+      const banking = await import("./banking");
+      await banking.deleteZatcaConfig(cid(req));
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "تعذر إلغاء تفعيل ZATCA" });
+    }
+  });
+
   app.get("/api/inventory/valuation.csv", async (req, res) => {
     try {
       const report = await inventory.getValuationReport(cid(req));

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "./auth-shell";
-import { SiReplit } from "react-icons/si";
+import { LogIn } from "lucide-react";
 import { Loader2 } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -161,8 +161,8 @@ export default function SignInPage() {
           onClick={() => (window.location.href = "/api/login")}
           data-testid="button-replit-login"
         >
-          <SiReplit className="h-4 w-4" />
-          {ar ? "متابعة باستخدام Replit" : "Continue with Replit"}
+          <LogIn className="h-4 w-4" />
+          {ar ? "متابعة بحساب المؤسسة (SSO)" : "Continue with SSO"}
         </Button>
       </form>
     </AuthShell>

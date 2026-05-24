@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AuthShell } from "./auth-shell";
-import { SiReplit } from "react-icons/si";
+import { LogIn } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -234,8 +234,8 @@ export default function SignUpPage() {
           onClick={() => (window.location.href = "/api/login")}
           data-testid="button-replit-signup"
         >
-          <SiReplit className="h-4 w-4" />
-          {ar ? "متابعة باستخدام Replit" : "Continue with Replit"}
+          <LogIn className="h-4 w-4" />
+          {ar ? "متابعة بحساب المؤسسة (SSO)" : "Continue with SSO"}
         </Button>
       </form>
     </AuthShell>

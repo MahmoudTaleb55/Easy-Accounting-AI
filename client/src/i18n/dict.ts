@@ -35,7 +35,11 @@ export const STRINGS = {
   nav_sales_payments:     { ar: "سندات القبض",       en: "Customer Receipts", de: "Kundenzahlungen",     fr: "Encaissements clients" },
   nav_settings:     { ar: "الإعدادات",         en: "Settings",           de: "Einstellungen",        fr: "Paramètres" },
 
-  // Inventory
+  // Banking
+  group_banking:          { ar: "البنك",            en: "Banking",             de: "Banking",            fr: "Banque" },
+  nav_banking_accounts:   { ar: "الحسابات البنكية", en: "Bank Accounts",       de: "Bankkonten",         fr: "Comptes bancaires" },
+  nav_banking_txns:       { ar: "معاملات البنك",    en: "Bank Transactions",   de: "Banktransaktionen",  fr: "Transactions bancaires" },
+
   group_inventory:        { ar: "المخزون",          en: "Inventory",           de: "Bestand",            fr: "Stock" },
   nav_inv_items:          { ar: "الأصناف",          en: "Items",               de: "Artikel",            fr: "Articles" },
   nav_inv_categories:     { ar: "تصنيفات المخزون",   en: "Categories",          de: "Kategorien",         fr: "Catégories" },

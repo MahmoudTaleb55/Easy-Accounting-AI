@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight, MailCheck, Wrench, CheckCircle2 } from "lucide-react";
+import { Settings as SettingsIcon, Save, Globe, Building2, Users, User as UserIcon, ChevronRight, MailCheck, Wrench, CheckCircle2, QrCode } from "lucide-react";
 import { api } from "@shared/routes";
 import type { OrgSettings } from "@/lib/format";
 import { savePublicCurrency } from "@/lib/public-currency";
@@ -97,6 +97,15 @@ function SettingsSubpagesNav() {
               ? "كل دعوات الفريق ورسائل استعادة كلمة المرور وحالاتها."
               : "Every team invitation and password-reset email and its status.",
             testid: "link-settings-email-delivery",
+          },
+          {
+            href: "/app/settings/zatca",
+            icon: QrCode,
+            title: ar ? "الفوترة الإلكترونية ZATCA" : "ZATCA e-invoicing",
+            desc: ar
+              ? "ربط منظومة الفوترة الإلكترونية مع هيئة الزكاة والضريبة."
+              : "Connect with Saudi Arabia's e-invoicing authority.",
+            testid: "link-settings-zatca",
           },
         ]
       : []),

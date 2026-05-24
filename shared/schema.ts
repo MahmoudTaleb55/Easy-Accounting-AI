@@ -2248,3 +2248,119 @@ export type InventoryValuationRow = {
   avgCost: string;
   totalValue: string;
 };
+
+// ============================================================================
+// Banking Simulation (مزامنة البنك)
+// ============================================================================
+
+export const BANK_ACCOUNT_TYPES = ["checking", "savings", "credit"] as const;
+export type BankAccountType = (typeof BANK_ACCOUNT_TYPES)[number];
+
+export const bankAccounts = pgTable(
+  "bank_accounts",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    nameAr: text("name_ar").notNull(),
+    nameEn: text("name_en").notNull(),
+    bankName: text("bank_name").notNull(),
+    iban: text("iban"),
+    accountType: text("account_type").$type<BankAccountType>().notNull().default("checking"),
+    currency: text("currency").notNull().default("SAR"),
+    openingBalance: numeric("opening_balance", { precision: 14, scale: 2 }).notNull().default("0"),
+    linkedAccountId: integer("linked_account_id"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("bank_accounts_id_company_uq").on(t.id, t.companyId),
+  }),
+);
+
+export const insertBankAccountSchema = createInsertSchema(bankAccounts).omit({
+  id: true,
+  createdAt: true,
+  companyId: true,
+});
+export type BankAccount = typeof bankAccounts.$inferSelect;
+export type InsertBankAccount = z.infer<typeof insertBankAccountSchema>;
+
+export const BANK_TXN_TYPES = ["deposit", "withdrawal", "transfer", "fee"] as const;
+export type BankTxnType = (typeof BANK_TXN_TYPES)[number];
+
+export const bankTransactions = pgTable(
+  "bank_transactions",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    bankAccountId: integer("bank_account_id").notNull(),
+    reference: text("reference").notNull(),
+    txnType: text("txn_type").$type<BankTxnType>().notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    description: text("description").notNull(),
+    counterpartBankAccountId: integer("counterpart_bank_account_id"),
+    counterpartAccountId: integer("counterpart_account_id"),
+    txnDate: timestamp("txn_date").notNull().defaultNow(),
+    journalEntryId: integer("journal_entry_id"),
+    status: text("status").notNull().default("posted"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => ({
+    idCompanyUq: unique("bank_transactions_id_company_uq").on(t.id, t.companyId),
+    accountCompanyFk: foreignKey({
+      columns: [t.bankAccountId, t.companyId],
+      foreignColumns: [bankAccounts.id, bankAccounts.companyId],
+      name: "bank_txn_account_company_fk",
+    }),
+  }),
+);
+
+export const insertBankTransactionSchema = createInsertSchema(bankTransactions).omit({
+  id: true,
+  createdAt: true,
+  companyId: true,
+  reference: true,
+  journalEntryId: true,
+  status: true,
+});
+export type BankTransaction = typeof bankTransactions.$inferSelect;
+export type InsertBankTransaction = z.infer<typeof insertBankTransactionSchema>;
+
+export type BankTransactionWithAccount = BankTransaction & {
+  bankAccount?: Pick<BankAccount, "id" | "nameAr" | "nameEn" | "bankName" | "currency"> | null;
+  counterpartBankAccount?: Pick<BankAccount, "id" | "nameAr" | "nameEn"> | null;
+  journalEntryReference?: string | null;
+};
+
+// ============================================================================
+// ZATCA E-invoicing Configuration (الفوترة الإلكترونية)
+// ============================================================================
+
+export const zatcaConfigs = pgTable(
+  "zatca_configs",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("company_id").notNull(),
+    vatNumber: text("vat_number").notNull(),
+    sellerNameAr: text("seller_name_ar").notNull(),
+    sellerNameEn: text("seller_name_en").notNull(),
+    cityAr: text("city_ar").notNull().default("الرياض"),
+    cityEn: text("city_en").notNull().default("Riyadh"),
+    environment: text("environment").notNull().default("sandbox"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (t) => ({
+    companyUq: unique("zatca_configs_company_uq").on(t.companyId),
+  }),
+);
+
+export const insertZatcaConfigSchema = createInsertSchema(zatcaConfigs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  companyId: true,
+});
+export type ZatcaConfig = typeof zatcaConfigs.$inferSelect;
+export type InsertZatcaConfig = z.infer<typeof insertZatcaConfigSchema>;

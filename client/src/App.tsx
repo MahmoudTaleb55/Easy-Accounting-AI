@@ -40,6 +40,9 @@ import InventoryTransactions from "@/pages/inventory/transactions";
 import InventoryAlerts from "@/pages/inventory/alerts";
 import InventoryValuation from "@/pages/inventory/valuation";
 import SettingsPage from "@/pages/settings";
+import BankingAccountsPage from "@/pages/banking/accounts";
+import BankingTransactionsPage from "@/pages/banking/transactions";
+import ZatcaSettingsPage from "@/pages/settings/zatca";
 import Styleguide from "@/pages/styleguide";
 
 // Auth pages
@@ -108,6 +111,9 @@ function AppShellRoutes() {
       <Route path="/app/settings/members" component={MembersPage} />
       <Route path="/app/settings/profile" component={ProfilePage} />
       <Route path="/app/settings/email-delivery" component={EmailDeliveryPage} />
+      <Route path="/app/settings/zatca" component={ZatcaSettingsPage} />
+      <Route path="/app/banking/accounts" component={BankingAccountsPage} />
+      <Route path="/app/banking/transactions" component={BankingTransactionsPage} />
       <Route path="/app/ai-assistant" component={AiAssistant} />
       <Route component={NotFound} />
     </Switch>

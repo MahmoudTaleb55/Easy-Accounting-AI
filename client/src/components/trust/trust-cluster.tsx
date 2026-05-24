@@ -2,11 +2,12 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, AlertCircle, RefreshCw, Shield, Database, Plug, UserCheck } from "lucide-react";
+import { CheckCircle2, AlertCircle, RefreshCw, Shield, Database, Plug, UserCheck, Landmark, QrCode } from "lucide-react";
 import { useLocale } from "@/contexts/locale-context";
 import { formatDistanceToNow } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import type { BankAccount, ZatcaConfig } from "@shared/schema";
 
 type IntegrationHealth = "healthy" | "degraded" | "down" | "not_configured";
 
@@ -42,12 +43,25 @@ const HEALTH_LABEL: Record<IntegrationHealth, { ar: string; en: string }> = {
 };
 
 /**
- * Builds a static-but-meaningful integration list from real data we
- * already have available client-side. Where data is missing it is
- * labeled "not configured" rather than fabricated.
+ * Builds an integration list that reflects real-time data from the backend.
+ * Bank and ZATCA health are derived from actual configuration data.
  */
 function useIntegrationStatuses(lastFetchAt: Date | null): IntegrationStatus[] {
   const { locale } = useLocale();
+
+  const { data: bankAccounts } = useQuery<BankAccount[]>({
+    queryKey: ["/api/banking/accounts"],
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: zatcaConfig } = useQuery<ZatcaConfig | null>({
+    queryKey: ["/api/zatca/config"],
+    refetchOnWindowFocus: false,
+  });
+
+  const hasBankAccounts = bankAccounts && bankAccounts.length > 0;
+  const isZatcaActive = zatcaConfig && zatcaConfig.isActive;
+
   return [
     {
       id: "database",
@@ -58,8 +72,8 @@ function useIntegrationStatuses(lastFetchAt: Date | null): IntegrationStatus[] {
       cadence: locale === "ar" ? "لحظي" : "Real-time on every write",
       detail:
         locale === "ar"
-          ? "Postgres المُدارة على Replit — مزامنة لحظية مع كل عملية كتابة."
-          : "Replit-managed Postgres — real-time on every write.",
+          ? "قاعدة بيانات Postgres مُدارة — مزامنة لحظية مع كل عملية كتابة."
+          : "Cloud-managed Postgres — real-time on every write.",
     },
     {
       id: "ai",
@@ -70,30 +84,42 @@ function useIntegrationStatuses(lastFetchAt: Date | null): IntegrationStatus[] {
       cadence: locale === "ar" ? "عند الطلب" : "On demand",
       detail:
         locale === "ar"
-          ? "OpenAI عبر تكامل Replit — لا تُخزَّن المطالبات في خدمات خارجية."
-          : "OpenAI via Replit integration — prompts not retained externally.",
+          ? "OpenAI — لا تُخزَّن المطالبات في خدمات خارجية."
+          : "OpenAI integration — prompts not retained externally.",
     },
     {
       id: "bank-feed",
       nameAr: "مزامنة البنك",
       nameEn: "Bank feed",
-      health: "not_configured",
-      cadence: locale === "ar" ? "غير مجدول" : "Not scheduled",
-      detail:
-        locale === "ar"
-          ? "لم يتم ربط حساب بنكي بعد. الإدخال يدوي عبر المعاملات."
-          : "No bank account linked yet. Entry is manual via Transactions.",
+      health: hasBankAccounts ? "healthy" : "not_configured",
+      lastSyncAt: hasBankAccounts ? lastFetchAt : null,
+      cadence: hasBankAccounts
+        ? (locale === "ar" ? "لحظي" : "Real-time on every entry")
+        : (locale === "ar" ? "غير مجدول" : "Not scheduled"),
+      detail: hasBankAccounts
+        ? locale === "ar"
+          ? `${bankAccounts!.length} حساب بنكي مُفعَّل — المعاملات تُرحَّل تلقائياً.`
+          : `${bankAccounts!.length} bank account(s) linked — transactions auto-posted.`
+        : locale === "ar"
+          ? "لم يتم ربط حساب بنكي بعد. أضف حساباً من قسم البنك."
+          : "No bank account linked yet. Add one under Banking.",
     },
     {
       id: "zatca",
       nameAr: "الفوترة الإلكترونية (ZATCA)",
       nameEn: "E-invoicing (ZATCA)",
-      health: "not_configured",
-      cadence: locale === "ar" ? "غير مجدول" : "Not scheduled",
-      detail:
-        locale === "ar"
-          ? "غير مفعّل. تظهر تقديرات الضرائب من مركز القرارات."
-          : "Not configured. VAT estimates appear in the Insights center.",
+      health: isZatcaActive ? "healthy" : "not_configured",
+      lastSyncAt: isZatcaActive ? lastFetchAt : null,
+      cadence: isZatcaActive
+        ? (locale === "ar" ? "عند إصدار كل فاتورة" : "On every invoice")
+        : (locale === "ar" ? "غير مجدول" : "Not scheduled"),
+      detail: isZatcaActive
+        ? locale === "ar"
+          ? `مفعّل — رمز QR على كل فاتورة. VAT: ${zatcaConfig!.vatNumber} | ${zatcaConfig!.environment === "sandbox" ? "اختبار" : "إنتاج"}`
+          : `Active — QR code on every invoice. VAT: ${zatcaConfig!.vatNumber} | ${zatcaConfig!.environment}`
+        : locale === "ar"
+          ? "غير مفعّل. فعّله من الإعدادات ← ZATCA."
+          : "Not configured. Activate under Settings → ZATCA.",
     },
   ];
 }
@@ -242,7 +268,11 @@ export function TrustCluster() {
         <ul className="divide-y divide-border" data-testid="list-integration-status">
           {integrations.map((it) => {
             const Icon =
-              it.id === "database" ? Database : it.id === "ai" ? Shield : Plug;
+              it.id === "database" ? Database
+              : it.id === "ai" ? Shield
+              : it.id === "bank-feed" ? Landmark
+              : it.id === "zatca" ? QrCode
+              : Plug;
             return (
               <li
                 key={it.id}
