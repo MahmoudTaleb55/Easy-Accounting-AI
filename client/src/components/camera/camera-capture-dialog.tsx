@@ -67,7 +67,7 @@ const I18N: Record<Locale, Strings> = {
     cancel: "إلغاء",
     switchCamera: "تبديل الكاميرا",
     permissionDenied:
-      "تم رفض الوصول إلى الكاميرا. فعّل الإذن من إعدادات المتصفح ثم أعد المحاولة.",
+      "تم رفض الوصول إلى الكاميرا. انقر على أيقونة الكاميرا 🎥 أو القفل 🔒 في شريط العنوان واختَر «سماح»، ثم اضغط «إعادة المحاولة».",
     unavailable: "تعذّر الاتصال بالكاميرا. حاول مجدداً أو ارفع صورة من جهازك.",
     hardwareMissing:
       "لم يتم العثور على كاميرا متصلة. تحقق من توصيل الكاميرا أو ارفع صورة بدلاً من ذلك.",
@@ -100,7 +100,7 @@ const I18N: Record<Locale, Strings> = {
     cancel: "Cancel",
     switchCamera: "Switch camera",
     permissionDenied:
-      "Camera access was denied. Enable the permission in your browser settings and try again.",
+      "Camera access was denied. Click the camera 🎥 or lock 🔒 icon in the browser address bar, choose 'Allow', then tap 'Try again'.",
     unavailable:
       "Could not connect to the camera. Try again or upload a file instead.",
     hardwareMissing:
@@ -133,7 +133,7 @@ const I18N: Record<Locale, Strings> = {
     cancel: "Abbrechen",
     switchCamera: "Kamera wechseln",
     permissionDenied:
-      "Kamerazugriff wurde verweigert. Aktivieren Sie die Berechtigung in den Browsereinstellungen und versuchen Sie es erneut.",
+      "Kamerazugriff wurde verweigert. Klicken Sie auf das Kamera- 🎥 oder Schloss-Symbol 🔒 in der Adressleiste, wählen Sie 'Zulassen' und tippen Sie dann auf 'Erneut versuchen'.",
     unavailable:
       "Verbindung zur Kamera fehlgeschlagen. Versuchen Sie es erneut oder laden Sie eine Datei hoch.",
     hardwareMissing:
@@ -168,7 +168,7 @@ const I18N: Record<Locale, Strings> = {
     cancel: "Annuler",
     switchCamera: "Changer de caméra",
     permissionDenied:
-      "L'accès à la caméra a été refusé. Activez l'autorisation dans les paramètres du navigateur et réessayez.",
+      "L'accès à la caméra a été refusé. Cliquez sur l'icône caméra 🎥 ou cadenas 🔒 dans la barre d'adresse, choisissez 'Autoriser', puis appuyez sur 'Réessayer'.",
     unavailable:
       "Impossible de se connecter à la caméra. Réessayez ou téléversez un fichier.",
     hardwareMissing:
@@ -295,15 +295,63 @@ export function CameraCaptureDialog({
   useEffect(() => {
     if (!open) return;
     const env = detectCameraEnvironment();
-    if (env.kind === "ok") {
-      setBlockReason(null);
-      setError(null);
+    if (env.kind !== "ok") {
+      setBlockReason(env.kind);
+      if (env.kind === "iframe") setError(t.iframeBlocked);
+      else if (env.kind === "insecure") setError(t.insecureContext);
       return;
     }
-    setBlockReason(env.kind);
-    if (env.kind === "iframe") setError(t.iframeBlocked);
-    else if (env.kind === "insecure") setError(t.insecureContext);
-  }, [open, t.iframeBlocked, t.insecureContext]);
+    setBlockReason(null);
+    setError(null);
+
+    // Proactively query the browser camera permission so we can show the right
+    // error message *immediately* (without waiting for getUserMedia to fail),
+    // and auto-recover when the user allows the camera from the address bar
+    // while the dialog is still open.
+    if (typeof navigator.permissions?.query !== "function") return;
+
+    let dead = false;
+    let permStatus: PermissionStatus | null = null;
+    let changeHandler: (() => void) | null = null;
+
+    const applyPermState = (state: PermissionState) => {
+      if (dead) return;
+      if (state === "denied") {
+        const inIframe = window.self !== window.top;
+        setBlockReason(inIframe ? "iframe" : "permission");
+        setError(inIframe ? t.iframeBlocked : t.permissionDenied);
+      } else {
+        // "granted" or "prompt" — only clear errors that *this* check set;
+        // leave hardware-busy / overconstrained messages untouched.
+        setBlockReason((prev) =>
+          prev === "permission" || prev === "iframe" ? null : prev,
+        );
+        setError((prev) =>
+          prev === t.permissionDenied || prev === t.iframeBlocked ? null : prev,
+        );
+      }
+    };
+
+    navigator.permissions
+      .query({ name: "camera" as PermissionName })
+      .then((status) => {
+        if (dead) return;
+        permStatus = status;
+        applyPermState(status.state);
+        changeHandler = () => applyPermState(status.state);
+        status.addEventListener("change", changeHandler);
+      })
+      .catch(() => {
+        /* Permissions API not supported — fall through to getUserMedia */
+      });
+
+    return () => {
+      dead = true;
+      if (permStatus && changeHandler) {
+        permStatus.removeEventListener("change", changeHandler);
+      }
+    };
+  }, [open, t.iframeBlocked, t.insecureContext, t.permissionDenied]);
 
   const videoConstraints = useMemo(
     () => ({
