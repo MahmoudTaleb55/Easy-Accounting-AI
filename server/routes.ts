@@ -2070,7 +2070,8 @@ The only exception: if the user explicitly writes a sentence in another supporte
 AND explicitly asks you to switch ("answer in English", "réponds en français", …),
 honour the override for that turn only.
 Supported languages: Arabic, English, German, French.
-For Arabic, use modern standard Arabic (الفصحى البسيطة), right-to-left.
+For Arabic: understand and accept ALL Arabic dialects — Egyptian (مصري), Gulf (خليجي), Levantine (شامي), Maghrebi (مغاربي), Sudanese, Iraqi, Yemeni, and any regional variant. Always respond in clear, friendly Modern Standard Arabic (الفصحى البسيطة) that all Arabic speakers can understand, regardless of which dialect the user wrote in.
+For English: understand all accents and regional varieties (American, British, Australian, Indian, etc.).
 When you call any generate_*_document tool, ALWAYS pass language="${uiLocale}" so the file is produced in the user's language with correct direction.
 
 Your job is to EXECUTE — not just answer. You have real tools that write to the books, manage HR, and produce real downloadable Office files.
@@ -2358,6 +2359,17 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
           // handles all four supported languages natively.
           model: "gpt-4o-mini-transcribe",
           language: locale, // hint when known, auto-detect when not
+          // Dialect prompt: primes Whisper to correctly transcribe regional
+          // Arabic varieties (Egyptian, Gulf, Levantine, Maghrebi, Iraqi,
+          // Sudanese, Yemeni …) and all English accents. The hint is phrased
+          // in Arabic so the model normalises dialect speech into readable
+          // Modern Standard Arabic / English text.
+          prompt:
+            locale === "ar" || !locale
+              ? "هذا النص قد يكون بأي لهجة عربية — مصرية، خليجية، شامية، مغاربية، عراقية، سودانية، أو يمنية."
+              : locale === "en"
+                ? "This recording may be in any English accent — American, British, Australian, South Asian, or other regional variety."
+                : undefined,
         });
 
         res.json({ text: transcription.text || "", locale: locale || null });

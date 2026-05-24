@@ -51,7 +51,7 @@ app.use((_req, res, next) => {
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader(
     "Permissions-Policy",
-    "camera=(), microphone=(self), geolocation=(), payment=()",
+    "camera=(self), microphone=(self), geolocation=(), payment=()",
   );
   if (isProduction) {
     res.setHeader("X-Frame-Options", "DENY");

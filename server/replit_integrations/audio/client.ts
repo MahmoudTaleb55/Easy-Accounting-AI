@@ -239,12 +239,21 @@ export async function textToSpeechStream(
  */
 export async function speechToText(
   audioBuffer: Buffer,
-  format: "wav" | "mp3" | "webm" = "wav"
+  format: "wav" | "mp3" | "webm" = "wav",
+  locale?: string,
 ): Promise<string> {
   const file = await toFile(audioBuffer, `audio.${format}`);
   const response = await openai.audio.transcriptions.create({
     file,
     model: "gpt-4o-mini-transcribe",
+    // Dialect-aware prompt: helps Whisper handle all Arabic regional
+    // varieties and all English accents without a hard language lock.
+    prompt:
+      locale === "ar" || !locale
+        ? "هذا النص قد يكون بأي لهجة عربية — مصرية، خليجية، شامية، مغاربية، عراقية، سودانية، أو يمنية."
+        : locale === "en"
+          ? "This recording may be in any English accent."
+          : undefined,
   });
   return response.text;
 }
