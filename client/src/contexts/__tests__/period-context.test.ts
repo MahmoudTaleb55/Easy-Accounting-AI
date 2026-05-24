@@ -22,7 +22,7 @@ describe("pickPeriodKeyForDate", () => {
   // Wednesday 15 April 2026, mid-day UTC. Picking a mid-month, mid-week
   // anchor lets us reason about all six preset windows in one spot:
   //   • today    = Apr 15 00:00 → 23:59
-  //   • week     = Sat Apr 11 → Fri Apr 17 (weekStartsOn: 6)
+  //   • week     = Sun Apr 12 → Sat Apr 18 (weekStartsOn: 0)
   //   • 30d      = Mar 17 → Apr 15 (30 days, end-inclusive)
   //   • month    = Apr 1 → Apr 30
   //   • quarter  = Apr 1 → Jun 30 (Q2)

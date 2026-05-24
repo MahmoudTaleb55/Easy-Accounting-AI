@@ -35,12 +35,15 @@ const ACCOUNT_TYPE_LABELS: Record<string, { ar: string; en: string; icon: typeof
   credit:   { ar: "بطاقة ائتمان", en: "Credit Card", icon: CreditCard },
 };
 
-const COMMON_BANKS_AR = [
-  "البنك الأهلي السعودي", "بنك الرياض", "البنك العربي الوطني",
-  "بنك سامبا", "البنك السعودي الفرنسي", "بنك البلاد",
-  "بنك الإنماء", "البنك السعودي للاستثمار", "بنك الجزيرة",
-  "مصرف الراجحي", "بنك الخليج", "بنك أبوظبي الأول",
-];
+const BANKS_BY_COUNTRY: Record<string, string[]> = {
+  SA: ["مصرف الراجحي", "البنك الأهلي السعودي", "بنك الرياض", "البنك العربي الوطني", "بنك البلاد", "بنك الإنماء", "بنك الجزيرة"],
+  AE: ["بنك أبوظبي الأول", "بنك الإمارات دبي الوطني", "بنك أبوظبي التجاري", "بنك دبي الإسلامي", "بنك المشرق"],
+  KW: ["بنك الكويت الوطني", "بنك بوبيان", "بنك الخليج", "البنك الأهلي الكويتي", "بنك برقان"],
+  QA: ["بنك قطر الوطني", "بنك قطر الإسلامي", "البنك التجاري", "بنك الدوحة"],
+  EG: ["البنك الأهلي المصري", "بنك مصر", "البنك التجاري الدولي", "بنك القاهرة"],
+  JO: ["البنك العربي", "بنك الأردن", "البنك الوطني الأردني", "بنك الإسكان"],
+  INTL: ["HSBC", "JPMorgan Chase", "Citibank", "Deutsche Bank", "BNP Paribas", "Barclays", "Standard Chartered"],
+};
 
 export default function BankingAccountsPage() {
   const { locale } = useLocale();
@@ -205,10 +208,12 @@ export default function BankingAccountsPage() {
                 list="bank-list"
                 data-testid="input-bank-name"
                 {...form.register("bankName")}
-                placeholder={ar ? "مثال: مصرف الراجحي" : "e.g. Al Rajhi Bank"}
+                placeholder={ar ? "اسم البنك" : "Bank name"}
               />
               <datalist id="bank-list">
-                {COMMON_BANKS_AR.map((b) => <option key={b} value={b} />)}
+                {(BANKS_BY_COUNTRY[settings.countryCode] || BANKS_BY_COUNTRY.INTL).map((b) => (
+                  <option key={b} value={b} />
+                ))}
               </datalist>
             </div>
 

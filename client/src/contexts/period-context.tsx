@@ -47,7 +47,7 @@ const PRESET_KEY_ORDER: Exclude<PeriodKey, "custom">[] = [
 function presetRangeFor(key: Exclude<PeriodKey, "custom">, now: Date): PeriodRange {
   switch (key) {
     case "today":   return { key, start: startOfDay(now), end: endOfDay(now) };
-    case "week":    return { key, start: startOfWeek(now, { weekStartsOn: 6 }), end: endOfWeek(now, { weekStartsOn: 6 }) };
+    case "week":    return { key, start: startOfWeek(now, { weekStartsOn: 0 }), end: endOfWeek(now, { weekStartsOn: 0 }) };
     case "month":   return { key, start: startOfMonth(now), end: endOfMonth(now) };
     case "quarter": return { key, start: startOfQuarter(now), end: endOfQuarter(now) };
     case "ytd":     return { key, start: startOfYear(now), end: endOfDay(now) };

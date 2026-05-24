@@ -253,21 +253,23 @@ function CockpitTab() {
             <CardTitle className="text-base flex items-center gap-2"><Receipt className="w-4 h-4" />تقدير الضرائب والزكاة</CardTitle>
             <CardDescription>مؤشرات تخطيطية تساعدك على ادخار السيولة قبل الاستحقاق</CardDescription>
           </CardHeader>
-          <CardContent className="grid md:grid-cols-2 gap-4">
+          <CardContent className={`grid gap-4 ${taxes.zakat.enabled ? "md:grid-cols-2" : ""}`}>
             <div className="border rounded-xl p-4">
               <div className="flex justify-between items-baseline mb-1">
-                <span className="text-muted-foreground text-sm">ضريبة القيمة المضافة (15%)</span>
+                <span className="text-muted-foreground text-sm">ضريبة القيمة المضافة ({(taxes.vat.rate * 100).toFixed(1)}%)</span>
                 <span className="text-2xl font-semibold tabular-nums" data-testid="text-vat">{fmtCurrency(taxes.vat.payable)}</span>
               </div>
               <p className="text-xs text-muted-foreground mt-2">{taxes.vat.note}</p>
             </div>
-            <div className="border rounded-xl p-4">
-              <div className="flex justify-between items-baseline mb-1">
-                <span className="text-muted-foreground text-sm">الزكاة التقديرية (2.5%)</span>
-                <span className="text-2xl font-semibold tabular-nums" data-testid="text-zakat">{fmtCurrency(taxes.zakat.payable)}</span>
+            {taxes.zakat.enabled && (
+              <div className="border rounded-xl p-4">
+                <div className="flex justify-between items-baseline mb-1">
+                  <span className="text-muted-foreground text-sm">الزكاة التقديرية (2.5%)</span>
+                  <span className="text-2xl font-semibold tabular-nums" data-testid="text-zakat">{fmtCurrency(taxes.zakat.payable)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">{taxes.zakat.note}</p>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">{taxes.zakat.note}</p>
-            </div>
+            )}
           </CardContent>
         </Card>
       )}
