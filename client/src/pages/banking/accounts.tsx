@@ -95,12 +95,12 @@ export default function BankingAccountsPage() {
               : "Link bank accounts and track cash flow automatically"}
           </p>
         </div>
-        <WriteGuard>
+        {can.write && (
           <Button size="sm" onClick={() => setOpen(true)} data-testid="button-add-account">
             <Plus className="h-4 w-4 me-1" />
             {ar ? "إضافة حساب" : "Add account"}
           </Button>
-        </WriteGuard>
+        )}
       </div>
 
       {isLoading ? (

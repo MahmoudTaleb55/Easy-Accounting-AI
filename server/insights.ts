@@ -27,13 +27,10 @@ export async function computeBalances(companyId: number, range?: DateRange): Pro
   let creditMap: Map<number, number>;
 
   if (range) {
-    const startStr = range.start.toISOString().slice(0, 10);
-    const endStr   = range.end.toISOString().slice(0, 10);
-
     const plIds = allAccounts.filter(a => a.type === "revenue" || a.type === "expense").map(a => a.id);
     const bsIds = allAccounts.filter(a => a.type !== "revenue" && a.type !== "expense").map(a => a.id);
 
-    const aggQuery = (ids: number[], dateFrom?: string, dateTo?: string) =>
+    const aggQuery = (ids: number[], dateFrom?: Date, dateTo?: Date) =>
       ids.length === 0 ? Promise.resolve([] as { accountId: number; debit: string; credit: string }[]) :
       db.select({
         accountId: journalLines.accountId,
@@ -51,8 +48,8 @@ export async function computeBalances(companyId: number, range?: DateRange): Pro
       .groupBy(journalLines.accountId);
 
     const [plRows, bsRows] = await Promise.all([
-      aggQuery(plIds, startStr, endStr),
-      aggQuery(bsIds, undefined, endStr),
+      aggQuery(plIds, range.start, range.end),
+      aggQuery(bsIds, undefined,   range.end),
     ]);
 
     debitMap  = new Map();
@@ -200,19 +197,17 @@ export async function computeCashFlow(companyId: number, daysBack = 90, range?: 
   let recent: typeof transactions.$inferSelect[];
 
   if (range) {
-    const startStr = range.start.toISOString().slice(0, 10);
-    const endStr   = range.end.toISOString().slice(0, 10);
     days = Math.max(1, Math.round((range.end.getTime() - range.start.getTime()) / 86400000) + 1);
     recent = await db.select().from(transactions).where(and(
       eq(transactions.companyId, companyId),
-      gte(transactions.date, startStr),
-      lte(transactions.date, endStr),
+      gte(transactions.date, range.start),
+      lte(transactions.date, range.end),
     ));
   } else {
-    const cutoffStr = new Date(Date.now() - daysBack * 86400000).toISOString().slice(0, 10);
+    const cutoff = new Date(Date.now() - daysBack * 86400000);
     recent = await db.select().from(transactions).where(and(
       eq(transactions.companyId, companyId),
-      gte(transactions.date, cutoffStr),
+      gte(transactions.date, cutoff),
     ));
   }
 
