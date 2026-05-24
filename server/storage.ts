@@ -1757,106 +1757,71 @@ async function buildJournalSourceLinkMap(
   const out = new Map<number, JournalEntrySourceLink>();
   if (jeIds.length === 0) return out;
 
-  // Payroll runs
-  const prRows = await db
-    .select({
+  // All 5 source-link lookups run in parallel — previously 5+ sequential awaits.
+  const [prRows, drRows, impRows, revRows, dispRows] = await Promise.all([
+    // Payroll runs
+    db.select({
       id: payrollRuns.id,
       year: payrollRuns.year,
       month: payrollRuns.month,
       journalEntryId: payrollRuns.journalEntryId,
     })
     .from(payrollRuns)
-    .where(
-      and(
-        eq(payrollRuns.companyId, companyId),
-        inArray(payrollRuns.journalEntryId, jeIds),
-      ),
-    );
-  for (const r of prRows) {
-    if (r.journalEntryId == null) continue;
-    out.set(r.journalEntryId, {
-      kind: "payroll_run",
-      id: r.id,
-      href: `/app/hr#pr-${r.id}`,
-      period: { year: r.year, month: r.month },
-    });
-  }
-
-  // Depreciation runs
-  const drRows = await db
-    .select({
+    .where(and(
+      eq(payrollRuns.companyId, companyId),
+      inArray(payrollRuns.journalEntryId, jeIds),
+    )),
+    // Depreciation runs
+    db.select({
       id: depreciationRuns.id,
       year: depreciationRuns.year,
       month: depreciationRuns.month,
       journalEntryId: depreciationRuns.journalEntryId,
     })
     .from(depreciationRuns)
-    .where(
-      and(
-        eq(depreciationRuns.companyId, companyId),
-        inArray(depreciationRuns.journalEntryId, jeIds),
-      ),
-    );
-  for (const r of drRows) {
-    if (r.journalEntryId == null) continue;
-    out.set(r.journalEntryId, {
-      kind: "depreciation_run",
-      id: r.id,
-      href: `/app/fixed-assets#dr-${r.id}`,
-      period: { year: r.year, month: r.month },
-    });
-  }
-
-  // Fixed-asset events: impairment, revaluation, disposal. We join the asset
-  // row in memory so we can include code/name in the badge label without a
-  // second round-trip per event.
-  const evtAssetIds = new Set<number>();
-  const impRows = await db
-    .select({
+    .where(and(
+      eq(depreciationRuns.companyId, companyId),
+      inArray(depreciationRuns.journalEntryId, jeIds),
+    )),
+    // Fixed-asset events in parallel with the above
+    db.select({
       id: impairmentEvents.id,
       assetId: impairmentEvents.assetId,
       eventDate: impairmentEvents.eventDate,
       journalEntryId: impairmentEvents.journalEntryId,
     })
     .from(impairmentEvents)
-    .where(
-      and(
-        eq(impairmentEvents.companyId, companyId),
-        inArray(impairmentEvents.journalEntryId, jeIds),
-      ),
-    );
-  impRows.forEach((r) => evtAssetIds.add(r.assetId));
-
-  const revRows = await db
-    .select({
+    .where(and(
+      eq(impairmentEvents.companyId, companyId),
+      inArray(impairmentEvents.journalEntryId, jeIds),
+    )),
+    db.select({
       id: revaluationEvents.id,
       assetId: revaluationEvents.assetId,
       eventDate: revaluationEvents.eventDate,
       journalEntryId: revaluationEvents.journalEntryId,
     })
     .from(revaluationEvents)
-    .where(
-      and(
-        eq(revaluationEvents.companyId, companyId),
-        inArray(revaluationEvents.journalEntryId, jeIds),
-      ),
-    );
-  revRows.forEach((r) => evtAssetIds.add(r.assetId));
-
-  const dispRows = await db
-    .select({
+    .where(and(
+      eq(revaluationEvents.companyId, companyId),
+      inArray(revaluationEvents.journalEntryId, jeIds),
+    )),
+    db.select({
       id: disposals.id,
       assetId: disposals.assetId,
       eventDate: disposals.eventDate,
       journalEntryId: disposals.journalEntryId,
     })
     .from(disposals)
-    .where(
-      and(
-        eq(disposals.companyId, companyId),
-        inArray(disposals.journalEntryId, jeIds),
-      ),
-    );
+    .where(and(
+      eq(disposals.companyId, companyId),
+      inArray(disposals.journalEntryId, jeIds),
+    )),
+  ]);
+
+  const evtAssetIds = new Set<number>();
+  impRows.forEach((r) => evtAssetIds.add(r.assetId));
+  revRows.forEach((r) => evtAssetIds.add(r.assetId));
   dispRows.forEach((r) => evtAssetIds.add(r.assetId));
 
   let assetById = new Map<number, { code: string; name: string }>();

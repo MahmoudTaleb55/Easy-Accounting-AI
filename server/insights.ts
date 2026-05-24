@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { accounts, journalEntries, journalLines, transactions, budgets } from "@shared/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, lte, gte, sql } from "drizzle-orm";
 
 // All read functions in this module accept a `companyId` so insights are scoped
 // to the active workspace. Callers must pass `req.membership.companyId`.
@@ -18,54 +18,70 @@ export interface DateRange { start: Date; end: Date }
 
 export async function computeBalances(companyId: number, range?: DateRange): Promise<AccountBalance[]> {
   const allAccounts = await db.select().from(accounts).where(eq(accounts.companyId, companyId));
-  const accountIds = allAccounts.map((a) => a.id);
-  const allLines = accountIds.length
-    ? await db.select().from(journalLines).where(inArray(journalLines.accountId, accountIds))
-    : [];
+  if (!allAccounts.length) return [];
 
-  // For period scoping: P&L (revenue/expense) sums lines posted within [start, end].
-  // Balance-sheet (asset/liability/equity) accounts are cumulative as of `end`,
-  // so the figures still represent a real position on the period's last day.
-  let plLineIds: Set<number> | null = null;
-  let bsLineIds: Set<number> | null = null;
+  // Use SQL SUM+GROUP BY instead of fetching every row into memory.
+  // For period scoping: P&L (revenue/expense) accounts sum lines within [start,end];
+  // Balance-sheet accounts are cumulative as of `end`.
+  let debitMap: Map<number, number>;
+  let creditMap: Map<number, number>;
+
   if (range) {
-    const entries = await db.select().from(journalEntries).where(eq(journalEntries.companyId, companyId));
-    const startMs = range.start.getTime();
-    const endMs = range.end.getTime();
-    plLineIds = new Set();
-    bsLineIds = new Set();
-    const inWindow = new Set<number>();
-    const upToEnd = new Set<number>();
-    for (const e of entries) {
-      const t = new Date(e.entryDate).getTime();
-      if (Number.isNaN(t)) continue;
-      if (t <= endMs) upToEnd.add(e.id);
-      if (t >= startMs && t <= endMs) inWindow.add(e.id);
+    const startStr = range.start.toISOString().slice(0, 10);
+    const endStr   = range.end.toISOString().slice(0, 10);
+
+    const plIds = allAccounts.filter(a => a.type === "revenue" || a.type === "expense").map(a => a.id);
+    const bsIds = allAccounts.filter(a => a.type !== "revenue" && a.type !== "expense").map(a => a.id);
+
+    const aggQuery = (ids: number[], dateFrom?: string, dateTo?: string) =>
+      ids.length === 0 ? Promise.resolve([] as { accountId: number; debit: string; credit: string }[]) :
+      db.select({
+        accountId: journalLines.accountId,
+        debit:  sql<string>`COALESCE(SUM(${journalLines.debit}),  0)`,
+        credit: sql<string>`COALESCE(SUM(${journalLines.credit}), 0)`,
+      })
+      .from(journalLines)
+      .innerJoin(journalEntries, eq(journalLines.journalEntryId, journalEntries.id))
+      .where(and(
+        eq(journalEntries.companyId, companyId),
+        dateFrom ? gte(journalEntries.entryDate, dateFrom) : undefined,
+        dateTo   ? lte(journalEntries.entryDate, dateTo)   : undefined,
+        inArray(journalLines.accountId, ids),
+      ))
+      .groupBy(journalLines.accountId);
+
+    const [plRows, bsRows] = await Promise.all([
+      aggQuery(plIds, startStr, endStr),
+      aggQuery(bsIds, undefined, endStr),
+    ]);
+
+    debitMap  = new Map();
+    creditMap = new Map();
+    for (const r of [...plRows, ...bsRows]) {
+      debitMap.set(r.accountId,  Number(r.debit));
+      creditMap.set(r.accountId, Number(r.credit));
     }
-    for (const l of allLines) {
-      if (inWindow.has(l.journalEntryId)) plLineIds.add(l.id);
-      if (upToEnd.has(l.journalEntryId)) bsLineIds.add(l.id);
-    }
+  } else {
+    // No range — single aggregated query across all posted lines.
+    const rows = await db.select({
+      accountId: journalLines.accountId,
+      debit:  sql<string>`COALESCE(SUM(${journalLines.debit}),  0)`,
+      credit: sql<string>`COALESCE(SUM(${journalLines.credit}), 0)`,
+    })
+    .from(journalLines)
+    .innerJoin(journalEntries, eq(journalLines.journalEntryId, journalEntries.id))
+    .where(eq(journalEntries.companyId, companyId))
+    .groupBy(journalLines.accountId);
+
+    debitMap  = new Map(rows.map(r => [r.accountId, Number(r.debit)]));
+    creditMap = new Map(rows.map(r => [r.accountId, Number(r.credit)]));
   }
 
-  const debit = new Map<number, number>();
-  const credit = new Map<number, number>();
-  const accountById = new Map(allAccounts.map((a) => [a.id, a]));
-  for (const l of allLines) {
-    if (range) {
-      const acc = accountById.get(l.accountId);
-      const isPL = acc && (acc.type === "revenue" || acc.type === "expense");
-      const allowed = isPL ? plLineIds!.has(l.id) : bsLineIds!.has(l.id);
-      if (!allowed) continue;
-    }
-    debit.set(l.accountId, (debit.get(l.accountId) || 0) + Number(l.debit || 0));
-    credit.set(l.accountId, (credit.get(l.accountId) || 0) + Number(l.credit || 0));
-  }
   return allAccounts
     .filter((a) => !a.isHeader)
     .map((a) => {
-      const d = debit.get(a.id) || 0;
-      const c = credit.get(a.id) || 0;
+      const d = debitMap.get(a.id)  || 0;
+      const c = creditMap.get(a.id) || 0;
       const isDebitNormal = a.type === "asset" || a.type === "expense";
       return {
         accountId: a.id,
@@ -180,36 +196,45 @@ export function computeHealthScore(k: KPIs): {
 // Cash Runway & Forecast
 // ============================================================================
 export async function computeCashFlow(companyId: number, daysBack = 90, range?: DateRange) {
-  const txs = await db.select().from(transactions).where(eq(transactions.companyId, companyId));
-  let recent;
   let days = Math.max(daysBack, 1);
+  let recent: typeof transactions.$inferSelect[];
+
   if (range) {
-    const startMs = range.start.getTime();
-    const endMs = range.end.getTime();
-    recent = txs.filter((t) => {
-      const ts = new Date(t.date || 0).getTime();
-      return ts >= startMs && ts <= endMs;
-    });
-    days = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
+    const startStr = range.start.toISOString().slice(0, 10);
+    const endStr   = range.end.toISOString().slice(0, 10);
+    days = Math.max(1, Math.round((range.end.getTime() - range.start.getTime()) / 86400000) + 1);
+    recent = await db.select().from(transactions).where(and(
+      eq(transactions.companyId, companyId),
+      gte(transactions.date, startStr),
+      lte(transactions.date, endStr),
+    ));
   } else {
-    const cutoff = Date.now() - daysBack * 86400000;
-    recent = txs.filter((t) => new Date(t.date || 0).getTime() >= cutoff);
+    const cutoffStr = new Date(Date.now() - daysBack * 86400000).toISOString().slice(0, 10);
+    recent = await db.select().from(transactions).where(and(
+      eq(transactions.companyId, companyId),
+      gte(transactions.date, cutoffStr),
+    ));
   }
-  const inflow = recent.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
+
+  const inflow  = recent.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
   const outflow = recent.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   return {
-    avgDailyIn: inflow / days,
+    avgDailyIn:  inflow  / days,
     avgDailyOut: outflow / days,
     avgDailyNet: (inflow - outflow) / days,
-    totalIn: inflow,
+    totalIn:  inflow,
     totalOut: outflow,
     daysAnalyzed: days,
   };
 }
 
-export async function projectCash(companyId: number, daysAhead = 90, range?: DateRange) {
-  const k = await computeKPIs(companyId, range);
-  const flow = await computeCashFlow(companyId, 90, range);
+// Pure sync helper — builds the cash projection from already-fetched KPIs and flow data.
+// Extracted so that generateAlerts can reuse it without re-running computeKPIs.
+function _buildCashProjectionSync(
+  k: KPIs,
+  flow: Awaited<ReturnType<typeof computeCashFlow>>,
+  daysAhead: number,
+) {
   const cash = k.cash;
   const series: { day: number; date: string; balance: number }[] = [];
   for (let d = 0; d <= daysAhead; d += 1) {
@@ -227,11 +252,20 @@ export async function projectCash(companyId: number, daysAhead = 90, range?: Dat
   return {
     currentCash: cash,
     avgDailyNet: flow.avgDailyNet,
-    avgDailyIn: flow.avgDailyIn,
+    avgDailyIn:  flow.avgDailyIn,
     avgDailyOut: flow.avgDailyOut,
     runwayDays,
     series,
   };
+}
+
+export async function projectCash(companyId: number, daysAhead = 90, range?: DateRange) {
+  // Run KPIs and cash-flow in parallel — previously sequential.
+  const [k, flow] = await Promise.all([
+    computeKPIs(companyId, range),
+    computeCashFlow(companyId, 90, range),
+  ]);
+  return _buildCashProjectionSync(k, flow, daysAhead);
 }
 
 // ============================================================================
@@ -248,9 +282,15 @@ export interface Alert {
 
 export async function generateAlerts(companyId: number, range?: DateRange): Promise<Alert[]> {
   const alerts: Alert[] = [];
-  const k = await computeKPIs(companyId, range);
-  const cash = await projectCash(companyId, 90, range);
-  const txs = await db.select().from(transactions).where(eq(transactions.companyId, companyId));
+  // Run the three expensive fetches in parallel.
+  // Previously this was sequential AND computeKPIs was called twice
+  // (once directly + once inside projectCash → computeKPIs again).
+  const [k, flow, txs] = await Promise.all([
+    computeKPIs(companyId, range),
+    computeCashFlow(companyId, 90, range),
+    db.select().from(transactions).where(eq(transactions.companyId, companyId)),
+  ]);
+  const cash = _buildCashProjectionSync(k, flow, 90);
 
   if (cash.runwayDays !== null) {
     if (cash.runwayDays < 30) {
