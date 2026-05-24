@@ -806,39 +806,46 @@ export const authBizStorage = {
     const isAttempt = key.startsWith("attempt:");
     const attemptId = isAttempt ? key.slice("attempt:".length) : null;
 
+    let rows: unknown;
     if (transport === "invitation") {
-      const rows = await db.execute(sql`
-        SELECT e.id, e.message_id, e.type, e.error, e.created_at
-        FROM invitation_email_events e
-        INNER JOIN invitations i ON i.id = e.invitation_id
-        WHERE i.company_id = ${companyId}
-          AND (
-            (${attemptId}::text IS NOT NULL AND e.id = ${attemptId}::text)
-            OR (${attemptId}::text IS NULL AND e.message_id = ${key}::text)
-          )
-        ORDER BY e.created_at DESC
-      `);
-      const list = (rows as any).rows ?? (rows as any);
-      return (list as any[]).map((r) => ({
-        id: r.id,
-        messageId: r.message_id,
-        type: r.type,
-        error: r.error,
-        createdAt: r.created_at,
-      }));
+      if (isAttempt) {
+        rows = await db.execute(sql`
+          SELECT e.id, e.message_id, e.type, e.error, e.created_at
+          FROM invitation_email_events e
+          INNER JOIN invitations i ON i.id = e.invitation_id
+          WHERE i.company_id = ${companyId}
+            AND e.id = ${attemptId}::text
+          ORDER BY e.created_at DESC
+        `);
+      } else {
+        rows = await db.execute(sql`
+          SELECT e.id, e.message_id, e.type, e.error, e.created_at
+          FROM invitation_email_events e
+          INNER JOIN invitations i ON i.id = e.invitation_id
+          WHERE i.company_id = ${companyId}
+            AND e.message_id = ${key}::text
+          ORDER BY e.created_at DESC
+        `);
+      }
+    } else {
+      if (isAttempt) {
+        rows = await db.execute(sql`
+          SELECT e.id, e.message_id, e.type, e.error, e.created_at
+          FROM password_reset_email_events e
+          INNER JOIN memberships m ON m.user_id = e.user_id AND m.company_id = ${companyId}
+          WHERE e.id = ${attemptId}::text
+          ORDER BY e.created_at DESC
+        `);
+      } else {
+        rows = await db.execute(sql`
+          SELECT e.id, e.message_id, e.type, e.error, e.created_at
+          FROM password_reset_email_events e
+          INNER JOIN memberships m ON m.user_id = e.user_id AND m.company_id = ${companyId}
+          WHERE e.message_id = ${key}::text
+          ORDER BY e.created_at DESC
+        `);
+      }
     }
-
-    const rows = await db.execute(sql`
-      SELECT e.id, e.message_id, e.type, e.error, e.created_at
-      FROM password_reset_email_events e
-      INNER JOIN memberships m ON m.user_id = e.user_id AND m.company_id = ${companyId}
-      WHERE
-        (
-          (${attemptId}::text IS NOT NULL AND e.id = ${attemptId}::text)
-          OR (${attemptId}::text IS NULL AND e.message_id = ${key}::text)
-        )
-      ORDER BY e.created_at DESC
-    `);
     const list = (rows as any).rows ?? (rows as any);
     return (list as any[]).map((r) => ({
       id: r.id,
