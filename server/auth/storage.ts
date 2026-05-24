@@ -1643,12 +1643,21 @@ export const authBizStorage = {
       .filter((e): e is string => !!e && e.includes("@"));
   },
 
-  /** Every company that has at least one membership — the cron sweeps these. */
+  /** Every company that has at least one membership — the cron sweeps these.
+   *  Cross-workspace sweep by definition (no single company in scope), so
+   *  the read is marked with `withUnscopedDb` to satisfy the
+   *  workspace-isolation audit guard at the storage layer rather than
+   *  relying on every caller (cron, alert sweep) to remember it. The
+   *  default DB role already bypasses RLS, so no client pinning is
+   *  needed — just the audit marker. */
   async listCompanyIdsWithMemberships(): Promise<number[]> {
-    const rows = await db
-      .selectDistinct({ companyId: memberships.companyId })
-      .from(memberships);
-    return rows.map((r) => r.companyId);
+    const { withUnscopedDb } = await import("../db");
+    return withUnscopedDb("cron:list-company-ids", async () => {
+      const rows = await db
+        .selectDistinct({ companyId: memberships.companyId })
+        .from(memberships);
+      return rows.map((r) => r.companyId);
+    });
   },
 
   /** First-signup bootstrap: if the legacy seed companies have no owner,
@@ -1669,12 +1678,30 @@ export const authBizStorage = {
     displayName: string,
     opts?: { currencyCode?: string },
   ): Promise<{ companyId: number; role: Role; bootstrapped: "adopted" | "created" }> {
-    const orphan = await db
-      .select()
-      .from(companies)
-      .where(sql`${companies.ownerUserId} IS NULL`);
+    // Orphan adoption queries the `companies` table without a workspace
+    // scope (there isn't one yet — this is signup). Without an audit
+    // marker, the runtime guard (`WORKSPACE_ISOLATION_GUARD=throw`)
+    // refuses the unscoped `db.` calls and signup 500s.
+    //
+    // Use `withUnscopedDb` (audit marker only, no client pinning)
+    // rather than `withRlsBypass` here, because the orphan-adoption
+    // body opens a `db.transaction(...)` per company and we need
+    // those to run as real top-level BEGIN/COMMIT against a fresh
+    // pooled client so the rollback contract (task #274) is preserved.
+    // `withRlsBypass` would pin a single client and turn the nested
+    // `.transaction()` call into a SAVEPOINT against a connection
+    // that never opened a BEGIN, silently dropping the rollback.
+    // The signup flow runs as the default DB role (not `app_api`),
+    // so RLS bypass is not required — only the audit marker is.
+    const { withUnscopedDb } = await import("../db");
+    const adopted = await withUnscopedDb("auth:bootstrap-orphan-adopt", async () => {
+      const orphan = await db
+        .select()
+        .from(companies)
+        .where(sql`${companies.ownerUserId} IS NULL`);
 
-    if (orphan.length > 0) {
+      if (orphan.length === 0) return null;
+
       // First user adopts all orphan seed companies as owner + owner
       // member. Each (claim-ownership + owner-membership) pair shares one
       // transaction so a failure in the membership insert rolls back the
@@ -1701,7 +1728,11 @@ export const authBizStorage = {
         });
       }
       const def = orphan.find((c) => c.isDefault) ?? orphan[0];
-      return { companyId: def.id, role: "owner", bootstrapped: "adopted" };
+      return { companyId: def.id, role: "owner" as Role };
+    });
+
+    if (adopted) {
+      return { ...adopted, bootstrapped: "adopted" };
     }
 
     // Otherwise create a fresh personal workspace. Pass `ownerMembership`
