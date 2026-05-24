@@ -6,6 +6,7 @@ import { insertBankAccountSchema, type BankAccount, BANK_ACCOUNT_TYPES } from "@
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocale } from "@/contexts/locale-context";
+import { useSettings } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,6 +47,7 @@ export default function BankingAccountsPage() {
   const ar = locale === "ar";
   const { toast } = useToast();
   const { can } = useAuth();
+  const settings = useSettings();
   const [open, setOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
@@ -57,7 +59,7 @@ export default function BankingAccountsPage() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       nameAr: "", nameEn: "", bankName: "",
-      iban: "", accountType: "checking", currency: "SAR", openingBalance: 0,
+      iban: "", accountType: "checking", currency: settings.currencyCode || "SAR", openingBalance: 0,
     },
   });
 

@@ -163,7 +163,7 @@ export async function computeKPIs(companyId: number, range?: DateRange): Promise
 // ============================================================================
 // Health Score
 // ============================================================================
-export function computeHealthScore(k: KPIs): {
+export function computeHealthScore(k: KPIs, currencySymbol = "ر.س"): {
   score: number;
   components: { label: string; value: number; weight: number; explain: string }[];
 } {
@@ -181,7 +181,7 @@ export function computeHealthScore(k: KPIs): {
   const components = [
     { label: "الربحية",        value: profitScore,     weight: 0.30, explain: `هامش صافي ${(k.netMargin*100).toFixed(1)}%` },
     { label: "السيولة",        value: liquidityScore,  weight: 0.20, explain: `النسبة الجارية ${k.currentRatio.toFixed(2)}` },
-    { label: "قوة النقد",      value: cashScore,       weight: 0.20, explain: `${k.cash.toFixed(0)} ر.س متوفر` },
+    { label: "قوة النقد",      value: cashScore,       weight: 0.20, explain: `${k.cash.toFixed(0)} ${currencySymbol} متوفر` },
     { label: "الانضباط",       value: disciplineScore, weight: 0.20, explain: `نسبة المصروفات ${(k.expenseRatio*100).toFixed(0)}%` },
     { label: "ملاءة مالية",    value: solvencyScore,   weight: 0.10, explain: `الدين/الملكية ${k.debtToEquity.toFixed(2)}` },
   ];
@@ -275,7 +275,7 @@ export interface Alert {
   category?: string;
 }
 
-export async function generateAlerts(companyId: number, range?: DateRange): Promise<Alert[]> {
+export async function generateAlerts(companyId: number, range?: DateRange, currencySymbol = "ر.س"): Promise<Alert[]> {
   const alerts: Alert[] = [];
   // Run the three expensive fetches in parallel.
   // Previously this was sequential AND computeKPIs was called twice
@@ -322,8 +322,8 @@ export async function generateAlerts(companyId: number, range?: DateRange): Prom
       id: "net-loss",
       severity: "warning",
       title: "صافي خسارة في الفترة",
-      description: `الفترة الحالية تظهر خسارة صافية ${Math.abs(k.netProfit).toFixed(0)} ر.س. راجع أكبر المصروفات.`,
-      metric: `${k.netProfit.toFixed(0)} ر.س`,
+      description: `الفترة الحالية تظهر خسارة صافية ${Math.abs(k.netProfit).toFixed(0)} ${currencySymbol}. راجع أكبر المصروفات.`,
+      metric: `${k.netProfit.toFixed(0)} ${currencySymbol}`,
     });
   }
 
@@ -349,7 +349,7 @@ export async function generateAlerts(companyId: number, range?: DateRange): Prom
         id: `anomaly-${cat}`,
         severity: "warning",
         title: `زيادة غير معتادة في "${cat}"`,
-        description: `صرفت ${recent.toFixed(0)} ر.س على ${cat} هذا الشهر، مقارنة بـ ${prevAvg.toFixed(0)} ر.س متوسط شهري سابق (+${(((recent / prevAvg) - 1) * 100).toFixed(0)}%).`,
+        description: `صرفت ${recent.toFixed(0)} ${currencySymbol} على ${cat} هذا الشهر، مقارنة بـ ${prevAvg.toFixed(0)} ${currencySymbol} متوسط شهري سابق (+${(((recent / prevAvg) - 1) * 100).toFixed(0)}%).`,
         category: cat,
         metric: `+${(((recent / prevAvg) - 1) * 100).toFixed(0)}%`,
       });
@@ -370,7 +370,7 @@ export async function generateAlerts(companyId: number, range?: DateRange): Prom
       id: "revenue-drop",
       severity: "warning",
       title: "انخفاض في الإيرادات",
-      description: `إيرادات آخر 30 يوم ${last30Income.toFixed(0)} ر.س، مقارنة بـ ${prev30Income.toFixed(0)} ر.س للشهر السابق (${(((last30Income / prev30Income) - 1) * 100).toFixed(0)}%).`,
+      description: `إيرادات آخر 30 يوم ${last30Income.toFixed(0)} ${currencySymbol}، مقارنة بـ ${prev30Income.toFixed(0)} ${currencySymbol} للشهر السابق (${(((last30Income / prev30Income) - 1) * 100).toFixed(0)}%).`,
       metric: `${(((last30Income / prev30Income) - 1) * 100).toFixed(0)}%`,
     });
   }
@@ -387,8 +387,8 @@ export async function generateAlerts(companyId: number, range?: DateRange): Prom
           id: `outlier-${t.id}`,
           severity: "info",
           title: `صرف غير عادي`,
-          description: `${Number(t.amount).toFixed(0)} ر.س على "${t.description}" — أكبر بكثير من متوسط مصاريفك (${mean.toFixed(0)} ر.س).`,
-          metric: `${Number(t.amount).toFixed(0)} ر.س`,
+          description: `${Number(t.amount).toFixed(0)} ${currencySymbol} على "${t.description}" — أكبر بكثير من متوسط مصاريفك (${mean.toFixed(0)} ${currencySymbol}).`,
+          metric: `${Number(t.amount).toFixed(0)} ${currencySymbol}`,
         });
         break;
       }

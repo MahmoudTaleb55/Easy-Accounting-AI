@@ -1200,13 +1200,17 @@ export async function registerRoutes(
 
   app.get("/api/insights/health", async (req, res) => {
     const range = parseRange(req);
-    const k = await insights.computeKPIs(cid(req), range);
-    const health = insights.computeHealthScore(k);
+    const [k, cfg] = await Promise.all([
+      insights.computeKPIs(cid(req), range),
+      storage.getSettings(cid(req)),
+    ]);
+    const health = insights.computeHealthScore(k, cfg.currencySymbol);
     res.json({ kpis: k, health });
   });
 
   app.get("/api/insights/alerts", async (req, res) => {
-    const alerts = await insights.generateAlerts(cid(req), parseRange(req));
+    const cfg = await storage.getSettings(cid(req));
+    const alerts = await insights.generateAlerts(cid(req), parseRange(req), cfg.currencySymbol);
     res.json({ alerts });
   });
 
@@ -1855,9 +1859,10 @@ export async function registerRoutes(
       const question = String(req.body?.question || "").slice(0, 1000);
       if (!question.trim()) return res.status(400).json({ message: "أدخل سؤالك" });
 
+      const cfg = await storage.getSettings(cid(req));
       const k = await insights.computeKPIs(cid(req));
       const cash = await insights.projectCash(cid(req), 90);
-      const alerts = await insights.generateAlerts(cid(req));
+      const alerts = await insights.generateAlerts(cid(req), undefined, cfg.currencySymbol);
       const txs = await storage.getTransactions(cid(req));
 
       const recentTxs = txs.slice(-15).map((t) => ({
