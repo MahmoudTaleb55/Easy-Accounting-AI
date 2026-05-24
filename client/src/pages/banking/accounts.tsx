@@ -20,7 +20,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Loader2, Plus, Trash2, Landmark, CreditCard, PiggyBank } from "lucide-react";
-import { WriteGuard } from "@/components/auth/write-guard";
+import { useAuth } from "@/hooks/use-auth";
 import { z } from "zod";
 
 const formSchema = insertBankAccountSchema.extend({
@@ -45,6 +45,7 @@ export default function BankingAccountsPage() {
   const { locale } = useLocale();
   const ar = locale === "ar";
   const { toast } = useToast();
+  const { can } = useAuth();
   const [open, setOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
@@ -152,7 +153,7 @@ export default function BankingAccountsPage() {
                     </TableCell>
                     <TableCell className="font-mono text-sm">{acct.currency}</TableCell>
                     <TableCell className="text-end">
-                      <WriteGuard fallback={null}>
+                      {can.write && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -162,7 +163,7 @@ export default function BankingAccountsPage() {
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
-                      </WriteGuard>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

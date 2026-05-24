@@ -134,6 +134,45 @@ const DB_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "migration 0016.",
   },
   {
+    file: "server/banking.ts",
+    rationale:
+      "Banking simulation + ZATCA CRUD helpers called from /api/banking/* " +
+      "and /api/zatca/* route handlers, which run inside withCompanyScope " +
+      "via the standard request middleware in server/routes.ts.",
+  },
+  {
+    file: "server/inventory.ts",
+    rationale:
+      "Inventory CRUD helpers called from /api/inventory/* route handlers, " +
+      "which run inside withCompanyScope via the request middleware. Direct " +
+      "db import is used alongside withCompanyScope from ./db.",
+  },
+  {
+    file: "server/services/assistant-tools.ts",
+    rationale:
+      "AI assistant tool dispatcher. The one `await import('../db')` call " +
+      "is inside a route handler that runs inside withCompanyScope via the " +
+      "request middleware in server/routes.ts.",
+  },
+  {
+    file: "server/services/pdf-arabic.ts",
+    rationale:
+      "PDF generation helper. The `await import('../db')` call is inside " +
+      "a handler invoked from /api/* routes that run inside withCompanyScope.",
+  },
+  {
+    file: "server/purchases.ts",
+    rationale:
+      "Purchase Portal CRUD helpers called from /api/purchases/* route " +
+      "handlers, which run inside withCompanyScope via the request middleware.",
+  },
+  {
+    file: "server/sales.ts",
+    rationale:
+      "Sales Portal CRUD helpers called from /api/sales/* route handlers, " +
+      "which run inside withCompanyScope via the request middleware.",
+  },
+  {
     file: "server/replit_integrations/auth/storage.ts",
     rationale:
       "Replit-OIDC user upsert. Runs from the OIDC callback before any " +
@@ -257,6 +296,66 @@ const STORAGE_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "themselves only touch the auth + alert tables (out of RLS scope).",
   },
   {
+    file: "server/banking.ts",
+    rationale:
+      "Banking simulation + ZATCA CRUD helpers called from /api/banking/* " +
+      "and /api/zatca/* route handlers, which run inside withCompanyScope " +
+      "via the standard request middleware in server/routes.ts. The " +
+      "`storage` import is used only to read Chart-of-Accounts entries " +
+      "for JE posting — the call site is always inside a route handler " +
+      "scoped by withCompanyScope.",
+  },
+  {
+    file: "server/init-coa.ts",
+    rationale:
+      "Imports storage to call getAccounts for COA seeding inside " +
+      "seedDefaultCoaInTx (invoked from createCompany under withRlsBypass) " +
+      "and ensureIfrsBootstrap (invoked from server/index.ts under " +
+      "withRlsBypass('bootstrap:ifrs-coa')).",
+  },
+  {
+    file: "server/inventory.ts",
+    rationale:
+      "Inventory CRUD helpers invoked from /api/inventory/* route handlers, " +
+      "which run inside withCompanyScope via the request middleware. Storage " +
+      "is used for JE posting and COA account lookups.",
+  },
+  {
+    file: "server/purchases.ts",
+    rationale:
+      "Purchase Portal CRUD helpers invoked from /api/purchases/* route " +
+      "handlers, which run inside withCompanyScope. Storage is used for " +
+      "JE posting and AP account lookups.",
+  },
+  {
+    file: "server/sales.ts",
+    rationale:
+      "Sales Portal CRUD helpers invoked from /api/sales/* route handlers, " +
+      "which run inside withCompanyScope. Storage is used for JE posting " +
+      "and AR account lookups.",
+  },
+  {
+    file: "server/services/pdf-arabic.ts",
+    rationale:
+      "PDF generation helper invoked from /api/sales/invoices/:id/pdf and " +
+      "similar handlers, which run inside withCompanyScope. Storage is used " +
+      "to fetch invoice data for rendering.",
+  },
+  {
+    file: "server/__tests__/purchases.test.ts",
+    rationale:
+      "Vitest server-side integration test for the Purchase Portal (task " +
+      "#368). Drives storage directly to assert lifecycle round-trips; " +
+      "each db call is inside an explicit withCompanyScope wrapper.",
+  },
+  {
+    file: "server/__tests__/sales-payments.test.ts",
+    rationale:
+      "Vitest server-side integration test for Customer Receipt Vouchers. " +
+      "Drives storage directly inside explicit withCompanyScope wrappers to " +
+      "assert payment/allocation lifecycle round-trips.",
+  },
+  {
     file: "server/auth/rls-policy-drift-alerts.ts",
     rationale:
       "Periodic production sweep (task #238) that reads pg_policy via " +
@@ -313,6 +412,11 @@ const STORAGE_IMPORT_ALLOWLIST: AllowlistEntry[] = [
 const POOL_CONNECT_ALLOWLIST = new Set([
   "server/db.ts",
   "server/migrate.ts",
+  // server/index.ts calls pool.connect() directly to run bootstrapWorkspaceRlsPolicies
+  // inside a transaction at boot. This is the one boot-time use that
+  // pre-dates the withRlsBypass helper; the call is wrapped in SET/RESET
+  // app.rls_bypass manually so it's equivalent to withRlsBypass semantics.
+  "server/index.ts",
 ]);
 
 /**

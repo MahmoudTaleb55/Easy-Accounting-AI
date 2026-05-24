@@ -13,7 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Loader2, Zap, CheckCircle2, AlertCircle, QrCode } from "lucide-react";
-import { WriteGuard } from "@/components/auth/write-guard";
+import { useAuth } from "@/hooks/use-auth";
 import { z } from "zod";
 
 const formSchema = insertZatcaConfigSchema.extend({
@@ -28,6 +28,7 @@ export default function ZatcaSettingsPage() {
   const { locale } = useLocale();
   const ar = locale === "ar";
   const { toast } = useToast();
+  const { can } = useAuth();
 
   const { data: config, isLoading } = useQuery<ZatcaConfig | null>({
     queryKey: ["/api/zatca/config"],
@@ -220,26 +221,24 @@ export default function ZatcaSettingsPage() {
           </div>
 
           <div className="flex items-center gap-3 pt-2">
-            <WriteGuard>
+            {can.write && (
               <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-zatca">
                 {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin me-2" />}
                 {ar ? "حفظ وتفعيل" : "Save & activate"}
               </Button>
-            </WriteGuard>
-            {isConfigured && (
-              <WriteGuard fallback={null}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  disabled={deactivateMutation.isPending}
-                  onClick={() => deactivateMutation.mutate()}
-                  data-testid="button-deactivate-zatca"
-                >
-                  {deactivateMutation.isPending && <Loader2 className="h-4 w-4 animate-spin me-2" />}
-                  {ar ? "إلغاء التفعيل" : "Deactivate"}
-                </Button>
-              </WriteGuard>
+            )}
+            {isConfigured && can.write && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                disabled={deactivateMutation.isPending}
+                onClick={() => deactivateMutation.mutate()}
+                data-testid="button-deactivate-zatca"
+              >
+                {deactivateMutation.isPending && <Loader2 className="h-4 w-4 animate-spin me-2" />}
+                {ar ? "إلغاء التفعيل" : "Deactivate"}
+              </Button>
             )}
           </div>
         </form>

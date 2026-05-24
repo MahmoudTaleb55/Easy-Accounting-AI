@@ -126,6 +126,10 @@ export const RLS_TABLES: readonly string[] = [
   // Customer Receipt Vouchers (سند قبض) — added by migration 0027.
   "sales_payments",
   "sales_payment_allocations",
+  // Banking simulation + ZATCA e-invoicing — added by migration 0029.
+  "bank_accounts",
+  "bank_transactions",
+  "zatca_configs",
 ] as const;
 
 /**
