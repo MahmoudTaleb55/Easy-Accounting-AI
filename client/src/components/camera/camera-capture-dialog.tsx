@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Camera,
+  VideoOff,
   RefreshCcw,
   SwitchCamera,
   Check,
@@ -47,6 +48,12 @@ type Strings = {
   insecureContext: string;
   tryAgain: string;
   uploadInstead: string;
+  // Permission denied — step-by-step recovery instructions shown inside
+  // the camera area when the browser has blocked camera access.
+  permissionDeniedTitle: string;
+  permissionStep1: string;
+  permissionStep2: string;
+  permissionStep3: string;
   // Scanner-stage micro-copy (task #345). Each badge is shown briefly
   // under the captured preview so the operator can see whether the
   // automatic edge-detection / perspective-correction pass succeeded
@@ -66,8 +73,11 @@ const I18N: Record<Locale, Strings> = {
     accept: "اعتماد ورفع",
     cancel: "إلغاء",
     switchCamera: "تبديل الكاميرا",
-    permissionDenied:
-      "تم رفض الوصول إلى الكاميرا. انقر على أيقونة الكاميرا 🎥 أو القفل 🔒 في شريط العنوان واختَر «سماح»، ثم اضغط «إعادة المحاولة».",
+    permissionDenied: "تم حظر الكاميرا على هذا الموقع.",
+    permissionDeniedTitle: "الكاميرا محظورة",
+    permissionStep1: "انقر على أيقونة القفل 🔒 أو الكاميرا 📷 بجانب شريط العنوان",
+    permissionStep2: "اختر «السماح» للكاميرا",
+    permissionStep3: "اضغط «إعادة المحاولة» أدناه — ستطلب المتصفح إذناً تلقائياً",
     unavailable: "تعذّر الاتصال بالكاميرا. حاول مجدداً أو ارفع صورة من جهازك.",
     hardwareMissing:
       "لم يتم العثور على كاميرا متصلة. تحقق من توصيل الكاميرا أو ارفع صورة بدلاً من ذلك.",
@@ -99,8 +109,11 @@ const I18N: Record<Locale, Strings> = {
     accept: "Accept & upload",
     cancel: "Cancel",
     switchCamera: "Switch camera",
-    permissionDenied:
-      "Camera access was denied. Click the camera 🎥 or lock 🔒 icon in the browser address bar, choose 'Allow', then tap 'Try again'.",
+    permissionDenied: "Camera access is blocked for this site.",
+    permissionDeniedTitle: "Camera blocked",
+    permissionStep1: "Click the lock 🔒 or camera 📷 icon next to the address bar",
+    permissionStep2: "Set Camera to 'Allow'",
+    permissionStep3: "Click 'Try Again' below — the browser will then prompt you",
     unavailable:
       "Could not connect to the camera. Try again or upload a file instead.",
     hardwareMissing:
@@ -132,8 +145,11 @@ const I18N: Record<Locale, Strings> = {
     accept: "Übernehmen & hochladen",
     cancel: "Abbrechen",
     switchCamera: "Kamera wechseln",
-    permissionDenied:
-      "Kamerazugriff wurde verweigert. Klicken Sie auf das Kamera- 🎥 oder Schloss-Symbol 🔒 in der Adressleiste, wählen Sie 'Zulassen' und tippen Sie dann auf 'Erneut versuchen'.",
+    permissionDenied: "Der Kamerazugriff ist für diese Seite gesperrt.",
+    permissionDeniedTitle: "Kamera gesperrt",
+    permissionStep1: "Klicken Sie auf das Schloss- 🔒 oder Kamera-Symbol 📷 neben der Adressleiste",
+    permissionStep2: "Kamera auf 'Zulassen' setzen",
+    permissionStep3: "Klicken Sie unten auf 'Erneut versuchen' — der Browser fragt Sie dann",
     unavailable:
       "Verbindung zur Kamera fehlgeschlagen. Versuchen Sie es erneut oder laden Sie eine Datei hoch.",
     hardwareMissing:
@@ -167,8 +183,11 @@ const I18N: Record<Locale, Strings> = {
     accept: "Valider et envoyer",
     cancel: "Annuler",
     switchCamera: "Changer de caméra",
-    permissionDenied:
-      "L'accès à la caméra a été refusé. Cliquez sur l'icône caméra 🎥 ou cadenas 🔒 dans la barre d'adresse, choisissez 'Autoriser', puis appuyez sur 'Réessayer'.",
+    permissionDenied: "L'accès à la caméra est bloqué pour ce site.",
+    permissionDeniedTitle: "Caméra bloquée",
+    permissionStep1: "Cliquez sur l'icône cadenas 🔒 ou caméra 📷 à côté de la barre d'adresse",
+    permissionStep2: "Mettez la Caméra sur 'Autoriser'",
+    permissionStep3: "Cliquez sur 'Réessayer' ci-dessous — le navigateur vous demandera alors",
     unavailable:
       "Impossible de se connecter à la caméra. Réessayez ou téléversez un fichier.",
     hardwareMissing:
@@ -627,12 +646,32 @@ export function CameraCaptureDialog({
             data-testid="camera-stage"
           >
             {error ? (
-              <div
-                className="flex h-full w-full items-center justify-center p-6 text-center text-sm text-white"
-                data-testid="text-camera-error"
-              >
-                {error}
-              </div>
+              blockReason === "permission" ? (
+                // Structured step-by-step guide — much clearer than a text
+                // blob when the user's browser has camera blocked and they
+                // need to know exactly where to click to unblock it.
+                <div
+                  className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center text-white"
+                  data-testid="text-camera-error"
+                >
+                  <VideoOff className="h-10 w-10 opacity-50" />
+                  <p className="text-sm font-semibold">{t.permissionDeniedTitle}</p>
+                  <ol
+                    className={`text-xs space-y-2 opacity-90 list-decimal ${isRtl ? "pr-4 text-right" : "pl-4 text-left"}`}
+                  >
+                    <li>{t.permissionStep1}</li>
+                    <li>{t.permissionStep2}</li>
+                    <li>{t.permissionStep3}</li>
+                  </ol>
+                </div>
+              ) : (
+                <div
+                  className="flex h-full w-full items-center justify-center p-6 text-center text-sm text-white"
+                  data-testid="text-camera-error"
+                >
+                  {error}
+                </div>
+              )
             ) : snapshot ? (
               <>
                 <img
