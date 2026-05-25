@@ -26,10 +26,8 @@ export interface PublicCurrency {
   symbol: string;
 }
 
-function defaultFor(locale: Locale): PublicCurrency {
-  return locale === "ar"
-    ? { code: "SAR", symbol: "ر.س" }
-    : { code: "SAR", symbol: "SAR" };
+function defaultFor(_locale: Locale): PublicCurrency {
+  return { code: "USD", symbol: "$" };
 }
 
 function readStorage(): PublicCurrency | null {

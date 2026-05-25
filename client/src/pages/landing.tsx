@@ -50,9 +50,9 @@ function getCopy(locale: Locale) {
       h1b: ar ? "مديرُك المالي." : "Your auditor. Your CFO.",
       h1c: ar ? "في ذكاءٍ واحدٍ — لا ينام." : "Replaced by one AI that doesn't sleep.",
       sub: ar
-        ? "لا تستأجر محاسباً. لا تنتظر تدقيقاً ربعيّاً. ذكاءٌ مُدرَّبٌ على IFRS وZATCA يقرأ كلّ فاتورة، يُسجّل كلّ قيد، ويُدقّق كلّ تسوية — في اللحظة التي تحدث."
-        : "Don't hire a bookkeeper. Don't wait on a quarterly audit. An AI trained on IFRS and ZATCA reads every receipt, posts every entry, and audits every reconciliation — the moment it happens.",
-      subEm: ar ? " بالعربيّة. بمعيار التدقيق." : " In Arabic. At audit grade.",
+        ? "لا تستأجر محاسباً. لا تنتظر تدقيقاً ربعيّاً. ذكاءٌ مُدرَّبٌ على IFRS والمعايير الدوليّة يقرأ كلّ فاتورة، يُسجّل كلّ قيد، ويُدقّق كلّ تسوية — في اللحظة التي تحدث."
+        : "Don't hire a bookkeeper. Don't wait on a quarterly audit. An AI trained on IFRS and global accounting standards reads every receipt, posts every entry, and audits every reconciliation — the moment it happens.",
+      subEm: ar ? " بأيّ لغة. بمعيار التدقيق." : " In any language. At audit grade.",
       ctaPrimary: ar ? "افتح التطبيق" : "Open the app",
       ctaSecondary: ar ? "شاهده يشتغل" : "Watch it work",
       ctaTertiary: ar ? "تسجيل الدخول" : "Sign in",
@@ -63,7 +63,7 @@ function getCopy(locale: Locale) {
       bullets: ar
         ? ["بدون بطاقة ائتمان", "١٤ يوماً مجاناً، بكلّ المزايا", "جاهز خلال ٥ دقائق"]
         : ["No credit card", "Full 14-day trial", "Set up in 5 minutes"],
-      certBadge: ar ? "مُعتمَد من ZATCA · المرحلة الثانية" : "ZATCA-cleared · Phase 2",
+      certBadge: ar ? "مُوافِق لـ IFRS · SOC 2 Type II" : "IFRS-compliant · SOC 2 Type II",
       countriesLabel: ar ? "يعمل في" : "Live in",
       countries: [
         { f: "🇸🇦", n: ar ? "السعوديّة" : "KSA" },
@@ -74,7 +74,7 @@ function getCopy(locale: Locale) {
         { f: "🇯🇴", n: ar ? "الأردن"     : "Jordan" },
       ],
       mockTitle: ar ? "cockpit · محاسب ذكي" : "cockpit · Smart Accountant",
-      chipAuto: { t: ar ? "قيد سُجِّل تلقائيّاً" : "Entry auto-posted", s: ar ? "فاتورة كهرباء · ١٥٠ ر.س" : "Electricity invoice · SAR 150" },
+      chipAuto: { t: ar ? "قيد سُجِّل تلقائيّاً" : "Entry auto-posted", s: ar ? "فاتورة كهرباء · $١٥٠" : "Electricity invoice · $150" },
       chipProfit: { t: ar ? "هامش الربح ↑ ١٢٪" : "Profit margin ↑ 12%", s: ar ? "هذا الربع" : "Current quarter" },
       kpis: {
         revenue: ar ? "الإيرادات" : "Revenue",
@@ -101,15 +101,15 @@ function getCopy(locale: Locale) {
       sub2: ar ? "" : "",
       sub3: ar ? "" : "",
       pillars: ar ? [
-        { l: "ZATCA المرحلة ٢", c: "فوترة إلكترونيّة معتمدة (Cleared)", k: "shield" },
+        { l: "فوترة إلكترونيّة عالميّة", c: "EN 16931 · PEPPOL · UBL — معايير دوليّة", k: "shield" },
         { l: "IFRS 15 · 16 · 9", c: "إيراد · إيجار · أدوات ماليّة", k: "scale" },
-        { l: "PDPL · GDPR", c: "خصوصيّة بمعيار التحالف الأوروبيّ", k: "lock" },
-        { l: "٧ هيئات تنظيميّة", c: "ZATCA · FTA · ETA · GAZT · CBB · QFC · OTA", k: "globe" },
+        { l: "GDPR · PDPL · CCPA", c: "خصوصيّة بمعيار التحالف الأوروبيّ والأمريكيّ", k: "lock" },
+        { l: "+٣٠ هيئة تنظيميّة", c: "IASB · SEC · FCA · PCAOB · FTA · ETA · CBB · ISTD", k: "globe" },
       ] : [
-        { l: "ZATCA Phase 2", c: "Cleared e-invoicing, end-to-end", k: "shield" },
+        { l: "Global e-invoicing", c: "EN 16931 · PEPPOL · UBL — open standards", k: "shield" },
         { l: "IFRS 15 · 16 · 9", c: "Revenue · leases · instruments", k: "scale" },
-        { l: "PDPL · GDPR", c: "EU-grade privacy posture, day one", k: "lock" },
-        { l: "7 regulators covered", c: "ZATCA · FTA · ETA · GAZT · CBB · QFC · OTA", k: "globe" },
+        { l: "GDPR · PDPL · CCPA", c: "EU, US, and MENA-grade privacy posture", k: "lock" },
+        { l: "30+ regulators covered", c: "IASB · SEC · FCA · PCAOB · FTA · ETA · CBB · ISTD", k: "globe" },
       ],
       metrics: [
         { v: ar ? "٢.٤ مليار+" : "$2.4B+",  l: ar ? "قيمة قيود مُسجَّلة" : "in posted entries" },
@@ -130,12 +130,12 @@ function getCopy(locale: Locale) {
         : "The answer is Smart Accountant: a complete IFRS-compliant accounting system with an AI layer that works from the roots — not bolted on top.",
       principles: ar ? [
         { n: "01", t: "ذكاء حقيقيّ، لا مجرّد واجهة", b: "الذكاء الاصطناعيّ هنا ليس ميزة مضافة، بل قلب النظام. يقرأ الفاتورة، يصنّفها، يقترح القيد الصحيح وفق IFRS، ويتعلّم من تعديلاتك. تكتب «دفعت ١٢٠ للمورّد»، فيكتمل القيد بنفسه." },
-        { n: "02", t: "محلّيّ بعمق، عالميّ بمعيار", b: "ضريبة القيمة المضافة، الزكاة، التأمينات، مكافأة نهاية الخدمة، إجازات العمل، التقويم الهجريّ — جاهزة في سبع دول. والأساس دائماً IFRS، فدفاترك يقرأها المدقّق في الرياض والمستثمر في لندن بالمنطق نفسه." },
+        { n: "02", t: "عالميّ بعمق، دوليّ بمعيار", b: "ضريبة القيمة المضافة، التأمينات الاجتماعيّة، مكافأة نهاية الخدمة، تعدّد العملات والتقويمات — جاهزة في أكثر من ثلاثين دولة. والأساس دائماً IFRS، فدفاترك يقرأها المدقّق في الرياض والمستثمر في لندن والمدير في فرانكفورت بالمنطق نفسه." },
         { n: "03", t: "أرقام تستحقّ الثقة", b: "كلّ قيد مزدوج، متوازن، مرتبط بمستند، له أثر تدقيق لا يُمسّ. المعادلات تُراجَع لحظيّاً. لا حقول مفتوحة، ولا أرقام «تقريبيّة»، ولا مفاجآت في آخر السنة." },
         { n: "04", t: "أداة قرار، لا مجرّد دفتر", b: "مركز قيادة حيّ يقيس صحّة شركتك، يتوقّع تدفّقك النقديّ، يحاكي سيناريوهات «ماذا لو؟»، ويُحدّثك بعربيّة واضحة عبر مساعد ذكيّ يفهم سياقك الماليّ." },
       ] : [
         { n: "01", t: "Real intelligence, not a sticker on top", b: "AI isn't a side feature. It reads your invoice, classifies it, proposes the correct IFRS entry, and learns from your corrections. Type \"paid 120 to vendor\" and the full entry posts itself." },
-        { n: "02", t: "Local where it matters, global by design", b: "VAT, Zakat, social insurance, end-of-service, work calendars, Ramadan — built in for seven countries. The base is always IFRS, so your books read the same to an auditor in Riyadh and an investor in London." },
+        { n: "02", t: "Global by design, local where it counts", b: "VAT, social insurance, end-of-service, multi-currency, work calendars — built in for 30+ countries. The base is always IFRS, so your books read the same to an auditor in Riyadh, an investor in London, and a director in Frankfurt." },
         { n: "03", t: "Numbers you can trust", b: "Every entry is double-entry, balanced, with a digital source and immutable audit trail. Equations validate live. No free-form fields, no \"approximate\" numbers, no year-end surprises." },
         { n: "04", t: "Built for decisions, not just records", b: "A live decision cockpit measuring your business health, forecasting cash, simulating \"what-if?\", and reaching you in clear language from an AI assistant that understands your financial context." },
       ],
@@ -162,16 +162,16 @@ function getCopy(locale: Locale) {
         tag: ar ? "الذكاء" : "AI",
         title: ar ? "المساعد المحاسبيّ" : "Accounting assistant",
         body: ar ? "اكتب بالعربيّة. صوّر فاتورتك. اطلب تقريرك." : "Talk in your language. Snap an invoice. Ask for a report.",
-        chat1: ar ? "سجّل ١٢٠٠ ر.س تسويقاً نقديّاً" : "Post 1,200 marketing expense in cash",
+        chat1: ar ? "سجّل $١٢٠٠ تسويقاً نقديّاً" : "Post $1,200 marketing expense in cash",
         chat2: ar
-          ? "تمّ. القيد #٢٤٧٨ متوازن، وإجمالي التسويق هذا الشهر ٤,١٠٠ ر.س."
-          : "Done. Entry #2478 is balanced; marketing this month is 4,100.",
+          ? "تمّ. القيد #٢٤٧٨ متوازن، وإجمالي التسويق هذا الشهر $٤٬١٠٠."
+          : "Done. Entry #2478 is balanced; marketing this month is $4,100.",
       },
       local: {
-        title: ar ? "سبع دول، حزمة محلّيّة لكلّ منها" : "Seven countries, a local pack for each",
+        title: ar ? "+٣٠ دولة، حزمة جاهزة لكلّ منها" : "30+ countries, a ready pack for each",
         body: ar
-          ? "ضريبة القيمة المضافة، الزكاة، التأمينات الاجتماعيّة، حساب نهاية الخدمة، إجازات العمل والتقويم الهجريّ — جاهزة في كلّ دولة."
-          : "VAT, Zakat, social insurance, end-of-service formulas, work calendars and the Hijri calendar — preconfigured per country.",
+          ? "ضريبة القيمة المضافة، التأمينات الاجتماعيّة، حساب نهاية الخدمة، تعدّد العملات والتقويمات — جاهزة في كلّ دولة ومُحدَّثة تلقائيّاً."
+          : "VAT, social insurance, end-of-service formulas, multi-currency and work calendars — pre-configured per country and auto-updated.",
         chips: ar
           ? ["السعوديّة", "الإمارات", "مصر", "الكويت", "قطر", "الأردنّ", "International"]
           : ["Saudi Arabia", "UAE", "Egypt", "Kuwait", "Qatar", "Jordan", "International"],
@@ -223,8 +223,8 @@ function getCopy(locale: Locale) {
       mockTitle: ar ? "assistant · محاسب ذكي" : "assistant · Smart Accountant",
       chat: {
         u1: ar
-          ? "أرفقت فاتورة كهرباء بـ ٤٥٠ ر.س. سجّلها، وقل لي أين نقف من ميزانيّة المرافق."
-          : "I uploaded a 450 utility invoice. Post it and tell me where we stand against the utilities budget.",
+          ? "أرفقت فاتورة كهرباء بـ $٤٥٠. سجّلها، وقل لي أين نقف من ميزانيّة المرافق."
+          : "I uploaded a $450 utility invoice. Post it and tell me where we stand against the utilities budget.",
         a1Pre: ar ? "تمّ. أنشأتُ القيد " : "Done. Created entry ",
         a1Num: ar ? "#٢٤٨١" : "#2481",
         utilities: ar ? "مصروف مرافق" : "Utilities expense",
@@ -261,13 +261,13 @@ function getCopy(locale: Locale) {
       },
       alerts: {
         title: ar ? "تنبيهات" : "Alerts",
-        late: { l: ar ? "فاتورة متأخّرة" : "Overdue invoice", d: ar ? "المورّد ٣ · ٤,٥٠٠ ر.س" : "Vendor 3 · 4,500" },
-        gosi: { l: ar ? "استحقاق التأمينات" : "GOSI due", d: ar ? "خلال ٧ أيّام" : "in 7 days" },
+        late: { l: ar ? "فاتورة متأخّرة" : "Overdue invoice", d: ar ? "المورّد ٣ · $٤,٥٠٠" : "Vendor 3 · $4,500" },
+        gosi: { l: ar ? "استحقاق التأمينات" : "Insurance due", d: ar ? "خلال ٧ أيّام" : "in 7 days" },
         budget: { l: ar ? "متابعة الميزانيّة" : "Budget check", d: ar ? "التسويق · ضمن الحدّ" : "Marketing · on budget" },
       },
       coachLabel: ar ? "رؤية المساعد: " : "Assistant insight: ",
       coachBody: ar
-        ? "تجاوزت مصروفات السفر الميزانيّة الشهريّة بنسبة ١٨٪. أقترح مراجعة سياسة الموافقات على المبالغ فوق ٢,٠٠٠ ر.س."
+        ? "تجاوزت مصروفات السفر الميزانيّة الشهريّة بنسبة ١٨٪. أقترح مراجعة سياسة الموافقات على المبالغ الكبيرة."
         : "Travel spend is 18% over the monthly budget. Suggest reviewing the approval policy for items above 2,000.",
       legend: ["Cash Forecast", "Health Score", "What-If Simulator", "Smart Alerts", "AI Coach"],
     },
@@ -319,12 +319,12 @@ function getCopy(locale: Locale) {
         { tone: "ok",     t: "Double-entry balance",    d: "42 entries — net zero, fully balanced.",            tag: "OK"  },
       ],
       jurisdictions: ar ? [
-        { c: "السعوديّة", r: "ضريبة القيمة المضافة · الزكاة · ZATCA Phase 2" },
+        { c: "السعوديّة", r: "ضريبة القيمة المضافة · الزكاة · فوترة إلكترونيّة" },
         { c: "الإمارات",   r: "VAT · UAE Corporate Tax · FTA e-invoicing" },
         { c: "مصر",       r: "VAT · ضريبة الدخل · الفوترة الإلكترونيّة" },
         { c: "الكويت",     r: "ضريبة الدخل للشركات · الزكاة" },
       ] : [
-        { c: "Saudi Arabia", r: "VAT · Zakat · ZATCA Phase 2"         },
+        { c: "Saudi Arabia", r: "VAT · Zakat · e-invoicing"            },
         { c: "UAE",          r: "VAT · UAE Corporate Tax · FTA e-inv." },
         { c: "Egypt",        r: "VAT · Income tax · e-invoicing"       },
         { c: "Kuwait",       r: "Corporate income tax · Zakat"         },
@@ -335,66 +335,66 @@ function getCopy(locale: Locale) {
       eyebrow: ar ? "التكاملات" : "Integrations",
       title: ar ? "متّصلٌ بكلِّ ما تستخدمُه شركتُك بالفعل." : "Plugs into the stack your business already runs on.",
       lead: ar
-        ? "ZATCA المرحلة الثانية، البنوك السعوديّة، منصّات التجارة المحلّيّة، ومدفوعات الخليج — كلّها مربوطة من اليوم الأوّل، بلا وسطاء ولا تحويلات يدويّة."
-        : "ZATCA Phase 2, Saudi banks, regional commerce platforms, and Gulf payment rails — wired in from day one. No middleware, no manual exports.",
+        ? "هيئات تنظيميّة عالميّة، بنوك دوليّة، منصّات تجارة ومدفوعات في كلّ منطقة — كلّها مربوطة من اليوم الأوّل، بلا وسطاء ولا تحويلات يدويّة."
+        : "Global regulators, international banks, commerce platforms, and payment rails across every region — wired in from day one. No middleware, no manual exports.",
       groups: ar ? [
         {
-          k: "compliance", t: "الامتثال والفوترة",
+          k: "compliance", t: "الامتثال والفوترة الدوليّة",
           items: [
-            { n: "ZATCA · المرحلة ٢", b: "ربطٌ مباشرٌ مع فاتورة" },
-            { n: "هيئة الزكاة",        b: "إقرارات تلقائيّة" },
-            { n: "GAZT · مصر",         b: "الفوترة الإلكترونيّة" },
-            { n: "FTA · الإمارات",     b: "VAT + ضريبة الشركات" },
+            { n: "PEPPOL · EN 16931", b: "فوترة إلكترونيّة عالميّة" },
+            { n: "IASB · IFRS",       b: "معايير دوليّة محدَّثة" },
+            { n: "FTA · ETA · MoF",   b: "امتثال متعدّد الدول" },
+            { n: "FCA · SEC · PCAOB", b: "أسواق رأس المال" },
           ],
         },
         {
           k: "banks", t: "البنوك",
           items: [
-            { n: "الراجحي",       b: "كشوفات + مطابقة" },
-            { n: "الأهلي السعودي", b: "Open Banking" },
-            { n: "الإمارات NBD",   b: "API مباشر" },
-            { n: "QNB",            b: "Bank feeds" },
+            { n: "HSBC · Citi",        b: "Open Banking API" },
+            { n: "Emirates NBD",        b: "API مباشر" },
+            { n: "QNB · Mashreq",       b: "Bank feeds" },
+            { n: "SWIFT · SEPA",        b: "تحويلات دوليّة" },
           ],
         },
         {
           k: "commerce", t: "التجارة والمدفوعات",
           items: [
-            { n: "سلّة",     b: "مزامنة طلبات + مخزون" },
-            { n: "زِد",      b: "Webhook لحظيّ" },
-            { n: "فودكس",    b: "نقاط بيع المطاعم" },
-            { n: "Mada",     b: "تسوية البطاقات" },
-            { n: "STC Pay",  b: "محفظة رقميّة" },
+            { n: "Stripe",    b: "مدفوعات عالميّة" },
+            { n: "Shopify",   b: "مزامنة طلبات + مخزون" },
+            { n: "PayPal",    b: "محفظة رقميّة دوليّة" },
             { n: "Apple Pay", b: "بطاقات + iOS" },
+            { n: "WooCommerce", b: "Webhook لحظيّ" },
+            { n: "Amazon Pay", b: "تسوية البطاقات" },
           ],
         },
       ] : [
         {
-          k: "compliance", t: "Compliance & e-invoicing",
+          k: "compliance", t: "Global compliance & e-invoicing",
           items: [
-            { n: "ZATCA · Phase 2",   b: "Direct Fatoora link" },
-            { n: "Saudi Zakat Auth.",  b: "Automated returns" },
-            { n: "Egypt e-Tax",        b: "e-invoicing" },
-            { n: "UAE FTA",            b: "VAT + Corp Tax" },
+            { n: "PEPPOL · EN 16931", b: "Global e-invoice standards" },
+            { n: "IASB · IFRS",       b: "International standards, live" },
+            { n: "FTA · ETA · MoF",   b: "Multi-country compliance" },
+            { n: "FCA · SEC · PCAOB", b: "Capital market regulators" },
           ],
         },
         {
           k: "banks", t: "Banks",
           items: [
-            { n: "Al Rajhi",           b: "Statements + match" },
-            { n: "Saudi National",     b: "Open Banking" },
-            { n: "Emirates NBD",       b: "Direct API" },
-            { n: "QNB",                b: "Bank feeds" },
+            { n: "HSBC · Citi",        b: "Open Banking API" },
+            { n: "Emirates NBD",        b: "Direct API" },
+            { n: "QNB · Mashreq",       b: "Bank feeds" },
+            { n: "SWIFT · SEPA",        b: "International transfers" },
           ],
         },
         {
           k: "commerce", t: "Commerce & payments",
           items: [
-            { n: "Salla",     b: "Order + inventory sync" },
-            { n: "Zid",       b: "Live webhooks" },
-            { n: "Foodics",   b: "F&B point of sale" },
-            { n: "Mada",      b: "Card settlement" },
-            { n: "STC Pay",   b: "Digital wallet" },
-            { n: "Apple Pay", b: "Cards + iOS" },
+            { n: "Stripe",      b: "Global payments" },
+            { n: "Shopify",     b: "Order + inventory sync" },
+            { n: "PayPal",      b: "Digital wallet" },
+            { n: "Apple Pay",   b: "Cards + iOS" },
+            { n: "WooCommerce", b: "Live webhooks" },
+            { n: "Amazon Pay",  b: "Card settlement" },
           ],
         },
       ],
@@ -416,21 +416,17 @@ function getCopy(locale: Locale) {
         ? "ثلاثُ مواقفَ، لا ثلاثُ حِزَم. كلّ موقفٍ يفتحُ قدراً مختلفاً من السيطرة على رقمِك التالي."
         : "Three postures, not three plans. Each one unlocks a different degree of control over your next number.",
       billing: { monthly: ar ? "شهريّاً" : "Monthly", yearly: ar ? "سنويّاً · وفّر ٢٠٪" : "Yearly · save 20%" },
-      // Note: pricing-tier currency is rendered against this string. The
-      // Hero/LiveJournalTheatre theatres compute their own dynamic symbol
-      // from usePublicCurrency(). Pricing copy itself is denominated in
-      // SAR by the marketing team, so we keep the static SAR label here.
-      currency: ar ? "ر.س" : "SAR",
+      currency: "$",
       perMonth: ar ? "/شهريّاً" : "/mo",
       mostPopular: ar ? "الموقفُ الأمثل" : "Optimal posture",
       inactionLabel: ar ? "كلفةُ الانتظار · في الشهر" : "Cost of waiting · per month",
       inaction: ar ? [
         { v: "٤٢ ساعة", t: "مطابقةٌ يدويّة في جداول Excel" },
-        { v: "٣ مخاطر",  t: "تأخير ZATCA أو خطأ ضريبيّ" },
+        { v: "٣ مخاطر",  t: "خطأ ضريبيّ أو تأخير امتثال" },
         { v: "قرارٌ فائت", t: "تحرّكٌ متأخّرٌ على رقمٍ ميّت" },
       ] : [
         { v: "42 hrs",   t: "manual reconciliation in spreadsheets" },
-        { v: "3 risks",  t: "ZATCA delays or VAT errors" },
+        { v: "3 risks",  t: "compliance errors or missed tax deadlines" },
         { v: "1 missed", t: "decision made on a stale number" },
       ],
       forecastCaption: ar ? "ما يراه ذكاؤنا الاستراتيجيّ" : "What our strategic AI sees",
@@ -438,26 +434,26 @@ function getCopy(locale: Locale) {
         {
           k: "starter", n: "Starter", posture: "اِبدأ بنظافة",
           desc: "للمؤسّسين والشركات الناشئة.",
-          price: "٢٤٩",
+          price: "٥٠",
           features: [
             "حتى ٣ مستخدمين",
-            "ZATCA Phase 2 + الزكاة",
+            "فوترة إلكترونيّة دوليّة (PEPPOL)",
             "حتى ٥٠٠ فاتورة شهريّاً",
-            "بنك واحد + سلّة/زِد",
+            "ربط بنكيّ واحد + تكامل تجارة",
             "تقارير IFRS الأساسيّة",
-            "دعم بالعربيّة عبر البريد",
+            "دعم أولويّ عبر البريد",
           ],
           cta: "ابدأ مجّاناً",
         },
         {
           k: "growth", n: "Growth", posture: "اِقرأ المستقبل", popular: true,
           desc: "للفرق الماليّة المتنامية.",
-          price: "٧٤٩",
+          price: "٩٠",
           features: [
             "حتى ١٠ مستخدمين بصلاحيّات دقيقة",
             "ذكاء استراتيجيّ + توقّع ٢٤ شهراً",
             "فواتير غير محدودة",
-            "كلّ التكاملات المحلّيّة + بنوك",
+            "جميع التكاملات العالميّة + بنوك",
             "متعدّد العملات والشركات",
             "محاكي «ماذا لو»",
             "دعم أولويّة + onboarding مخصّص",
@@ -467,7 +463,7 @@ function getCopy(locale: Locale) {
         {
           k: "enterprise", n: "Enterprise", posture: "اِحكُم المنظومة",
           desc: "للمجموعات والشركات الكبرى.",
-          price: ar ? "تواصل معنا" : "Custom",
+          price: "تواصل معنا",
           customPrice: true,
           features: [
             "مستخدمون غير محدودين",
@@ -484,26 +480,26 @@ function getCopy(locale: Locale) {
         {
           k: "starter", n: "Starter", posture: "Start clean",
           desc: "For founders and early-stage teams.",
-          price: "249",
+          price: "50",
           features: [
             "Up to 3 users",
-            "ZATCA Phase 2 + Zakat",
+            "Global e-invoicing (PEPPOL)",
             "500 invoices per month",
-            "1 bank feed + Salla/Zid",
+            "1 bank feed + commerce integration",
             "Core IFRS reports",
-            "Arabic email support",
+            "Priority email support",
           ],
           cta: "Start free",
         },
         {
           k: "growth", n: "Growth", posture: "Read the future", popular: true,
           desc: "For growing finance teams.",
-          price: "749",
+          price: "90",
           features: [
             "Up to 10 users with fine-grained roles",
             "Strategic intelligence + 24-mo forecast",
             "Unlimited invoices",
-            "All local integrations + banks",
+            "All global integrations + bank feeds",
             "Multi-currency · multi-entity",
             "“What-if” simulator",
             "Priority support + onboarding",
@@ -513,7 +509,7 @@ function getCopy(locale: Locale) {
         {
           k: "enterprise", n: "Enterprise", posture: "Command the system",
           desc: "For groups and large enterprises.",
-          price: "Custom",
+          price: "Contact us",
           customPrice: true,
           features: [
             "Unlimited users",
@@ -625,7 +621,7 @@ function getCopy(locale: Locale) {
             "قيود مزدوجة آليّة، قابلة للمراجعة",
             "تطابق فوريّ بين الأستاذ العامّ والقوائم",
             "أثر تدقيق كامل لكلّ قيد ولكلّ تعديل",
-            "تصدير مباشر للهيئة · ZATCA-ready",
+            "تصدير مباشر للجهات التنظيميّة · جاهز دوليّاً",
           ],
         },
         {
@@ -662,7 +658,7 @@ function getCopy(locale: Locale) {
             "Auto, reviewable double-entry bookkeeping",
             "Instant GL-to-statements reconciliation",
             "Full audit trail per entry and per edit",
-            "Direct authority export, ZATCA-ready",
+            "Direct regulatory export, globally ready",
           ],
         },
         {
@@ -704,7 +700,7 @@ function getCopy(locale: Locale) {
       ] as const,
       countries: [
         {
-          k: "sa", flag: "🇸🇦", n: ar ? "السعوديّة" : "Saudi Arabia", regulator: "ZATCA",
+          k: "sa", flag: "🇸🇦", n: ar ? "السعوديّة" : "Saudi Arabia", regulator: "GAZT",
           ds: [
             { m: 1,  k: "vat",     t: ar ? "إقرار VAT يناير" : "VAT return Jan" },
             { m: 4,  k: "vat",     t: ar ? "إقرار VAT أبريل" : "VAT return Apr" },
@@ -768,8 +764,8 @@ function getCopy(locale: Locale) {
         },
       ] as const,
       caption: ar
-        ? "البيانات أعلاه مأخوذة من أحدث جداول ZATCA · FTA · ETA · MoF · GTA · ISTD. نُحدّثها أسبوعيّاً."
-        : "Sourced from the latest ZATCA · FTA · ETA · MoF · GTA · ISTD calendars. Updated weekly.",
+        ? "البيانات أعلاه مأخوذة من أحدث جداول الجهات التنظيميّة: FTA · ETA · MoF · GTA · ISTD. نُحدّثها أسبوعيّاً."
+        : "Sourced from the latest regulatory calendars: FTA · ETA · MoF · GTA · ISTD calendars. Updated weekly.",
     },
     manifesto: {
       eyebrow: ar ? "بيان" : "Manifesto",
@@ -797,9 +793,9 @@ function getCopy(locale: Locale) {
       modules: ar ? [
         {
           k: "invoice", n: "وحدة ٠١",
-          title: "فاتورة معتمدة من ZATCA — دفعة واحدة.",
-          body: "ارسم الفاتورة، أضف البنود، وأرسلها. التطبيق يحسب الضريبة، يولّد رمز QR التوقيع، ويُرسلها بطريقتك المُفضّلة — بريد، WhatsApp، أو رابط دفع.",
-          bullets: ["رمز QR متوافق مع المرحلة الثانية", "إرسال عبر WhatsApp مدمج", "قوالب لا تنتهي · علامتك التجاريّة"],
+          title: "فاتورة دوليّة معتمدة — دفعة واحدة.",
+          body: "ارسم الفاتورة، أضف البنود، وأرسلها. التطبيق يحسب الضريبة، يولّد رمز QR الموقّع وفق المعايير الدوليّة، ويُرسلها بطريقتك المُفضّلة — بريد، WhatsApp، أو رابط دفع.",
+          bullets: ["رمز QR وفق المعايير الدوليّة", "إرسال عبر WhatsApp مدمج", "قوالب لا تنتهي · علامتك التجاريّة"],
           align: "right",
         },
         {
@@ -826,15 +822,15 @@ function getCopy(locale: Locale) {
       ] : [
         {
           k: "invoice", n: "Module 01",
-          title: "ZATCA-cleared invoices — one shot.",
-          body: "Draft, add items, send. The app computes the tax, generates the signed QR, and sends it your way — email, WhatsApp, or a pay-link.",
-          bullets: ["Phase-2 compliant QR code", "WhatsApp send, built in", "Endless templates · your brand"],
+          title: "IFRS-compliant invoices — one shot.",
+          body: "Draft, add items, send. The app computes the tax, generates a signed QR per global standards, and sends it your way — email, WhatsApp, or a pay-link.",
+          bullets: ["International-standard QR code", "WhatsApp send, built in", "Endless templates · your brand"],
           align: "right",
         },
         {
           k: "vat", n: "Module 02",
           title: "A VAT return that's ready to file — one click.",
-          body: "The return self-fills all quarter. When it's due, every number is mapped to ZATCA's form. Review, file, done.",
+          body: "The return self-fills all quarter. When it's due, every number is mapped to the local regulator's form. Review, file, done.",
           bullets: ["Live ledger reconciliation", "14-day filing-deadline alerts", "Full audit trail per return line"],
           align: "left",
         },
@@ -865,12 +861,12 @@ function getCopy(locale: Locale) {
       stats: ar ? [
         { n: "+٤٬٢٠٠", l: "مالك أعمال نشط",        s: "+١٢٪ شهريّاً" },
         { n: "٧",       l: "دول · ٤ هيئات تنظيميّة", s: "السعوديّة، الإمارات، مصر…" },
-        { n: "٢٫١ مليار ر.س", l: "فُوتر عبر النظام في ٢٠٢٥", s: "بزيادة ٣٫٤× عن ٢٠٢٤" },
+        { n: "٢٫١ مليار $", l: "فُوتر عبر النظام في ٢٠٢٥", s: "بزيادة ٣٫٤× عن ٢٠٢٤" },
         { n: "٪٩٩٫٩٧",  l: "وقت تشغيل مُؤكَّد",      s: "آخر ١٢ شهراً · status.smart.sa" },
       ] : [
         { n: "4,200+",  l: "active business owners",      s: "+12% month over month" },
         { n: "7",       l: "countries · 4 regulators",    s: "KSA, UAE, Egypt, and more" },
-        { n: "SAR 2.1B+", l: "invoiced through us in 2025", s: "3.4× growth over 2024" },
+        { n: "$2.1B+", l: "invoiced through us in 2025", s: "3.4× growth over 2024" },
         { n: "99.97%",  l: "verified uptime",             s: "trailing 12 mo · status.smart.sa" },
       ],
       switchedLabel: ar ? "حلّوا محلّ:" : "Replacing:",
@@ -884,11 +880,11 @@ function getCopy(locale: Locale) {
         kpis: [
           { v: "١٤ ساعة", l: "وفّرتها أسبوعيّاً" },
           { v: "٧ أيّام",   l: "إغلاق الربع · من ١٩ يوماً" },
-          { v: "٠",          l: "موعد ZATCA فاتني" },
+          { v: "٠",          l: "موعد امتثال فاتني" },
         ],
         switched: "QuickBooks Online",
       } : {
-        q: "Nine days after launch, I closed Q1 a week early and filed VAT in two clicks. We were paying QuickBooks SAR 4K/month and an outsourced accountant twice that — today the platform does what they did and sees what they missed. Finance became a lit room, not one we feared walking into.",
+        q: "Nine days after launch, I closed Q1 a week early and filed VAT in two clicks. We were paying QuickBooks $1,000/month and an outsourced accountant twice that — today the platform does what they did and sees what they missed. Finance became a lit room, not one we feared walking into.",
         n: "Reema Khaled",
         r: "Chief Financial Officer",
         c: "Al-Waha Trading · Jeddah 🇸🇦",
@@ -896,13 +892,13 @@ function getCopy(locale: Locale) {
         kpis: [
           { v: "14 hrs", l: "recovered every week" },
           { v: "7 days",  l: "to close Q · was 19" },
-          { v: "0",       l: "ZATCA deadlines missed" },
+          { v: "0",       l: "compliance deadlines missed" },
         ],
         switched: "QuickBooks Online",
       },
       items: ar ? [
         {
-          q: "ثلاث شركات في ثلاث دول، وكنتُ أعيش بين ثلاثة أنظمة. اليوم أراها كلّها على شاشة واحدة، مُوحَّدةً بـ ر.س لحظيّاً.",
+          q: "ثلاث شركات في ثلاث دول، وكنتُ أعيش بين ثلاثة أنظمة. اليوم أراها كلّها على شاشة واحدة، مُوحَّدةً لحظيّاً بعملة موحَّدة.",
           n: "ياسر الحمّادي", r: "الرئيس التنفيذيّ",
           c: "مجموعة الحمّادي القابضة · دبي 🇦🇪",
           ind: "مجموعة قابضة", since: "منذ ٢٠٢٣",
@@ -951,7 +947,7 @@ function getCopy(locale: Locale) {
         },
       ] : [
         {
-          q: "Three companies, three countries — I used to live between three systems. Today I see them on one screen, consolidated in SAR in real time.",
+          q: "Three companies, three countries — I used to live between three systems. Today I see them on one screen, consolidated in real time.",
           n: "Yasser Al-Hammadi", r: "Chief Executive Officer",
           c: "Al-Hammadi Holding · Dubai 🇦🇪",
           ind: "Holding group", since: "Since 2023",
@@ -983,7 +979,7 @@ function getCopy(locale: Locale) {
           switched: "Excel + Google Drive",
         },
         {
-          q: "We used to pay an outside accountant SAR 4,500/month. Today we own the system, the reports, and the time — at one-third the cost.",
+          q: "We used to pay an outside accountant $1,200/month. Today we own the system, the reports, and the time — at one-third the cost.",
           n: "Khaled Al-Mu'asher", r: "Founder",
           c: "Knafeh & Co. · Amman 🇯🇴",
           ind: "Restaurants & hospitality", since: "Since 2024",
@@ -1961,10 +1957,10 @@ const AI_ENGINES: Engine[] = [
   },
   {
     icon: ScrollText, family: "compliance",
-    modelAr: "زكاة · ZATCA-Optimizer", modelEn: "ZATCA-Optimizer",
-    titleAr: "تحسين زكويّ وضريبيّ",     titleEn: "Tax & ZATCA optimization",
-    oneLinerAr: "يُجهّز الإقرارات بصيغة ZATCA Phase 2 مباشرةً، ويُقترح خصومات مشروعة.",
-    oneLinerEn: "Prepares ZATCA Phase-2 returns directly, surfaces lawful deductions.",
+    modelAr: "امتثال · Tax-Optimizer", modelEn: "Compliance · Tax-Optimizer",
+    titleAr: "تحسين ضريبيّ وامتثال",     titleEn: "Tax optimization & compliance",
+    oneLinerAr: "يُجهّز الإقرارات الضريبيّة للجهات التنظيميّة تلقائيّاً، ويُقترح خصومات مشروعة.",
+    oneLinerEn: "Prepares tax returns for all supported regulators automatically, surfaces lawful deductions.",
     metricAr: "٠ خطأ", metricEn: "0 errors", metricLabelAr: "في آخر ١٢ شهراً", metricLabelEn: "in last 12 months",
   },
   {
@@ -2235,7 +2231,7 @@ function CompressionMoment({ t }: { t: Dict }) {
           {[
             { kAr: "تسوية بنكيّة", kEn: "Bank reconciliation", vAr: "ثوانٍ", vEn: "seconds" },
             { kAr: "إقفال شهري", kEn: "Monthly close", vAr: "ساعتان", vEn: "2 hours" },
-            { kAr: "تدقيق ZATCA", kEn: "ZATCA audit", vAr: "فوريّ", vEn: "instant" },
+            { kAr: "تدقيق امتثال", kEn: "Compliance audit", vAr: "فوريّ", vEn: "instant" },
           ].map((s, i) => (
             <div key={i} className="text-center">
               <div className={cn(eyebrowCls(ar, "text-background/45 mb-2 justify-center"))}>
@@ -3351,7 +3347,7 @@ function InvoiceMock({ t }: { t: Dict }) {
           <div className="flex flex-col items-end gap-1.5">
             <Badge variant="brand" size="sm" className="font-mono text-2xs">
               <ShieldCheck className="size-3" />
-              ZATCA · {ar ? "المرحلة ٢" : "Phase 2"}
+              IFRS · {ar ? "معتمَد" : "Compliant"}
             </Badge>
             <span className="text-2xs text-muted-foreground">{ar ? "إلى" : "To"}: {ar ? "شركة الجوهرة للاستثمار" : "Al-Jawhara Investments Co."}</span>
           </div>
@@ -3392,7 +3388,7 @@ function InvoiceMock({ t }: { t: Dict }) {
             <div className="flex justify-between pt-1.5 mt-1.5 border-t border-border/60">
               <span className="text-sm font-semibold text-foreground">{ar ? "الإجماليّ المستحقّ" : "Total due"}</span>
               <span className="font-mono text-sm font-semibold text-foreground tabular-nums">
-                {ar ? "٨٬٠٥٠٫٠٠ ر.س" : "SAR 8,050.00"}
+                {ar ? "٨٬٠٥٠٫٠٠ $" : "$8,050.00"}
               </span>
             </div>
           </div>
@@ -3566,7 +3562,7 @@ function VatReturnMock({ t }: { t: Dict }) {
             className="inline-flex items-center gap-1.5 rounded-md border border-primary bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium"
           >
             <ShieldCheck className="size-3.5" />
-            {ar ? "تقديم لـ ZATCA" : "Submit to ZATCA"}
+            {ar ? "تقديم للجهة التنظيميّة" : "Submit to regulator"}
           </button>
           <div className="ms-auto text-2xs text-muted-foreground font-mono">
             {ar ? "أثر تدقيق · ٤٢ بنداً مرتبطاً" : "Audit trail · 42 linked entries"}
@@ -3581,13 +3577,13 @@ function VatReturnMock({ t }: { t: Dict }) {
 function MultiOrgMock({ t }: { t: Dict }) {
   const ar = t.ar
   const orgs = ar ? [
-    { f: "🇸🇦", n: "محاسب ذكي · المملكة",   c: "ر.س", b: "١٫٢٤ مليون", reg: "ZATCA",  ok: true },
+    { f: "🇸🇦", n: "محاسب ذكي · المملكة",   c: "$", b: "١٫٢٤ مليون", reg: "GAZT",  ok: true },
     { f: "🇦🇪", n: "Smart Accountant FZ",  c: "د.إ", b: "٨٤٠ ألف",     reg: "FTA",    ok: true },
     { f: "🇪🇬", n: "محاسب ذكي · مصر",       c: "ج.م", b: "٤٫٢٠ مليون",  reg: "ETA",    ok: true },
     { f: "🇰🇼", n: "محاسب ذكي · الكويت",    c: "د.ك", b: "٢٢٠ ألف",     reg: "—",      ok: true },
     { f: "🇯🇴", n: "محاسب ذكي · الأردن",    c: "د.أ", b: "١١٢ ألف",     reg: "ISTD",   ok: false },
   ] : [
-    { f: "🇸🇦", n: "Smart Accountant · KSA",  c: "SAR", b: "1.24M",  reg: "ZATCA", ok: true },
+    { f: "🇸🇦", n: "Smart Accountant · KSA",  c: "$", b: "1.24M",  reg: "GAZT", ok: true },
     { f: "🇦🇪", n: "Smart Accountant FZ",     c: "AED", b: "840K",   reg: "FTA",   ok: true },
     { f: "🇪🇬", n: "Smart Accountant · EG",   c: "EGP", b: "4.20M",  reg: "ETA",   ok: true },
     { f: "🇰🇼", n: "Smart Accountant · KW",   c: "KWD", b: "220K",   reg: "—",     ok: true },
@@ -3615,7 +3611,7 @@ function MultiOrgMock({ t }: { t: Dict }) {
             <div className="text-lg font-semibold text-foreground">{ar ? "٥ كيانات · ٤ عملات" : "5 entities · 4 currencies"}</div>
           </div>
           <div className="text-end">
-            <div className="text-2xs text-muted-foreground">{ar ? "مُوحَّد بـ ر.س" : "Consolidated in SAR"}</div>
+            <div className="text-2xs text-muted-foreground">{ar ? "مُوحَّد لحظيّاً" : "Consolidated in real time"}</div>
             <div className="font-mono text-base font-semibold text-foreground tabular-nums">
               {ar ? "٨٫٤١ مليون" : "8.41M"}
             </div>
@@ -3658,7 +3654,7 @@ function MultiOrgMock({ t }: { t: Dict }) {
               : "Consolidation runs in real time at live FX · IFRS 10"}
           </div>
           <div className="ms-auto font-mono text-2xs text-primary">
-            {ar ? "ر.س ١ ≈ د.إ ٠٫٩٨" : "SAR 1 ≈ AED 0.98"}
+            {ar ? "USD 1 ≈ AED 3.67" : "USD 1 ≈ AED 3.67"}
           </div>
         </div>
       </div>
@@ -3670,16 +3666,16 @@ function MultiOrgMock({ t }: { t: Dict }) {
 function CommandMock({ t }: { t: Dict }) {
   const ar = t.ar
   const results = ar ? [
-    { i: <Receipt className="size-3.5" />,    p: "إنشاء", t: "فاتورة لـ شركة الجوهرة · ٨٬٠٥٠ ر.س", k: "↵" },
+    { i: <Receipt className="size-3.5" />,    p: "إنشاء", t: "فاتورة لـ شركة الجوهرة · $٨٬٠٥٠", k: "↵" },
     { i: <BarChart3 className="size-3.5" />,  p: "افتح",  t: "تقرير الربح والخسارة · الربع الأوّل ٢٠٢٦", k: "⌘1" },
-    { i: <ShieldCheck className="size-3.5" />,p: "أنشئ",  t: "إقرار VAT · جاهز للتقديم لـ ZATCA",       k: "⌘V" },
-    { i: <Users className="size-3.5" />,      p: "أوقف",  t: "موافقة الدفع لـ مطعم النور · ١٬٢٠٠ ر.س",   k: "⌘P" },
+    { i: <ShieldCheck className="size-3.5" />,p: "أنشئ",  t: "إقرار VAT · جاهز للتقديم للجهة التنظيميّة",       k: "⌘V" },
+    { i: <Users className="size-3.5" />,      p: "أوقف",  t: "موافقة الدفع لـ مطعم النور · $١٬٢٠٠",   k: "⌘P" },
     { i: <Brain className="size-3.5" />,      p: "اسأل",  t: "هل التدفّق النقديّ كافٍ لرواتب فبراير؟",   k: "⌘?" },
   ] : [
-    { i: <Receipt className="size-3.5" />,    p: "New",     t: "Invoice for Al-Jawhara Co. · SAR 8,050", k: "↵" },
+    { i: <Receipt className="size-3.5" />,    p: "New",     t: "Invoice for Al-Jawhara Co. · $8,050", k: "↵" },
     { i: <BarChart3 className="size-3.5" />,  p: "Open",    t: "P&L report · Q1 2026",                   k: "⌘1" },
-    { i: <ShieldCheck className="size-3.5" />,p: "Generate",t: "VAT return · ready to file with ZATCA",  k: "⌘V" },
-    { i: <Users className="size-3.5" />,      p: "Hold",    t: "Payment approval for Al-Noor · SAR 1,200",k: "⌘P" },
+    { i: <ShieldCheck className="size-3.5" />,p: "Generate",t: "VAT return · ready to file with regulator",  k: "⌘V" },
+    { i: <Users className="size-3.5" />,      p: "Hold",    t: "Payment approval for Al-Noor · $1,200",k: "⌘P" },
     { i: <Brain className="size-3.5" />,      p: "Ask",     t: "Is cash enough for February payroll?",   k: "⌘?" },
   ]
   return (

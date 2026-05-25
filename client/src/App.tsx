@@ -45,6 +45,32 @@ import BankingTransactionsPage from "@/pages/banking/transactions";
 import ZatcaSettingsPage from "@/pages/settings/zatca";
 import Styleguide from "@/pages/styleguide";
 
+// Marketing pages
+import PlatformPage from "@/pages/marketing/platform";
+import InvoicesMarketingPage from "@/pages/marketing/invoices";
+import AccountingPage from "@/pages/marketing/accounting";
+import HrPayrollPage from "@/pages/marketing/hr-payroll";
+import FixedAssetsMarketingPage from "@/pages/marketing/fixed-assets";
+import ReportsMarketingPage from "@/pages/marketing/reports";
+import AiAssistantMarketingPage from "@/pages/marketing/ai-assistant";
+import CockpitPage from "@/pages/marketing/cockpit";
+import PredictivePage from "@/pages/marketing/predictive";
+import CountrySaPage from "@/pages/marketing/country-sa";
+import CountryAePage from "@/pages/marketing/country-ae";
+import CountryEgPage from "@/pages/marketing/country-eg";
+import CountryKwPage from "@/pages/marketing/country-kw";
+import CountryQaPage from "@/pages/marketing/country-qa";
+import CountryJoPage from "@/pages/marketing/country-jo";
+import CountryIntlPage from "@/pages/marketing/country-intl";
+import AboutPage from "@/pages/marketing/about";
+import CustomersPage from "@/pages/marketing/customers";
+import BlogPage from "@/pages/marketing/blog";
+import JobsPage from "@/pages/marketing/jobs";
+import ContactPage from "@/pages/marketing/contact";
+import PrivacyPage from "@/pages/marketing/privacy";
+import TermsPage from "@/pages/marketing/terms";
+import SecurityPage from "@/pages/marketing/security";
+
 // Auth pages
 import SignInPage from "@/pages/auth/sign-in";
 import SignUpPage from "@/pages/auth/sign-up";
@@ -164,6 +190,36 @@ function Router() {
   if (LEGACY_REDIRECTS[location]) {
     return <LegacyRedirect to={LEGACY_REDIRECTS[location]} />;
   }
+
+  // Marketing pages — product
+  if (location === "/platform")              return <PlatformPage />;
+  if (location === "/product/invoices")      return <InvoicesMarketingPage />;
+  if (location === "/product/accounting")    return <AccountingPage />;
+  if (location === "/product/hr")            return <HrPayrollPage />;
+  if (location === "/product/fixed-assets")  return <FixedAssetsMarketingPage />;
+  if (location === "/product/reports")       return <ReportsMarketingPage />;
+  // Marketing pages — AI
+  if (location === "/ai/assistant")          return <AiAssistantMarketingPage />;
+  if (location === "/ai/cockpit")            return <CockpitPage />;
+  if (location === "/ai/predictive")         return <PredictivePage />;
+  // Marketing pages — countries
+  if (location === "/countries/sa")              return <CountrySaPage />;
+  if (location === "/countries/ae")              return <CountryAePage />;
+  if (location === "/countries/eg")              return <CountryEgPage />;
+  if (location === "/countries/kw")              return <CountryKwPage />;
+  if (location === "/countries/qa")              return <CountryQaPage />;
+  if (location === "/countries/jo")              return <CountryJoPage />;
+  if (location === "/countries/international")   return <CountryIntlPage />;
+  // Marketing pages — company
+  if (location === "/about")     return <AboutPage />;
+  if (location === "/customers") return <CustomersPage />;
+  if (location === "/blog")      return <BlogPage />;
+  if (location === "/jobs")      return <JobsPage />;
+  if (location === "/contact")   return <ContactPage />;
+  // Legal & trust pages
+  if (location === "/privacy")   return <PrivacyPage />;
+  if (location === "/terms")     return <TermsPage />;
+  if (location === "/security")  return <SecurityPage />;
 
   if (location === "/app" || location.startsWith("/app/")) {
     return (
