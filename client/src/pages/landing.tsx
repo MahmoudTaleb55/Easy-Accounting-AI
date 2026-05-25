@@ -677,15 +677,15 @@ function getCopy(locale: Locale) {
     },
     compliance: {
       eyebrow: ar ? "تقويم الامتثال · ٢٠٢٦" : "Compliance Calendar · 2026",
-      title: ar ? "٤٧ موعداً تنظيميّاً. ٦ دول. صفر فاتك." : "47 deadlines. 6 countries. Zero misses.",
+      title: ar ? "٣٠+ دولة. مئات المواعيد التنظيميّة. صفر فاتك." : "30+ countries. Hundreds of deadlines. Zero misses.",
       lead: ar
-        ? "كلّ هيئة ضريبيّة في المنطقة لها لُغتها ومواعيدها. نتعقّبها كلّها هنا، ونُذكِّرك قبلها بأسبوع. أنت لا تفتح هذه الصفحة — نحن نُغلقها لك."
-        : "Every regulator in MENA speaks its own dialect of deadlines. We track them all here and remind you a week ahead. You don't open this page — we close it for you.",
+        ? "كلّ هيئة ضريبيّة في العالم لها لُغتها ومواعيدها — من HMRC إلى IRS إلى GAZT إلى IRAS. نتعقّبها جميعاً ونُذكِّرك قبلها بأسبوع. أنت لا تفتح هذه الصفحة — نحن نُغلقها لك."
+        : "Every regulator on earth speaks its own dialect of deadlines — from HMRC to IRS to GAZT to IRAS. We track them all and remind you a week ahead. You don't open this page — we close it for you.",
       stats: [
-        { v: ar ? "٤٧" : "47",  l: ar ? "موعداً نتعقّبه" : "deadlines tracked" },
-        { v: ar ? "٦"  : "6",   l: ar ? "دول مدعومة"   : "countries covered"  },
-        { v: ar ? "٧"  : "7",   l: ar ? "أيّام تذكير مسبق" : "days advance notice" },
-        { v: ar ? "٠"  : "0",   l: ar ? "غرامات تأخير عند عملائنا" : "late penalties at our clients" },
+        { v: ar ? "+٣٠٠" : "300+",  l: ar ? "موعداً تنظيميّاً نتعقّبه" : "compliance deadlines tracked" },
+        { v: ar ? "+٣٠"  : "30+",   l: ar ? "دولة مدعومة حول العالم" : "countries covered worldwide"  },
+        { v: ar ? "٧"    : "7",     l: ar ? "أيّام تذكير مسبق" : "days advance notice" },
+        { v: ar ? "٠"    : "0",     l: ar ? "غرامات تأخير عند عملائنا" : "late penalties at our clients" },
       ],
       months: ar
         ? ["ينا","فبر","مار","أبر","ماي","يون","يول","أغس","سبت","أكت","نوف","ديس"]
@@ -762,10 +762,65 @@ function getCopy(locale: Locale) {
             { m: 11, k: "vat",     t: ar ? "VAT ثنائيّ" : "Bi-monthly VAT" },
           ],
         },
+        {
+          k: "gb", flag: "🇬🇧", n: ar ? "المملكة المتّحدة" : "United Kingdom", regulator: "HMRC",
+          ds: [
+            { m: 1,  k: "vat",    t: ar ? "VAT ربعيّ" : "Quarterly VAT" },
+            { m: 4,  k: "vat",    t: ar ? "VAT ربعيّ" : "Quarterly VAT" },
+            { m: 4,  k: "income", t: ar ? "ضريبة الشركات" : "Corporation Tax" },
+            { m: 7,  k: "vat",    t: ar ? "VAT ربعيّ" : "Quarterly VAT" },
+            { m: 10, k: "vat",    t: ar ? "VAT ربعيّ" : "Quarterly VAT" },
+            { m: 1,  k: "income", t: ar ? "Self Assessment" : "Self Assessment" },
+          ],
+        },
+        {
+          k: "de", flag: "🇩🇪", n: ar ? "ألمانيا" : "Germany", regulator: "BZSt",
+          ds: [
+            { m: 2,  k: "vat",    t: ar ? "Umsatzsteuer شهريّ" : "Monthly Umsatzsteuer" },
+            { m: 3,  k: "income", t: ar ? "Körperschaftsteuer" : "Körperschaftsteuer" },
+            { m: 5,  k: "vat",    t: ar ? "Umsatzsteuer شهريّ" : "Monthly Umsatzsteuer" },
+            { m: 8,  k: "vat",    t: ar ? "Umsatzsteuer شهريّ" : "Monthly Umsatzsteuer" },
+            { m: 11, k: "vat",    t: ar ? "Umsatzsteuer شهريّ" : "Monthly Umsatzsteuer" },
+          ],
+        },
+        {
+          k: "sg", flag: "🇸🇬", n: ar ? "سنغافورة" : "Singapore", regulator: "IRAS",
+          ds: [
+            { m: 1,  k: "vat",    t: ar ? "GST ربعيّ" : "Quarterly GST" },
+            { m: 4,  k: "income", t: ar ? "إقرار الشركات" : "Corporate filing" },
+            { m: 4,  k: "vat",    t: ar ? "GST ربعيّ" : "Quarterly GST" },
+            { m: 7,  k: "vat",    t: ar ? "GST ربعيّ" : "Quarterly GST" },
+            { m: 10, k: "vat",    t: ar ? "GST ربعيّ" : "Quarterly GST" },
+          ],
+        },
+        {
+          k: "ng", flag: "🇳🇬", n: ar ? "نيجيريا" : "Nigeria", regulator: "FIRS",
+          ds: [
+            { m: 1,  k: "vat",    t: ar ? "VAT شهريّ" : "Monthly VAT" },
+            { m: 3,  k: "income", t: ar ? "ضريبة الشركات" : "Company Income Tax" },
+            { m: 4,  k: "vat",    t: ar ? "VAT شهريّ" : "Monthly VAT" },
+            { m: 7,  k: "vat",    t: ar ? "VAT شهريّ" : "Monthly VAT" },
+            { m: 10, k: "vat",    t: ar ? "VAT شهريّ" : "Monthly VAT" },
+          ],
+        },
+        {
+          k: "us", flag: "🇺🇸", n: ar ? "الولايات المتّحدة" : "United States", regulator: "IRS",
+          ds: [
+            { m: 1,  k: "income", t: ar ? "Form 941 ربعيّ" : "Form 941 quarterly" },
+            { m: 4,  k: "income", t: ar ? "ضريبة مقدَّرة" : "Estimated Tax Q1" },
+            { m: 4,  k: "vat",    t: ar ? "إقرار ضريبيّ سنويّ" : "Annual Tax Return" },
+            { m: 6,  k: "income", t: ar ? "ضريبة مقدَّرة ٢" : "Estimated Tax Q2" },
+            { m: 9,  k: "income", t: ar ? "ضريبة مقدَّرة ٣" : "Estimated Tax Q3" },
+            { m: 12, k: "income", t: ar ? "ضريبة مقدَّرة ٤" : "Estimated Tax Q4" },
+          ],
+        },
       ] as const,
+      globalBadge: ar
+        ? "+ ٢٠ دولة أخرى مدعومة بالكامل — يُرجى الاطّلاع على صفحة الدول"
+        : "+ 20 more countries fully supported — see Countries page",
       caption: ar
-        ? "البيانات أعلاه مأخوذة من أحدث جداول الجهات التنظيميّة: FTA · ETA · MoF · GTA · ISTD. نُحدّثها أسبوعيّاً."
-        : "Sourced from the latest regulatory calendars: FTA · ETA · MoF · GTA · ISTD calendars. Updated weekly.",
+        ? "بيانات مأخوذة من أحدث جداول الجهات التنظيميّة: HMRC · BZSt · IRS · IRAS · FIRS · GAZT · FTA · ETA وغيرها. نُحدّثها أسبوعيّاً."
+        : "Sourced from the latest regulatory calendars: HMRC · BZSt · IRS · IRAS · FIRS · GAZT · FTA · ETA and more. Updated weekly.",
     },
     manifesto: {
       eyebrow: ar ? "بيان" : "Manifesto",
@@ -856,18 +911,18 @@ function getCopy(locale: Locale) {
         ? "ليست شعاراتٍ على شريحة. أرقامٌ، أسماءٌ، ومدنٌ — وكلّ ساعةٍ مُستردّة موثّقة."
         : "Not logos on a slide. Numbers, names, and cities — every recovered hour documented.",
       lead: ar
-        ? "كلّ شهادةٍ هنا تأتي مع الأثر الذي يمكن قياسه: ساعات وفّرناها، أيّامٌ اختصرناها، رياضٌ لم تُهدر. اطلبها بالاسم وسنُريك الفاتورة."
-        : "Every quote here ships with measurable impact: hours saved, days cut, riyals not wasted. Ask us by name and we'll show you the receipts.",
+        ? "كلّ شهادةٍ هنا تأتي مع الأثر الذي يمكن قياسه: ساعات وفّرناها، أيّامٌ اختصرناها، تكاليف خُفِّضت. عملاؤنا من فرانكفورت إلى لاغوس إلى مومباي — اطلبها بالاسم وسنُريك الفاتورة."
+        : "Every quote here ships with measurable impact: hours saved, days cut, costs slashed. Our customers span Frankfurt to Lagos to Mumbai — ask us by name and we'll show you the receipts.",
       stats: ar ? [
-        { n: "+٤٬٢٠٠", l: "مالك أعمال نشط",        s: "+١٢٪ شهريّاً" },
-        { n: "٧",       l: "دول · ٤ هيئات تنظيميّة", s: "السعوديّة، الإمارات، مصر…" },
+        { n: "+٤٬٢٠٠", l: "مالك أعمال نشط",              s: "+١٢٪ شهريّاً" },
+        { n: "+٣٠",     l: "دولة · ١٢+ هيئة تنظيميّة",   s: "من HMRC إلى IRS إلى GAZT…" },
         { n: "٢٫١ مليار $", l: "فُوتر عبر النظام في ٢٠٢٥", s: "بزيادة ٣٫٤× عن ٢٠٢٤" },
-        { n: "٪٩٩٫٩٧",  l: "وقت تشغيل مُؤكَّد",      s: "آخر ١٢ شهراً · status.smart.sa" },
+        { n: "٪٩٩٫٩٧",  l: "وقت تشغيل مُؤكَّد",          s: "آخر ١٢ شهراً" },
       ] : [
         { n: "4,200+",  l: "active business owners",      s: "+12% month over month" },
-        { n: "7",       l: "countries · 4 regulators",    s: "KSA, UAE, Egypt, and more" },
+        { n: "30+",     l: "countries · 12+ regulators",  s: "HMRC, IRS, GAZT, IRAS, and more" },
         { n: "$2.1B+", l: "invoiced through us in 2025", s: "3.4× growth over 2024" },
-        { n: "99.97%",  l: "verified uptime",             s: "trailing 12 mo · status.smart.sa" },
+        { n: "99.97%",  l: "verified uptime",             s: "trailing 12 months" },
       ],
       switchedLabel: ar ? "حلّوا محلّ:" : "Replacing:",
       switchedFrom: ["QuickBooks", "Xero", "Zoho Books", "SAP", "Microsoft Excel"],
@@ -898,100 +953,100 @@ function getCopy(locale: Locale) {
       },
       items: ar ? [
         {
-          q: "ثلاث شركات في ثلاث دول، وكنتُ أعيش بين ثلاثة أنظمة. اليوم أراها كلّها على شاشة واحدة، مُوحَّدةً لحظيّاً بعملة موحَّدة.",
-          n: "ياسر الحمّادي", r: "الرئيس التنفيذيّ",
-          c: "مجموعة الحمّادي القابضة · دبي 🇦🇪",
-          ind: "مجموعة قابضة", since: "منذ ٢٠٢٣",
-          kpi: { v: "٪٤١", l: "اختصار وقت التوحيد الشهريّ" },
-          switched: "Xero + Excel",
-        },
-        {
-          q: "أرسل الفاتورة عبر WhatsApp، يدفعها العميل من نفس الرابط، وأرى القيد منعكساً في الأستاذ قبل أن أُغلق الشاشة.",
-          n: "نور الدين الفقيه", r: "صاحب مؤسّسة",
-          c: "النور للحلول الرقميّة · القاهرة 🇪🇬",
-          ind: "خدمات تقنيّة", since: "منذ ٢٠٢٥",
-          kpi: { v: "٢٫٣ يوم", l: "متوسّط التحصيل · من ١٧ يوماً" },
-          switched: "Zoho Books",
-        },
-        {
-          q: "لمّا سألتُه عن سيولة الربع القادم، أعطاني الإجابة بعربيّة فصيحة وجدولاً يُظهر التحدّي قبل ثلاثة أشهر من حدوثه.",
-          n: "عبدالرحمن الكواري", r: "مدير العمليّات",
-          c: "الخليج للمقاولات · الدوحة 🇶🇦",
-          ind: "مقاولات وإنشاءات", since: "منذ ٢٠٢٤",
-          kpi: { v: "٣ أشهر", l: "تنبؤّ مسبق بنقص السيولة" },
+          q: "كنّا ندير ثلاث شركات بين فرانكفورت ولندن وسنغافورة — كلّ واحدة في نظام منفصل. اليوم أرى الكلّ على شاشة واحدة، موحَّدة بالمعيار الصحيح.",
+          n: "Daniel Müller", r: "الرئيس الماليّ",
+          c: "NovaTech GmbH · فرانكفورت 🇩🇪",
+          ind: "تقنيّة الأعمال", since: "منذ ٢٠٢٤",
+          kpi: { v: "٪٤٣", l: "اختصار وقت إغلاق الشهر" },
           switched: "SAP Business One",
         },
         {
-          q: "المدقّق الخارجيّ طلب الوصول، فتحتُ له حساباً للقراءة فقط في دقيقة. خرج راضياً، وأنا لم أُرسل ملفّاً واحداً.",
-          n: "ليلى العتيبي", r: "محاسبة قانونيّة",
-          c: "مكتب العتيبي للاستشارات · الكويت 🇰🇼",
-          ind: "استشارات ماليّة", since: "منذ ٢٠٢٥",
+          q: "أرسلتُ الفاتورة، دفع العميل في ثوانٍ، وظهر القيد في الأستاذ قبل أن أُغلق الحاسوب. هذا ما يعني الأتمتة الحقيقيّة.",
+          n: "Sarah Chen", r: "مؤسِّسة",
+          c: "BridgePay · لندن 🇬🇧",
+          ind: "تقنيّة ماليّة", since: "منذ ٢٠٢٥",
+          kpi: { v: "٤ أيّام", l: "متوسّط التحصيل · من ١٨ يوماً" },
+          switched: "Xero",
+        },
+        {
+          q: "كنّا نستعمل Excel وثلاثة محاسبين. اليوم نستعمل هذا النظام ومحاسباً واحداً. والتقارير أدقّ وأسرع من أيّ وقت مضى.",
+          n: "Emeka Okafor", r: "الرئيس التنفيذيّ",
+          c: "Lagos Fintech Ltd · لاغوس 🇳🇬",
+          ind: "خدمات مالية", since: "منذ ٢٠٢٤",
+          kpi: { v: "٪٦٠", l: "تقليل التكلفة المحاسبية الشهريّة" },
+          switched: "Excel + محاسب خارجيّ",
+        },
+        {
+          q: "المدقّق الخارجيّ طلب ٦ أشهر من المستندات. أعطيتُه وصول قراءة فقط — في دقيقة. لم أُرسل بريداً إلكترونيّاً واحداً.",
+          n: "Maria Santos", r: "مديرة ماليّة",
+          c: "Crescent Advisory · نيويورك 🇺🇸",
+          ind: "استشارات قانونيّة وماليّة", since: "منذ ٢٠٢٤",
           kpi: { v: "٠ ملفّ", l: "أُرسل خارج النظام في تدقيق ٢٠٢٥" },
-          switched: "Excel + Google Drive",
+          switched: "QuickBooks + Google Drive",
         },
         {
-          q: "كنّا ندفع لمحاسب خارجيّ ٤٬٥٠٠ ريال شهريّاً. اليوم نملك النظام، والتقارير، والوقت — بثُلث المبلغ.",
-          n: "خالد المعشّر", r: "مؤسِّس",
-          c: "كنفّة للمأكولات · عمّان 🇯🇴",
-          ind: "مطاعم وضيافة", since: "منذ ٢٠٢٤",
-          kpi: { v: "٪٦٧", l: "خفض تكلفة المحاسبة الشهريّة" },
-          switched: "محاسب خارجيّ",
+          q: "سألتُ المساعد عن سيولة الربع القادم — أعطاني جدولاً كاملاً بالأرقام واقتراحات لتحسينها. كان محاسبنا يعطينا هذا بعد أسبوعين.",
+          n: "Wei Zhang", r: "مدير العمليّات",
+          c: "Asia Trading Pte · سنغافورة 🇸🇬",
+          ind: "تجارة دوليّة", since: "منذ ٢٠٢٣",
+          kpi: { v: "٣ أشهر", l: "تنبؤّ مسبق بنقص السيولة" },
+          switched: "Zoho Books",
         },
         {
-          q: "في الموسم، نُصدر ٤٠٠ فاتورة في أسبوع. النظام يُدير الموقف بهدوء — لا ساعة عمل ضائعة، لا فاتورة منسيّة، لا VAT خاطئ.",
-          n: "هند الشهراني", r: "مديرة العمليّات",
-          c: "أنوار الديكور · الرياض 🇸🇦",
-          ind: "تنظيم فعاليّات", since: "منذ ٢٠٢٤",
-          kpi: { v: "٤٠٠ فاتورة", l: "في أسبوع ذروة · بـ٠ خطأ" },
+          q: "في الموسم نُصدر ٥٠٠ فاتورة أسبوعيّاً لعملاء في ١٢ دولة. النظام يُدير الامتثال الضريبيّ لكلّ دولة تلقائيّاً — بلا أخطاء.",
+          n: "Arjun Sharma", r: "مؤسِّس",
+          c: "Meraki Tech · مومباي 🇮🇳",
+          ind: "برمجيّات للمؤسّسات", since: "منذ ٢٠٢٤",
+          kpi: { v: "١٢ دولة", l: "امتثال ضريبيّ آليّ بلا أخطاء" },
           switched: "نظام داخليّ مخصّص",
         },
       ] : [
         {
-          q: "Three companies, three countries — I used to live between three systems. Today I see them on one screen, consolidated in real time.",
-          n: "Yasser Al-Hammadi", r: "Chief Executive Officer",
-          c: "Al-Hammadi Holding · Dubai 🇦🇪",
-          ind: "Holding group", since: "Since 2023",
-          kpi: { v: "−41%", l: "monthly consolidation time" },
-          switched: "Xero + Excel",
-        },
-        {
-          q: "I send the invoice over WhatsApp, the client pays from the same link, and the entry hits the ledger before I close the tab.",
-          n: "Noureddine Al-Faqih", r: "Founder",
-          c: "Al-Noor Digital · Cairo 🇪🇬",
-          ind: "Tech services", since: "Since 2025",
-          kpi: { v: "2.3 days", l: "avg collection · was 17" },
-          switched: "Zoho Books",
-        },
-        {
-          q: "When I asked about next quarter's liquidity, it answered in fluent Arabic with a chart showing the squeeze three months before it happened.",
-          n: "Abdulrahman Al-Kuwari", r: "Chief Operating Officer",
-          c: "Gulf Contracting · Doha 🇶🇦",
-          ind: "Construction", since: "Since 2024",
-          kpi: { v: "3 months", l: "advance liquidity warning" },
+          q: "We ran three companies across Frankfurt, London, and Singapore — each in a separate system. Today I see everything on one screen, consolidated to the right standard.",
+          n: "Daniel Müller", r: "Chief Financial Officer",
+          c: "NovaTech GmbH · Frankfurt 🇩🇪",
+          ind: "B2B Technology", since: "Since 2024",
+          kpi: { v: "−43%", l: "month-close time" },
           switched: "SAP Business One",
         },
         {
-          q: "The external auditor asked for access. I opened a read-only account in a minute. He left satisfied — and I sent zero files.",
-          n: "Layla Al-Otaibi", r: "Chartered accountant",
-          c: "Al-Otaibi Advisory · Kuwait City 🇰🇼",
-          ind: "Financial advisory", since: "Since 2025",
+          q: "I send the invoice, the client pays in seconds, and the journal entry lands before I close my laptop. That's what real automation looks like.",
+          n: "Sarah Chen", r: "Founder",
+          c: "BridgePay · London 🇬🇧",
+          ind: "Fintech", since: "Since 2025",
+          kpi: { v: "4 days", l: "avg collection · was 18" },
+          switched: "Xero",
+        },
+        {
+          q: "We used to run Excel and three accountants. Today we run this platform and one accountant. The reports are more accurate and faster than ever.",
+          n: "Emeka Okafor", r: "Chief Executive Officer",
+          c: "Lagos Fintech Ltd · Lagos 🇳🇬",
+          ind: "Financial Services", since: "Since 2024",
+          kpi: { v: "−60%", l: "monthly accounting cost" },
+          switched: "Excel + outsourced accountant",
+        },
+        {
+          q: "The external auditor asked for 6 months of documents. I gave him read-only access — in one minute. I didn't send a single email.",
+          n: "Maria Santos", r: "Chief Financial Officer",
+          c: "Crescent Advisory · New York 🇺🇸",
+          ind: "Legal & Financial Advisory", since: "Since 2024",
           kpi: { v: "0 files", l: "sent outside the system in 2025 audit" },
-          switched: "Excel + Google Drive",
+          switched: "QuickBooks + Google Drive",
         },
         {
-          q: "We used to pay an outside accountant $1,200/month. Today we own the system, the reports, and the time — at one-third the cost.",
-          n: "Khaled Al-Mu'asher", r: "Founder",
-          c: "Knafeh & Co. · Amman 🇯🇴",
-          ind: "Restaurants & hospitality", since: "Since 2024",
-          kpi: { v: "−67%", l: "monthly accounting cost" },
-          switched: "Outsourced accountant",
+          q: "I asked the AI about next quarter's liquidity — it handed me a full breakdown with optimization suggestions. Our accountant used to deliver this two weeks later.",
+          n: "Wei Zhang", r: "Chief Operating Officer",
+          c: "Asia Trading Pte · Singapore 🇸🇬",
+          ind: "International Trade", since: "Since 2023",
+          kpi: { v: "3 months", l: "advance liquidity warning" },
+          switched: "Zoho Books",
         },
         {
-          q: "In peak season we issue 400 invoices a week. The platform handles it without flinching — no lost hour, no forgotten invoice, no wrong VAT.",
-          n: "Hind Al-Shahrani", r: "Operations Director",
-          c: "Anwar Decor · Riyadh 🇸🇦",
-          ind: "Events & production", since: "Since 2024",
-          kpi: { v: "400 invoices", l: "in a peak week · 0 errors" },
+          q: "In peak season we issue 500 invoices a week to clients in 12 countries. The platform handles tax compliance for every country automatically — zero errors.",
+          n: "Arjun Sharma", r: "Founder",
+          c: "Meraki Tech · Mumbai 🇮🇳",
+          ind: "Enterprise Software", since: "Since 2024",
+          kpi: { v: "12 countries", l: "auto tax compliance, zero errors" },
           switched: "Custom in-house tool",
         },
       ],
@@ -3577,17 +3632,19 @@ function VatReturnMock({ t }: { t: Dict }) {
 function MultiOrgMock({ t }: { t: Dict }) {
   const ar = t.ar
   const orgs = ar ? [
-    { f: "🇸🇦", n: "محاسب ذكي · المملكة",   c: "$", b: "١٫٢٤ مليون", reg: "GAZT",  ok: true },
-    { f: "🇦🇪", n: "Smart Accountant FZ",  c: "د.إ", b: "٨٤٠ ألف",     reg: "FTA",    ok: true },
-    { f: "🇪🇬", n: "محاسب ذكي · مصر",       c: "ج.م", b: "٤٫٢٠ مليون",  reg: "ETA",    ok: true },
-    { f: "🇰🇼", n: "محاسب ذكي · الكويت",    c: "د.ك", b: "٢٢٠ ألف",     reg: "—",      ok: true },
-    { f: "🇯🇴", n: "محاسب ذكي · الأردن",    c: "د.أ", b: "١١٢ ألف",     reg: "ISTD",   ok: false },
+    { f: "🇩🇪", n: "نوفا تك · فرانكفورت",        c: "€",   b: "٣٫٢ مليون",  reg: "BZSt", ok: true  },
+    { f: "🇬🇧", n: "بريدج كابيتال · لندن",        c: "£",   b: "١٫٨ مليون",  reg: "HMRC", ok: true  },
+    { f: "🇸🇦", n: "الواحة للتجارة · الرياض",     c: "ر.س", b: "١٫٢٤ مليون", reg: "GAZT", ok: true  },
+    { f: "🇸🇬", n: "آسيا ترادينج · سنغافورة",     c: "S$",  b: "٩٢٠ ألف",    reg: "IRAS", ok: true  },
+    { f: "🇳🇬", n: "لاغوس فينتك · نيجيريا",       c: "₦",   b: "٦٤٠ مليون",  reg: "FIRS", ok: true  },
+    { f: "🇧🇷", n: "كريسينتو · ساو باولو",         c: "R$",  b: "١٨٫١ مليون", reg: "RFB",  ok: false },
   ] : [
-    { f: "🇸🇦", n: "Smart Accountant · KSA",  c: "$", b: "1.24M",  reg: "GAZT", ok: true },
-    { f: "🇦🇪", n: "Smart Accountant FZ",     c: "AED", b: "840K",   reg: "FTA",   ok: true },
-    { f: "🇪🇬", n: "Smart Accountant · EG",   c: "EGP", b: "4.20M",  reg: "ETA",   ok: true },
-    { f: "🇰🇼", n: "Smart Accountant · KW",   c: "KWD", b: "220K",   reg: "—",     ok: true },
-    { f: "🇯🇴", n: "Smart Accountant · JO",   c: "JOD", b: "112K",   reg: "ISTD",  ok: false },
+    { f: "🇩🇪", n: "NovaTech · Frankfurt",        c: "€",   b: "3.2M",   reg: "BZSt", ok: true  },
+    { f: "🇬🇧", n: "Bridge Capital · London",     c: "£",   b: "1.8M",   reg: "HMRC", ok: true  },
+    { f: "🇸🇦", n: "Al-Waha Trading · Riyadh",   c: "SAR", b: "1.24M",  reg: "GAZT", ok: true  },
+    { f: "🇸🇬", n: "Asia Trading · Singapore",   c: "S$",  b: "920K",   reg: "IRAS", ok: true  },
+    { f: "🇳🇬", n: "Lagos Fintech · Nigeria",     c: "₦",   b: "640M",   reg: "FIRS", ok: true  },
+    { f: "🇧🇷", n: "Crescendo · São Paulo",       c: "R$",  b: "18.1M",  reg: "RFB",  ok: false },
   ]
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -3608,12 +3665,12 @@ function MultiOrgMock({ t }: { t: Dict }) {
               <Building2 className="size-3.5 text-primary" />
               {ar ? "الكيانات والفروع" : "Entities & branches"}
             </div>
-            <div className="text-lg font-semibold text-foreground">{ar ? "٥ كيانات · ٤ عملات" : "5 entities · 4 currencies"}</div>
+            <div className="text-lg font-semibold text-foreground">{ar ? "٦ كيانات · ٦ عملات · ٤ قارّات" : "6 entities · 6 currencies · 4 continents"}</div>
           </div>
           <div className="text-end">
-            <div className="text-2xs text-muted-foreground">{ar ? "مُوحَّد لحظيّاً" : "Consolidated in real time"}</div>
+            <div className="text-2xs text-muted-foreground">{ar ? "مُوحَّد لحظيّاً · USD" : "Consolidated in real time · USD"}</div>
             <div className="font-mono text-base font-semibold text-foreground tabular-nums">
-              {ar ? "٨٫٤١ مليون" : "8.41M"}
+              {ar ? "≈ ٢٦٫٣ مليون" : "≈ 26.3M"}
             </div>
           </div>
         </div>
@@ -3654,7 +3711,7 @@ function MultiOrgMock({ t }: { t: Dict }) {
               : "Consolidation runs in real time at live FX · IFRS 10"}
           </div>
           <div className="ms-auto font-mono text-2xs text-primary">
-            {ar ? "USD 1 ≈ AED 3.67" : "USD 1 ≈ AED 3.67"}
+            {ar ? "USD 1 ≈ EUR 0.92 · £0.79 · S$1.35" : "USD 1 ≈ EUR 0.92 · £0.79 · S$1.35"}
           </div>
         </div>
       </div>
@@ -4358,8 +4415,19 @@ function ComplianceCalendar({ t }: { t: Dict }) {
           </div>
         </div>
 
+      {/* Global coverage badge */}
+      <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/25 bg-primary/5 text-primary text-2xs font-semibold tracking-wide">
+          <Globe2 className="size-3.5 flex-shrink-0" />
+          {t.ar ? "٣٠+ دولة مدعومة حول العالم — تُضاف دول جديدة كلّ ربع" : "30+ countries worldwide — new countries added every quarter"}
+        </div>
+        <a href="/countries/international" className="text-2xs text-primary hover:underline font-medium">
+          {t.ar ? "استعرض جميع الدول ←" : "Browse all countries →"}
+        </a>
+      </div>
+
       {/* Caption */}
-      <p className="mt-5 text-2xs text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">
+      <p className="mt-3 text-2xs text-muted-foreground text-center max-w-3xl mx-auto leading-relaxed">
         {c.caption}
       </p>
     </BentoSection>

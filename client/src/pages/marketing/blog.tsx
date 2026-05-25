@@ -91,9 +91,13 @@ export default function BlogPage() {
                 <p className="text-small text-muted-foreground leading-relaxed mb-4">
                   {ar ? post.excerptAr : post.excerptEn}
                 </p>
-                <span className="text-small font-medium text-primary hover:underline cursor-pointer">
+                <a
+                  href={`/blog/${post.slug}`}
+                  className="text-small font-medium text-primary hover:underline"
+                  data-testid={`link-read-more-${post.slug}`}
+                >
                   {ar ? "اقرأ المزيد ←" : "Read more →"}
-                </span>
+                </a>
               </div>
             </article>
           ))}

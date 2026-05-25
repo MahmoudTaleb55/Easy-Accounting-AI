@@ -65,7 +65,9 @@ import CountryIntlPage from "@/pages/marketing/country-intl";
 import AboutPage from "@/pages/marketing/about";
 import CustomersPage from "@/pages/marketing/customers";
 import BlogPage from "@/pages/marketing/blog";
+import BlogPostPage from "@/pages/marketing/blog-post";
 import JobsPage from "@/pages/marketing/jobs";
+import JobDetailPage from "@/pages/marketing/job-detail";
 import ContactPage from "@/pages/marketing/contact";
 import PrivacyPage from "@/pages/marketing/privacy";
 import TermsPage from "@/pages/marketing/terms";
@@ -213,8 +215,10 @@ function Router() {
   // Marketing pages — company
   if (location === "/about")     return <AboutPage />;
   if (location === "/customers") return <CustomersPage />;
-  if (location === "/blog")      return <BlogPage />;
-  if (location === "/jobs")      return <JobsPage />;
+  if (location === "/blog")                       return <BlogPage />;
+  if (location.startsWith("/blog/"))              return <BlogPostPage />;
+  if (location === "/jobs")                       return <JobsPage />;
+  if (location.startsWith("/jobs/"))              return <JobDetailPage />;
   if (location === "/contact")   return <ContactPage />;
   // Legal & trust pages
   if (location === "/privacy")   return <PrivacyPage />;
