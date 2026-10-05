@@ -552,6 +552,18 @@ export async function createPurchasePayment(
     throw new Error("يجب تحديد فاتورة واحدة على الأقل");
   }
 
+  // SECURITY (scan finding, over-application): reject duplicate bill ids so
+  // the per-bill open-balance check below can't be bypassed by splitting one
+  // bill across two allocations that each individually pass but together
+  // exceed the open balance. (AP mirror of the AR fix in sales.ts.)
+  const seenBillIds = new Set<number>();
+  for (const alloc of input.allocations) {
+    if (seenBillIds.has(alloc.invoiceId)) {
+      throw new Error(`الفاتورة (${alloc.invoiceId}) مكرّرة في التخصيص`);
+    }
+    seenBillIds.add(alloc.invoiceId);
+  }
+
   // Validate every allocation's bill belongs to this vendor + workspace +
   // is posted, and that the allocated amount doesn't exceed the bill's
   // open balance.

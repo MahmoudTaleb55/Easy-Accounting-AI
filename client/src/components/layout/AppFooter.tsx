@@ -86,7 +86,7 @@ export function AppFooter({ columns, tagline, className }: AppFooterProps) {
   const ar = locale === "ar"
   const cols = columns ?? defaultColumns(ar)
   const year = new Date().getFullYear()
-  const brandName = ar ? "محاسب ذكي" : "Smart Accountant"
+  const brandName = "Orqam"
   const resolvedTagline = tagline ?? (ar
     ? "نظام محاسبيّ ذكيّ، مبنيّ وفق IFRS، عالميّ في الجوهر، يمنح الشركة الحديثة مركز قيادة ماليّ واحداً — من أوّل فاتورة إلى آخر تقرير."
     : "An IFRS-grade, AI-native accounting system that gives the modern business one financial command center — from invoices to insight.")

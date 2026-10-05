@@ -14,7 +14,7 @@ interface BrandMarkProps {
 }
 
 /**
- * Smart Accountant signature mark.
+ * Orqam (أرقام) signature mark.
  *
  * Three stacked ledger bars (debit / credit / balance) of decreasing length,
  * crowned by an offset spark dot — the "ذكي / smart" beat over the ledger.
@@ -60,16 +60,8 @@ export function BrandMark({
         <circle cx="20" cy="5" r="2.4" fill={tone} />
       </svg>
       {withWordmark && (
-        <span className={cn("font-serif tracking-tight leading-none", wordmarkSize)}>
-          {locale === "ar" ? (
-            <>
-              محاسب<span className="mx-1.5 opacity-40">·</span>ذكي
-            </>
-          ) : (
-            <>
-              Smart<span className="mx-1.5 opacity-40">·</span>Accountant
-            </>
-          )}
+        <span className={cn("font-serif font-semibold tracking-tight leading-none", wordmarkSize)}>
+          {locale === "ar" ? "أرقام" : "Orqam"}
         </span>
       )}
     </span>

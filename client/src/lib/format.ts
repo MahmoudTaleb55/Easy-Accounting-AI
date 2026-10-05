@@ -20,9 +20,19 @@ export interface OrgSettings {
 }
 
 const DEFAULTS: OrgSettings = {
-  id: 1, orgName: "My Business", countryCode: "INTL", locale: "ar",
+  id: 1, orgName: "My Business", countryCode: "INTL", locale: "en",
   currencyCode: "USD", currencySymbol: "$", vatRate: 0, zakatEnabled: false, fiscalYearStartMonth: 1,
   businessType: "service",
+};
+
+// Map each supported UI locale to a proper Intl locale tag so numbers format
+// correctly per locale (e.g. German/French use "." for thousands and "," for
+// decimals). Falls back to en-US for anything unexpected.
+const INTL_LOCALE: Record<string, string> = {
+  ar: "ar-SA",
+  en: "en-US",
+  de: "de-DE",
+  fr: "fr-FR",
 };
 
 export interface FormatMoneyOptions {
@@ -43,7 +53,7 @@ export function formatMoney(
   const decimals = opts.decimals ?? 0;
   const showSymbol = opts.symbol ?? true;
   const v = Number(n || 0);
-  const locale = settings.locale === "ar" ? "ar-SA" : "en-US";
+  const locale = INTL_LOCALE[settings.locale] ?? "en-US";
   const formatted = new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,

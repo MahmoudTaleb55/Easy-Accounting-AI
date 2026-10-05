@@ -215,7 +215,20 @@ export interface IStorage {
 
   // Journal entries
   getJournalEntries(companyId: number): Promise<JournalEntryWithLines[]>;
-  createJournalEntry(companyId: number, input: CreateJournalEntryInput, ctx?: AuditContext): Promise<JournalEntryWithLines>;
+  createJournalEntry(
+    companyId: number,
+    input: CreateJournalEntryInput,
+    ctx?: AuditContext,
+    /**
+     * Optional open transaction handle. When provided, the JE header, lines,
+     * and audit row are written on the caller's transaction so they commit
+     * atomically with whatever else the caller is writing (task #222 / the
+     * banking atomicity fix). When omitted, this method opens its own
+     * transaction exactly as before — every pre-existing caller is
+     * unaffected.
+     */
+    tx?: JournalTxExecutor,
+  ): Promise<JournalEntryWithLines>;
   /**
    * Replace the header (entryDate, description) and full set of lines on an
    * existing journal entry. Refuses to touch transaction-sourced JEs and any
@@ -766,6 +779,19 @@ function diffChanges(before: Record<string, any>, after: Record<string, any>): A
  * justifies it (task #222).
  */
 export type AuditWriter = Pick<typeof db, "insert">;
+
+/**
+ * The transaction handle passed to a `db.transaction(async (tx) => …)`
+ * callback. Callers that already have an open transaction (e.g. banking's
+ * `createBankTransaction`, which must post a bank row and its journal entry
+ * atomically) pass this into `createJournalEntry` so the JE header, lines,
+ * and audit row join their transaction instead of opening a second,
+ * independent one. See task #222 and
+ * docs/design/workspace-isolation-defense-in-depth.md.
+ */
+export type JournalTxExecutor = Parameters<
+  Parameters<typeof db.transaction>[0]
+>[0];
 
 /**
  * Append a row to `audit_log`. Task #222: every caller must pass the
@@ -2305,7 +2331,12 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async createJournalEntry(companyId: number, input: CreateJournalEntryInput, ctx?: AuditContext): Promise<JournalEntryWithLines> {
+  async createJournalEntry(
+    companyId: number,
+    input: CreateJournalEntryInput,
+    ctx?: AuditContext,
+    outerTx?: JournalTxExecutor,
+  ): Promise<JournalEntryWithLines> {
     const reference = await nextJournalReference(companyId);
     // Account name lookup is read-only and stable across the transaction
     // window — fetched outside so the transaction body is the smallest
@@ -2315,7 +2346,12 @@ export class DatabaseStorage implements IStorage {
     // JE header + lines + audit commit atomically (task #222). A failed
     // audit row rolls the whole posting back, keeping books and history in
     // lockstep.
-    return await db.transaction(async (tx) => {
+    //
+    // When a caller passes `outerTx` (e.g. banking's createBankTransaction,
+    // which must post a bank row and its JE in one transaction), we run the
+    // writes on that handle so everything commits together. Otherwise we
+    // open our own transaction exactly as before.
+    const run = async (tx: JournalTxExecutor): Promise<JournalEntryWithLines> => {
       const [je] = await tx
         .insert(journalEntries)
         .values({
@@ -2362,7 +2398,11 @@ export class DatabaseStorage implements IStorage {
         ...je,
         lines: insertedLines.map((l) => ({ ...l, account: accountById.get(l.accountId) })),
       };
-    });
+    };
+
+    // Join the caller's transaction when given one; otherwise own the
+    // transaction boundary as before.
+    return outerTx ? await run(outerTx) : await db.transaction(run);
   }
 
   async updateJournalEntry(
@@ -6030,8 +6070,6 @@ export class DatabaseStorage implements IStorage {
         return entityId === companyId;
       }
       default: {
-        const _exhaustive: never = entityType;
-        void _exhaustive;
         return false;
       }
     }

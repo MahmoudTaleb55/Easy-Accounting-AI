@@ -22,13 +22,10 @@ import {
   type BankTransactionWithAccount,
   type ZatcaConfig,
   type InsertZatcaConfig,
+  type BankAccountType,
 } from "@shared/schema";
 import { storage, type AuditContext } from "./storage";
 import { eq, and, desc, sql } from "drizzle-orm";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -43,10 +40,7 @@ async function nextBankTxnReference(companyId: number): Promise<string> {
   return `BKTXN-${String(seq).padStart(4, "0")}`;
 }
 
-async function getLinkedAccountId(
-  companyId: number,
-  bankAccountId: number,
-): Promise<number | null> {
+async function getLinkedAccountId(companyId: number, bankAccountId: number): Promise<number | null> {
   const [ba] = await db
     .select({ linkedAccountId: bankAccounts.linkedAccountId })
     .from(bankAccounts)
@@ -62,10 +56,6 @@ async function findAccountByCode(companyId: number, code: string): Promise<numbe
   return acc?.id ?? null;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Bank Accounts
-// ─────────────────────────────────────────────────────────────────────────────
-
 export async function listBankAccounts(companyId: number): Promise<BankAccount[]> {
   return db
     .select()
@@ -74,14 +64,9 @@ export async function listBankAccounts(companyId: number): Promise<BankAccount[]
     .orderBy(bankAccounts.nameAr);
 }
 
-export async function createBankAccount(
-  companyId: number,
-  input: InsertBankAccount,
-): Promise<BankAccount> {
-  const [row] = await db
-    .insert(bankAccounts)
-    .values({ ...input, companyId })
-    .returning();
+export async function createBankAccount(companyId: number, input: InsertBankAccount): Promise<BankAccount> {
+  const accountType = input.accountType as BankAccountType | undefined;
+  const [row] = await db.insert(bankAccounts).values({ ...input, accountType, companyId }).returning();
   return row;
 }
 
@@ -90,9 +75,13 @@ export async function updateBankAccount(
   id: number,
   input: Partial<InsertBankAccount>,
 ): Promise<BankAccount> {
+  const update = {
+    ...input,
+    ...(input.accountType === undefined ? {} : { accountType: input.accountType as BankAccountType }),
+  } as Partial<typeof bankAccounts.$inferInsert>;
   const [row] = await db
     .update(bankAccounts)
-    .set(input)
+    .set(update)
     .where(and(eq(bankAccounts.id, id), eq(bankAccounts.companyId, companyId)))
     .returning();
   if (!row) throw new Error("حساب بنكي غير موجود");
@@ -197,6 +186,89 @@ export async function listBankTransactions(
   }));
 }
 
+/**
+ * Thrown when a bank transaction cannot be posted to a balanced journal
+ * entry — e.g. the bank account (or its transfer counterpart) has no linked
+ * chart-of-accounts account and both sides would collapse onto the same
+ * fallback account, producing a degenerate (zero-effect) or unbalanced
+ * entry. Surfaced to the route as a 500 with this message so the user is
+ * told *why* the posting was refused instead of silently getting a bank row
+ * with no journal entry behind it.
+ */
+export class BankTransactionPostingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BankTransactionPostingError";
+  }
+}
+
+/**
+ * Resolve the two COA accounts (debit, credit) that a bank transaction must
+ * post to. Throws BankTransactionPostingError when the pair is missing or
+ * would be degenerate (same account on both legs), so the caller never
+ * writes a bank row that has no balanced journal entry behind it.
+ */
+async function resolveJournalAccounts(
+  companyId: number,
+  input: InsertBankTransaction,
+  bankLinkedAccountId: number | null,
+): Promise<{ debitAccountId: number; creditAccountId: number }> {
+  if (input.txnType === "deposit") {
+    // Dr Bank account / Cr counterpart (revenue/receivable/etc.)
+    const debitAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
+    const creditAccountId = input.counterpartAccountId ?? (await findAccountByCode(companyId, "4010"));
+    if (!debitAccountId || !creditAccountId) {
+      throw new BankTransactionPostingError(
+        "تعذّر ترحيل القيد: لا يوجد حساب مرتبط بالبنك أو الحساب المقابل. / Cannot post: the bank account or its counterpart has no linked chart-of-accounts account.",
+      );
+    }
+    return { debitAccountId, creditAccountId };
+  }
+
+  if (input.txnType === "withdrawal" || input.txnType === "fee") {
+    // Dr counterpart (expense/payable) / Cr Bank
+    const creditAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
+    const debitAccountId = input.counterpartAccountId ?? (await findAccountByCode(companyId, "5010"));
+    if (!debitAccountId || !creditAccountId) {
+      throw new BankTransactionPostingError(
+        "تعذّر ترحيل القيد: لا يوجد حساب مرتبط بالبنك أو الحساب المقابل. / Cannot post: the bank account or its counterpart has no linked chart-of-accounts account.",
+      );
+    }
+    return { debitAccountId, creditAccountId };
+  }
+
+  if (input.txnType === "transfer") {
+    if (!input.counterpartBankAccountId) {
+      throw new BankTransactionPostingError(
+        "التحويل يتطلّب حساباً بنكيّاً مقابلاً. / A transfer requires a counterpart bank account.",
+      );
+    }
+    // Dr target bank / Cr source bank
+    const sourceBankAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
+    const targetLinkedAccountId = await getLinkedAccountId(companyId, input.counterpartBankAccountId);
+    const targetBankAccountId = targetLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
+    if (!sourceBankAccountId || !targetBankAccountId) {
+      throw new BankTransactionPostingError(
+        "تعذّر ترحيل التحويل: أحد الحسابين البنكيّين غير مرتبط بحساب في دليل الحسابات. / Cannot post transfer: one of the bank accounts has no linked chart-of-accounts account.",
+      );
+    }
+    if (sourceBankAccountId === targetBankAccountId) {
+      // Both legs collapsed onto the same account (e.g. neither bank is
+      // linked and both fell back to 1100). Posting this would create a
+      // Dr/Cr to the same account — a zero-effect entry that hides a real
+      // money movement. Refuse instead of silently no-op'ing.
+      throw new BankTransactionPostingError(
+        "تعذّر ترحيل التحويل: الحسابان يشيران إلى الحساب نفسه في دليل الحسابات. اربط كل حساب بنكيّ بحساب مختلف. / Cannot post transfer: both legs resolve to the same chart-of-accounts account. Link each bank account to a distinct account.",
+      );
+    }
+    return { debitAccountId: targetBankAccountId, creditAccountId: sourceBankAccountId };
+  }
+
+  throw new BankTransactionPostingError(
+    `نوع معاملة غير مدعوم: ${input.txnType} / Unsupported transaction type: ${input.txnType}`,
+  );
+}
+
 export async function createBankTransaction(
   companyId: number,
   input: InsertBankTransaction,
@@ -205,92 +277,56 @@ export async function createBankTransaction(
   const reference = await nextBankTxnReference(companyId);
   const amount = round2(parseFloat(String(input.amount)));
 
-  // Determine the bank's COA account
+  // Determine the bank's COA account and the JE account pair up front. A
+  // misconfigured chart of accounts throws here — before we open the
+  // transaction — so nothing is written.
   const bankLinkedAccountId = await getLinkedAccountId(companyId, input.bankAccountId);
+  const { debitAccountId, creditAccountId } = await resolveJournalAccounts(
+    companyId,
+    input,
+    bankLinkedAccountId,
+  );
 
-  // Auto-post journal entry
-  let journalEntryId: number | null = null;
-  try {
-    if (input.txnType === "deposit") {
-      // Dr Bank account / Cr counterpart (revenue/receivable/etc.)
-      const debitAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
-      const creditAccountId = input.counterpartAccountId ?? (await findAccountByCode(companyId, "4010"));
-      if (debitAccountId && creditAccountId) {
-        const je = await storage.createJournalEntry(
-          companyId,
-          {
-            reference: `BK-${reference}`,
-            entryDate: input.txnDate ? new Date(input.txnDate).toISOString() : new Date().toISOString(),
-            description: input.description,
-            source: "manual",
-            lines: [
-              { accountId: debitAccountId, debit: String(amount), credit: "0", description: input.description },
-              { accountId: creditAccountId, debit: "0", credit: String(amount), description: input.description },
-            ],
-          },
-          ctx,
-        );
-        journalEntryId = je.id;
-      }
-    } else if (input.txnType === "withdrawal" || input.txnType === "fee") {
-      // Dr counterpart (expense/payable) / Cr Bank
-      const creditAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
-      const debitAccountId = input.counterpartAccountId ?? (await findAccountByCode(companyId, "5010"));
-      if (debitAccountId && creditAccountId) {
-        const je = await storage.createJournalEntry(
-          companyId,
-          {
-            reference: `BK-${reference}`,
-            entryDate: input.txnDate ? new Date(input.txnDate).toISOString() : new Date().toISOString(),
-            description: input.description,
-            source: "manual",
-            lines: [
-              { accountId: debitAccountId, debit: String(amount), credit: "0", description: input.description },
-              { accountId: creditAccountId, debit: "0", credit: String(amount), description: input.description },
-            ],
-          },
-          ctx,
-        );
-        journalEntryId = je.id;
-      }
-    } else if (input.txnType === "transfer" && input.counterpartBankAccountId) {
-      // Dr target bank / Cr source bank
-      const sourceBankAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
-      const targetLinkedAccountId = await getLinkedAccountId(companyId, input.counterpartBankAccountId);
-      const targetBankAccountId = targetLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
-      if (sourceBankAccountId && targetBankAccountId && sourceBankAccountId !== targetBankAccountId) {
-        const je = await storage.createJournalEntry(
-          companyId,
-          {
-            reference: `BK-${reference}`,
-            entryDate: input.txnDate ? new Date(input.txnDate).toISOString() : new Date().toISOString(),
-            description: input.description,
-            source: "manual",
-            lines: [
-              { accountId: targetBankAccountId, debit: String(amount), credit: "0", description: input.description },
-              { accountId: sourceBankAccountId, debit: "0", credit: String(amount), description: input.description },
-            ],
-          },
-          ctx,
-        );
-        journalEntryId = je.id;
-      }
-    }
-  } catch (_err) {
-    // JE posting is best-effort; don't fail the transaction
-  }
-
-  const [row] = await db
-    .insert(bankTransactions)
-    .values({
-      ...input,
+  // Atomicity fix (C2): the journal entry and the bank-transaction row must
+  // commit together or not at all. Previously the JE was created in a
+  // best-effort try/catch and the bank row was inserted regardless, so a
+  // failed JE left the row posted with journalEntryId=null — silently
+  // unbalancing the books. We now open ONE transaction and thread its `tx`
+  // into createJournalEntry so the JE header, lines, audit row, and the
+  // bank-transaction insert are a single unit. Any failure rolls back the
+  // whole thing and propagates to the route (which returns a 500 with the
+  // message), rather than persisting a half-written movement.
+  const row = await db.transaction(async (tx) => {
+    const je = await storage.createJournalEntry(
       companyId,
-      reference,
-      amount: String(amount),
-      journalEntryId,
-      status: "posted",
-    })
-    .returning();
+      {
+        entryDate: input.txnDate ? new Date(input.txnDate).toISOString() : new Date().toISOString(),
+        description: input.description,
+        source: "manual",
+        lines: [
+          { accountId: debitAccountId, debit: amount, credit: 0, description: input.description },
+          { accountId: creditAccountId, debit: 0, credit: amount, description: input.description },
+        ],
+      },
+      ctx,
+      tx,
+    );
+
+    const [inserted] = await tx
+      .insert(bankTransactions)
+      .values({
+        ...input,
+        txnType: input.txnType as BankTransaction["txnType"],
+        companyId,
+        reference,
+        amount: String(amount),
+        journalEntryId: je.id,
+        status: "posted",
+      })
+      .returning();
+
+    return inserted;
+  });
 
   const [ba] = await db
     .select({

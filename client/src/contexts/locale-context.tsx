@@ -56,7 +56,7 @@ export function getUrlLocaleOverride(): Locale | null {
   }
 }
 
-export function LocaleProvider({ children, defaultLocale = "ar" as Locale }: { children: React.ReactNode; defaultLocale?: Locale }) {
+export function LocaleProvider({ children, defaultLocale = "en" as Locale }: { children: React.ReactNode; defaultLocale?: Locale }) {
   const [locale, setLocaleState] = useState<Locale>(() => {
     if (typeof window === "undefined") return defaultLocale;
     // URL override wins over everything: it's the only signal that's

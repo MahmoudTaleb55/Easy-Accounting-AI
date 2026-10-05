@@ -1097,14 +1097,6 @@ export default function Landing() {
   return (
     <div className="bg-background text-foreground" dir={dir} lang={locale}>
       <AppNavbar
-        links={[
-          { label: t.nav.platform,     href: "#platform" },
-          { label: t.nav.intelligence, href: "#intelligence" },
-          { label: t.nav.integrations, href: "#integrations" },
-          { label: t.nav.security,     href: "#security" },
-          { label: t.nav.pricing,      href: "#pricing" },
-          { label: t.nav.faq,          href: "#faq" },
-        ]}
         ctaLabel={t.nav.openApp}
         ctaHref={openAppHref}
         secondaryLabel={t.nav.demo}

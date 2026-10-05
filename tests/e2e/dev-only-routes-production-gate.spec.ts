@@ -89,14 +89,12 @@ async function startApp(): Promise<{ server: http.Server; baseUrl: string }> {
   app.use((req: any, _res, next) => {
     req.isAuthenticated = () => true;
     req.user = {
-      _local: true,
-      claims: {
-        sub: "test-user-prod-gate",
-        email: "prod-gate@example.test",
-        first_name: null,
-        last_name: null,
-        profile_image_url: null,
-      },
+      provider: "local",
+      id: "test-user-prod-gate",
+      email: "prod-gate@example.test",
+      firstName: null,
+      lastName: null,
+      profileImageUrl: null,
     };
     (req as any).membership = {
       userId: "test-user-prod-gate",

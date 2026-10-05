@@ -32,7 +32,6 @@ import {
   normalizeLocale,
   type EmailLocale,
 } from "./email";
-import { authStorage } from "../replit_integrations/auth/storage";
 import { withRlsBypass } from "../db";
 
 export type EvaluationOutcome =
@@ -92,7 +91,7 @@ async function pickWorkspaceLocale(companyId: number): Promise<EmailLocale> {
       await authBizStorage.listMembersForCompany(companyId)
     ).find((m) => m.role === "owner")?.userId;
     if (firstOwnerId) {
-      const u = await authStorage.getUser(firstOwnerId);
+      const u = await authBizStorage.getUserById(firstOwnerId);
       return normalizeLocale(u?.preferredLocale);
     }
   } catch {

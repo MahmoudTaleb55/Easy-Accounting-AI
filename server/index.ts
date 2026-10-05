@@ -1,10 +1,16 @@
+// Load .env into process.env in development BEFORE any module that reads
+// environment variables at import time (e.g. ./db reads DATABASE_URL). This
+// side-effect import must stay first. Production is a no-op — see load-env.ts.
+import "./load-env";
 import express, { type Request, Response, NextFunction } from "express";
+import { buildListenOptions } from "./listen-options";
 import { registerRoutes } from "./routes";
 import { rbacMiddleware, registerAuthRoutes as registerTeamRoutes } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { setupAuth } from "./setup";
 import { registerLocalAuthRoutes } from "./auth/local-routes";
+import { setupOAuthRoutes } from "./ai/auth/oidcAuth";
 
 const app = express();
 const httpServer = createServer(app);
@@ -41,9 +47,7 @@ export function log(message: string, source = "express") {
 // needs a careful audit of Vite HMR, OpenAI image hosts, and the public
 // /objects/avatars proxy — but the headers below are safe everywhere.
 //
-// X-Frame-Options is intentionally only set in production: the Replit
-// workspace preview embeds the dev server inside a cross-origin iframe, and
-// any value (DENY *or* SAMEORIGIN) breaks that preview. Production still
+// X-Frame-Options is intentionally only set in production: Production still
 // gets full clickjacking protection.
 const isProduction = process.env.NODE_ENV === "production";
 app.use((_req, res, next) => {
@@ -116,10 +120,10 @@ app.use((req, res, next) => {
 (async () => {
   // Auth must be set up BEFORE any routes that depend on session/passport.
   await setupAuth(app);
+  await setupOAuthRoutes(app);
   // Local auth routes register first so our /api/auth/user shadow (which
   // accepts both OIDC and email+password sessions) wins over the blueprint's.
   registerLocalAuthRoutes(app);
-  registerAuthRoutes(app);
 
   // Attaches `req.member` — a small in-memory projection of the active
   // user's `users` row + `memberships` role — so the `/api/auth/me`
@@ -399,14 +403,10 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  // reusePort is Linux-only (SO_REUSEPORT); passing it on Windows/macOS throws
+  // `listen ENOTSUP` and crashes boot. buildListenOptions encapsulates that
+  // platform decision (and is unit-tested in listen-options.test.ts).
+  httpServer.listen(buildListenOptions(port), () => {
+    log(`serving on port ${port}`);
+  });
 })();

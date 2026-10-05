@@ -15,7 +15,13 @@ import { LogIn } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
+// Global-first ordering: the major international currencies lead, then the
+// MENA set the platform also supports. The whole list stays available.
 const CURRENCIES: Array<{ code: string; symbol: string; nameEn: string; nameAr: string }> = [
+  { code: "USD", symbol: "$", nameEn: "US Dollar", nameAr: "دولار أمريكي" },
+  { code: "EUR", symbol: "€", nameEn: "Euro", nameAr: "يورو" },
+  { code: "GBP", symbol: "£", nameEn: "British Pound", nameAr: "جنيه استرليني" },
+  { code: "INR", symbol: "₹", nameEn: "Indian Rupee", nameAr: "روبية هندية" },
   { code: "SAR", symbol: "ر.س", nameEn: "Saudi Riyal", nameAr: "ريال سعودي" },
   { code: "AED", symbol: "د.إ", nameEn: "UAE Dirham", nameAr: "درهم إماراتي" },
   { code: "KWD", symbol: "د.ك", nameEn: "Kuwaiti Dinar", nameAr: "دينار كويتي" },
@@ -24,9 +30,6 @@ const CURRENCIES: Array<{ code: string; symbol: string; nameEn: string; nameAr: 
   { code: "OMR", symbol: "ر.ع", nameEn: "Omani Rial", nameAr: "ريال عماني" },
   { code: "EGP", symbol: "ج.م", nameEn: "Egyptian Pound", nameAr: "جنيه مصري" },
   { code: "JOD", symbol: "د.أ", nameEn: "Jordanian Dinar", nameAr: "دينار أردني" },
-  { code: "USD", symbol: "$", nameEn: "US Dollar", nameAr: "دولار أمريكي" },
-  { code: "EUR", symbol: "€", nameEn: "Euro", nameAr: "يورو" },
-  { code: "GBP", symbol: "£", nameEn: "British Pound", nameAr: "جنيه استرليني" },
 ];
 
 export default function SignUpPage() {
@@ -54,6 +57,19 @@ export default function SignUpPage() {
     enabled: !!inviteToken,
   });
 
+  // OAuth works for sign-up too (first OAuth login auto-creates the account),
+  // so offer the same provider buttons here. Only providers the server has
+  // configured are shown — see /api/auth/providers (returns booleans only).
+  const { data: providers } = useQuery<{ google: boolean; microsoft: boolean }>({
+    queryKey: ["/api/auth/providers"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/auth/providers");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const anyProvider = Boolean(providers?.google || providers?.microsoft);
+
   const form = useForm<SignUpInput>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
@@ -63,19 +79,20 @@ export default function SignUpPage() {
       lastName: "",
       preferredLocale: ar ? "ar" : "en",
       invitationToken: inviteToken ?? null,
-      currencyCode: "SAR",
-      currencySymbol: "ر.س",
+      // Global-first default. Users pick their own books currency here; the
+      // country pack they later select in Settings can override downstream.
+      currencyCode: "USD",
     },
   });
 
-  const currencyCode = form.watch("currencyCode") ?? "SAR";
+  const currencyCode = form.watch("currencyCode") ?? "USD";
 
   useEffect(() => {
     if (invite?.email) form.setValue("email", invite.email);
     if (inviteToken) form.setValue("invitationToken", inviteToken);
   }, [invite, inviteToken]);
 
-  const m = useMutation({
+  const m = useMutation<unknown, Error, SignUpInput>({
     mutationFn: async (input: SignUpInput) => {
       const res = await apiRequest("POST", "/api/auth/signup", input);
       return res.json();
@@ -183,7 +200,6 @@ export default function SignUpPage() {
                 const c = CURRENCIES.find((x) => x.code === code);
                 if (!c) return;
                 form.setValue("currencyCode", c.code, { shouldDirty: true });
-                form.setValue("currencySymbol", c.symbol, { shouldDirty: true });
               }}
             >
               <SelectTrigger id="currency" data-testid="select-currency">
@@ -217,26 +233,47 @@ export default function SignUpPage() {
           {ar ? "إنشاء الحساب" : "Create account"}
         </Button>
 
-        <div className="relative my-2">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-border" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase tracking-wider">
-            <span className="bg-background px-3 text-muted-foreground">{ar ? "أو" : "or"}</span>
-          </div>
-        </div>
+        {anyProvider && (
+          <>
+            <div className="relative my-2">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase tracking-wider">
+                <span className="bg-background px-3 text-muted-foreground">{ar ? "أو" : "or"}</span>
+              </div>
+            </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          className="w-full gap-2"
-          onClick={() => (window.location.href = "/api/login")}
-          data-testid="button-replit-signup"
-        >
-          <LogIn className="h-4 w-4" />
-          {ar ? "متابعة بحساب المؤسسة (SSO)" : "Continue with SSO"}
-        </Button>
+            {providers?.google && (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full gap-2"
+                onClick={() => (window.location.href = "/api/auth/login/google")}
+                data-testid="button-sso-google"
+              >
+                <LogIn className="h-4 w-4" />
+                {ar ? "المتابعة عبر Google" : "Continue with Google"}
+              </Button>
+            )}
+
+            {providers?.microsoft && (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full gap-2"
+                onClick={() => (window.location.href = "/api/auth/login/microsoft")}
+                data-testid="button-sso-microsoft"
+              >
+                <LogIn className="h-4 w-4" />
+                {ar ? "المتابعة عبر Microsoft" : "Continue with Microsoft"}
+              </Button>
+            )}
+          </>
+        )}
+
       </form>
     </AuthShell>
   );

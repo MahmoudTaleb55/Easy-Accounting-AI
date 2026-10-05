@@ -1,6 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { type WorkspaceRole, ROLES } from "@shared/schema";
-import { authStorage } from "./replit_integrations/auth/storage";
 import { authBizStorage } from "./auth/storage";
 import { resolveActiveCompanyId } from "./auth/middleware";
 import { withUnscopedDb } from "./db";
@@ -43,8 +42,8 @@ function mapRole(role: string | undefined | null): WorkspaceRole {
 }
 
 /**
- * Shape of the passport session payload. Both auth providers (Replit OIDC
- * and the local email+password provider) populate `claims.sub` with the
+ * Shape of the passport session payload. Both auth providers (OIDC
+ * and the local email+password provider) populate `id` with the
  * stable user id.
  */
 interface SessionUser {
@@ -81,7 +80,7 @@ async function resolveCurrentMember(req: Request): Promise<CurrentMember | null>
   return withUnscopedDb("auth:resolve-current-member", async () => {
     const userId = getSessionUserId(req);
     if (!userId) return null;
-    const u = await authStorage.getUser(userId);
+    const u = await authBizStorage.getUserById(userId);
     if (!u || !u.email) return null;
 
     const companyId = await resolveActiveCompanyId(req, userId);

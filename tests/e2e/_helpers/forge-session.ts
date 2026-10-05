@@ -307,14 +307,12 @@ export async function forgeSession(opts: ForgeSessionOptions): Promise<void> {
     },
     passport: {
       user: {
-        _local: true,
-        claims: {
-          sub: opts.userId,
-          email: opts.email,
-          first_name: opts.firstName,
-          last_name: opts.lastName,
-          profile_image_url: null,
-        },
+        provider: "local",
+        id: opts.userId,
+        email: opts.email,
+        firstName: opts.firstName,
+        lastName: opts.lastName,
+        profileImageUrl: null,
       },
     },
   };

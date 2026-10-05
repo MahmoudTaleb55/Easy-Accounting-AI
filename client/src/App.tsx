@@ -1,5 +1,5 @@
 import { Switch, Route, useLocation, Redirect } from "wouter";
-import { useEffect } from "react";
+import { useEffect, Suspense, lazy } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -12,7 +12,8 @@ import { LocaleProvider } from "@/contexts/locale-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 
 import Landing from "@/pages/landing";
-import Demo from "@/pages/demo";
+// Demo is lazy — it is not on the authenticated critical path.
+const Demo = lazy(() => import("@/pages/demo"));
 
 import Dashboard from "@/pages/dashboard";
 import Transactions from "@/pages/transactions";
@@ -43,35 +44,38 @@ import SettingsPage from "@/pages/settings";
 import BankingAccountsPage from "@/pages/banking/accounts";
 import BankingTransactionsPage from "@/pages/banking/transactions";
 import ZatcaSettingsPage from "@/pages/settings/zatca";
-import Styleguide from "@/pages/styleguide";
+const Styleguide = lazy(() => import("@/pages/styleguide"));
 
-// Marketing pages
-import PlatformPage from "@/pages/marketing/platform";
-import InvoicesMarketingPage from "@/pages/marketing/invoices";
-import AccountingPage from "@/pages/marketing/accounting";
-import HrPayrollPage from "@/pages/marketing/hr-payroll";
-import FixedAssetsMarketingPage from "@/pages/marketing/fixed-assets";
-import ReportsMarketingPage from "@/pages/marketing/reports";
-import AiAssistantMarketingPage from "@/pages/marketing/ai-assistant";
-import CockpitPage from "@/pages/marketing/cockpit";
-import PredictivePage from "@/pages/marketing/predictive";
-import CountrySaPage from "@/pages/marketing/country-sa";
-import CountryAePage from "@/pages/marketing/country-ae";
-import CountryEgPage from "@/pages/marketing/country-eg";
-import CountryKwPage from "@/pages/marketing/country-kw";
-import CountryQaPage from "@/pages/marketing/country-qa";
-import CountryJoPage from "@/pages/marketing/country-jo";
-import CountryIntlPage from "@/pages/marketing/country-intl";
-import AboutPage from "@/pages/marketing/about";
-import CustomersPage from "@/pages/marketing/customers";
-import BlogPage from "@/pages/marketing/blog";
-import BlogPostPage from "@/pages/marketing/blog-post";
-import JobsPage from "@/pages/marketing/jobs";
-import JobDetailPage from "@/pages/marketing/job-detail";
-import ContactPage from "@/pages/marketing/contact";
-import PrivacyPage from "@/pages/marketing/privacy";
-import TermsPage from "@/pages/marketing/terms";
-import SecurityPage from "@/pages/marketing/security";
+// Marketing pages — lazy-loaded. They are only reached by logged-out visitors
+// browsing the public site and are never on the authenticated app's critical
+// path, so code-splitting them out of the initial bundle improves first-load
+// velocity without affecting the in-app experience.
+const PlatformPage = lazy(() => import("@/pages/marketing/platform"));
+const InvoicesMarketingPage = lazy(() => import("@/pages/marketing/invoices"));
+const AccountingPage = lazy(() => import("@/pages/marketing/accounting"));
+const HrPayrollPage = lazy(() => import("@/pages/marketing/hr-payroll"));
+const FixedAssetsMarketingPage = lazy(() => import("@/pages/marketing/fixed-assets"));
+const ReportsMarketingPage = lazy(() => import("@/pages/marketing/reports"));
+const AiAssistantMarketingPage = lazy(() => import("@/pages/marketing/ai-assistant"));
+const CockpitPage = lazy(() => import("@/pages/marketing/cockpit"));
+const PredictivePage = lazy(() => import("@/pages/marketing/predictive"));
+const CountrySaPage = lazy(() => import("@/pages/marketing/country-sa"));
+const CountryAePage = lazy(() => import("@/pages/marketing/country-ae"));
+const CountryEgPage = lazy(() => import("@/pages/marketing/country-eg"));
+const CountryKwPage = lazy(() => import("@/pages/marketing/country-kw"));
+const CountryQaPage = lazy(() => import("@/pages/marketing/country-qa"));
+const CountryJoPage = lazy(() => import("@/pages/marketing/country-jo"));
+const CountryIntlPage = lazy(() => import("@/pages/marketing/country-intl"));
+const AboutPage = lazy(() => import("@/pages/marketing/about"));
+const CustomersPage = lazy(() => import("@/pages/marketing/customers"));
+const BlogPage = lazy(() => import("@/pages/marketing/blog"));
+const BlogPostPage = lazy(() => import("@/pages/marketing/blog-post"));
+const JobsPage = lazy(() => import("@/pages/marketing/jobs"));
+const JobDetailPage = lazy(() => import("@/pages/marketing/job-detail"));
+const ContactPage = lazy(() => import("@/pages/marketing/contact"));
+const PrivacyPage = lazy(() => import("@/pages/marketing/privacy"));
+const TermsPage = lazy(() => import("@/pages/marketing/terms"));
+const SecurityPage = lazy(() => import("@/pages/marketing/security"));
 
 // Auth pages
 import SignInPage from "@/pages/auth/sign-in";
@@ -242,10 +246,26 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light">
-        <LocaleProvider defaultLocale="ar">
+        {/* Global-first: English is the default UI language on first visit.
+            A signed-in user's saved preferredLocale and the ?lang= URL
+            override still take precedence; this only sets the first-paint
+            default for a visitor with no stored preference. Arabic/German/
+            French remain fully supported and user-selectable. */}
+        <LocaleProvider defaultLocale="en">
           <TooltipProvider>
             <Toaster />
-            <Router />
+            {/* Suspense boundary for lazily-loaded (code-split) route
+                components — see the lazy() marketing/demo/styleguide imports
+                above. Keeps a spinner on screen while a split chunk loads. */}
+            <Suspense
+              fallback={
+                <div className="flex min-h-screen items-center justify-center bg-background">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              }
+            >
+              <Router />
+            </Suspense>
           </TooltipProvider>
         </LocaleProvider>
       </ThemeProvider>

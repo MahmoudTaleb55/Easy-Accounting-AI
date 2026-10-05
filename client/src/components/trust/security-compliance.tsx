@@ -116,8 +116,8 @@ export function SecurityCompliance() {
     region: locale === "ar" ? "منطقة الاستضافة" : "Hosting region",
     regionVal:
       locale === "ar"
-        ? "Replit (سحابي مُدار) — الاستضافة الافتراضية مع نسخ احتياطي مستمر."
-        : "Replit-managed cloud — default region with continuous backups.",
+        ? "السحابة المؤسسية — المنطقة الافتراضية مع نسخ احتياطي مستمر."
+        : "Managed cloud deployment — default region with continuous backups.",
     encAtRest: locale === "ar" ? "تشفير في حالة السكون" : "Encryption at rest",
     encAtRestVal: "AES-256",
     encInTransit: locale === "ar" ? "تشفير أثناء النقل" : "Encryption in transit",
@@ -137,8 +137,8 @@ export function SecurityCompliance() {
     integrations: locale === "ar" ? "أمان التكاملات" : "Integration security",
     integrationsCaption:
       locale === "ar"
-        ? "الذكاء الاصطناعي يعمل عبر تكامل OpenAI الموثّق على Replit. لا تُخزَّن المطالبات في خدمات خارجية."
-        : "AI runs through Replit's vetted OpenAI integration. Prompts are not retained externally.",
+        ? "الذكاء الاصطناعي يعمل عبر تكامل OpenAI الموثّق في النشر الحالي. لا تُخزَّن المطالبات في خدمات خارجية."
+        : "AI runs through the vetted OpenAI integration configured for this deployment. Prompts are not retained externally.",
     activity: locale === "ar" ? "آخر النشاط الإداري" : "Recent admin activity",
     activityCaption:
       locale === "ar"

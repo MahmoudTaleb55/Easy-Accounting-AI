@@ -145,6 +145,14 @@ export const authBizStorage = {
     return u;
   },
 
+  async getUserById(id: string): Promise<User | undefined> {
+    const [u] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, id));
+    return u;
+  },
+
   async createLocalUser(input: {
     email: string;
     passwordHash: string;
@@ -181,10 +189,16 @@ export const authBizStorage = {
 
   // ---------- session inspection (for "active sessions" UI + sign-out-others) ----------
   async listSessionsForUser(userId: string, currentSid?: string) {
+    // The passport session stores the user as { id, email, provider, ... }
+    // (see buildLocalSession and the OIDC verify callbacks). The id lives at
+    // sess.passport.user.id. The legacy `claims.sub` path is the Replit-era
+    // shape that no longer exists — matching only on it returned zero rows,
+    // so this panel silently showed no sessions (scan finding, auth/storage).
     const rows = await db.execute(sql`
       SELECT sid, sess, expire
       FROM sessions
-      WHERE sess->'passport'->'user'->'claims'->>'sub' = ${userId}
+      WHERE (sess->'passport'->'user'->>'id' = ${userId}
+             OR sess->'passport'->'user'->'claims'->>'sub' = ${userId})
         AND expire > NOW()
       ORDER BY expire DESC
     `);
@@ -193,22 +207,30 @@ export const authBizStorage = {
       sid: r.sid,
       expiresAt: r.expire,
       isCurrent: currentSid ? r.sid === currentSid : false,
-      provider: r.sess?.passport?.user?._local ? "local" : "replit",
+      provider: r.sess?.passport?.user?.provider ?? "unknown",
     }));
   },
 
   async deleteSessionsForUserExcept(userId: string, keepSid?: string) {
+    // Match the actual session shape: sess.passport.user.id. The old `_uid`
+    // and `claims.sub` paths never existed on local/OAuth sessions, so these
+    // DELETEs matched zero rows — meaning password-reset, change-password and
+    // "sign out other sessions" never actually revoked anything (scan finding,
+    // SESSION_TOKEN_VULNERABILITIES). The legacy paths are kept as an extra
+    // OR so any residual Replit-era rows are still swept.
     if (keepSid) {
       await db.execute(sql`
         DELETE FROM sessions
-        WHERE (sess->'passport'->'user'->>'_uid' = ${userId}
+        WHERE (sess->'passport'->'user'->>'id' = ${userId}
+               OR sess->'passport'->'user'->>'_uid' = ${userId}
                OR sess->'passport'->'user'->'claims'->>'sub' = ${userId})
           AND sid <> ${keepSid}
       `);
     } else {
       await db.execute(sql`
         DELETE FROM sessions
-        WHERE sess->'passport'->'user'->>'_uid' = ${userId}
+        WHERE sess->'passport'->'user'->>'id' = ${userId}
+           OR sess->'passport'->'user'->>'_uid' = ${userId}
            OR sess->'passport'->'user'->'claims'->>'sub' = ${userId}
       `);
     }
@@ -952,9 +974,26 @@ export const authBizStorage = {
     return { days, start, end, series, totals };
   },
 
-  async listPasswordResetTokensForUser(userId: string): Promise<PasswordResetToken[]> {
+  async listPasswordResetTokensForUser(
+    userId: string,
+  ): Promise<Omit<PasswordResetToken, "token">[]> {
+    // SECURITY (scan finding, INFORMATION_DISCLOSURE): never return the raw
+    // `token` column. This feeds the owner-facing member-activity API, and a
+    // live reset token is an account-takeover credential. The admin UI only
+    // needs lifecycle metadata (created/expires/used + email status), so we
+    // select those columns explicitly and omit the secret.
     return db
-      .select()
+      .select({
+        id: passwordResetTokens.id,
+        userId: passwordResetTokens.userId,
+        expiresAt: passwordResetTokens.expiresAt,
+        usedAt: passwordResetTokens.usedAt,
+        createdAt: passwordResetTokens.createdAt,
+        lastMessageId: passwordResetTokens.lastMessageId,
+        lastEmailStatus: passwordResetTokens.lastEmailStatus,
+        lastEmailError: passwordResetTokens.lastEmailError,
+        lastEmailEventAt: passwordResetTokens.lastEmailEventAt,
+      })
       .from(passwordResetTokens)
       .where(eq(passwordResetTokens.userId, userId))
       .orderBy(desc(passwordResetTokens.createdAt));

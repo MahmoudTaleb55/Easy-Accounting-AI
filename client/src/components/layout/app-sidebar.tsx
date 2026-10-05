@@ -119,7 +119,7 @@ export function AppSidebar() {
           <BrandMark size="sm" />
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <div className="text-h4 font-semibold tracking-tight truncate" dir="rtl">محاسب ذكي</div>
+              <div className="text-h4 font-semibold tracking-tight truncate font-serif">Orqam</div>
               <div className="eyebrow text-muted-foreground/80" dir="rtl">نظام محاسبي ذكي</div>
             </div>
           )}
@@ -244,7 +244,7 @@ export function MobileHeader() {
     <div className="md:hidden flex items-center justify-between px-4 h-12 bg-card border-b border-border sticky top-0 z-50 shadow-xs">
       <div className="flex items-center gap-2 text-foreground">
         <BrandMark size="sm" />
-        <h2 className="text-h4 font-semibold text-foreground" dir="rtl">محاسب ذكي</h2>
+        <h2 className="text-h4 font-semibold text-foreground font-serif">Orqam</h2>
       </div>
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar}>
         <Menu className="size-4" />

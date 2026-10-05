@@ -19,7 +19,7 @@ const LANG_NATIVE: Record<Locale, string> = {
 
 interface NavSubLink { label: string; href: string }
 interface NavGroup   { type: "group"; label: string; items: NavSubLink[] }
-interface NavLink    { type?: "link";  label: string; href: string }
+interface NavLink    { type: "link";  label: string; href: string }
 type NavItem = NavGroup | NavLink
 
 interface AppNavbarProps {

@@ -5,7 +5,7 @@ type Dict = Record<string, Record<LocaleCode, string>>;
 
 export const STRINGS = {
   // Brand
-  brand: { ar: "محاسب ذكي", en: "Smart Books", de: "Smart Books", fr: "Smart Books" },
+  brand: { ar: "أرقام", en: "Orqam", de: "Orqam", fr: "Orqam" },
 
   // Sidebar groups
   group_workspace:    { ar: "مساحة العمل", en: "Workspace", de: "Arbeitsbereich", fr: "Espace de travail" },

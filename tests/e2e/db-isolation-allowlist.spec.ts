@@ -173,14 +173,14 @@ const DB_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "which run inside withCompanyScope via the request middleware.",
   },
   {
-    file: "server/replit_integrations/auth/storage.ts",
+    file: "server/ai/auth/storage.ts",
     rationale:
-      "Replit-OIDC user upsert. Runs from the OIDC callback before any " +
+      "OIDC user upsert. Runs from the OIDC callback before any " +
       "membership has been attached and only touches the cross-tenant " +
       "users table (intentionally out of RLS scope).",
   },
   {
-    file: "server/replit_integrations/chat/storage.ts",
+    file: "server/ai/chat/storage.ts",
     rationale:
       "chatStorage methods are invoked from /api/chat/* route handlers, " +
       "which run inside withCompanyScope.",
@@ -228,10 +228,10 @@ const STORAGE_MODULE_PATHS = [
   "./auth/storage",
   "../auth/storage",
   "../../auth/storage",
-  "./replit_integrations/auth/storage",
-  "../replit_integrations/auth/storage",
-  "./replit_integrations/chat/storage",
-  "../replit_integrations/chat/storage",
+  "./ai/auth/storage",
+  "../ai/auth/storage",
+  "./ai/chat/storage",
+  "../ai/chat/storage",
 ];
 
 const STORAGE_MODULE_VALUE_EXPORTS = new Set<string>([
@@ -367,31 +367,31 @@ const STORAGE_IMPORT_ALLOWLIST: AllowlistEntry[] = [
       "module on the audited bypass path documented in the design doc.",
   },
   {
-    file: "server/replit_integrations/auth/replitAuth.ts",
+    file: "server/ai/auth/oidcAuth.ts",
     rationale:
-      "Replit OIDC verify / claims-upsert callback. Runs from passport " +
+      "OIDC verify / claims-upsert callback. Runs from passport " +
       "during sign-in (pre-membership) and only writes the cross-tenant " +
       "users table (out of RLS scope).",
   },
   {
-    file: "server/replit_integrations/auth/routes.ts",
+    file: "server/ai/auth/routes.ts",
     rationale:
       "/api/login, /api/callback, /api/logout — pre-membership auth " +
       "routes that only touch the cross-tenant users table.",
   },
   {
-    file: "server/replit_integrations/auth/index.ts",
+    file: "server/ai/auth/index.ts",
     rationale:
       "Barrel re-export of authStorage and IAuthStorage; no runtime db " +
       "calls of its own.",
   },
   {
-    file: "server/replit_integrations/chat/routes.ts",
+    file: "server/ai/chat/routes.ts",
     rationale:
       "/api/chat/* route handlers, which run inside withCompanyScope.",
   },
   {
-    file: "server/replit_integrations/chat/index.ts",
+    file: "server/ai/chat/index.ts",
     rationale:
       "Barrel re-export of chatStorage and IChatStorage; no runtime db " +
       "calls of its own.",
@@ -656,8 +656,8 @@ test.describe("workspace isolation lint", () => {
       if (
         rel === "server/storage.ts" ||
         rel === "server/auth/storage.ts" ||
-        rel === "server/replit_integrations/auth/storage.ts" ||
-        rel === "server/replit_integrations/chat/storage.ts"
+        rel === "server/ai/auth/storage.ts" ||
+        rel === "server/ai/chat/storage.ts"
       ) {
         continue;
       }

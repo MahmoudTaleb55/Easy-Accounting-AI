@@ -23,7 +23,6 @@ import {
   type Role,
 } from "@shared/schema";
 import { authBizStorage, hashPassword, verifyPassword } from "./storage";
-import { authStorage } from "../replit_integrations/auth/storage";
 import { withUnscopedDb } from "../db";
 import {
   sendInvitationEmail,
@@ -48,15 +47,50 @@ import {
 /** Build a passport-compatible session payload for a local user. */
 function buildLocalSession(user: { id: string; email: string | null; firstName: string | null; lastName: string | null; profileImageUrl: string | null }) {
   return {
-    _local: true,
-    claims: {
-      sub: user.id,
-      email: user.email,
-      first_name: user.firstName,
-      last_name: user.lastName,
-      profile_image_url: user.profileImageUrl,
-    },
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    profileImageUrl: user.profileImageUrl,
+    provider: "local" as const,
   };
+}
+
+/**
+ * Trusted public base URL for links embedded in outbound emails
+ * (password-reset, invitation accept).
+ *
+ * SECURITY (scan finding, host-header injection → AUTHENTICATION_BYPASS):
+ * these links MUST NOT be built from `req.get("host")` / `req.protocol`. The
+ * Host header is attacker-controlled — a request with `Host: evil.com` would
+ * cause a victim's password-reset email to carry `https://evil.com/reset-
+ * password/<valid-token>`, handing the token to the attacker when clicked.
+ * We derive the origin from server-trusted configuration instead. Matches the
+ * convention already used by email-delivery-alerts.ts (PUBLIC_APP_URL) and
+ * oidcAuth.ts (APP_URL).
+ */
+function appBaseUrl(): string {
+  const base =
+    process.env.PUBLIC_APP_URL?.trim() ||
+    process.env.APP_URL?.trim() ||
+    "http://localhost:5000";
+  return base.replace(/\/+$/, "");
+}
+
+/**
+ * Strip secret fields before returning a user row to the client.
+ *
+ * SECURITY (scan finding, INFORMATION_DISCLOSURE): the storage layer selects
+ * the full `users` row, which includes `passwordHash`. Returning that verbatim
+ * shipped the bcrypt hash to the browser on signup/signin/get-user/profile
+ * responses. Always pass user rows through this before res.json().
+ */
+function sanitizeUser<T extends { passwordHash?: unknown } | null | undefined>(
+  user: T,
+): T extends null | undefined ? T : Omit<NonNullable<T>, "passwordHash"> {
+  if (!user) return user as any;
+  const { passwordHash: _omit, ...safe } = user as Record<string, unknown>;
+  return safe as any;
 }
 
 // Hard ceiling on a single CSV export of the email-delivery feed. Surfaced
@@ -131,7 +165,7 @@ async function sendInvitationOrLog(
   try {
     const [company, inviter] = await Promise.all([
       authBizStorage.getCompanyById(inv.companyId).catch(() => undefined),
-      authStorage.getUser(inv.invitedByUserId).catch(() => undefined),
+      authBizStorage.getUserById(inv.invitedByUserId).catch(() => undefined),
     ]);
     const inviterName = inviter
       ? [inviter.firstName, inviter.lastName].filter(Boolean).join(" ").trim() || inviter.email || null
@@ -301,7 +335,7 @@ export function registerLocalAuthRoutes(app: Express) {
         const session = buildLocalSession(user);
         req.login(session, (err) => {
           if (err) return next(err);
-          res.status(201).json({ user, bootstrapped });
+          res.status(201).json({ user: sanitizeUser(user), bootstrapped });
         });
       } catch (err) {
         if (handleZod(err, res)) return;
@@ -340,7 +374,7 @@ export function registerLocalAuthRoutes(app: Express) {
         const session = buildLocalSession(user);
         req.login(session, (err) => {
           if (err) return next(err);
-          res.json({ user });
+          res.json({ user: sanitizeUser(user) });
         });
       } catch (err) {
         if (handleZod(err, res)) return;
@@ -374,7 +408,7 @@ export function registerLocalAuthRoutes(app: Express) {
       const isProd = process.env.NODE_ENV === "production";
       if (user && user.provider === "local") {
         const { id: tokenId, token } = await authBizStorage.createPasswordResetToken(user.id);
-        const link = `${req.protocol}://${req.get("host")}/reset-password/${token}`;
+        const link = `${appBaseUrl()}/reset-password/${token}`;
 
         // Try to send a real branded email when a transport is configured.
         const result = await sendPasswordResetEmail({
@@ -482,9 +516,9 @@ export function registerLocalAuthRoutes(app: Express) {
     await withUnscopedDb("auth:user-bootstrap-on-first-hit", async () => {
       try {
         const user = req.user as any;
-        if (req.isAuthenticated() && user?.claims?.sub && !user._local) {
-          const id = user.claims.sub as string;
-          const u = await authStorage.getUser(id);
+        if (req.isAuthenticated() && user?.id && user.provider !== "local") {
+          const id = user.id as string;
+          const u = await authBizStorage.getUserById(id);
           if (u) {
             const ms = await authBizStorage.listMembershipsForUser(id);
             if (ms.length === 0) {
@@ -511,8 +545,8 @@ export function registerLocalAuthRoutes(app: Express) {
     return withUnscopedDb("auth:get-current-user", async () => {
       try {
         const userId = getUserIdOrThrow(req);
-        const user = await authStorage.getUser(userId);
-        res.json(user);
+        const user = await authBizStorage.getUserById(userId);
+        res.json(sanitizeUser(user));
       } catch (err) {
         console.error("Error fetching user:", err);
         res.status(500).json({ message: "Failed to fetch user" });
@@ -542,7 +576,7 @@ export function registerLocalAuthRoutes(app: Express) {
       const userId = getUserIdOrThrow(req);
       const patch = updateProfileSchema.parse(req.body);
       const u = await authBizStorage.updateUser(userId, patch);
-      res.json(u);
+      res.json(sanitizeUser(u));
     } catch (err) {
       if (handleZod(err, res)) return;
       next(err);
@@ -550,9 +584,9 @@ export function registerLocalAuthRoutes(app: Express) {
   });
 
   // ---------- avatar upload ----------
-  // Avatar files are persisted to object storage by `saveAvatarFile` and
-  // served back as a public object via the /objects/avatars/* route in
-  // server/routes.ts. We use multer's memory storage here because the
+  // Avatar files are persisted by `saveAvatarFile` to private S3 when
+  // configured (or the legacy local fallback) and served through the
+  // authenticated /objects/avatars/* route. We use multer's memory storage because the
   // file is small (<= 2 MB) and the avatar-storage helper hashes the
   // buffer for dedupe before pushing it to the bucket.
   const avatarUpload = multer({
@@ -583,7 +617,7 @@ export function registerLocalAuthRoutes(app: Express) {
           mimeType: file.mimetype,
         });
         const u = await authBizStorage.updateUser(userId, { profileImageUrl: saved.publicUrl });
-        res.json(u);
+        res.json(sanitizeUser(u));
       } catch (err) {
         if (err instanceof InvalidAvatarImageError) {
           return res.status(400).json({ message: err.message });
@@ -616,16 +650,14 @@ export function registerLocalAuthRoutes(app: Express) {
     },
   );
 
-  // Avatar bytes are served by the standard /objects/:objectPath route
-  // (registered via registerObjectStorageRoutes in server/routes.ts). The
-  // upload above stamps the object with a public ACL so anyone with the
-  // URL can render it without needing a session.
+  // Avatar bytes are served by the authenticated /objects/avatars/:userId/:filename
+  // route registered in server/routes.ts.
 
   app.post("/api/auth/change-password", requireAuth, async (req, res, next) => {
     try {
       const userId = getUserIdOrThrow(req);
       const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
-      const u = await authStorage.getUser(userId);
+      const u = await authBizStorage.getUserById(userId);
       if (!u || u.provider !== "local" || !u.passwordHash) {
         return res.status(400).json({ message: "Password change not available for this account" });
       }
@@ -747,7 +779,7 @@ export function registerLocalAuthRoutes(app: Express) {
         email: input.email,
         role: input.role as Role,
       });
-      const link = `${req.protocol}://${req.get("host")}/accept-invitation/${inv.token}`;
+      const link = `${appBaseUrl()}/accept-invitation/${inv.token}`;
       const emailResult = await sendInvitationOrLog(inv, link);
       res.status(201).json({ invitation: inv, link, emailSent: emailResult.ok });
     } catch (err) {
@@ -758,7 +790,7 @@ export function registerLocalAuthRoutes(app: Express) {
 
   app.post("/api/auth/invitations/:id/resend", requireAuth, requireRole("owner"), async (req, res) => {
     const inv = await authBizStorage.resendInvitation(String(req.params.id));
-    const link = `${req.protocol}://${req.get("host")}/accept-invitation/${inv.token}`;
+    const link = `${appBaseUrl()}/accept-invitation/${inv.token}`;
     const emailResult = await sendInvitationOrLog(inv, link);
     res.json({ invitation: inv, link, emailSent: emailResult.ok });
   });
@@ -793,7 +825,7 @@ export function registerLocalAuthRoutes(app: Express) {
     if (!inv || inv.status !== "pending" || inv.expiresAt.getTime() < Date.now()) {
       return res.status(400).json({ message: "Invitation is no longer valid" });
     }
-    const u = await authStorage.getUser(userId);
+    const u = await authBizStorage.getUserById(userId);
     if (!u?.email || u.email.toLowerCase() !== inv.email.toLowerCase()) {
       return res.status(403).json({ message: "Invitation email does not match your account" });
     }

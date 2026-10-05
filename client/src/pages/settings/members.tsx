@@ -26,7 +26,7 @@ interface MemberSession {
   sid: string;
   expiresAt: string;
   isCurrent: boolean;
-  provider: "local" | "replit";
+  provider: "local" | "sso" | "oauth" | string;
 }
 interface PasswordResetEmailEventRow {
   id: string;

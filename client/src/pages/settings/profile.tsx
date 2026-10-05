@@ -420,7 +420,7 @@ function ActiveSessionsCard({ ar }: { ar: boolean }) {
                   <span className="font-medium">
                     {s.provider === "local"
                       ? ar ? "بريد + كلمة مرور" : "Email & password"
-                      : ar ? "Replit" : "Replit"}
+                      : ar ? "SSO" : "SSO"}
                   </span>
                   {s.isCurrent && (
                     <span className="ml-2 rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">

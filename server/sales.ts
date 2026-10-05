@@ -591,6 +591,18 @@ export async function createSalesPayment(
   if (input.allocations.length === 0) {
     throw new Error("يجب تحديد فاتورة واحدة على الأقل");
   }
+  // SECURITY (scan finding, over-application): the per-invoice open-balance
+  // check below validates each allocation in isolation. Two allocations to the
+  // SAME invoiceId would each pass (each ≤ open) while their SUM exceeds the
+  // open balance — over-applying the payment and corrupting paidAmount. Reject
+  // duplicate invoice ids so each invoice is checked once against its balance.
+  const seenInvoiceIds = new Set<number>();
+  for (const a of input.allocations) {
+    if (seenInvoiceIds.has(a.invoiceId)) {
+      throw new Error(`الفاتورة #${a.invoiceId} مكرّرة في التوزيع`);
+    }
+    seenInvoiceIds.add(a.invoiceId);
+  }
   for (const a of input.allocations) {
     if (!(a.amount > 0)) throw new Error("مبلغ التوزيع يجب أن يكون أكبر من صفر");
     const inv = await storage.getSalesInvoice(companyId, a.invoiceId);

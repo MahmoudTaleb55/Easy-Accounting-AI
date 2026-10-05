@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { index, jsonb, numeric, pgTable, timestamp, varchar, text, integer, boolean } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
-// Session storage table — required by Replit Auth.
+// Session storage table
 export const sessions = pgTable(
   "sessions",
   {
@@ -13,15 +13,14 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)]
 );
 
-// User storage table — extended to support both Replit Auth (provider="replit")
-// and email + password (provider="local").
+// User storage table — supports both email + password (provider="local").
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  // "replit" | "local". A user with provider="local" uses passwordHash.
+  // "local". A user with provider="local" uses passwordHash.
   provider: varchar("provider").notNull().default("local"),
   passwordHash: varchar("password_hash"),
   // Display preferences

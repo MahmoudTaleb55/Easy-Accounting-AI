@@ -19,7 +19,6 @@
  * way an accountant expects.
  */
 import path from "path";
-import { fileURLToPath } from "url";
 import bidiFactory from "bidi-js";
 import {
   type Locale,
@@ -33,8 +32,15 @@ import {
 
 const bidi = bidiFactory();
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FONT_DIR = path.resolve(__dirname, "..", "assets", "fonts");
+// Resolve the bundled Amiri fonts from the project root via process.cwd()
+// rather than import.meta.url. The production build is bundled to CommonJS
+// (script/build.ts, format: "cjs"), where `import.meta.url` is empty — so the
+// previous `fileURLToPath(import.meta.url)` produced a bogus path and Arabic
+// PDF export silently failed to embed the font in production. Both `npm run
+// dev` (tsx server/index.ts) and `npm start` (node dist/index.cjs) launch
+// from the repo root, so `server/assets/fonts` resolves correctly from cwd in
+// both. Mirrors the same deliberate choice documented in server/migrate.ts.
+const FONT_DIR = path.resolve(process.cwd(), "server", "assets", "fonts");
 
 export const ARABIC_FONT = {
   regularPath: path.join(FONT_DIR, "Amiri-Regular.ttf"),

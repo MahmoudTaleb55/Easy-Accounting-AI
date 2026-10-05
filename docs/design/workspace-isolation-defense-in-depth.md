@@ -537,8 +537,8 @@ static assertions:
    review.
 2. The set of files in `server/` that import a *storage value* (`storage`,
    `authStorage`, `authBizStorage`, `chatStorage`) from any storage module
-   — `./storage`, `./auth/storage`, `./replit_integrations/auth/storage`,
-   `./replit_integrations/chat/storage` — is pinned to a similar
+   — `./storage`, `./auth/storage`, `./server/auth/storage.ts`,
+   `./server/auth/storage.ts` — is pinned to a similar
    allowlist. Storage modules wrap `db` internally, so a fresh
    `import { storage } from "./storage"` in a non-request context is just
    as much an RLS bypass as a direct `db.` call. The check covers static

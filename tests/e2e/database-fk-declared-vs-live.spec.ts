@@ -54,7 +54,7 @@ import path from "node:path";
  *
  * Tagged @db so it can be filtered with the rest of the database-level
  * regression net. Registered as the `migrations-fk-coverage` validation
- * workflow in `.replit` alongside `migrations-prefix` and
+ * workflow alongside `migrations-prefix` and
  * `migrations-runner`.
  */
 

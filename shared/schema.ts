@@ -2266,7 +2266,7 @@ export const bankAccounts = pgTable(
     bankName: text("bank_name").notNull(),
     iban: text("iban"),
     accountType: text("account_type").$type<BankAccountType>().notNull().default("checking"),
-    currency: text("currency").notNull().default("SAR"),
+    currency: text("currency").notNull().default("USD"),
     openingBalance: numeric("opening_balance", { precision: 14, scale: 2 }).notNull().default("0"),
     linkedAccountId: integer("linked_account_id"),
     isActive: boolean("is_active").notNull().default(true),

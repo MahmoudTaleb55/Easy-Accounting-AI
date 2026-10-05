@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Fast static checks that fail at `git commit` time instead of waiting
-# for the validation pipeline. Each is also wired into a Replit
+# for the validation pipeline. Each is also wired into the full
 # validation workflow + Playwright spec, so `git commit --no-verify`
 # is always a safe escape hatch.
 #

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signInSchema, type SignInInput } from "@shared/schema";
@@ -36,6 +36,20 @@ export default function SignInPage() {
     defaultValues: { email: "", password: "" },
   });
 
+  // Which OAuth providers the server actually has configured. We only render
+  // a provider's button when it's enabled, so users never see a dead button
+  // (the old single "/api/login" SSO button pointed at a route that doesn't
+  // exist). The endpoint returns booleans only — no client secrets.
+  const { data: providers } = useQuery<{ google: boolean; microsoft: boolean }>({
+    queryKey: ["/api/auth/providers"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/auth/providers");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const anyProvider = Boolean(providers?.google || providers?.microsoft);
+
   const m = useMutation({
     mutationFn: async (input: SignInInput) => {
       const res = await apiRequest("POST", "/api/auth/signin", input);
@@ -65,8 +79,8 @@ export default function SignInPage() {
           ? "محاسبة بمعايير دولية، تقارير لحظية، وفريق مدعو بصلاحيات دقيقة."
           : "IFRS-aligned accounting, real-time reports, and granular team permissions.",
         bullets: ar
-          ? ["دعم العربية والإنجليزية مع RTL/LTR.", "أدوار: مالك، محاسب، مراجع، قراءة فقط.", "تدقيق وسجلات لكل تعديل."]
-          : ["Bilingual AR/EN with full RTL/LTR.", "Roles: Admin, Accountant, Reviewer, Read-only.", "Audit trail on every change."],
+          ? ["دعم العربية والإنجليزية مع RTL/LTR.", "أدوار: مالك، محاسب، عارض.", "تدقيق وسجلات لكل تعديل."]
+          : ["Bilingual AR/EN with full RTL/LTR.", "Roles: Owner, Accountant, Viewer.", "Audit trail on every change."],
       }}
       footer={
         <p>
@@ -144,26 +158,46 @@ export default function SignInPage() {
           {ar ? "تسجيل الدخول" : "Sign in"}
         </Button>
 
-        <div className="relative my-2">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-border" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase tracking-wider">
-            <span className="bg-background px-3 text-muted-foreground">{ar ? "أو" : "or"}</span>
-          </div>
-        </div>
+        {anyProvider && (
+          <>
+            <div className="relative my-2">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase tracking-wider">
+                <span className="bg-background px-3 text-muted-foreground">{ar ? "أو" : "or"}</span>
+              </div>
+            </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          className="w-full gap-2"
-          onClick={() => (window.location.href = "/api/login")}
-          data-testid="button-replit-login"
-        >
-          <LogIn className="h-4 w-4" />
-          {ar ? "متابعة بحساب المؤسسة (SSO)" : "Continue with SSO"}
-        </Button>
+            {providers?.google && (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full gap-2"
+                onClick={() => (window.location.href = "/api/auth/login/google")}
+                data-testid="button-sso-google"
+              >
+                <LogIn className="h-4 w-4" />
+                {ar ? "المتابعة عبر Google" : "Continue with Google"}
+              </Button>
+            )}
+
+            {providers?.microsoft && (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full gap-2"
+                onClick={() => (window.location.href = "/api/auth/login/microsoft")}
+                data-testid="button-sso-microsoft"
+              >
+                <LogIn className="h-4 w-4" />
+                {ar ? "المتابعة عبر Microsoft" : "Continue with Microsoft"}
+              </Button>
+            )}
+          </>
+        )}
       </form>
     </AuthShell>
   );

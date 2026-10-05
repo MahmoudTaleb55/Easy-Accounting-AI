@@ -4,35 +4,21 @@ import { storage, isAuditEntityType, assertAllOwnedByCompany, JournalEntryRefere
 import { accounts as accountsTable, employees as employeesTable } from "@shared/schema";
 
 // Build an AuditContext for user-initiated mutations. The `actor` is derived
-// only from the verified session principal (passport `req.user.claims`, set by
-// either OIDC or local-auth login) — never from client-controlled headers or
-// body, which could be spoofed. We prefer "First Last", then email, then sub.
-// If none are available (e.g. unauthenticated edge case), we leave actor null
-// so the History drawer falls back to "Actor unavailable".
-interface SessionClaims {
-  sub?: string;
-  email?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-}
-
-interface SessionPrincipal {
-  claims?: SessionClaims;
-}
-
-function getSessionClaims(req: Request): SessionClaims | undefined {
-  const principal = req.user as SessionPrincipal | undefined;
-  return principal?.claims;
+// from the verified session principal — never from client-controlled headers
+// or body. Both local auth and OAuth sessions expose id / firstName / lastName
+// / email directly on req.user after the oidcAuth verify callback.
+// Falls back to null so the History drawer shows "Actor unavailable".
+function getUserId(req: Request): string | undefined {
+  return (req.user as any)?.id;
 }
 
 function actorName(req: Request): string | null {
-  const claims = getSessionClaims(req);
-  if (!claims) return null;
-  const name = [claims.first_name, claims.last_name]
+  const u = req.user as any;
+  if (!u) return null;
+  const name = [u.firstName, u.lastName]
     .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-    .join(" ")
-    .trim();
-  return name || claims.email || claims.sub || null;
+    .join(" ").trim();
+  return name || u.email || null;
 }
 
 function userCtx(req: Request): AuditContext {
@@ -57,7 +43,8 @@ import {
   ObjectNotFoundError,
   ObjectPermission,
   canAccessObject,
-} from "./replit_integrations/object_storage";
+} from "./ai/object_storage";
+import { serveAvatar } from "./services/avatar-storage";
 import { ASSISTANT_TOOLS, executeTool, type ToolArtifact } from "./services/assistant-tools";
 import { readFile as readGeneratedFile } from "./services/assistant-files";
 import {
@@ -107,9 +94,9 @@ function cid(req: Request): number {
 // Routes under /api/* that must remain reachable without authentication
 // (login/signup flows, OIDC callbacks, public marketing endpoints).
 const PUBLIC_API_PREFIXES = [
-  "/api/login",
-  "/api/logout",
-  "/api/callback",
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/callback",
   "/api/auth/signup",
   "/api/auth/signin",
   "/api/auth/signout",
@@ -140,8 +127,8 @@ function isSelfServiceWrite(path: string): boolean {
 
 // Using the OpenAI integration blueprint
 const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: process.env.OPENAI_BASE_URL,
 });
 
 export async function registerRoutes(
@@ -151,20 +138,26 @@ export async function registerRoutes(
   // ---------------------------------------------------------------
   // Public avatar proxy (object storage)
   //
-  // Avatars uploaded via POST /api/auth/profile/avatar are stored in
-  // the bucket under `avatars/<userId>/<sha>.<ext>` with a public ACL,
-  // so an <img src="/objects/avatars/…"/> in the topbar can render
-  // without a session cookie.
+  // Avatars uploaded via POST /api/auth/profile/avatar are stored under
+  // the server's local `uploads/avatars/<userId>/` directory and served
+  // through the dedicated local handler below.
   //
-  // Defence in depth: the route is scoped to the `avatars/` prefix
-  // (no other object class can be served through it) AND we still
-  // consult the object's ACL via `canAccessObject` before streaming
-  // the bytes. An anonymous request (`userId = undefined`) only
-  // succeeds when the policy has `visibility: "public"`, so a private
-  // object that was somehow saved under this prefix would still be
-  // refused.
+  // General private objects are handled by the S3-compatible proxy after
+  // the avatar route. Unknown object paths remain unavailable.
   // ---------------------------------------------------------------
   {
+    app.get(/^\/objects\/avatars\/.+$/, requireAuth, async (req, res) => {
+      try {
+        await serveAvatar(req.path, res);
+      } catch (error: any) {
+        if (error?.code === "NOT_FOUND") {
+          return res.status(404).json({ message: "Object not found" });
+        }
+        console.error("Error serving avatar:", error);
+        return res.status(500).json({ message: "Failed to serve avatar" });
+      }
+    });
+
     const objectStorageService = new ObjectStorageService();
     app.get(/^\/objects\/avatars\/.+$/, async (req, res) => {
       try {
@@ -185,6 +178,7 @@ export async function registerRoutes(
         return res.status(500).json({ message: "Failed to serve object" });
       }
     });
+
     // Anything else under /objects/ has no public surface — short-circuit
     // with a 404 so the SPA fallback doesn't return index.html and mask a
     // misrouted request.
@@ -2066,7 +2060,7 @@ export async function registerRoutes(
         input.locale && LANG_NAMES[input.locale] ? input.locale : "ar";
       const uiLangName = LANG_NAMES[uiLocale];
 
-      const systemPrompt = `You are the executive accounting assistant for the "Mohaseb" platform.
+      const systemPrompt = `You are the executive accounting assistant for the "Orqam" (أرقام) platform.
 
 PRIMARY LANGUAGE — STRICT
 The user has chosen ${uiLangName} as their interface language.
@@ -2261,7 +2255,7 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
           const mirrored = await mirrorChatImageToInbox({
             companyId,
             imageDataUrl: input.imageData,
-            uploadedBy: (req as any).user?.claims?.sub ?? null,
+            uploadedBy: getUserId(req) ?? null,
             linkedJournalEntryId: firstJournalEntryId,
             assistantSummary: finalText,
           });
@@ -2472,8 +2466,7 @@ function registerDocumentRoutes(app: Express) {
   });
 
   function userIdFromReq(req: Request): string | null {
-    const u = (req as any).user;
-    return (u?.claims?.sub as string | undefined) ?? null;
+    return getUserId(req) ?? null;
   }
 
   // List inbox
@@ -2769,7 +2762,7 @@ async function registerFixedAssetRoutes(app: Express) {
   // Companies — scoped to the signed-in user's memberships only.
   app.get("/api/companies", async (req, res) => {
     const { authBizStorage } = await import("./auth/storage");
-    const userId = (req.user as any)?.claims?.sub as string | undefined;
+    const userId = getUserId(req);
     if (!userId) return res.json([]);
     const ms = await authBizStorage.listMembershipsForUser(userId);
     const cos = ms.map((m) => m.company).filter(Boolean);
@@ -2795,7 +2788,7 @@ async function registerFixedAssetRoutes(app: Express) {
       // brand-new owner workspace. Instead, when `ctx` is absent we
       // look up the caller's memberships directly and only allow the
       // bootstrap path when they truly have none.
-      const userId = (req.user as any)?.claims?.sub as string | undefined;
+      const userId = getUserId(req);
       const ctx = (req as Request & { membership?: MembershipContext }).membership;
       if (ctx) {
         if (ctx.role !== "owner") return res.status(403).json({ message: "Owners only" });
@@ -2817,9 +2810,20 @@ async function registerFixedAssetRoutes(app: Express) {
       // `ownerMembership` here makes company + CoA + owner-link an all-
       // or-nothing atomic write so a half-bootstrapped workspace can
       // never be left behind.
+      // SECURITY (scan finding, PRIVILEGE_ESCALATION): never create an
+      // owner-less company. The previous `ownerUserId: userId ?? null`
+      // fallback could insert a company with ownerUserId = NULL and no owner
+      // membership — an "orphan" that `bootstrapWorkspaceForUser` later adopts
+      // for ANY new signup (global `WHERE ownerUserId IS NULL`). That let a
+      // workspace with no legitimate owner be planted and then silently
+      // absorbed into an unrelated account. Require an authenticated owner;
+      // reject rather than orphan.
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required to create a workspace" });
+      }
       const company = await storage.createCompany(
-        { ...input, ownerUserId: userId ?? null },
-        userId ? { ownerMembership: { userId, role: "owner" } } : undefined,
+        { ...input, ownerUserId: userId },
+        { ownerMembership: { userId, role: "owner" } },
       );
       res.status(201).json(company);
     } catch (err) {
@@ -3341,6 +3345,13 @@ async function registerFixedAssetRoutes(app: Express) {
     try {
       const asset = await loadOwnedAsset(req, res);
       if (!asset) return;
+      // SECURITY/accounting (scan finding): you cannot impair an asset that is
+      // no longer held. The status guard previously existed only on the
+      // dispose path, so an impairment JE could post against an already
+      // disposed asset. Reject non-active assets.
+      if (asset.status !== "active") {
+        return res.status(409).json({ message: "لا يمكن إجراء اضمحلال على أصل غير نشط" });
+      }
       const id = asset.id;
       const body = z.object({
         eventDate: z.string().min(1),
@@ -3443,6 +3454,11 @@ async function registerFixedAssetRoutes(app: Express) {
     try {
       const asset = await loadOwnedAsset(req, res);
       if (!asset) return;
+      // Accounting integrity (scan finding): no revaluation of a disposed/
+      // non-active asset — the status guard previously lived only on dispose.
+      if (asset.status !== "active") {
+        return res.status(409).json({ message: "لا يمكن إعادة تقييم أصل غير نشط" });
+      }
       const id = asset.id;
       const body = z.object({
         eventDate: z.string().min(1),
@@ -3858,6 +3874,15 @@ function registerInventoryRoutes(app: Express) {
   });
   app.post("/api/zatca/config", async (req, res) => {
     try {
+      // SECURITY (scan finding, PRIVILEGE_ESCALATION): the ZATCA record is the
+      // workspace's tax-authority identity (VAT number, seller name). Only an
+      // owner may change it — an accountant must not be able to rewrite who the
+      // workspace invoices as. The global gate only enforces owner-OR-accountant
+      // for writes, so pin owner here.
+      const zctx = (req as Request & { membership?: MembershipContext }).membership;
+      if (!zctx || zctx.role !== "owner") {
+        return void res.status(403).json({ message: "Owners only" });
+      }
       const banking = await import("./banking");
       const { insertZatcaConfigSchema } = await import("@shared/schema");
       const parsed = insertZatcaConfigSchema.safeParse(req.body);
@@ -3869,6 +3894,10 @@ function registerInventoryRoutes(app: Express) {
   });
   app.delete("/api/zatca/config", async (req, res) => {
     try {
+      const zctx = (req as Request & { membership?: MembershipContext }).membership;
+      if (!zctx || zctx.role !== "owner") {
+        return void res.status(403).json({ message: "Owners only" });
+      }
       const banking = await import("./banking");
       await banking.deleteZatcaConfig(cid(req));
       res.status(204).end();
@@ -3905,7 +3934,13 @@ function registerInventoryRoutes(app: Express) {
 }
 
 function csvCell(v: string): string {
-  if (v == null) return "";
-  if (/[",\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
-  return v;
+  // SECURITY (scan finding, CSV formula injection / CWE-1236): a cell that
+  // starts with = + - or @ is executed as a formula when the exported file is
+  // opened in Excel/Sheets. Prefix such cells with a single quote to defuse
+  // it, THEN apply normal RFC-4180 quoting. Mirrors the hardened csvCell in
+  // server/auth/local-routes.ts.
+  let s = v == null ? "" : String(v);
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
 }

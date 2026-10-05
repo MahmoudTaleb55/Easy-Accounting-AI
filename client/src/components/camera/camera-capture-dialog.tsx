@@ -228,7 +228,7 @@ type EnvBlock =
 
 function detectCameraEnvironment(): EnvBlock {
   if (typeof window === "undefined") return { kind: "ok" };
-  // Embedded inside another browsing context (e.g. the Replit workspace iframe).
+  // Embedded inside another browsing context (for example, an app-hosted iframe).
   // The wrapper iframe must include `allow="camera"` in its Permissions-Policy
   // for getUserMedia to even prompt; without it the browser denies the request
   // silently with NotAllowedError, never showing the permission UI.

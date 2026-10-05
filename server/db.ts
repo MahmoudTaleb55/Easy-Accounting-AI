@@ -11,7 +11,26 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// SECURITY (scan finding, UNRESTRICTED_RESOURCE_CONSUMPTION): withCompanyScope
+// pins a pooled client for the whole request lifetime (it holds the GUC that
+// RLS consults). With pg's defaults (max: 10, NO acquire timeout), the 11th
+// concurrent request would block FOREVER waiting for a client — an all-tenant
+// denial of service — and a handler that needs a second client while 10 are
+// held would deadlock. We therefore:
+//   - size the pool from DB_POOL_MAX (default 20, up from pg's 10), and
+//   - set connectionTimeoutMillis so a client acquire REJECTS after a bound
+//     instead of hanging indefinitely (the rejection surfaces as a clean 500
+//     for that one request via the async-middleware guard, task H-4).
+// This is a mitigation, not the full connection-model refactor the design doc
+// defers; it removes the indefinite-hang DoS without changing request shape.
+const DB_POOL_MAX = Number(process.env.DB_POOL_MAX) || 20;
+const DB_ACQUIRE_TIMEOUT_MS = Number(process.env.DB_ACQUIRE_TIMEOUT_MS) || 10_000;
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: DB_POOL_MAX,
+  connectionTimeoutMillis: DB_ACQUIRE_TIMEOUT_MS,
+});
 
 type Schema = typeof schema;
 type Drizzle = NodePgDatabase<Schema>;

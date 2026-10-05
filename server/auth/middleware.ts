@@ -2,59 +2,47 @@ import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { db, withUnscopedDb } from "../db";
 import { eq, and } from "drizzle-orm";
 import { memberships, type Role, ROLE_TIER, users, companies } from "@shared/schema";
-import * as client from "openid-client";
-import memoize from "memoizee";
 
 /**
  * Unified auth + role middleware.
  *
  * Sessions can be created two ways:
- *   1) Replit Auth (OIDC) — passport stores { claims, access_token, refresh_token, expires_at }
- *   2) Local email + password — we store { claims: { sub, email, first_name, last_name }, _local: true }
+ *   1) OAuth (Google / Microsoft) — oidcAuth verify callback stores
+ *      { id, email, firstName, lastName, provider } in the passport session.
+ *   2) Local email + password — local strategy stores the full users row
+ *      (same shape: id, email, firstName, lastName).
  *
- * `requireAuth` accepts both shapes. For OIDC sessions we transparently refresh
- * the access token when expired (re-using the same logic the blueprint provides).
+ * Both shapes expose `id` at the top level so downstream helpers never need
+ * to dig into `claims.sub`.
  */
-
-const getOidcConfig = memoize(
-  async () =>
-    client.discovery(
-      new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!,
-    ),
-  { maxAge: 3600 * 1000 },
-);
 
 function unauthorized(res: Response, message = "Unauthorized") {
   res.status(401).json({ message });
 }
 
-export const requireAuth: RequestHandler = async (req, res, next) => {
+/**
+ * Wrap an async RequestHandler so a rejected promise is routed to Express's
+ * error pipeline via next(err) instead of becoming an UNHANDLED rejection.
+ *
+ * SECURITY (scan finding, DENIAL_OF_SERVICE): these auth middlewares are
+ * invoked manually from the global /api gate (not awaited by Express). An
+ * async handler whose body rejects — e.g. loadMembership() hitting a DB error
+ * on a request-driven path — would otherwise surface as an unhandled rejection
+ * and can crash the whole process. Wrapping converts that into a clean 500 for
+ * the single request.
+ */
+function asyncMw(
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
+): RequestHandler {
+  return (req, res, next) => {
+    fn(req, res, next).catch(next);
+  };
+}
+
+export const requireAuth: RequestHandler = (req, res, next) => {
   const user = req.user as any;
   if (!req.isAuthenticated() || !user) return unauthorized(res);
-
-  // Local sessions never expire mid-flight; cookie maxAge handles lifetime.
-  if (user._local) return next();
-
-  // OIDC session — refresh if needed.
-  if (!user.expires_at) return unauthorized(res);
-  const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) return next();
-
-  const refreshToken = user.refresh_token;
-  if (!refreshToken) return unauthorized(res);
-
-  try {
-    const config = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
-    user.claims = tokenResponse.claims();
-    user.access_token = tokenResponse.access_token;
-    user.refresh_token = tokenResponse.refresh_token;
-    user.expires_at = user.claims?.exp;
-    return next();
-  } catch {
-    return unauthorized(res);
-  }
+  return next();
 };
 
 /** Read the active workspace id from `X-Company-Id` header, `?companyId=`, or
@@ -103,7 +91,7 @@ export interface MembershipContext {
 export async function loadMembership(req: Request): Promise<MembershipContext | null> {
   return withUnscopedDb("auth:load-membership", async () => {
     const user = req.user as any;
-    const userId = user?.claims?.sub as string | undefined;
+        const userId = user?.id as string | undefined;
     if (!userId) return null;
     const companyId = await resolveActiveCompanyId(req, userId);
     if (!companyId) return null;
@@ -116,16 +104,16 @@ export async function loadMembership(req: Request): Promise<MembershipContext | 
   });
 }
 
-export const attachMembership: RequestHandler = async (req, _res, next) => {
+export const attachMembership: RequestHandler = asyncMw(async (req, _res, next) => {
   const ctx = await loadMembership(req);
   if (ctx) (req as any).membership = ctx;
   next();
-};
+});
 
 export function requireRole(...minRoles: Role[]): RequestHandler {
   // Allow if the user holds ANY of the listed roles (or higher tier than the lowest of them).
   const minTier = Math.min(...minRoles.map((r) => ROLE_TIER[r]));
-  return async (req, res, next) => {
+  return asyncMw(async (req, res, next) => {
     const ctx = (req as any).membership as MembershipContext | undefined;
     if (!ctx) {
       const loaded = await loadMembership(req);
@@ -136,14 +124,14 @@ export function requireRole(...minRoles: Role[]): RequestHandler {
     }
     if (ROLE_TIER[ctx.role] >= minTier) return next();
     return res.status(403).json({ message: "Insufficient role" });
-  };
+  });
 }
 
 /** Permissive default for the /api/* surface area:
  *  - GET / HEAD → any authenticated member
  *  - mutations  → owner or accountant only (viewers are read-only)
  */
-export const requireWriteRoleForMutations: RequestHandler = async (req, res, next) => {
+export const requireWriteRoleForMutations: RequestHandler = asyncMw(async (req, res, next) => {
   if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return next();
   // Lazy-load membership.
   let ctx = (req as any).membership as MembershipContext | undefined;
@@ -157,11 +145,11 @@ export const requireWriteRoleForMutations: RequestHandler = async (req, res, nex
   return res.status(403).json({
     message: "Viewers have read-only access and cannot modify data",
   });
-};
+});
 
 /** Convenience: extract the signed-in userId or send 401. */
 export function getUserIdOrThrow(req: Request): string {
-  const id = (req.user as any)?.claims?.sub as string | undefined;
+  const id = (req.user as any)?.id as string | undefined;
   if (!id) throw Object.assign(new Error("Unauthorized"), { status: 401 });
   return id;
 }

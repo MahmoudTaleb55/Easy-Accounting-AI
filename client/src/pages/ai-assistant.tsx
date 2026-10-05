@@ -598,7 +598,6 @@ type Artifact =
   | { kind: "file"; fileId: string; filename: string; mime: string; sizeKB: number; report: string; format: string }
   | { kind: "account"; id: number; code: string; name: string; type: string }
   | { kind: "fixed_asset"; id: number; code: string; name: string; cost: number; currency: string; categoryName: string; usefulLifeMonths: number; method: string }
-  | { kind: string }
 
 function parseAssistantContent(content: string): { text: string; artifacts: Artifact[] } {
   if (!content) return { text: "", artifacts: [] }

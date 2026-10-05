@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils"
 import { BrandMark } from "@/components/brand/mark"
 
 /**
- * Brand — typographic wordmark for محاسب ذكي.
+ * Brand — typographic wordmark logo for Orqam (أرقام).
  *
  *   ▣  محاسب · ذكي
  *
@@ -60,10 +60,13 @@ export function Brand({
          * here used to flip the order incorrectly when the page was
          * English, producing "ذكي محاسب".
          */}
-        <bdi className={cn("flex items-baseline gap-1.5 font-semibold tracking-tight text-foreground", s.mark)}>
-          <span>محاسب</span>
-          <span className="inline-block w-1.5 h-1.5 rounded-full translate-y-[-0.18em]" style={{ background: "hsl(var(--luxe))" }} aria-hidden />
-          <span className="text-foreground/85">ذكي</span>
+        {/*
+         * Orqam (أرقام — "numbers") wordmark logo. A single word; the accent
+         * dot after the first glyph is the brand's signature "spark" beat.
+         */}
+        <bdi className={cn("flex items-baseline font-serif font-semibold tracking-tight text-foreground", s.mark)}>
+          <span>Orqam</span>
+          <span className="inline-block w-1.5 h-1.5 rounded-full translate-y-[-0.1em] ms-0.5" style={{ background: "hsl(var(--luxe))" }} aria-hidden />
         </bdi>
         {withTagline && (
           <span className={cn("eyebrow", s.tag)}>Accounting OS</span>

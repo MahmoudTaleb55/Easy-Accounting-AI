@@ -147,6 +147,88 @@ export const LOCALIZATION_PACKS: Record<string, LocalizationPack> = {
     socialInsurance: { label: "SSC", employeeRate: 0.075, employerRate: 0.1425 },
     endOfServiceFormula: "jordan",
   },
+
+  // ── Global packs ──────────────────────────────────────────────────────
+  // The most common non-MENA business markets, each carrying its own real
+  // tax / weekend / leave / payroll-contribution profile so a company in that
+  // country gets locally-correct defaults (mirroring how SA carries ZATCA +
+  // GOSI). endOfServiceFormula is "none" for these because their statutory
+  // severance is not a monthly IAS-19 gratuity accrual like the Gulf/Egypt/
+  // Jordan models — we don't fabricate an accrual we can't verify.
+  US: {
+    code: "US",
+    nameAr: "الولايات المتحدة",
+    nameEn: "United States",
+    defaultCurrencyCode: "USD",
+    defaultCurrencySymbol: "$",
+    // No federal VAT; US sales tax is state/locality-specific and is handled
+    // per-invoice, not as a single national default rate.
+    defaultVatRate: 0,
+    zakatApplicable: false,
+    weekendDays: [0, 6], // Sun + Sat
+    annualLeaveDays: 15,
+    probationDays: 90,
+    // FICA: Social Security + Medicare employee/employer share (approx).
+    socialInsurance: { label: "FICA", employeeRate: 0.0765, employerRate: 0.0765 },
+    endOfServiceFormula: "none",
+  },
+  GB: {
+    code: "GB",
+    nameAr: "المملكة المتحدة",
+    nameEn: "United Kingdom",
+    defaultCurrencyCode: "GBP",
+    defaultCurrencySymbol: "£",
+    defaultVatRate: 0.2, // standard VAT 20%
+    zakatApplicable: false,
+    weekendDays: [0, 6],
+    annualLeaveDays: 28, // statutory minimum incl. bank holidays
+    probationDays: 90,
+    socialInsurance: { label: "National Insurance", employeeRate: 0.08, employerRate: 0.138 },
+    endOfServiceFormula: "none",
+  },
+  DE: {
+    code: "DE",
+    nameAr: "ألمانيا",
+    nameEn: "Germany",
+    defaultCurrencyCode: "EUR",
+    defaultCurrencySymbol: "€",
+    defaultVatRate: 0.19, // standard VAT 19%
+    zakatApplicable: false,
+    weekendDays: [0, 6],
+    annualLeaveDays: 20, // statutory minimum (5-day week)
+    probationDays: 180,
+    socialInsurance: { label: "Sozialversicherung", employeeRate: 0.20, employerRate: 0.20 },
+    endOfServiceFormula: "none",
+  },
+  FR: {
+    code: "FR",
+    nameAr: "فرنسا",
+    nameEn: "France",
+    defaultCurrencyCode: "EUR",
+    defaultCurrencySymbol: "€",
+    defaultVatRate: 0.20, // standard VAT 20%
+    zakatApplicable: false,
+    weekendDays: [0, 6],
+    annualLeaveDays: 25,
+    probationDays: 90,
+    socialInsurance: { label: "Sécurité sociale", employeeRate: 0.22, employerRate: 0.42 },
+    endOfServiceFormula: "none",
+  },
+  IN: {
+    code: "IN",
+    nameAr: "الهند",
+    nameEn: "India",
+    defaultCurrencyCode: "INR",
+    defaultCurrencySymbol: "₹",
+    defaultVatRate: 0.18, // GST standard rate 18%
+    zakatApplicable: false,
+    weekendDays: [0, 6],
+    annualLeaveDays: 18,
+    probationDays: 90,
+    // EPF: Employees' Provident Fund employee/employer share.
+    socialInsurance: { label: "EPF", employeeRate: 0.12, employerRate: 0.12 },
+    endOfServiceFormula: "none",
+  },
 };
 
 export function getPack(code: string | null | undefined): LocalizationPack {
