@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { db, withUnscopedDb } from "../db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { memberships, type Role, ROLE_TIER, users, companies } from "@shared/schema";
 
 /**
@@ -62,11 +62,20 @@ export async function resolveActiveCompanyId(req: Request, userId: string): Prom
     const candidate = Number(headerId ?? queryId);
     if (Number.isFinite(candidate) && candidate > 0) return candidate;
 
-    // Fallback: any membership the user holds.
+    // Fallback when no workspace was specified: the user's OLDEST membership
+    // (their "home" workspace). SECURITY/correctness (scan finding): this is
+    // deterministic — a previous `.limit(1)` with no ORDER BY returned an
+    // arbitrary workspace, so a multi-workspace user who omitted the header
+    // could non-deterministically operate on the wrong one of THEIR OWN
+    // workspaces between requests. It can only ever resolve to a workspace the
+    // caller already belongs to (the WHERE pins userId), and loadMembership
+    // re-verifies membership for whatever id is chosen, so this never grants
+    // cross-tenant access — the fix is about predictability, not isolation.
     const [m] = await db
       .select({ companyId: memberships.companyId })
       .from(memberships)
       .where(eq(memberships.userId, userId))
+      .orderBy(asc(memberships.createdAt), asc(memberships.companyId))
       .limit(1);
     return m?.companyId ?? null;
   });

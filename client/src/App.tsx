@@ -1,4 +1,15 @@
 import { Switch, Route, useLocation, Redirect } from "wouter";
+/**
+ * Application root & client-side router.
+ *
+ * Wires the global providers (React Query, theme, locale, tooltips) and the
+ * path-based router. Public/marketing/auth routes are reachable to everyone;
+ * the authenticated app routes are gated by <RequireAuth> and rendered inside
+ * <MainLayout>. Marketing pages (and demo/styleguide) are lazy-loaded (see the
+ * `lazy()` imports below) so they stay out of the initial bundle. The default
+ * UI language is English; a signed-in user's saved preference or a `?lang=`
+ * override takes precedence (see LocaleProvider).
+ */
 import { useEffect, Suspense, lazy } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";

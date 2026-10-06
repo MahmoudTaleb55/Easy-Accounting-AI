@@ -1,3 +1,11 @@
+/**
+ * Shared API contract — defines every /api/* route's path, HTTP method, and
+ * Zod input/response schemas. Imported by both the Express backend (to
+ * validate requests and type responses) and the React frontend (for
+ * type-safe `apiRequest` calls and TanStack Query key derivation). Keeping
+ * the contract in one place ensures the two halves of the stack can never
+ * disagree on what an endpoint accepts or returns.
+ */
 import { z } from 'zod';
 import {
   insertTransactionSchema,

@@ -1,3 +1,20 @@
+/**
+ * Payroll engine — monthly payroll run computation and journal posting.
+ *
+ * Reads the workspace's employee roster, attendance, and leave records;
+ * applies the per-country localization pack's social-insurance rates,
+ * end-of-service gratuity accrual (IAS 19), and leave-accrual formulas;
+ * then creates a `payroll_runs` record with per-employee `payroll_lines`
+ * and auto-posts a balanced IFRS journal entry (Dr Salary Expense /
+ * Cr Cash + Cr Social Insurance Payable + Cr Gratuity Provision).
+ *
+ * Country-specific rules come from `shared/localization.ts` → `getPack()`
+ * so the engine itself is country-agnostic; new country support is just
+ * a new localization-pack entry, no payroll-code changes needed.
+ *
+ * Tenant scoping: every function takes `companyId`; callers pass
+ * `req.membership.companyId`.
+ */
 import { db } from "./db";
 import {
   employees,

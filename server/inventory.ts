@@ -1203,6 +1203,17 @@ export async function reverseInventoryTransaction(
   if (!orig) throw new Error("الحركة غير موجودة");
   if (orig.status !== "posted") throw new Error("لا يمكن عكس حركة غير مرحّلة");
   if (orig.type === "sale") throw new Error("استخدم زر الإلغاء على الفاتورة لعكس استهلاك مبيعات");
+  // Scan finding f-cdc3dc16: a posted purchase bill owns an inventory_transactions
+  // row (type="purchase", sourcePurchaseInvoiceId set, journalEntryId = the
+  // bill's own JE). Reversing it here would double-count stock/GL and leave the
+  // bill stuck in "posted" with a stale JE link that can never be cleared,
+  // permanently wedging bill cancellation. The bill's own cancel path is the
+  // only correct way to walk this back, so refuse direct reversal.
+  if (orig.sourcePurchaseInvoiceId != null) {
+    throw new Error(
+      "هذه الحركة مملوكة لفاتورة مشتريات. استخدم إلغاء الفاتورة لعكسها بدلاً من عكس حركة المخزون مباشرة.",
+    );
+  }
 
   const lines = await db
     .select()

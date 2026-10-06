@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+  <!-- Orqam (أرقام) mark: three ledger bars (debit / credit / balance) of
+       decreasing length, crowned by the "smart" spark dot. Matches the
+       in-app BrandMark component. Emerald brand accent on the dot. -->
+  <rect width="24" height="24" rx="5" fill="#0b3b2e"/>
+  <rect x="4" y="9"  width="16" height="2.4" rx="1.2" fill="#ffffff"/>
+  <rect x="4" y="13" width="11" height="2.4" rx="1.2" fill="#ffffff" opacity="0.6"/>
+  <rect x="4" y="17" width="7"  height="2.4" rx="1.2" fill="#ffffff" opacity="0.35"/>
+  <circle cx="19.5" cy="5.5" r="2.6" fill="#34d399"/>
+</svg>

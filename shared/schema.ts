@@ -1,3 +1,24 @@
+/**
+ * Database schema — single source of truth for every table, type, and Zod
+ * validation schema in the system.
+ *
+ * Shared by the Express backend (Drizzle ORM) and the React frontend (Zod
+ * insert/update schemas for form validation). Changes here propagate to both
+ * sides and to the migration runner (`npm run db:push`).
+ *
+ * Every workspace-scoped table carries a `company_id` column. Tenant isolation
+ * is enforced at three layers:
+ *   1. Composite foreign keys keyed on (id, company_id) — the DB refuses to
+ *      link rows across workspaces (migrations 0005/0007).
+ *   2. Row-level security (RLS) policies installed on boot — a query that
+ *      forgets WHERE company_id = … returns zero rows, not another tenant's
+ *      data (migration 0008 + server/db-bootstrap-rls.ts).
+ *   3. Route-level membership + role checks in server/routes.ts.
+ *
+ * Auth-tier tables (users, sessions, memberships, invitations, password_reset_*)
+ * are intentionally OUT of RLS scope; see
+ * docs/design/workspace-isolation-defense-in-depth.md.
+ */
 import { pgTable, text, serial, numeric, timestamp, integer, boolean, index, jsonb, varchar, unique, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";

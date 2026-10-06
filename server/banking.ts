@@ -24,7 +24,7 @@ import {
   type InsertZatcaConfig,
   type BankAccountType,
 } from "@shared/schema";
-import { storage, type AuditContext } from "./storage";
+import { storage, recordJournalEntryReversalAudit, type AuditContext, type AuditWriter } from "./storage";
 import { eq, and, desc, sql } from "drizzle-orm";
 
 function round2(n: number): number {
@@ -342,10 +342,54 @@ export async function createBankTransaction(
   return { ...row, bankAccount: ba ?? null, journalEntryReference: null };
 }
 
-export async function deleteBankTransaction(companyId: number, id: number): Promise<void> {
-  await db
-    .delete(bankTransactions)
+export async function deleteBankTransaction(
+  companyId: number,
+  id: number,
+  ctx?: AuditContext,
+): Promise<void> {
+  // Scan finding f-d0ad6573: this used to be a bare DELETE that left the
+  // Dr/Cr pair posted at create time stranded in the general ledger (bank
+  // txns carry no FK to journal_entries, so the DB didn't stop it) and wrote
+  // no audit row. We now reverse the linked JE atomically with the row delete
+  // and record a reversal audit entry. Bank transactions are referenced by
+  // nothing else, so no orphan-reference guard is needed here.
+  const [row] = await db
+    .select()
+    .from(bankTransactions)
     .where(and(eq(bankTransactions.id, id), eq(bankTransactions.companyId, companyId)));
+  if (!row) return;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(bankTransactions)
+      .where(and(eq(bankTransactions.id, id), eq(bankTransactions.companyId, companyId)));
+
+    if (row.journalEntryId) {
+      const [je] = await tx
+        .select()
+        .from(journalEntries)
+        .where(
+          and(
+            eq(journalEntries.id, row.journalEntryId),
+            eq(journalEntries.companyId, companyId),
+          ),
+        );
+      if (je) {
+        await tx.delete(journalLines).where(eq(journalLines.journalEntryId, je.id));
+        await tx
+          .delete(journalEntries)
+          .where(and(eq(journalEntries.id, je.id), eq(journalEntries.companyId, companyId)));
+        // Reversal audit row commits inside this same transaction (task #222)
+        // so a failed audit write rolls back the JE + bank-row deletes.
+        await recordJournalEntryReversalAudit(tx as unknown as AuditWriter, {
+          companyId,
+          journalEntry: je,
+          reversedBy: `bank_transaction#${id}`,
+          ctx,
+        });
+      }
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

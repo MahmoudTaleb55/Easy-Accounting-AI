@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, numeric, pgTable, timestamp, varchar, text, integer, boolean } from "drizzle-orm/pg-core";
+import { index, uniqueIndex, jsonb, numeric, pgTable, timestamp, varchar, text, integer, boolean } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 // Session storage table
@@ -62,6 +62,10 @@ export const memberships = pgTable(
   (t) => [
     index("memberships_user_idx").on(t.userId),
     index("memberships_company_idx").on(t.companyId),
+    // One membership per (user, company). Prevents the duplicate-membership
+    // race on invitation accept (see migration 0030). createMembership uses
+    // ON CONFLICT DO NOTHING against this index.
+    uniqueIndex("memberships_user_company_uq").on(t.userId, t.companyId),
   ]
 );
 export type Membership = typeof memberships.$inferSelect;

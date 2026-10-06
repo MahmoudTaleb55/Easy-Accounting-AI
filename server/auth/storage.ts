@@ -184,7 +184,20 @@ export const authBizStorage = {
   },
 
   async setPasswordHash(id: string, passwordHash: string) {
-    await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, id));
+    // SECURITY (scan finding, AUTHENTICATION_BYPASS): changing the password
+    // must invalidate every OTHER outstanding password-reset token for this
+    // user, not just the one being consumed. Otherwise a second reset token
+    // (e.g. one an attacker triggered, or a stale one from an earlier request)
+    // remains usable after the legitimate owner has already changed/reset
+    // their password. Burn all unused tokens in the same transaction as the
+    // password write so they commit atomically.
+    await db.transaction(async (tx) => {
+      await tx.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, id));
+      await tx
+        .update(passwordResetTokens)
+        .set({ usedAt: new Date() })
+        .where(and(eq(passwordResetTokens.userId, id), isNull(passwordResetTokens.usedAt)));
+    });
   },
 
   // ---------- session inspection (for "active sessions" UI + sign-out-others) ----------
@@ -285,8 +298,22 @@ export const authBizStorage = {
   },
 
   async createMembership(input: { userId: string; companyId: number; role: Role }): Promise<Membership> {
-    const [m] = await db.insert(memberships).values(input).returning();
-    return m;
+    // SECURITY (scan finding, PRIVILEGE_ESCALATION): idempotent against the
+    // memberships_user_company_uq unique index (migration 0030). Two
+    // concurrent invitation-accepts for the same (user, company) can no longer
+    // create duplicate rows — the loser's insert hits ON CONFLICT DO NOTHING
+    // and we return the surviving row instead of throwing.
+    const [m] = await db
+      .insert(memberships)
+      .values(input)
+      .onConflictDoNothing({ target: [memberships.userId, memberships.companyId] })
+      .returning();
+    if (m) return m;
+    const [existing] = await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.userId, input.userId), eq(memberships.companyId, input.companyId)));
+    return existing;
   },
 
   async updateMembershipRole(id: string, role: Role): Promise<Membership> {
@@ -337,6 +364,11 @@ export const authBizStorage = {
 
   async getInvitationByToken(token: string): Promise<Invitation | undefined> {
     const [inv] = await db.select().from(invitations).where(eq(invitations.token, token));
+    return inv;
+  },
+
+  async getInvitationById(id: string): Promise<Invitation | undefined> {
+    const [inv] = await db.select().from(invitations).where(eq(invitations.id, id));
     return inv;
   },
 

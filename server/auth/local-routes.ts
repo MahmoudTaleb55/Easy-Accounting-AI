@@ -789,6 +789,15 @@ export function registerLocalAuthRoutes(app: Express) {
   });
 
   app.post("/api/auth/invitations/:id/resend", requireAuth, requireRole("owner"), async (req, res) => {
+    // SECURITY (scan finding, IDOR): requireRole("owner") only proves the
+    // caller owns SOME workspace. Bind :id to the caller's active workspace so
+    // an owner of workspace A can't resend/revoke/read invitations of
+    // workspace B by guessing the id.
+    const ctx = (req as any).membership!;
+    const target = await authBizStorage.getInvitationById(String(req.params.id));
+    if (!target || target.companyId !== ctx.companyId) {
+      return res.status(404).json({ message: "Invitation not found" });
+    }
     const inv = await authBizStorage.resendInvitation(String(req.params.id));
     const link = `${appBaseUrl()}/accept-invitation/${inv.token}`;
     const emailResult = await sendInvitationOrLog(inv, link);
@@ -796,6 +805,11 @@ export function registerLocalAuthRoutes(app: Express) {
   });
 
   app.delete("/api/auth/invitations/:id", requireAuth, requireRole("owner"), async (req, res) => {
+    const ctx = (req as any).membership!;
+    const target = await authBizStorage.getInvitationById(String(req.params.id));
+    if (!target || target.companyId !== ctx.companyId) {
+      return res.status(404).json({ message: "Invitation not found" });
+    }
     await authBizStorage.revokeInvitation(String(req.params.id));
     res.status(204).send();
   });
@@ -840,6 +854,13 @@ export function registerLocalAuthRoutes(app: Express) {
   // Per-invitation lifecycle log (admin-only). Powers the "why did this fail?"
   // tooltip / drilldown in the Members UI.
   app.get("/api/auth/invitations/:id/events", requireAuth, requireRole("owner"), async (req, res) => {
+    // SECURITY (scan finding, IDOR): bind :id to the caller's workspace before
+    // revealing another workspace's invitation delivery history.
+    const ctx = (req as any).membership!;
+    const target = await authBizStorage.getInvitationById(String(req.params.id));
+    if (!target || target.companyId !== ctx.companyId) {
+      return res.status(404).json({ message: "Invitation not found" });
+    }
     const events = await authBizStorage.listInvitationEmailEvents(String(req.params.id));
     res.json(events);
   });

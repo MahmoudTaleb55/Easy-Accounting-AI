@@ -1,4 +1,24 @@
 import { db } from "./db";
+/**
+ * Financial insights & analytics engine.
+ *
+ * Pure read/derivation layer that turns the raw double-entry ledger (accounts,
+ * journal_entries, journal_lines, transactions, budgets) into the figures the
+ * dashboard and the "Decision Cockpit" (/insights) render:
+ *   - account balances (period-scoped for P&L, cumulative for balance-sheet),
+ *   - financial-health scores, KPI trends, cash-flow forecasting,
+ *   - budget-vs-actual, what-if simulations.
+ *
+ * It never mutates data and never posts journal entries — it only aggregates
+ * what the accounting modules have already written. Balance math is done in
+ * SQL (SUM + GROUP BY) rather than by loading rows into memory, so it stays
+ * cheap on large workspaces.
+ *
+ * Tenant scoping: every exported function takes `companyId` and filters on it;
+ * callers pass `req.membership.companyId`. Combined with the row-level-security
+ * policies on these tables, a missing filter cannot leak another workspace's
+ * numbers.
+ */
 import { accounts, journalEntries, journalLines, transactions, budgets } from "@shared/schema";
 import { eq, and, inArray, lte, gte, sql } from "drizzle-orm";
 

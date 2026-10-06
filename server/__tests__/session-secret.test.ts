@@ -48,13 +48,21 @@ describe("resolveSessionSecret (H2 fail-fast)", () => {
     expect(resolveSessionSecret()).toBe("a".repeat(32));
   });
 
-  it("falls back to a dev-only secret in development when unset", () => {
+  it("generates a random, non-hardcoded dev fallback when unset", () => {
+    // SECURITY (scan finding f-df04487b, DEFAULT_CREDENTIALS): the dev
+    // fallback used to be the hardcoded literal "dev-only-insecure-session-
+    // secret-change-me", which meant any session could be forged from a value
+    // committed in the source tree. It is now a per-process random secret.
     process.env.NODE_ENV = "development";
     delete process.env.SESSION_SECRET;
     const secret = resolveSessionSecret();
-    expect(secret).toContain("dev-only");
-    // The dev fallback must never be a value someone would set in production.
-    expect(secret.length).toBeGreaterThan(0);
+    // No longer the committed constant.
+    expect(secret).not.toContain("dev-only");
+    // High-entropy: 32 random bytes rendered as 64 hex chars.
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    // Two calls must not return the same value — proves it's generated, not
+    // a shared constant an attacker could predict.
+    expect(resolveSessionSecret()).not.toBe(secret);
   });
 
   it("uses the provided secret in development even if short", () => {

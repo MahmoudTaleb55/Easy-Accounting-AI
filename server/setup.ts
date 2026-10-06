@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { randomBytes } from "crypto";
 import session from "express-session";
 import passport from "passport";
 import connectPgSimple from "connect-pg-simple";
@@ -38,10 +39,16 @@ export function resolveSessionSecret(): string {
 
   if (!secret) {
     console.warn(
-      "[auth] SESSION_SECRET is not set — using an insecure development-only fallback. " +
-        "Set SESSION_SECRET in .env before deploying.",
+      "[auth] SESSION_SECRET is not set — generating a random development-only " +
+        "secret for this process. Sessions will not survive a restart. Set " +
+        "SESSION_SECRET in .env for a stable dev session, and always in production.",
     );
-    return "dev-only-insecure-session-secret-change-me";
+    // SECURITY (scan finding, DEFAULT_CREDENTIALS): generate a RANDOM dev
+    // fallback rather than a hardcoded constant, so sessions can't be forged
+    // with a value that's committed in the source tree. Production never
+    // reaches here — resolveSessionSecret throws above when NODE_ENV is
+    // production and the secret is missing/weak.
+    return randomBytes(32).toString("hex");
   }
   if (secret.length < MIN_SESSION_SECRET_LENGTH) {
     console.warn(

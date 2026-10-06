@@ -58,6 +58,7 @@ import {
   impairmentEvents,
   revaluationEvents,
   disposals,
+  inventoryTransactions,
   auditLog,
   documents,
   type DocumentRow,
@@ -840,6 +841,41 @@ async function recordAudit(
 }
 
 /**
+ * Writes the `journal_entry` / `delete` audit row for a reversal driven by a
+ * source-row delete that lives OUTSIDE this module (currently
+ * `banking.deleteBankTransaction` — scan finding f-d0ad6573). Bank
+ * transactions are not members of `JournalEntrySourceKind`, so they cannot
+ * go through `reverseAutoPostedJournalEntry`; this thin, exported wrapper
+ * lets the banking module record an equivalent reversal audit row inside its
+ * own transaction without exposing `recordAudit`/`snapshotChanges` or the
+ * internal audit types. The `tx` MUST be the same transaction that deleted
+ * the JE + lines so the audit row commits or rolls back with them (task #222).
+ */
+export async function recordJournalEntryReversalAudit(
+  tx: AuditWriter,
+  opts: {
+    companyId: number;
+    journalEntry: Record<string, any>;
+    /** e.g. `bank_transaction#42` — mirrors the `reversedBy` stamp. */
+    reversedBy: string;
+    ctx?: AuditContext;
+  },
+): Promise<void> {
+  await recordAudit(tx, {
+    companyId: opts.companyId,
+    entityType: "journal_entry",
+    entityId: opts.journalEntry.id,
+    action: "delete",
+    changes: [
+      ...snapshotChanges(opts.journalEntry),
+      { field: "reversedBy", to: opts.reversedBy },
+      { field: "companyId", to: opts.companyId },
+    ],
+    ctx: opts.ctx,
+  });
+}
+
+/**
  * Generic ownership guard: returns true iff every id in `ids` exists in
  * `table` AND has `companyId` equal to the active workspace. Use this at the
  * route boundary before passing client-supplied foreign-key ids (accountId,
@@ -1174,6 +1210,28 @@ async function detectJournalEntryReferences(
     );
   if (arPays.length > 0) {
     conflicts.push(`سندات قبض عملاء (${arPays.length})`);
+  }
+
+  // Inventory transactions (scan finding f-cdc3dc16). A posted inventory
+  // movement (purchase inbound, adjustment, transfer) carries a composite
+  // `ON DELETE NO ACTION` FK to journal_entries, so hard-deleting the JE
+  // while such a row still references it fails with a 23503 surfaced as a
+  // 500 — and because the stale link can't be cleared through the app, the
+  // owning bill becomes permanently un-cancellable. `inventory_transactions`
+  // is not a member of `JournalEntrySourceKind` (it is never the row being
+  // reversed by `reverseAutoPostedJournalEntry`), so there is no exclude
+  // key for it — we simply refuse if any still-posted row points at the JE.
+  const invTxns = await db
+    .select({ id: inventoryTransactions.id })
+    .from(inventoryTransactions)
+    .where(
+      and(
+        eq(inventoryTransactions.journalEntryId, journalEntryId),
+        eq(inventoryTransactions.status, "posted"),
+      ),
+    );
+  if (invTxns.length > 0) {
+    conflicts.push(`حركات مخزون (${invTxns.length})`);
   }
 
   return conflicts;
@@ -1514,6 +1572,58 @@ async function loadLaterEventsForCascade(
     })
     .from(disposals)
     .where(and(...dispConds));
+  disps.forEach((r) => rows.push({ kind: "disposal", ...r }));
+
+  return rows;
+}
+
+/**
+ * Loads *every* impairment / revaluation / disposal event for an asset as a
+ * cascade set. Used by `deleteFixedAsset` (scan finding f-d0ad6573): deleting
+ * the whole asset must reverse each per-asset event's auto-posted JE through
+ * the same machinery the per-event delete route uses, rather than hard-
+ * deleting the event rows and orphaning their JEs in the general ledger.
+ *
+ * Unlike `loadLaterEventsForCascade` there is no cutoff/exclude — the asset
+ * is going away in its entirety, so the whole chain reverses together.
+ */
+async function loadAllAssetEventsForCascade(
+  companyId: number,
+  assetId: number,
+): Promise<CascadeEventRow[]> {
+  const rows: CascadeEventRow[] = [];
+
+  const imps = await db
+    .select({
+      id: impairmentEvents.id,
+      createdAt: impairmentEvents.createdAt,
+      journalEntryId: impairmentEvents.journalEntryId,
+      assetBalanceDelta: impairmentEvents.assetBalanceDelta,
+    })
+    .from(impairmentEvents)
+    .where(and(eq(impairmentEvents.companyId, companyId), eq(impairmentEvents.assetId, assetId)));
+  imps.forEach((r) => rows.push({ kind: "impairment_event", ...r }));
+
+  const revs = await db
+    .select({
+      id: revaluationEvents.id,
+      createdAt: revaluationEvents.createdAt,
+      journalEntryId: revaluationEvents.journalEntryId,
+      assetBalanceDelta: revaluationEvents.assetBalanceDelta,
+    })
+    .from(revaluationEvents)
+    .where(and(eq(revaluationEvents.companyId, companyId), eq(revaluationEvents.assetId, assetId)));
+  revs.forEach((r) => rows.push({ kind: "revaluation_event", ...r }));
+
+  const disps = await db
+    .select({
+      id: disposals.id,
+      createdAt: disposals.createdAt,
+      journalEntryId: disposals.journalEntryId,
+      assetBalanceDelta: disposals.assetBalanceDelta,
+    })
+    .from(disposals)
+    .where(and(eq(disposals.companyId, companyId), eq(disposals.assetId, assetId)));
   disps.forEach((r) => rows.push({ kind: "disposal", ...r }));
 
   return rows;
@@ -2504,6 +2614,26 @@ export class DatabaseStorage implements IStorage {
   async deleteJournalEntry(companyId: number, id: number, ctx?: AuditContext): Promise<void> {
     const [before] = await db.select().from(journalEntries).where(and(eq(journalEntries.id, id), eq(journalEntries.companyId, companyId)));
     if (!before) return;
+    // Immutability + reference guards mirror `updateJournalEntry` (scan
+    // finding: a manual delete could otherwise wipe a system-posted JE or
+    // one a subledger still points at, orphaning the source record).
+    //
+    // 1. A JE auto-posted from a transaction is owned by that transaction;
+    //    delete the source row instead so both stay in lockstep.
+    if (before.source === "transaction") {
+      throw new JournalEntryNotEditableError(
+        "لا يمكن حذف قيد مرتبط بمعاملة تلقائية. احذف المعاملة المصدر بدلاً من ذلك.",
+      );
+    }
+    // 2. If a subledger module (payroll, depreciation, impairment, …) still
+    //    references this JE, deleting it would strand that record pointing at
+    //    a missing entry. Refuse and name the conflicting modules.
+    const conflicts = await detectJournalEntryReferences(id);
+    if (conflicts.length > 0) {
+      throw new JournalEntryReferenceConflictError(
+        `لا يمكن حذف هذا القيد لأنه مرتبط بـ: ${conflicts.join("، ")}. احذف السجل المصدر بدلاً من ذلك.`,
+      );
+    }
     // JE delete + audit row in one transaction (task #222) so a failed
     // audit insert doesn't strand a deleted JE without history.
     await db.transaction(async (tx) => {
@@ -5044,11 +5174,27 @@ export class DatabaseStorage implements IStorage {
     });
   }
   async updateCompany(id: number, input: Partial<InsertCompany>): Promise<Company> {
-    if (input.isDefault) {
-      await db.update(companies).set({ isDefault: false });
-    }
-    const [u] = await db.update(companies).set(input).where(eq(companies.id, id)).returning();
-    return u;
+    return await db.transaction(async (tx) => {
+      if (input.isDefault) {
+        // SECURITY (scan finding, DATABASE_MODIFICATION): the previous
+        // `UPDATE companies SET is_default = false` had NO WHERE clause, so
+        // marking one workspace default cleared the default flag on EVERY
+        // tenant's workspace in the whole table. "Default" is per-owner, so
+        // only clear it among companies owned by the SAME owner as the target.
+        const [target] = await tx
+          .select({ ownerUserId: companies.ownerUserId })
+          .from(companies)
+          .where(eq(companies.id, id));
+        if (target?.ownerUserId) {
+          await tx
+            .update(companies)
+            .set({ isDefault: false })
+            .where(eq(companies.ownerUserId, target.ownerUserId));
+        }
+      }
+      const [u] = await tx.update(companies).set(input).where(eq(companies.id, id)).returning();
+      return u;
+    });
   }
 
   // ----- FX Rates -----
@@ -5160,28 +5306,81 @@ export class DatabaseStorage implements IStorage {
     });
   }
   async deleteFixedAsset(id: number, ctx?: AuditContext): Promise<void> {
-    // Cascade delete + audit row commit together (task #222) so the audit
-    // row cannot exist for an asset that was never deleted, nor can the
-    // asset+children disappear silently with no "delete" entry.
+    // Load the asset first so we know its workspace (the per-asset event
+    // reversal helpers are workspace-scoped) and can run the same pre-flight
+    // guards the per-event delete route uses — before mutating anything.
+    const [before] = await db.select().from(fixedAssets).where(eq(fixedAssets.id, id));
+    if (!before) return;
+    const companyId = before.companyId;
+
+    // Scan finding f-d0ad6573: deleting the whole asset used to hard-delete
+    // its impairment / revaluation / disposal rows WITHOUT reversing the
+    // journal entries they posted, stranding the impairment loss / revaluation
+    // surplus / disposal gain-loss in the general ledger referenced by
+    // nothing. We now reverse every per-asset event's JE through the same
+    // cascade machinery as the per-event delete route (latest-first, so each
+    // event's balance snapshot is peeled off after any event posted on top of
+    // it). Depreciation-run JEs are intentionally left untouched: a run's JE
+    // is shared across every asset in the period, so reversing it here would
+    // wrongly undo other assets' depreciation — the run has its own delete
+    // path for that.
+    const events = await loadAllAssetEventsForCascade(companyId, id);
+    const ordered = [...events].sort(compareCascadeOrder);
+
+    // Pre-flight legacy-snapshot guard (task #208): refuse rather than
+    // silently desync the GL from the asset sub-ledger for a row that
+    // predates balance-delta tracking.
+    for (const evt of ordered) {
+      if (evt.journalEntryId && evt.assetBalanceDelta == null) {
+        throw new LegacyAssetEventBalanceMissingError(
+          `لا يمكن حذف الأصل لأن أحد أحداثه (${legacyMessageFor(
+            evt.kind,
+          )} #${evt.id}) مُسجَّل قبل تحديث تتبّع الأرصدة (task #157). يرجى تعديل أرصدة الأصل يدوياً أو حذف الحدث يدوياً أولاً.`,
+        );
+      }
+    }
+
+    // Pre-flight JE-orphan guard (task #111): every event's JE must be
+    // referenced ONLY by other members of this asset's own cascade set. If an
+    // unrelated module (sales invoice, payroll run, manual link, …) still
+    // points at it, refuse the whole delete with a 409 instead of orphaning.
+    const excludeSources = ordered.map((e) => ({ kind: e.kind, id: e.id }));
+    for (const evt of ordered) {
+      if (!evt.journalEntryId) continue;
+      const conflicts = await detectJournalEntryReferences(evt.journalEntryId, {
+        excludeSources,
+      });
+      if (conflicts.length > 0) {
+        throw new JournalEntryReferenceConflictError(jeConflictMessageFor(evt.kind, conflicts));
+      }
+    }
+
+    // Cascade reversal + delete + audit row all commit together (task #222)
+    // so the audit row cannot exist for an asset that was never deleted, nor
+    // can the asset+children disappear silently with no "delete" entry, nor
+    // can a JE reversal commit without the asset delete.
     await db.transaction(async (tx) => {
-      const [before] = await tx.select().from(fixedAssets).where(eq(fixedAssets.id, id));
+      const innerTx = tx as unknown as typeof db;
+      // Reverse each event's JE + roll back its per-asset balance deltas +
+      // delete the event row (latest-first). This replaces the former bare
+      // deletes of impairment/revaluation/disposal rows.
+      for (const evt of ordered) {
+        await reverseAssetEventInTx(innerTx, companyId, id, evt, ctx);
+      }
+      // Remaining children carry no JE of their own, so a plain cascade
+      // delete is correct for them.
       await tx.delete(assetComponents).where(eq(assetComponents.assetId, id));
       await tx.delete(depreciationSchedule).where(eq(depreciationSchedule.assetId, id));
       await tx.delete(depreciationPostings).where(eq(depreciationPostings.assetId, id));
-      await tx.delete(impairmentEvents).where(eq(impairmentEvents.assetId, id));
-      await tx.delete(revaluationEvents).where(eq(revaluationEvents.assetId, id));
-      await tx.delete(disposals).where(eq(disposals.assetId, id));
       await tx.delete(fixedAssets).where(eq(fixedAssets.id, id));
-      if (before) {
-        await recordAudit(tx, {
-          companyId: before.companyId,
-          entityType: "fixed_asset",
-          entityId: id,
-          action: "delete",
-          changes: snapshotChanges(before),
-          ctx,
-        });
-      }
+      await recordAudit(tx, {
+        companyId,
+        entityType: "fixed_asset",
+        entityId: id,
+        action: "delete",
+        changes: snapshotChanges(before),
+        ctx,
+      });
     });
   }
 

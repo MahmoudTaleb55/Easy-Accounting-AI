@@ -56,7 +56,6 @@ Business modules (accounting, sales, purchases, inventory, banking, HR, assets)
    ▼
 PostgreSQL  — row-level security keyed on the active company
    │
-   ├── AWS S3  (private: documents/<companyId>/, avatars/<userId>/)
    └── OpenAI  (server-side AI calls)
 ```
 
@@ -74,7 +73,7 @@ Full design rationale: [`docs/design/workspace-isolation-defense-in-depth.md`](d
 
 ## Getting started
 
-**Prerequisites:** Node.js 20+, a PostgreSQL database (local or hosted, e.g. Neon). An S3 bucket and OpenAI/OAuth credentials are **optional** — the app runs without them (those features simply stay dormant).
+**Prerequisites:** Node.js 20+, a PostgreSQL database (local or hosted, e.g. Neon). **Object storage (AWS S3 or any S3-compatible service) is optional** — without it, uploaded documents/avatars fall back to local disk (suitable for development; for production or multi-instance deployments, configure your own private S3 bucket). OpenAI and OAuth credentials are also optional — those features simply stay dormant when unconfigured.
 
 ```bash
 # 1. Install dependencies
@@ -113,6 +112,31 @@ On first boot the server applies all SQL migrations, installs the RLS policies, 
 | `APP_URL` / `PUBLIC_APP_URL` | Public base URL used to build links in outbound emails (reset/invite). |
 
 Credentials live only in `.env` (git-ignored). In production, prefer an AWS IAM role or the standard AWS credential chain over static access keys, and inject secrets via the deployment platform rather than a committed file. **Never** place secrets in `VITE_`-prefixed variables — those are exposed to the browser.
+
+## Where your data lives
+
+All business data (users, companies, invoices, journal entries, …) is stored in **the PostgreSQL database you point `DATABASE_URL` at** — never in the code or the repository. Uploaded files go to your configured object storage (or local disk in development). Consequences:
+
+- Each operator runs against **their own** database, so cloning this repo gives you the application, not anyone else's data. Set your own `DATABASE_URL` and you start with an empty, private system.
+- Data persists across `npm run dev` restarts because databases are durable — restarting the server does not reset rows. To start fresh, point at a new/empty database (or drop and re-run `npm run db:push`).
+- Never share your `DATABASE_URL`: it contains the credentials to your database.
+
+## Adding a country localization pack
+
+Per-country rules (currency, VAT/GST rate, weekend days, annual leave, probation, social-insurance rates, end-of-service formula) live in a single file: **`shared/localization.ts`**. To add a country, append one entry to `LOCALIZATION_PACKS`:
+
+```ts
+BH: {
+  code: "BH", nameAr: "البحرين", nameEn: "Bahrain",
+  defaultCurrencyCode: "BHD", defaultCurrencySymbol: "د.ب",
+  defaultVatRate: 0.10, zakatApplicable: true,
+  weekendDays: [5, 6], annualLeaveDays: 30, probationDays: 90,
+  socialInsurance: { label: "GOSI", employeeRate: 0.07, employerRate: 0.12 },
+  endOfServiceFormula: "gulf",
+},
+```
+
+No schema change or migration is needed — the settings UI reads the pack list from the API, and payroll/leave logic consume it via `getPack()`. Shipped packs today: INTL, SA, AE, EG, KW, QA, JO (MENA) and US, GB, DE, FR, IN (global).
 
 ## Scripts
 

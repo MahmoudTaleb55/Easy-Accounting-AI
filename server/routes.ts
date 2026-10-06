@@ -525,11 +525,33 @@ export async function registerRoutes(
 
   app.post(api.journal.create.path, async (req, res) => {
     try {
-      const input = api.journal.create.input.parse(req.body);
+      const parsed = api.journal.create.input.parse(req.body);
+      // SECURITY (scan finding, BROKEN_OBJECT_PROPERTY_AUTHORIZATION): the
+      // input schema accepts source ∈ {manual, ai, transaction}, but a human
+      // posting a JE through this public endpoint is BY DEFINITION a manual
+      // entry. Allowing the client to set source="ai"/"transaction" would let
+      // them forge provenance and lock their own entry against edits (the
+      // edit/delete immutability guards key on source). Force "manual" here;
+      // the ai/transaction values are reserved for internal auto-posting
+      // callers (banking, payroll, document-post) that call storage directly.
+      const input = { ...parsed, source: "manual" as const };
       // Reject lines that reference an account from another workspace (cross-tenant write leak).
       const lineAccountIds = input.lines.map((l) => l.accountId);
       if (!(await assertAllOwnedByCompany(accountsTable, cid(req), lineAccountIds))) {
         return res.status(400).json({ message: "حساب غير صالح", field: "lines.accountId" });
+      }
+      // Accounting integrity (scan finding): header (grouping) accounts are
+      // roll-up parents, not postable ledger accounts. Every financial
+      // statement silently drops lines posted to a header account, so such an
+      // entry looks balanced but vanishes from the reports — a silent
+      // integrity hole. Reject postings to header accounts up front.
+      const coa = await storage.getAccounts(cid(req));
+      const headerIds = new Set(coa.filter((a) => a.isHeader).map((a) => a.id));
+      if (input.lines.some((l) => headerIds.has(l.accountId))) {
+        return res.status(400).json({
+          message: "لا يمكن الترحيل إلى حساب تجميعي (رئيسي) / Cannot post to a header (grouping) account",
+          field: "lines.accountId",
+        });
       }
       const created = await storage.createJournalEntry(cid(req), input, userCtx(req));
       res.status(201).json(created);
@@ -554,6 +576,16 @@ export async function registerRoutes(
       if (!(await assertAllOwnedByCompany(accountsTable, cid(req), lineAccountIds))) {
         return res.status(400).json({ message: "حساب غير صالح", field: "lines.accountId" });
       }
+      // Accounting integrity (scan finding): reject postings to header
+      // (grouping) accounts — same rule as the create path above.
+      const coaU = await storage.getAccounts(cid(req));
+      const headerIdsU = new Set(coaU.filter((a) => a.isHeader).map((a) => a.id));
+      if (input.lines.some((l) => headerIdsU.has(l.accountId))) {
+        return res.status(400).json({
+          message: "لا يمكن الترحيل إلى حساب تجميعي (رئيسي) / Cannot post to a header (grouping) account",
+          field: "lines.accountId",
+        });
+      }
       const updated = await storage.updateJournalEntry(cid(req), id, input, userCtx(req));
       res.json(updated);
     } catch (err) {
@@ -577,8 +609,23 @@ export async function registerRoutes(
   app.delete(api.journal.delete.path, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    await storage.deleteJournalEntry(cid(req), id, userCtx(req));
-    res.status(204).send();
+    try {
+      await storage.deleteJournalEntry(cid(req), id, userCtx(req));
+      res.status(204).send();
+    } catch (err) {
+      // System-posted JE (owned by a transaction) — same 400 the update
+      // path returns for an un-editable entry.
+      if (err instanceof JournalEntryNotEditableError) {
+        return res.status(400).json({ message: err.message });
+      }
+      // A subledger still references this JE — 409 Conflict, mirroring the
+      // other reference-guarded delete paths (payroll/depreciation/asset).
+      if (err instanceof JournalEntryReferenceConflictError) {
+        return res.status(409).json({ message: err.message });
+      }
+      console.error("Journal delete error", err);
+      res.status(500).json({ message: "تعذّر حذف القيد" });
+    }
   });
 
   // ----- Admin: backfill journal entries -----
@@ -2619,17 +2666,31 @@ function registerDocumentRoutes(app: Express) {
       }
       const row = claimed;
 
+      // DoS fix (scan finding): once claimDocumentForPosting flips the status
+      // to `posting`, EVERY exit path must restore it, or the document wedges
+      // in `posting` forever and can never be retried. The JE-creation catch
+      // below already rolls back; the validation returns here previously did
+      // NOT. Roll back to `ready` before any early return.
+      const rollbackToReady = () =>
+        storage.updateDocumentExtraction(companyId, id, {
+          status: "ready",
+          extractedJson: row.extractedJson as any,
+          suggestedJournalJson: row.suggestedJournalJson as any,
+        });
+
       // Defensive balance + accounts-belong-to-workspace check before
       // creating the JE — the user could have edited the suggestion freely.
       const totalDebit = input.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
       const totalCredit = input.lines.reduce((s, l) => s + Number(l.credit || 0), 0);
       if (Math.abs(totalDebit - totalCredit) > 0.005 || totalDebit <= 0) {
+        await rollbackToReady();
         return res.status(400).json({ message: "Debits and credits must balance and be > 0" });
       }
       const accounts = await storage.getAccounts(companyId);
       const validIds = new Set(accounts.filter((a) => !a.isHeader).map((a) => a.id));
       for (const l of input.lines) {
         if (!validIds.has(l.accountId)) {
+          await rollbackToReady();
           return res.status(400).json({ message: `Unknown account id ${l.accountId}` });
         }
       }
@@ -3030,8 +3091,24 @@ async function registerFixedAssetRoutes(app: Express) {
   app.delete("/api/fixed-assets/:id", async (req, res) => {
     const asset = await loadOwnedAsset(req, res);
     if (!asset) return;
-    await storage.deleteFixedAsset(asset.id, userCtx(req));
-    res.status(204).send();
+    try {
+      await storage.deleteFixedAsset(asset.id, userCtx(req));
+      res.status(204).send();
+    } catch (err: any) {
+      // deleteFixedAsset now reverses each asset event's JE through the same
+      // guarded machinery as the per-event delete route, so it can refuse
+      // with the same two 409s: a JE still referenced by an unrelated module,
+      // or a legacy event row with no balance-delta snapshot to roll back.
+      if (
+        err instanceof JournalEntryReferenceConflictError ||
+        err instanceof LegacyAssetEventBalanceMissingError
+      ) {
+        res.status(409).json({ message: err.message });
+        return;
+      }
+      console.error("Fixed-asset delete error", err);
+      res.status(500).json({ message: err?.message || "تعذر حذف الأصل" });
+    }
   });
 
   // Depreciation runs — always scoped to active workspace
@@ -3856,7 +3933,7 @@ function registerInventoryRoutes(app: Express) {
   app.delete("/api/banking/transactions/:id", async (req, res) => {
     try {
       const banking = await import("./banking");
-      await banking.deleteBankTransaction(cid(req), Number(req.params.id));
+      await banking.deleteBankTransaction(cid(req), Number(req.params.id), userCtx(req));
       res.status(204).end();
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "تعذر حذف المعاملة" });
