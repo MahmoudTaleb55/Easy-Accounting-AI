@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useSearch } from "wouter"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient"
@@ -62,7 +62,20 @@ interface JE {
 export default function JournalEntriesPage() {
   const { locale } = useLocale()
   const fmt = useFormatMoney()
-  const { period } = usePeriod()
+  const { period, setPeriodKey } = usePeriod()
+  // The global period defaults to the current calendar month, which hides
+  // journal entries dated outside this month (e.g. a freshly posted invoice
+  // dated earlier in the year) and makes them look "reversed / missing".
+  // Default THIS page to year-to-date once on mount so those entries are
+  // visible; we only override the inherited "month" default and leave any
+  // period the user explicitly picks afterwards alone (the effect runs once).
+  const didDefaultPeriod = useRef(false)
+  useEffect(() => {
+    if (didDefaultPeriod.current) return
+    didDefaultPeriod.current = true
+    if (period.key === "month") setPeriodKey("ytd")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const dfLocale = locale === "ar" ? ar : enUS
   const { toast } = useToast()
   const [open, setOpen] = useState(false)

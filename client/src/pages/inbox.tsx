@@ -4,7 +4,7 @@ import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link
 import { useLocale, type Locale } from "@/contexts/locale-context";
 import { detectedLanguageLabel, resolveInboxError } from "@/lib/inbox-error-i18n";
 import { enhanceAndCompressImageFile } from "@/lib/image-enhance";
-import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateAccountBalances, uploadFormData } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -308,15 +308,13 @@ export default function InboxPage() {
     mutationFn: async (file: File) => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/documents", {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || `${res.status}`);
-      }
+      // Route through uploadFormData so the request carries the
+      // X-Company-Id workspace header (via buildHeaders); a bare fetch
+      // omitted it and the upload silently landed in the user's fallback
+      // (oldest) workspace, making it invisible in the current inbox. We
+      // must NOT set Content-Type here — the browser sets the multipart
+      // boundary itself. The camera-capture path shares this same mutation.
+      const res = await uploadFormData("/api/documents", fd);
       return (await res.json()) as DocumentRow;
     },
     onSuccess: (row) => {

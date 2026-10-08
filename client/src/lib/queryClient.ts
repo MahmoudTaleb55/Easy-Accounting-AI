@@ -66,6 +66,27 @@ export async function apiRequest(
   return res;
 }
 
+/**
+ * POST a `FormData` body (multipart file upload) with the same
+ * authentication headers as `apiRequest` — crucially the `X-Company-Id`
+ * workspace header from `buildHeaders` — WITHOUT setting `Content-Type`.
+ * The browser must set `Content-Type: multipart/form-data` itself so it can
+ * append the multipart boundary; setting it by hand would break parsing on
+ * the server. Use this instead of a bare `fetch` for any authenticated file
+ * upload so the write is scoped to the active workspace.
+ */
+export async function uploadFormData(url: string, fd: FormData): Promise<Response> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: fd,
+    credentials: "include",
+  });
+
+  await throwIfResNotOk(res);
+  return res;
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;

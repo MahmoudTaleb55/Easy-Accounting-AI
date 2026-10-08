@@ -3874,7 +3874,14 @@ function registerInventoryRoutes(app: Express) {
     try {
       const banking = await import("./banking");
       const { insertBankAccountSchema } = await import("@shared/schema");
-      const parsed = insertBankAccountSchema.safeParse(req.body);
+      // `openingBalance` maps to a Drizzle numeric column, so drizzle-zod
+      // types it as a required string; the client form sends a JSON number.
+      // Coerce it to a string at the route boundary so a numeric body (e.g.
+      // openingBalance: 0) validates and stores as the expected "0.00" form.
+      const createAccountSchema = insertBankAccountSchema.extend({
+        openingBalance: z.coerce.string().optional(),
+      });
+      const parsed = createAccountSchema.safeParse(req.body);
       if (!parsed.success) return void res.status(400).json({ message: parsed.error.issues[0]?.message ?? "بيانات غير صحيحة" });
       res.status(201).json(await banking.createBankAccount(cid(req), parsed.data));
     } catch (err: any) {
@@ -3923,7 +3930,13 @@ function registerInventoryRoutes(app: Express) {
     try {
       const banking = await import("./banking");
       const { insertBankTransactionSchema } = await import("@shared/schema");
-      const parsed = insertBankTransactionSchema.safeParse(req.body);
+      // Same numeric-column/zod-string mismatch as bank accounts: `amount`
+      // is a Drizzle numeric → zod string, but the client sends a number.
+      // Coerce to string at the boundary so a numeric body validates.
+      const createTxnSchema = insertBankTransactionSchema.extend({
+        amount: z.coerce.string(),
+      });
+      const parsed = createTxnSchema.safeParse(req.body);
       if (!parsed.success) return void res.status(400).json({ message: parsed.error.issues[0]?.message ?? "بيانات غير صحيحة" });
       res.status(201).json(await banking.createBankTransaction(cid(req), parsed.data, userCtx(req)));
     } catch (err: any) {

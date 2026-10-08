@@ -35,6 +35,8 @@ import { ErrorState } from "@/components/feedback/error-state";
 import { HistoryTimeline } from "@/components/audit/history-drawer";
 import { PeriodChip } from "@/components/dashboard/period-chip";
 import { usePeriod } from "@/contexts/period-context";
+import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
 import type { Employee, Leave, Attendance, PayrollRun, PayrollLineWithEmployee } from "@shared/schema";
 
 // ====================================================================
@@ -47,6 +49,7 @@ export default function HRPage() {
   // navigates here with `#pr-<id>`, which must open the Payroll tab so the
   // PayrollTab can scroll/highlight the originating row.
   const [location] = useLocation();
+  const t = useT();
   const [tab, setTab] = useState<string>(() => initialTabFromHash());
 
   useEffect(() => {
@@ -60,15 +63,15 @@ export default function HRPage() {
     <div className="space-y-8" data-testid="hr-page">
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-2 max-w-2xl">
-          <div className="eyebrow text-muted-foreground/80">الموارد والأصول</div>
+          <div className="eyebrow text-muted-foreground/80">{t("hr_eyebrow")}</div>
           <h1
             className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
-            فريقك ورواتبه — في مكان واحد.
+            {t("hr_page_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            الموظفون، الحضور، الإجازات وكشوف الرواتب — مع تسجيل تلقائي للقيود وفق IFRS / IAS 19.
+            {t("hr_page_subtitle")}
           </p>
         </div>
         <PeriodChip />
@@ -76,10 +79,10 @@ export default function HRPage() {
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="employees" data-testid="tab-employees">الموظفون</TabsTrigger>
-          <TabsTrigger value="attendance" data-testid="tab-attendance">الحضور</TabsTrigger>
-          <TabsTrigger value="leaves" data-testid="tab-leaves">الإجازات</TabsTrigger>
-          <TabsTrigger value="payroll" data-testid="tab-payroll">كشف الرواتب</TabsTrigger>
+          <TabsTrigger value="employees" data-testid="tab-employees">{t("hr_tab_employees")}</TabsTrigger>
+          <TabsTrigger value="attendance" data-testid="tab-attendance">{t("hr_tab_attendance")}</TabsTrigger>
+          <TabsTrigger value="leaves" data-testid="tab-leaves">{t("hr_tab_leaves")}</TabsTrigger>
+          <TabsTrigger value="payroll" data-testid="tab-payroll">{t("hr_tab_payroll")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="employees"><EmployeesTab /></TabsContent>
@@ -106,25 +109,33 @@ function mapHashToTab(hash: string, fallback: string): string {
 // Employees tab
 // ====================================================================
 
-const employeeFormSchema = z.object({
-  fullName: z.string().min(1, "الاسم مطلوب"),
-  jobTitle: z.string().default(""),
-  hireDate: z.string().min(1, "تاريخ التعيين مطلوب"),
-  baseSalary: z.coerce.number().nonnegative(),
-  allowances: z.coerce.number().nonnegative().default(0),
-  isNational: z.boolean().default(true),
-  annualLeaveDaysOverride: z.coerce.number().int().nonnegative().optional().nullable(),
-  isActive: z.boolean().default(true),
-});
+// Built as a factory so the validation messages can be localized through the
+// dictionary (t) rather than hardcoded Arabic literals.
+function makeEmployeeFormSchema(t: (key: any) => string) {
+  return z.object({
+    fullName: z.string().min(1, t("hr_val_name_required")),
+    jobTitle: z.string().default(""),
+    hireDate: z.string().min(1, t("hr_val_hiredate_required")),
+    baseSalary: z.coerce.number().nonnegative(),
+    allowances: z.coerce.number().nonnegative().default(0),
+    isNational: z.boolean().default(true),
+    annualLeaveDaysOverride: z.coerce.number().int().nonnegative().optional().nullable(),
+    isActive: z.boolean().default(true),
+  });
+}
+type EmployeeFormValues = z.infer<ReturnType<typeof makeEmployeeFormSchema>>;
 
 function EmployeesTab() {
   const { toast } = useToast();
+  const t = useT();
+  const { dir } = useLocale();
   const fmt = useFormatMoney();
   const [open, setOpen] = useState(false);
   const [detailEmp, setDetailEmp] = useState<Employee | null>(null);
   const { data: employees = [], isLoading } = useQuery<Employee[]>({ queryKey: ["/api/hr/employees"] });
 
-  const form = useForm<z.infer<typeof employeeFormSchema>>({
+  const employeeFormSchema = makeEmployeeFormSchema(t);
+  const form = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeFormSchema),
     defaultValues: { fullName: "", jobTitle: "", hireDate: new Date().toISOString().slice(0, 10), baseSalary: 0, allowances: 0, isNational: true, isActive: true },
   });
@@ -135,9 +146,9 @@ function EmployeesTab() {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/employees"] });
       setOpen(false);
       form.reset();
-      toast({ title: "تم", description: "تمت إضافة الموظف" });
+      toast({ title: t("hr_toast_done"), description: t("hr_emp_added") });
     },
-    onError: (e: any) => toast({ title: "خطأ", description: e?.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: t("hr_toast_error"), description: e?.message, variant: "destructive" }),
   });
 
   const remove = useMutation({
@@ -149,45 +160,45 @@ function EmployeesTab() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle>قائمة الموظفين</CardTitle>
-          <CardDescription>سجل الموظفين النشطين بالمنشأة</CardDescription>
+          <CardTitle>{t("hr_emp_list_title")}</CardTitle>
+          <CardDescription>{t("hr_emp_list_desc")}</CardDescription>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <WriteGuard>
-            <Button data-testid="button-add-employee" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-2" /> موظف جديد</Button>
+            <Button data-testid="button-add-employee" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-2" /> {t("hr_emp_new")}</Button>
           </WriteGuard>
-          <DialogContent className="max-w-lg" dir="rtl">
+          <DialogContent className="max-w-lg" dir={dir}>
             <DialogHeader>
-              <DialogTitle>إضافة موظف</DialogTitle>
-              <DialogDescription>أدخل بيانات الموظف الأساسية</DialogDescription>
+              <DialogTitle>{t("hr_emp_add_title")}</DialogTitle>
+              <DialogDescription>{t("hr_emp_add_desc")}</DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit((v) => create.mutate(v))} className="space-y-3">
                 <FormField control={form.control} name="fullName" render={({ field }) => (
-                  <FormItem><FormLabel>الاسم الكامل</FormLabel><FormControl><Input {...field} data-testid="input-fullname" /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>{t("hr_emp_fullname")}</FormLabel><FormControl><Input {...field} data-testid="input-fullname" /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="jobTitle" render={({ field }) => (
-                  <FormItem><FormLabel>المسمى الوظيفي</FormLabel><FormControl><Input {...field} data-testid="input-jobtitle" /></FormControl></FormItem>
+                  <FormItem><FormLabel>{t("hr_emp_jobtitle")}</FormLabel><FormControl><Input {...field} data-testid="input-jobtitle" /></FormControl></FormItem>
                 )} />
                 <FormField control={form.control} name="hireDate" render={({ field }) => (
-                  <FormItem><FormLabel>تاريخ التعيين</FormLabel><FormControl><Input type="date" {...field} data-testid="input-hiredate" /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>{t("hr_emp_hiredate")}</FormLabel><FormControl><Input type="date" {...field} data-testid="input-hiredate" /></FormControl><FormMessage /></FormItem>
                 )} />
                 <div className="grid grid-cols-2 gap-2">
                   <FormField control={form.control} name="baseSalary" render={({ field }) => (
-                    <FormItem><FormLabel>الراتب الأساسي</FormLabel><FormControl><Input type="number" step="any" {...field} data-testid="input-basesalary" /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>{t("hr_emp_base_salary")}</FormLabel><FormControl><Input type="number" step="any" {...field} data-testid="input-basesalary" /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="allowances" render={({ field }) => (
-                    <FormItem><FormLabel>البدلات</FormLabel><FormControl><Input type="number" step="any" {...field} data-testid="input-allowances" /></FormControl></FormItem>
+                    <FormItem><FormLabel>{t("hr_emp_allowances")}</FormLabel><FormControl><Input type="number" step="any" {...field} data-testid="input-allowances" /></FormControl></FormItem>
                   )} />
                 </div>
                 <FormField control={form.control} name="isNational" render={({ field }) => (
                   <FormItem className="flex items-center justify-between rounded-md border p-3">
-                    <FormLabel>مواطن (لتحديد نسبة التأمينات)</FormLabel>
+                    <FormLabel>{t("hr_emp_is_national")}</FormLabel>
                     <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-national" /></FormControl>
                   </FormItem>
                 )} />
                 <Button type="submit" className="w-full" disabled={create.isPending} data-testid="button-save-employee">
-                  {create.isPending ? "جاري الحفظ..." : "حفظ"}
+                  {create.isPending ? t("hr_saving") : t("hr_save")}
                 </Button>
               </form>
             </Form>
@@ -200,20 +211,20 @@ function EmployeesTab() {
         ) : employees.length === 0 ? (
           <EmptyState
             icon={<Users className="w-5 h-5" />}
-            title="لا يوجد موظفون بعد"
-            description="أضف أول موظف لتبدأ بتشغيل الرواتب وحساب نهاية الخدمة."
+            title={t("hr_emp_empty_title")}
+            description={t("hr_emp_empty_desc")}
             testId="empty-employees"
           />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>الاسم</TableHead>
-                <TableHead>المسمى</TableHead>
-                <TableHead>تاريخ التعيين</TableHead>
-                <TableHead>الراتب الأساسي</TableHead>
-                <TableHead>البدلات</TableHead>
-                <TableHead>الحالة</TableHead>
+                <TableHead>{t("hr_emp_col_name")}</TableHead>
+                <TableHead>{t("hr_emp_col_title")}</TableHead>
+                <TableHead>{t("hr_emp_col_hiredate")}</TableHead>
+                <TableHead>{t("hr_emp_base_salary")}</TableHead>
+                <TableHead>{t("hr_emp_allowances")}</TableHead>
+                <TableHead>{t("hr_emp_col_status")}</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -235,7 +246,7 @@ function EmployeesTab() {
                   <TableCell>{fmt(e.baseSalary)}</TableCell>
                   <TableCell>{fmt(e.allowances)}</TableCell>
                   <TableCell>
-                    {e.isActive ? <Badge variant="default">نشط</Badge> : <Badge variant="secondary">معطل</Badge>}
+                    {e.isActive ? <Badge variant="default">{t("hr_emp_active")}</Badge> : <Badge variant="secondary">{t("hr_emp_inactive")}</Badge>}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
@@ -264,28 +275,30 @@ function EmployeesTab() {
 
 function EmployeeDetailDialog({ employee, onClose }: { employee: Employee; onClose: () => void }) {
   const fmt = useFormatMoney();
+  const t = useT();
+  const { dir } = useLocale();
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-employee-detail">
+      <DialogContent dir={dir} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-employee-detail">
         <DialogHeader>
           <DialogTitle>{employee.fullName}</DialogTitle>
-          <DialogDescription>تفاصيل الموظف وسجل التغييرات.</DialogDescription>
+          <DialogDescription>{t("hr_emp_detail_desc")}</DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="summary">
           <TabsList className="grid grid-cols-2 w-full">
-            <TabsTrigger value="summary" data-testid="tab-employee-summary">ملخص</TabsTrigger>
-            <TabsTrigger value="changes" data-testid="tab-employee-changes">التغييرات</TabsTrigger>
+            <TabsTrigger value="summary" data-testid="tab-employee-summary">{t("hr_summary")}</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-employee-changes">{t("hr_changes")}</TabsTrigger>
           </TabsList>
           <TabsContent value="summary" className="mt-4">
             <dl className="grid grid-cols-2 gap-3 text-sm">
-              <div><dt className="text-muted-foreground">الكود</dt><dd className="font-mono">EMP-{employee.id}</dd></div>
-              <div><dt className="text-muted-foreground">المسمى الوظيفي</dt><dd>{employee.jobTitle || "—"}</dd></div>
-              <div><dt className="text-muted-foreground">تاريخ التعيين</dt><dd className="font-numeric tabular-nums">{employee.hireDate}</dd></div>
-              <div><dt className="text-muted-foreground">الحالة</dt><dd>{employee.isActive ? <Badge variant="default">نشط</Badge> : <Badge variant="secondary">معطل</Badge>}</dd></div>
-              <div><dt className="text-muted-foreground">الراتب الأساسي</dt><dd className="font-numeric tabular-nums">{fmt(employee.baseSalary)}</dd></div>
-              <div><dt className="text-muted-foreground">البدلات</dt><dd className="font-numeric tabular-nums">{fmt(employee.allowances)}</dd></div>
-              <div><dt className="text-muted-foreground">مواطن</dt><dd>{employee.isNational ? "نعم" : "لا"}</dd></div>
-              <div><dt className="text-muted-foreground">رصيد إجازة سنوي مخصص</dt><dd>{employee.annualLeaveDaysOverride ?? "—"}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_code")}</dt><dd className="font-mono">EMP-{employee.id}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_emp_jobtitle")}</dt><dd>{employee.jobTitle || "—"}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_emp_hiredate")}</dt><dd className="font-numeric tabular-nums">{employee.hireDate}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_emp_col_status")}</dt><dd>{employee.isActive ? <Badge variant="default">{t("hr_emp_active")}</Badge> : <Badge variant="secondary">{t("hr_emp_inactive")}</Badge>}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_emp_base_salary")}</dt><dd className="font-numeric tabular-nums">{fmt(employee.baseSalary)}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_emp_allowances")}</dt><dd className="font-numeric tabular-nums">{fmt(employee.allowances)}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_emp_is_national_short")}</dt><dd>{employee.isNational ? t("hr_yes") : t("hr_no")}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_emp_annual_leave_override")}</dt><dd>{employee.annualLeaveDaysOverride ?? "—"}</dd></div>
             </dl>
           </TabsContent>
           <TabsContent value="changes" className="mt-4" data-testid="tab-content-employee-changes">
@@ -309,6 +322,8 @@ function EmployeeDetailDialog({ employee, onClose }: { employee: Employee; onClo
 
 function AttendanceTab() {
   const { toast } = useToast();
+  const t = useT();
+  const { dir } = useLocale();
   const [employeeId, setEmployeeId] = useState<string>("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState("present");
@@ -322,7 +337,14 @@ function AttendanceTab() {
     queryFn: async () => {
       const params = new URLSearchParams({ yearMonth });
       if (employeeId) params.set("employeeId", employeeId);
-      const res = await fetch(`/api/hr/attendance?${params}`);
+      // Send the X-Company-Id workspace header so this read is scoped to the
+      // active workspace. The bare fetch here previously omitted it, so for a
+      // multi-workspace user the records came from the wrong (fallback)
+      // workspace and a newly added employee's attendance never appeared.
+      const res = await fetch(`/api/hr/attendance?${params}`, {
+        credentials: "include",
+        headers: { "X-Company-Id": localStorage.getItem("active_company_id") ?? "" },
+      });
       return res.json();
     },
   });
@@ -337,70 +359,76 @@ function AttendanceTab() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/attendance"] });
-      toast({ title: "تم", description: "تم تسجيل الحضور" });
+      toast({ title: t("hr_toast_done"), description: t("hr_att_recorded") });
     },
-    onError: (e: any) => toast({ title: "خطأ", description: e?.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: t("hr_toast_error"), description: e?.message, variant: "destructive" }),
   });
 
   const empName = (id: number) => employees.find((e) => e.id === id)?.fullName || `#${id}`;
-  const statusLabel: Record<string, string> = { present: "حاضر", absent: "غائب", leave: "إجازة", holiday: "عطلة", weekend: "نهاية أسبوع" };
+  const statusLabel: Record<string, string> = {
+    present: t("hr_att_status_present"),
+    absent: t("hr_att_status_absent"),
+    leave: t("hr_att_status_leave"),
+    holiday: t("hr_att_status_holiday"),
+    weekend: t("hr_att_status_weekend"),
+  };
 
   return (
     <div className="grid md:grid-cols-3 gap-4">
       <Card className="md:col-span-1">
-        <CardHeader><CardTitle className="flex items-center gap-2"><Calendar className="w-5 h-5" /> تسجيل حضور</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2"><Calendar className="w-5 h-5" /> {t("hr_att_record_title")}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div>
-            <label className="text-sm font-medium">الموظف</label>
+            <label className="text-sm font-medium">{t("hr_att_employee")}</label>
             <Select value={employeeId} onValueChange={setEmployeeId}>
-              <SelectTrigger data-testid="select-att-employee"><SelectValue placeholder="اختر..." /></SelectTrigger>
+              <SelectTrigger data-testid="select-att-employee"><SelectValue placeholder={t("hr_select_placeholder")} /></SelectTrigger>
               <SelectContent>
                 {employees.map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div>
-            <label className="text-sm font-medium">التاريخ</label>
+            <label className="text-sm font-medium">{t("hr_att_date")}</label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-att-date" />
           </div>
           <div>
-            <label className="text-sm font-medium">الحالة</label>
+            <label className="text-sm font-medium">{t("hr_att_status")}</label>
             <Select value={status} onValueChange={setStatus}>
               <SelectTrigger data-testid="select-att-status"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="present">حاضر</SelectItem>
-                <SelectItem value="absent">غائب</SelectItem>
-                <SelectItem value="leave">إجازة</SelectItem>
-                <SelectItem value="holiday">عطلة رسمية</SelectItem>
+                <SelectItem value="present">{t("hr_att_status_present")}</SelectItem>
+                <SelectItem value="absent">{t("hr_att_status_absent")}</SelectItem>
+                <SelectItem value="leave">{t("hr_att_status_leave")}</SelectItem>
+                <SelectItem value="holiday">{t("hr_att_status_holiday_official")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
-            <label className="text-sm font-medium">ساعات إضافية</label>
+            <label className="text-sm font-medium">{t("hr_att_overtime")}</label>
             <Input type="number" step="0.5" value={overtime} onChange={(e) => setOvertime(e.target.value)} data-testid="input-att-overtime" />
           </div>
           <WriteGuard forceDisabled={!employeeId || save.isPending}>
             <Button className="w-full" onClick={() => save.mutate()} data-testid="button-save-attendance">
-              {save.isPending ? "..." : "حفظ"}
+              {save.isPending ? t("hr_working") : t("hr_save")}
             </Button>
           </WriteGuard>
         </CardContent>
       </Card>
 
       <Card className="md:col-span-2">
-        <CardHeader><CardTitle>سجلات شهر {yearMonth}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("hr_att_records_title")} {yearMonth}</CardTitle></CardHeader>
         <CardContent>
           {records.length === 0 ? (
             <EmptyState
               icon={<Calendar className="w-5 h-5" />}
-              title="لا توجد سجلات حضور بعد"
-              description="اختر موظفاً وتاريخاً ثم سجّل أول حضور أو غياب لتظهر السجلات هنا."
+              title={t("hr_att_empty_title")}
+              description={t("hr_att_empty_desc")}
               testId="empty-attendance"
             />
           ) : (
             <Table>
               <TableHeader>
-                <TableRow><TableHead>التاريخ</TableHead><TableHead>الموظف</TableHead><TableHead>الحالة</TableHead><TableHead>ساعات إضافية</TableHead><TableHead></TableHead></TableRow>
+                <TableRow><TableHead>{t("hr_att_date")}</TableHead><TableHead>{t("hr_att_employee")}</TableHead><TableHead>{t("hr_att_status")}</TableHead><TableHead>{t("hr_att_overtime")}</TableHead><TableHead></TableHead></TableRow>
               </TableHeader>
               <TableBody>
                 {records.map((r) => (
@@ -450,9 +478,11 @@ function AttendanceDetailDialog({
   statusLabel: string;
   onClose: () => void;
 }) {
+  const t = useT();
+  const { dir } = useLocale();
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-attendance-detail">
+      <DialogContent dir={dir} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-attendance-detail">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
@@ -460,23 +490,23 @@ function AttendanceDetailDialog({
             </span>
             <span className="truncate">{employeeName} — {attendance.date}</span>
           </DialogTitle>
-          <DialogDescription>تفاصيل سجل الحضور وسجل التغييرات.</DialogDescription>
+          <DialogDescription>{t("hr_att_detail_desc")}</DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="summary">
           <TabsList className="grid grid-cols-2 w-full">
-            <TabsTrigger value="summary" data-testid="tab-attendance-summary">ملخص</TabsTrigger>
-            <TabsTrigger value="changes" data-testid="tab-attendance-changes">التغييرات</TabsTrigger>
+            <TabsTrigger value="summary" data-testid="tab-attendance-summary">{t("hr_summary")}</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-attendance-changes">{t("hr_changes")}</TabsTrigger>
           </TabsList>
           <TabsContent value="summary" className="mt-4">
             <dl className="grid grid-cols-2 gap-3 text-sm">
-              <div><dt className="text-muted-foreground">الكود</dt><dd className="font-mono">ATT-{attendance.id}</dd></div>
-              <div><dt className="text-muted-foreground">الموظف</dt><dd>{employeeName}</dd></div>
-              <div><dt className="text-muted-foreground">التاريخ</dt><dd className="font-numeric tabular-nums">{attendance.date}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_code")}</dt><dd className="font-mono">ATT-{attendance.id}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_att_employee")}</dt><dd>{employeeName}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_att_date")}</dt><dd className="font-numeric tabular-nums">{attendance.date}</dd></div>
               <div>
-                <dt className="text-muted-foreground">الحالة</dt>
+                <dt className="text-muted-foreground">{t("hr_att_status")}</dt>
                 <dd><Badge variant={attendance.status === "absent" ? "destructive" : "default"}>{statusLabel}</Badge></dd>
               </div>
-              <div><dt className="text-muted-foreground">ساعات إضافية</dt><dd className="font-numeric tabular-nums">{Number(attendance.overtimeHours)}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_att_overtime")}</dt><dd className="font-numeric tabular-nums">{Number(attendance.overtimeHours)}</dd></div>
             </dl>
           </TabsContent>
           <TabsContent value="changes" className="mt-4" data-testid="tab-content-attendance-changes">
@@ -501,6 +531,7 @@ function AttendanceDetailDialog({
 
 function LeavesTab() {
   const { toast } = useToast();
+  const t = useT();
   const [employeeId, setEmployeeId] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -528,9 +559,9 @@ function LeavesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/leaves"] });
       setStart(""); setEnd("");
-      toast({ title: "تم", description: "تم تسجيل الإجازة" });
+      toast({ title: t("hr_toast_done"), description: t("hr_leave_recorded") });
     },
-    onError: (e: any) => toast({ title: "خطأ", description: e?.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: t("hr_toast_error"), description: e?.message, variant: "destructive" }),
   });
 
   const remove = useMutation({
@@ -539,63 +570,68 @@ function LeavesTab() {
   });
 
   const empName = (id: number) => employees.find((e) => e.id === id)?.fullName || `#${id}`;
-  const typeLabel: Record<string, string> = { annual: "سنوية", sick: "مرضية", unpaid: "بدون راتب", other: "أخرى" };
+  const typeLabel: Record<string, string> = {
+    annual: t("hr_leave_type_annual"),
+    sick: t("hr_leave_type_sick"),
+    unpaid: t("hr_leave_type_unpaid"),
+    other: t("hr_leave_type_other"),
+  };
 
   return (
     <div className="grid md:grid-cols-3 gap-4">
       <Card className="md:col-span-1">
-        <CardHeader><CardTitle>تسجيل إجازة</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("hr_leave_record_title")}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div>
-            <label className="text-sm font-medium">الموظف</label>
+            <label className="text-sm font-medium">{t("hr_att_employee")}</label>
             <Select value={employeeId} onValueChange={setEmployeeId}>
-              <SelectTrigger data-testid="select-leave-employee"><SelectValue placeholder="اختر..." /></SelectTrigger>
+              <SelectTrigger data-testid="select-leave-employee"><SelectValue placeholder={t("hr_select_placeholder")} /></SelectTrigger>
               <SelectContent>{employees.map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.fullName}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
-            <label className="text-sm font-medium">من</label>
+            <label className="text-sm font-medium">{t("hr_leave_from")}</label>
             <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} data-testid="input-leave-start" />
           </div>
           <div>
-            <label className="text-sm font-medium">إلى</label>
+            <label className="text-sm font-medium">{t("hr_leave_to")}</label>
             <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} data-testid="input-leave-end" />
           </div>
           <div>
-            <label className="text-sm font-medium">النوع</label>
+            <label className="text-sm font-medium">{t("hr_leave_type")}</label>
             <Select value={type} onValueChange={setType}>
               <SelectTrigger data-testid="select-leave-type"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="annual">سنوية</SelectItem>
-                <SelectItem value="sick">مرضية</SelectItem>
-                <SelectItem value="unpaid">بدون راتب</SelectItem>
-                <SelectItem value="other">أخرى</SelectItem>
+                <SelectItem value="annual">{t("hr_leave_type_annual")}</SelectItem>
+                <SelectItem value="sick">{t("hr_leave_type_sick")}</SelectItem>
+                <SelectItem value="unpaid">{t("hr_leave_type_unpaid")}</SelectItem>
+                <SelectItem value="other">{t("hr_leave_type_other")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          {days > 0 && <p className="text-sm text-muted-foreground">عدد الأيام: <span className="font-bold">{days}</span></p>}
+          {days > 0 && <p className="text-sm text-muted-foreground">{t("hr_leave_days_count")} <span className="font-bold">{days}</span></p>}
           <WriteGuard forceDisabled={!employeeId || !start || !end || create.isPending}>
             <Button className="w-full" onClick={() => create.mutate()} data-testid="button-save-leave">
-              {create.isPending ? "..." : "حفظ"}
+              {create.isPending ? t("hr_working") : t("hr_save")}
             </Button>
           </WriteGuard>
         </CardContent>
       </Card>
 
       <Card className="md:col-span-2">
-        <CardHeader><CardTitle>سجل الإجازات</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("hr_leave_log_title")}</CardTitle></CardHeader>
         <CardContent>
           {leaves.length === 0 ? (
             <EmptyState
               icon={<Calendar className="w-5 h-5" />}
-              title="لا توجد إجازات مسجَّلة"
-              description="أضف أول طلب إجازة لتظهر مع رصيد المتبقي وتحتسب في كشف الراتب."
+              title={t("hr_leave_empty_title")}
+              description={t("hr_leave_empty_desc")}
               testId="empty-leaves"
             />
           ) : (
             <Table>
               <TableHeader>
-                <TableRow><TableHead>الموظف</TableHead><TableHead>من</TableHead><TableHead>إلى</TableHead><TableHead>الأيام</TableHead><TableHead>النوع</TableHead><TableHead></TableHead></TableRow>
+                <TableRow><TableHead>{t("hr_att_employee")}</TableHead><TableHead>{t("hr_leave_from")}</TableHead><TableHead>{t("hr_leave_to")}</TableHead><TableHead>{t("hr_leave_col_days")}</TableHead><TableHead>{t("hr_leave_type")}</TableHead><TableHead></TableHead></TableRow>
               </TableHeader>
               <TableBody>
                 {leaves.map((l) => (
@@ -651,14 +687,16 @@ function LeaveDetailDialog({
   typeLabel: string;
   onClose: () => void;
 }) {
+  const t = useT();
+  const { dir } = useLocale();
   const statusLabel: Record<string, string> = {
-    approved: "معتمدة",
-    pending: "قيد الانتظار",
-    rejected: "مرفوضة",
+    approved: t("hr_leave_status_approved"),
+    pending: t("hr_leave_status_pending"),
+    rejected: t("hr_leave_status_rejected"),
   };
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-leave-detail">
+      <DialogContent dir={dir} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-leave-detail">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
@@ -666,31 +704,31 @@ function LeaveDetailDialog({
             </span>
             <span className="truncate">{employeeName} — {typeLabel}</span>
           </DialogTitle>
-          <DialogDescription>تفاصيل طلب الإجازة وسجل التغييرات.</DialogDescription>
+          <DialogDescription>{t("hr_leave_detail_desc")}</DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="summary">
           <TabsList className="grid grid-cols-2 w-full">
-            <TabsTrigger value="summary" data-testid="tab-leave-summary">ملخص</TabsTrigger>
-            <TabsTrigger value="changes" data-testid="tab-leave-changes">التغييرات</TabsTrigger>
+            <TabsTrigger value="summary" data-testid="tab-leave-summary">{t("hr_summary")}</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-leave-changes">{t("hr_changes")}</TabsTrigger>
           </TabsList>
           <TabsContent value="summary" className="mt-4">
             <dl className="grid grid-cols-2 gap-3 text-sm">
-              <div><dt className="text-muted-foreground">الكود</dt><dd className="font-mono">LV-{leave.id}</dd></div>
-              <div><dt className="text-muted-foreground">الموظف</dt><dd>{employeeName}</dd></div>
-              <div><dt className="text-muted-foreground">النوع</dt><dd><Badge variant="outline">{typeLabel}</Badge></dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_code")}</dt><dd className="font-mono">LV-{leave.id}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_att_employee")}</dt><dd>{employeeName}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_leave_type")}</dt><dd><Badge variant="outline">{typeLabel}</Badge></dd></div>
               <div>
-                <dt className="text-muted-foreground">الحالة</dt>
+                <dt className="text-muted-foreground">{t("hr_emp_col_status")}</dt>
                 <dd>
                   <Badge variant={leave.status === "rejected" ? "destructive" : leave.status === "pending" ? "secondary" : "default"}>
                     {statusLabel[leave.status] || leave.status}
                   </Badge>
                 </dd>
               </div>
-              <div><dt className="text-muted-foreground">من</dt><dd className="font-numeric tabular-nums">{leave.startDate}</dd></div>
-              <div><dt className="text-muted-foreground">إلى</dt><dd className="font-numeric tabular-nums">{leave.endDate}</dd></div>
-              <div><dt className="text-muted-foreground">عدد الأيام</dt><dd className="font-numeric tabular-nums">{leave.days}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_leave_from")}</dt><dd className="font-numeric tabular-nums">{leave.startDate}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_leave_to")}</dt><dd className="font-numeric tabular-nums">{leave.endDate}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_leave_days")}</dt><dd className="font-numeric tabular-nums">{leave.days}</dd></div>
               {leave.notes && (
-                <div className="col-span-2"><dt className="text-muted-foreground">ملاحظات</dt><dd>{leave.notes}</dd></div>
+                <div className="col-span-2"><dt className="text-muted-foreground">{t("hr_leave_notes")}</dt><dd>{leave.notes}</dd></div>
               )}
             </dl>
           </TabsContent>
@@ -715,12 +753,13 @@ function LeaveDetailDialog({
 // ====================================================================
 
 function DeltaLine({ d, testId }: { d: { text: string; positive: boolean }; testId: string }) {
+  const t = useT();
   return (
     <p
       className={`text-xs mt-1 tabular-nums ${d.positive ? "text-green-600 dark:text-green-400" : "text-destructive"}`}
       data-testid={testId}
     >
-      {d.text} مقارنة بالشهر السابق
+      {d.text} {t("hr_pay_delta_vs_prev")}
     </p>
   );
 }
@@ -733,6 +772,8 @@ interface PreviewLine {
 
 function PayrollTab() {
   const { toast } = useToast();
+  const t = useT();
+  const { dir } = useLocale();
   const fmt = useFormatMoney();
   const settings = useSettings();
   const { period, compareToPrevious, previousRange } = usePeriod();
@@ -757,8 +798,15 @@ function PayrollTab() {
   const { data, isLoading, error, refetch } = useQuery<{ year: number; month: number; lines: PreviewLine[] }>({
     queryKey: ["/api/hr/payroll/preview", { year, month }],
     queryFn: async () => {
-      const res = await fetch(`/api/hr/payroll/preview?year=${year}&month=${month}`);
-      if (!res.ok) throw new Error("تعذر التحميل");
+      // Send the X-Company-Id workspace header so the preview is computed for
+      // the active workspace. Without it a multi-workspace user saw a payroll
+      // preview for the wrong (fallback) workspace — so a newly added employee
+      // never appeared on the salary statement.
+      const res = await fetch(`/api/hr/payroll/preview?year=${year}&month=${month}`, {
+        credentials: "include",
+        headers: { "X-Company-Id": localStorage.getItem("active_company_id") ?? "" },
+      });
+      if (!res.ok) throw new Error(t("hr_pay_load_failed"));
       return res.json();
     },
   });
@@ -766,8 +814,11 @@ function PayrollTab() {
   const { data: prevData } = useQuery<{ year: number; month: number; lines: PreviewLine[] }>({
     queryKey: ["/api/hr/payroll/preview", { year: prevYear, month: prevMonth }],
     queryFn: async () => {
-      const res = await fetch(`/api/hr/payroll/preview?year=${prevYear}&month=${prevMonth}`);
-      if (!res.ok) throw new Error("تعذر التحميل");
+      const res = await fetch(`/api/hr/payroll/preview?year=${prevYear}&month=${prevMonth}`, {
+        credentials: "include",
+        headers: { "X-Company-Id": localStorage.getItem("active_company_id") ?? "" },
+      });
+      if (!res.ok) throw new Error(t("hr_pay_load_failed"));
       return res.json();
     },
     enabled: compareToPrevious,
@@ -804,13 +855,13 @@ function PayrollTab() {
   const run = useMutation({
     mutationFn: async () => await apiRequest("POST", "/api/hr/payroll/run", { year, month }),
     onSuccess: () => {
-      toast({ title: "✅ تم", description: "تم اعتماد الرواتب وتسجيل القيود المحاسبية تلقائياً" });
+      toast({ title: t("hr_pay_run_done_title"), description: t("hr_pay_run_done") });
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/insights"] });
       queryClient.invalidateQueries({ queryKey: ["/api/hr/payroll/runs"] });
       invalidateAccountBalances();
     },
-    onError: (e: any) => toast({ title: "خطأ", description: e?.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: t("hr_toast_error"), description: e?.message, variant: "destructive" }),
   });
 
   const removeRun = useMutation({
@@ -821,7 +872,7 @@ function PayrollTab() {
       // trailing balances must be invalidated alongside the JE list.
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       invalidateAccountBalances();
-      toast({ title: "تم", description: "تم حذف كشف الرواتب" });
+      toast({ title: t("hr_toast_done"), description: t("hr_pay_deleted") });
     },
     onError: (e: any) => {
       if (e?.status === 409) {
@@ -830,14 +881,14 @@ function PayrollTab() {
         // message tells the user *which* downstream module is holding the
         // journal entry — they often need long enough to read it, switch
         // tabs, and copy the reference out.
-        const fallback = "تعذّر حذف كشف الرواتب: القيد المحاسبي مرتبط بسجلات أخرى.";
+        const fallback = t("hr_pay_delete_conflict_fallback");
         const serverMsg = typeof e?.body?.message === "string" && e.body.message.trim().length > 0
           ? e.body.message
           : fallback;
         setConflictMessage(serverMsg);
         return;
       }
-      toast({ title: "خطأ", description: e?.message, variant: "destructive" });
+      toast({ title: t("hr_toast_error"), description: e?.message, variant: "destructive" });
     },
   });
 
@@ -855,7 +906,12 @@ function PayrollTab() {
   );
   const totals = sumTotals(lines);
   const prevTotals = compareToPrevious && prevData ? sumTotals(prevData.lines) : null;
-  const monthsAr = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  // Localized month names (index 0 = January) driven by the active locale.
+  const monthsAr = [
+    t("hr_month_1"), t("hr_month_2"), t("hr_month_3"), t("hr_month_4"),
+    t("hr_month_5"), t("hr_month_6"), t("hr_month_7"), t("hr_month_8"),
+    t("hr_month_9"), t("hr_month_10"), t("hr_month_11"), t("hr_month_12"),
+  ];
   const fmtDelta = (cur: number, prev: number) => {
     const diff = cur - prev;
     const sign = diff >= 0 ? "+" : "−";
@@ -866,17 +922,17 @@ function PayrollTab() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" /> كشف رواتب الشهر</CardTitle>
+          <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" /> {t("hr_pay_month_title")}</CardTitle>
           <CardDescription>
-            سيتم تسجيل قيد محاسبي تلقائي عند الاعتماد: مصروف رواتب وتأمينات ومخصص نهاية خدمة (وفق IAS 19) مقابل النقدية والالتزامات.
-            <br />الدولة المختارة: <span className="font-bold text-primary">{settings.countryCode}</span> — العملة: <span className="font-bold">{settings.currencySymbol}</span>
+            {t("hr_pay_month_desc")}
+            <br />{t("hr_pay_country")} <span className="font-bold text-primary">{settings.countryCode}</span> — {t("hr_pay_currency")} <span className="font-bold">{settings.currencySymbol}</span>
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-end gap-3 mb-4">
             <div className="text-sm text-muted-foreground" data-testid="text-payroll-period">
-              الفترة المعروضة: <span className="font-semibold text-foreground">{monthsAr[month - 1]} {year}</span>
-              <span className="text-xs block mt-0.5">يتغيّر تلقائياً مع تغيّر الفترة في الأعلى.</span>
+              {t("hr_pay_period_shown")} <span className="font-semibold text-foreground">{monthsAr[month - 1]} {year}</span>
+              <span className="text-xs block mt-0.5">{t("hr_pay_period_hint")}</span>
             </div>
             <div className="flex-1" />
             <WriteGuard forceDisabled={lines.length === 0 || run.isPending}>
@@ -886,7 +942,7 @@ function PayrollTab() {
                 data-testid="button-run-payroll"
               >
                 <PlayCircle className="w-5 h-5 ml-2" />
-                {run.isPending ? "جاري الاعتماد..." : "اعتماد الرواتب وتسجيل القيد"}
+                {run.isPending ? t("hr_pay_running") : t("hr_pay_run_button")}
               </Button>
             </WriteGuard>
           </div>
@@ -895,16 +951,16 @@ function PayrollTab() {
             <ListSkeleton rows={5} testId="skeleton-payroll" />
           ) : error ? (
             <ErrorState
-              title="تعذّر تحميل معاينة الرواتب"
-              cause="حدث خلل أثناء حساب الكشف. حاول مرة أخرى أو راجع بيانات الموظفين."
+              title={t("hr_pay_error_title")}
+              cause={t("hr_pay_error_cause")}
               onRetry={() => refetch()}
               testId="error-payroll"
             />
           ) : lines.length === 0 ? (
             <EmptyState
               icon={<Users className="w-5 h-5" />}
-              title="لا يوجد موظفون لحساب الرواتب"
-              description="أضف موظفين من تبويب الموظفين أولاً، وستظهر معاينة كشف الرواتب هنا تلقائياً."
+              title={t("hr_pay_empty_title")}
+              description={t("hr_pay_empty_desc")}
               testId="empty-payroll"
             />
           ) : (
@@ -913,16 +969,16 @@ function PayrollTab() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>الموظف</TableHead>
-                      <TableHead>أساسي</TableHead>
-                      <TableHead>بدلات</TableHead>
-                      <TableHead>إضافي</TableHead>
-                      <TableHead>غياب</TableHead>
-                      <TableHead>تأمينات (موظف)</TableHead>
-                      <TableHead>إجمالي</TableHead>
-                      <TableHead className="font-bold">صافي</TableHead>
-                      <TableHead>EoS</TableHead>
-                      <TableHead>إجازات</TableHead>
+                      <TableHead>{t("hr_att_employee")}</TableHead>
+                      <TableHead>{t("hr_pay_col_base")}</TableHead>
+                      <TableHead>{t("hr_pay_col_allowances")}</TableHead>
+                      <TableHead>{t("hr_pay_col_overtime")}</TableHead>
+                      <TableHead>{t("hr_pay_col_absence")}</TableHead>
+                      <TableHead>{t("hr_pay_col_si_employee")}</TableHead>
+                      <TableHead>{t("hr_pay_col_gross")}</TableHead>
+                      <TableHead className="font-bold">{t("hr_pay_col_net")}</TableHead>
+                      <TableHead>{t("hr_pay_col_eos")}</TableHead>
+                      <TableHead>{t("hr_pay_col_leave")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -946,22 +1002,22 @@ function PayrollTab() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
                 <Card className="bg-primary/5"><CardContent className="p-4">
-                  <p className="text-xs text-muted-foreground">إجمالي قبل الخصم</p>
+                  <p className="text-xs text-muted-foreground">{t("hr_pay_total_gross")}</p>
                   <p className="text-xl font-bold" data-testid="text-total-gross">{fmt(totals.gross)}</p>
                   {prevTotals && <DeltaLine d={fmtDelta(totals.gross, prevTotals.gross)} testId="text-delta-gross" />}
                 </CardContent></Card>
                 <Card className="bg-primary/10"><CardContent className="p-4">
-                  <p className="text-xs text-muted-foreground">صافي للصرف</p>
+                  <p className="text-xs text-muted-foreground">{t("hr_pay_total_net")}</p>
                   <p className="text-xl font-bold text-primary" data-testid="text-total-net">{fmt(totals.net)}</p>
                   {prevTotals && <DeltaLine d={fmtDelta(totals.net, prevTotals.net)} testId="text-delta-net" />}
                 </CardContent></Card>
                 <Card><CardContent className="p-4">
-                  <p className="text-xs text-muted-foreground">مخصص نهاية الخدمة (شهرياً)</p>
+                  <p className="text-xs text-muted-foreground">{t("hr_pay_total_eos")}</p>
                   <p className="text-lg font-semibold" data-testid="text-total-eos">{fmt(totals.eos)}</p>
                   {prevTotals && <DeltaLine d={fmtDelta(totals.eos, prevTotals.eos)} testId="text-delta-eos" />}
                 </CardContent></Card>
                 <Card><CardContent className="p-4">
-                  <p className="text-xs text-muted-foreground">مخصص الإجازات (شهرياً)</p>
+                  <p className="text-xs text-muted-foreground">{t("hr_pay_total_leave")}</p>
                   <p className="text-lg font-semibold" data-testid="text-total-leave">{fmt(totals.leave)}</p>
                   {prevTotals && <DeltaLine d={fmtDelta(totals.leave, prevTotals.leave)} testId="text-delta-leave" />}
                 </CardContent></Card>
@@ -970,9 +1026,9 @@ function PayrollTab() {
               <div className="mt-4 p-3 bg-muted/30 rounded-md text-xs text-muted-foreground flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 mt-0.5 text-primary shrink-0" />
                 <p>
-                  القيد التلقائي عند الاعتماد:
-                  <span className="block mt-1"><strong>من ح/</strong> الرواتب والأجور ({fmt(totals.gross + totals.leave - lines.reduce((s, l) => s + l.absenceDeduction, 0))}) + اشتراكات تأمينات (المنشأة) ({fmt(totals.siEr)}) + مخصص نهاية الخدمة ({fmt(totals.eos)})</span>
-                  <span className="block"><strong>إلى ح/</strong> النقدية ({fmt(totals.net)}) + تأمينات مستحقة ({fmt(totals.siEmp + totals.siEr)}) + التزام نهاية الخدمة ({fmt(totals.eos)}) + إجازات مستحقة ({fmt(totals.leave)})</span>
+                  {t("hr_pay_auto_entry")}
+                  <span className="block mt-1"><strong>{t("hr_pay_debit")}</strong> {t("hr_pay_debit_salaries")} ({fmt(totals.gross + totals.leave - lines.reduce((s, l) => s + l.absenceDeduction, 0))}) + {t("hr_pay_debit_si_employer")} ({fmt(totals.siEr)}) + {t("hr_pay_debit_eos")} ({fmt(totals.eos)})</span>
+                  <span className="block"><strong>{t("hr_pay_credit")}</strong> {t("hr_pay_credit_cash")} ({fmt(totals.net)}) + {t("hr_pay_credit_si_payable")} ({fmt(totals.siEmp + totals.siEr)}) + {t("hr_pay_credit_eos_liab")} ({fmt(totals.eos)}) + {t("hr_pay_credit_leave")} ({fmt(totals.leave)})</span>
                 </p>
               </div>
             </>
@@ -982,26 +1038,26 @@ function PayrollTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" /> كشوف الرواتب السابقة</CardTitle>
-          <CardDescription>سجل كشوف الرواتب التي تم اعتمادها — افتح "السجل" لمراجعة من قام بكل خطوة (احتساب، اعتماد، حذف).</CardDescription>
+          <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" /> {t("hr_pay_past_title")}</CardTitle>
+          <CardDescription>{t("hr_pay_past_desc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {pastRuns.length === 0 ? (
             <EmptyState
               icon={<FileText className="w-5 h-5" />}
-              title="لا توجد كشوف سابقة"
-              description="بعد اعتماد أول كشف رواتب، سيظهر هنا مع كل التغييرات والتدقيق."
+              title={t("hr_pay_past_empty_title")}
+              description={t("hr_pay_past_empty_desc")}
               testId="empty-payroll-runs"
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>الفترة</TableHead>
-                  <TableHead>الحالة</TableHead>
-                  <TableHead>إجمالي قبل الخصم</TableHead>
-                  <TableHead>صافي للصرف</TableHead>
-                  <TableHead>القيد المحاسبي</TableHead>
+                  <TableHead>{t("hr_pay_col_period")}</TableHead>
+                  <TableHead>{t("hr_pay_col_status")}</TableHead>
+                  <TableHead>{t("hr_pay_total_gross")}</TableHead>
+                  <TableHead>{t("hr_pay_total_net")}</TableHead>
+                  <TableHead>{t("hr_pay_col_journal")}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1031,7 +1087,7 @@ function PayrollTab() {
                     </TableCell>
                     <TableCell>
                       {r.status === "posted"
-                        ? <Badge variant="default">معتمد</Badge>
+                        ? <Badge variant="default">{t("hr_pay_status_posted")}</Badge>
                         : <Badge variant="secondary">{r.status}</Badge>}
                     </TableCell>
                     <TableCell>{fmt(Number(r.totalGross))}</TableCell>
@@ -1042,7 +1098,7 @@ function PayrollTab() {
                           id={r.journalEntryId}
                           className="font-numeric tabular-nums text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-${r.id}`}
-                          title={`فتح قيد اليومية JE-${r.journalEntryId}`}
+                          title={`${t("hr_pay_open_je_title")} JE-${r.journalEntryId}`}
                         >
                           JE-{r.journalEntryId}
                         </JournalEntryRefLink>
@@ -1090,11 +1146,11 @@ function PayrollTab() {
         open={!!conflictMessage}
         onOpenChange={(o) => { if (!o) setConflictMessage(null); }}
       >
-        <AlertDialogContent dir="rtl" data-testid="dialog-payroll-delete-conflict">
+        <AlertDialogContent dir={dir} data-testid="dialog-payroll-delete-conflict">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-right">
               <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
-              تعذّر حذف كشف الرواتب
+              {t("hr_pay_delete_conflict_title")}
             </AlertDialogTitle>
             <AlertDialogDescription
               className="text-sm leading-relaxed text-foreground text-right whitespace-pre-line"
@@ -1108,7 +1164,7 @@ function PayrollTab() {
               onClick={() => setConflictMessage(null)}
               data-testid="button-payroll-delete-conflict-close"
             >
-              فهمت
+              {t("hr_pay_delete_conflict_ok")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1128,41 +1184,43 @@ function PayrollRunDetailDialog({
   fmt: ReturnType<typeof useFormatMoney>;
   onClose: () => void;
 }) {
+  const t = useT();
+  const { dir } = useLocale();
   const gross = Number(run.totalGross);
   const net = Number(run.totalNet);
   const deductions = Math.max(0, gross - net);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-payroll-run-detail">
+      <DialogContent dir={dir} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-payroll-run-detail">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="font-numeric text-[11px] tabular-nums text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
               PR-{run.id}
             </span>
-            <span className="truncate">كشف رواتب {monthLabel} {run.year}</span>
+            <span className="truncate">{t("hr_pay_run_detail_title")} {monthLabel} {run.year}</span>
           </DialogTitle>
-          <DialogDescription>تفاصيل كشف الرواتب وسجل التغييرات.</DialogDescription>
+          <DialogDescription>{t("hr_pay_run_detail_desc")}</DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="summary">
           <TabsList className="grid grid-cols-3 w-full">
-            <TabsTrigger value="summary" data-testid="tab-payroll-run-summary">ملخص</TabsTrigger>
-            <TabsTrigger value="lines" data-testid="tab-payroll-run-lines">السطور</TabsTrigger>
-            <TabsTrigger value="changes" data-testid="tab-payroll-run-changes">التغييرات</TabsTrigger>
+            <TabsTrigger value="summary" data-testid="tab-payroll-run-summary">{t("hr_summary")}</TabsTrigger>
+            <TabsTrigger value="lines" data-testid="tab-payroll-run-lines">{t("hr_pay_tab_lines")}</TabsTrigger>
+            <TabsTrigger value="changes" data-testid="tab-payroll-run-changes">{t("hr_changes")}</TabsTrigger>
           </TabsList>
           <TabsContent value="summary" className="mt-4">
             <dl className="grid grid-cols-2 gap-3 text-sm">
-              <div><dt className="text-muted-foreground">الكود</dt><dd className="font-mono">PR-{run.id}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_code")}</dt><dd className="font-mono">PR-{run.id}</dd></div>
               <div>
-                <dt className="text-muted-foreground">الحالة</dt>
+                <dt className="text-muted-foreground">{t("hr_pay_col_status")}</dt>
                 <dd>
                   {run.status === "posted"
-                    ? <Badge variant="default">معتمد</Badge>
+                    ? <Badge variant="default">{t("hr_pay_status_posted")}</Badge>
                     : <Badge variant="secondary">{run.status}</Badge>}
                 </dd>
               </div>
-              <div><dt className="text-muted-foreground">الفترة</dt><dd className="font-numeric tabular-nums">{monthLabel} {run.year}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_pay_col_period")}</dt><dd className="font-numeric tabular-nums">{monthLabel} {run.year}</dd></div>
               <div>
-                <dt className="text-muted-foreground">القيد المحاسبي</dt>
+                <dt className="text-muted-foreground">{t("hr_pay_col_journal")}</dt>
                 <dd>
                   {run.journalEntryId ? (
                     <JournalEntryRefLink
@@ -1177,11 +1235,11 @@ function PayrollRunDetailDialog({
                   )}
                 </dd>
               </div>
-              <div><dt className="text-muted-foreground">إجمالي قبل الخصم</dt><dd className="font-numeric tabular-nums" data-testid="text-detail-total-gross">{fmt(gross)}</dd></div>
-              <div><dt className="text-muted-foreground">صافي للصرف</dt><dd className="font-numeric tabular-nums font-bold text-primary" data-testid="text-detail-total-net">{fmt(net)}</dd></div>
-              <div><dt className="text-muted-foreground">إجمالي الخصومات</dt><dd className="font-numeric tabular-nums" data-testid="text-detail-total-deductions">{fmt(deductions)}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_pay_total_gross")}</dt><dd className="font-numeric tabular-nums" data-testid="text-detail-total-gross">{fmt(gross)}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_pay_total_net")}</dt><dd className="font-numeric tabular-nums font-bold text-primary" data-testid="text-detail-total-net">{fmt(net)}</dd></div>
+              <div><dt className="text-muted-foreground">{t("hr_pay_total_deductions")}</dt><dd className="font-numeric tabular-nums" data-testid="text-detail-total-deductions">{fmt(deductions)}</dd></div>
               {run.createdAt && (
-                <div><dt className="text-muted-foreground">تاريخ الإنشاء</dt><dd className="font-numeric tabular-nums">{new Date(run.createdAt).toISOString().slice(0, 10)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("hr_pay_created_at")}</dt><dd className="font-numeric tabular-nums">{new Date(run.createdAt).toISOString().slice(0, 10)}</dd></div>
               )}
             </dl>
           </TabsContent>
@@ -1219,11 +1277,17 @@ function PayrollRunLinesPanel({
   runId: number;
   fmt: ReturnType<typeof useFormatMoney>;
 }) {
+  const t = useT();
   const { data, isLoading, error, refetch } = useQuery<PayrollLineWithEmployee[]>({
     queryKey: ["/api/hr/payroll/runs", runId, "lines"],
     queryFn: async () => {
-      const res = await fetch(`/api/hr/payroll/runs/${runId}/lines`);
-      if (!res.ok) throw new Error("تعذر تحميل تفاصيل كشف الرواتب");
+      // Send the X-Company-Id workspace header so these run lines are read
+      // from the active workspace (the bare fetch previously omitted it).
+      const res = await fetch(`/api/hr/payroll/runs/${runId}/lines`, {
+        credentials: "include",
+        headers: { "X-Company-Id": localStorage.getItem("active_company_id") ?? "" },
+      });
+      if (!res.ok) throw new Error(t("hr_pay_lines_load_failed"));
       return res.json();
     },
   });
@@ -1234,8 +1298,8 @@ function PayrollRunLinesPanel({
   if (error) {
     return (
       <ErrorState
-        title="تعذّر تحميل تفاصيل كشف الرواتب"
-        cause="حدث خلل أثناء جلب سطور الكشف. حاول مرة أخرى."
+        title={t("hr_pay_lines_error_title")}
+        cause={t("hr_pay_lines_error_cause")}
         onRetry={() => refetch()}
         testId="error-payroll-run-lines"
       />
@@ -1246,8 +1310,8 @@ function PayrollRunLinesPanel({
     return (
       <EmptyState
         icon={<Users className="w-5 h-5" />}
-        title="لا توجد سطور لهذا الكشف"
-        description="لم يتم تسجيل أي سطور موظفين لهذا الكشف."
+        title={t("hr_pay_lines_empty_title")}
+        description={t("hr_pay_lines_empty_desc")}
         testId="empty-payroll-run-lines"
       />
     );
@@ -1257,16 +1321,16 @@ function PayrollRunLinesPanel({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>الموظف</TableHead>
-            <TableHead>أساسي</TableHead>
-            <TableHead>بدلات</TableHead>
-            <TableHead>إضافي</TableHead>
-            <TableHead>غياب</TableHead>
-            <TableHead>تأمينات (موظف)</TableHead>
-            <TableHead>إجمالي</TableHead>
-            <TableHead className="font-bold">صافي</TableHead>
-            <TableHead>EoS</TableHead>
-            <TableHead>إجازات</TableHead>
+            <TableHead>{t("hr_att_employee")}</TableHead>
+            <TableHead>{t("hr_pay_col_base")}</TableHead>
+            <TableHead>{t("hr_pay_col_allowances")}</TableHead>
+            <TableHead>{t("hr_pay_col_overtime")}</TableHead>
+            <TableHead>{t("hr_pay_col_absence")}</TableHead>
+            <TableHead>{t("hr_pay_col_si_employee")}</TableHead>
+            <TableHead>{t("hr_pay_col_gross")}</TableHead>
+            <TableHead className="font-bold">{t("hr_pay_col_net")}</TableHead>
+            <TableHead>{t("hr_pay_col_eos")}</TableHead>
+            <TableHead>{t("hr_pay_col_leave")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

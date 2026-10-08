@@ -105,6 +105,16 @@ function getObjectStorageClient(): S3Client {
       sessionToken: process.env.AWS_SESSION_TOKEN,
     };
   }
+  // NOTE: When static AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are absent but
+  // AWS_PROFILE is set (the current .env case: OBJECT_STORAGE_PROVIDER=s3,
+  // empty keys, AWS_PROFILE=easy-accounting-dev), we deliberately leave
+  // `config.credentials` unset so the S3 client resolves credentials via the
+  // ambient AWS credential provider chain, which picks up AWS_PROFILE from
+  // ~/.aws/config|credentials. Binding the profile explicitly would require
+  // `fromIni` from `@aws-sdk/credential-providers`, which is NOT a declared
+  // dependency of this project — adding it is out of scope here. If uploads
+  // 500 with a credentials error, ensure the AWS_PROFILE named in .env
+  // resolves to valid credentials in the server process's environment.
 
   return new S3Client(config);
 }
