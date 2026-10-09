@@ -74,6 +74,12 @@ export function useCreateTransaction() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.transactions.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.transactions.summary.path] });
+      // The auto-posted JE is LIVE in the GL on create, but JournalEntryRefLink
+      // decides "reversed" by checking the ['/api/journal-entries'] cache
+      // (staleTime: Infinity). Without this invalidation the brand-new JE is
+      // absent from the stale cache, so the transaction detail dialog wrongly
+      // renders "Posted as JE-xxxx" with a strikethrough + "reversed" tombstone.
+      queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       // Creating a transaction auto-posts a balanced JE in the backend
       // (server/storage.ts -> autoPostFromTransaction), so the chart-of-
       // accounts trailing balances must be invalidated for every period.
@@ -110,6 +116,11 @@ export function useDeleteTransaction() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.transactions.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.transactions.summary.path] });
+      // Deleting a transaction cascade-reverses its auto-posted JE (the row
+      // leaves journal_entries), so the ['/api/journal-entries'] cache that
+      // JournalEntryRefLink reads must be invalidated for the chip to flip to
+      // its "reversed" tombstone state.
+      queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       // Deleting a transaction reverses its auto-posted JE, so the COA
       // trailing balances cache is stale until invalidated.
       invalidateAccountBalances();
