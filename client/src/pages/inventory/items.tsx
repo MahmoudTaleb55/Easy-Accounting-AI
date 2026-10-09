@@ -226,7 +226,7 @@ export default function InventoryItemsPage() {
       </Card>
 
       <Dialog open={creating} onOpenChange={(o) => !o && setCreating(false)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("inv_create_item")}</DialogTitle>
           </DialogHeader>
@@ -442,7 +442,7 @@ export default function InventoryItemsPage() {
       </Dialog>
 
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {t("inv_edit_item")}
