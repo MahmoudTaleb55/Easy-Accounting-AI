@@ -1,9 +1,36 @@
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import pg from "pg";
+// Neon serverless driver (replaces node-postgres) so the pool survives Neon's
+// free-tier scale-to-zero: on this plan the compute suspends the instant it is
+// idle (suspend_timeout_seconds=0, not changeable on the plan), and a plain pg
+// TCP pool then hands out connections Neon has already dropped — surfacing as
+// "Connection terminated due to connection timeout / unexpectedly" on the next
+// request. @neondatabase/serverless connects over a WebSocket that transparently
+// re-establishes across a cold start, so a suspended DB causes a slow first
+// request instead of a hard error. The `Pool` here is API-compatible with
+// pg.Pool for everything this module relies on (`pool.connect()`,
+// `client.query(sqlString)` for the RLS session GUCs/SET ROLE, `client.release()`,
+// and the `max`/`connectionTimeoutMillis` options), and `drizzle-orm/neon-serverless`
+// is the matching adapter that (like node-postgres) accepts both the Pool and a
+// single checked-out client — which withCompanyScope/withRlsBypass require to pin
+// one client across multiple SET statements and a transaction. All RLS,
+// SET ROLE app_api, and GUC semantics below are preserved unchanged.
+import { drizzle, type NeonDatabase } from "drizzle-orm/neon-serverless";
+import { Pool, neonConfig, type PoolClient } from "@neondatabase/serverless";
+import ws from "ws";
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as schema from "@shared/schema";
 
-const { Pool } = pg;
+// Re-export the driver's Pool/PoolClient types as the project's canonical DB
+// types. After the node-postgres → @neondatabase/serverless swap, consumers
+// that previously typed a parameter as pg's `Pool`/`PoolClient` (server/
+// index.ts, server/migrate.ts, server/setup.ts) must use THESE so the types
+// line up with the pool this module actually hands them. Runtime behavior is
+// identical; this only keeps the TypeScript seams consistent.
+export type DbPool = Pool;
+export type DbPoolClient = PoolClient;
+
+// The Neon serverless driver needs a WebSocket implementation under Node
+// (browsers supply one natively). `ws` is already a project dependency.
+neonConfig.webSocketConstructor = ws;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -33,7 +60,7 @@ export const pool = new Pool({
 });
 
 type Schema = typeof schema;
-type Drizzle = NodePgDatabase<Schema>;
+type Drizzle = NeonDatabase<Schema>;
 
 const baseDb = drizzle(pool, { schema });
 

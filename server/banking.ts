@@ -208,6 +208,18 @@ export class BankTransactionPostingError extends Error {
  * would be degenerate (same account on both legs), so the caller never
  * writes a bank row that has no balanced journal entry behind it.
  */
+// Fallback chart-of-accounts codes used when a bank account has no explicit
+// `linkedAccountId` and the caller supplies no `counterpartAccountId`. These
+// MUST be codes the standard seed actually creates (see server/sales.ts and
+// the CoA seed): the old fallbacks `1100`/`4010`/`5010` were wrong — `1100` is
+// a non-postable HEADER account ("Current Assets"), and `4010`/`5010` do not
+// exist in any seeded workspace, so every bank transaction on a NULL-linked
+// account threw "no linked chart-of-accounts account". We fall back to the
+// same seeded accounts the rest of the app posts to:
+const BANK_FALLBACK_CASH_CODE = "1110"; // Cash on Hand (postable; = CASH_ACCOUNT_CODE in sales.ts)
+const BANK_FALLBACK_REVENUE_CODE = "4100"; // Sales Revenue (deposit counterpart)
+const BANK_FALLBACK_EXPENSE_CODE = "5100"; // Cost of Goods Sold (withdrawal/fee counterpart)
+
 async function resolveJournalAccounts(
   companyId: number,
   input: InsertBankTransaction,
@@ -215,8 +227,8 @@ async function resolveJournalAccounts(
 ): Promise<{ debitAccountId: number; creditAccountId: number }> {
   if (input.txnType === "deposit") {
     // Dr Bank account / Cr counterpart (revenue/receivable/etc.)
-    const debitAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
-    const creditAccountId = input.counterpartAccountId ?? (await findAccountByCode(companyId, "4010"));
+    const debitAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, BANK_FALLBACK_CASH_CODE));
+    const creditAccountId = input.counterpartAccountId ?? (await findAccountByCode(companyId, BANK_FALLBACK_REVENUE_CODE));
     if (!debitAccountId || !creditAccountId) {
       throw new BankTransactionPostingError(
         "تعذّر ترحيل القيد: لا يوجد حساب مرتبط بالبنك أو الحساب المقابل. / Cannot post: the bank account or its counterpart has no linked chart-of-accounts account.",
@@ -227,8 +239,8 @@ async function resolveJournalAccounts(
 
   if (input.txnType === "withdrawal" || input.txnType === "fee") {
     // Dr counterpart (expense/payable) / Cr Bank
-    const creditAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
-    const debitAccountId = input.counterpartAccountId ?? (await findAccountByCode(companyId, "5010"));
+    const creditAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, BANK_FALLBACK_CASH_CODE));
+    const debitAccountId = input.counterpartAccountId ?? (await findAccountByCode(companyId, BANK_FALLBACK_EXPENSE_CODE));
     if (!debitAccountId || !creditAccountId) {
       throw new BankTransactionPostingError(
         "تعذّر ترحيل القيد: لا يوجد حساب مرتبط بالبنك أو الحساب المقابل. / Cannot post: the bank account or its counterpart has no linked chart-of-accounts account.",
@@ -244,9 +256,9 @@ async function resolveJournalAccounts(
       );
     }
     // Dr target bank / Cr source bank
-    const sourceBankAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
+    const sourceBankAccountId = bankLinkedAccountId ?? (await findAccountByCode(companyId, BANK_FALLBACK_CASH_CODE));
     const targetLinkedAccountId = await getLinkedAccountId(companyId, input.counterpartBankAccountId);
-    const targetBankAccountId = targetLinkedAccountId ?? (await findAccountByCode(companyId, "1100"));
+    const targetBankAccountId = targetLinkedAccountId ?? (await findAccountByCode(companyId, BANK_FALLBACK_CASH_CODE));
     if (!sourceBankAccountId || !targetBankAccountId) {
       throw new BankTransactionPostingError(
         "تعذّر ترحيل التحويل: أحد الحسابين البنكيّين غير مرتبط بحساب في دليل الحسابات. / Cannot post transfer: one of the bank accounts has no linked chart-of-accounts account.",

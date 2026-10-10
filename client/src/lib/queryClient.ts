@@ -111,9 +111,28 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      // Resilience tuning (Neon free-tier cold starts): the old defaults were
+      // staleTime:Infinity + refetchOnWindowFocus:false + retry:false, which
+      // meant a view that loaded while the DB was suspended cached the empty /
+      // failed cold-start response FOREVER (the Journal looking empty, the
+      // stale "reversed" chip, data only appearing after a manual reload). We
+      // now let queries self-heal:
+      //  - a finite staleTime so a remount/refocus re-validates instead of
+      //    trusting a possibly-frozen cache,
+      //  - refetchOnWindowFocus + refetchOnMount so returning to a tab or
+      //    re-opening a page re-fetches,
+      //  - a small retry with capped backoff so a transient cold-start failure
+      //    is retried (the Neon driver swap makes the wake succeed) rather than
+      //    cached as an error. 401s are NOT retried (auth, not transient).
+      refetchOnWindowFocus: true,
+      refetchOnMount: "always",
+      staleTime: 30_000,
+      retry: (failureCount, error) => {
+        const status = (error as { status?: number } | null)?.status;
+        if (status === 401 || status === 403) return false;
+        return failureCount < 2;
+      },
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
     },
     mutations: {
       retry: false,
