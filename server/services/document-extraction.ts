@@ -19,10 +19,21 @@ import {
   type OrgSettings,
 } from "@shared/schema";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL,
-});
+// The OpenAI SDK throws from its constructor when no `apiKey` is present,
+// so we build the client lazily instead of at module load. That keeps the
+// module importable (and `extractDocument`'s own missing-key guard the
+// single source of truth for the `ai_not_configured` path) even when
+// OPENAI_API_KEY is empty. See BUG D.
+let openaiClient: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL,
+    });
+  }
+  return openaiClient;
+}
 
 // gpt-4o reads images natively and returns json reliably with response_format.
 const MODEL = "gpt-4o";
@@ -140,6 +151,12 @@ const SUGGESTION_JSON_SHAPE = `{
  */
 export type ExtractionErrorCode =
   | "unsupported_language"
+  // Raised when the OpenAI API key is missing/empty, or when the OpenAI
+  // API rejects our request with a 401 (invalid/revoked key). This is a
+  // configuration problem, not a document problem — mapping it to a
+  // stable code keeps the raw SDK 401 text ("You didn't provide an API
+  // key…") out of the Smart Inbox UI. See BUG D.
+  | "ai_not_configured"
   // Reserved for future use — generic extraction failures still surface
   // through the catch block as plain `Error` instances.
   ;
@@ -210,22 +227,42 @@ export async function extractDocument(
     );
   }
 
-  const response = await openai.chat.completions.create({
-    model: MODEL,
-    response_format: { type: "json_object" },
-    temperature: 0,
-    messages: [
-      { role: "system", content: EXTRACTION_SYSTEM },
-      {
-        role: "user",
-        // The chat-completions content array is loosely typed in the
-        // OpenAI SDK because the union of supported part types varies
-        // by model. We assemble the right shape per MIME above and
-        // cast at the boundary.
-        content: buildUserContent(buffer, mimeType) as any,
-      },
-    ],
-  });
+  // Fail fast on a missing/empty key: without it the OpenAI SDK would make
+  // a doomed network call that comes back as a raw 401. Detect the config
+  // problem up front and surface it as a stable, localizable code instead.
+  if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_API_KEY.trim()) {
+    throw new DocumentExtractionError("ai_not_configured");
+  }
+
+  const client = getOpenAI();
+  let response: Awaited<ReturnType<typeof client.chat.completions.create>>;
+  try {
+    response = await client.chat.completions.create({
+      model: MODEL,
+      response_format: { type: "json_object" },
+      temperature: 0,
+      messages: [
+        { role: "system", content: EXTRACTION_SYSTEM },
+        {
+          role: "user",
+          // The chat-completions content array is loosely typed in the
+          // OpenAI SDK because the union of supported part types varies
+          // by model. We assemble the right shape per MIME above and
+          // cast at the boundary.
+          content: buildUserContent(buffer, mimeType) as any,
+        },
+      ],
+    });
+  } catch (err: any) {
+    // An invalid/revoked key makes OpenAI answer with a 401. Map that to
+    // the same config code as a missing key so the user never sees the
+    // SDK's raw "You didn't provide an API key…" text. Any other failure
+    // (rate limit, network, 5xx) propagates unchanged.
+    if (err?.status === 401) {
+      throw new DocumentExtractionError("ai_not_configured");
+    }
+    throw err;
+  }
 
   const raw = response.choices[0]?.message?.content ?? "{}";
   const parsed = JSON.parse(raw);
@@ -289,7 +326,7 @@ export async function suggestJournalForDocument(
     accounts: whitelist,
   };
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: MODEL,
     response_format: { type: "json_object" },
     temperature: 0,

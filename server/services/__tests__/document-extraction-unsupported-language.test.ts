@@ -52,6 +52,12 @@ const TINY_JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
 describe("extractDocument → unsupported-language guard", () => {
   beforeEach(() => {
     chatCreateMock.mockReset();
+    // `extractDocument` now short-circuits with `ai_not_configured` when
+    // OPENAI_API_KEY is missing (BUG D). This suite exercises the
+    // *language* guard, which runs only once the key check passes, so
+    // give it a dummy key — the OpenAI SDK is mocked, so the value is
+    // never used for a real request.
+    process.env.OPENAI_API_KEY = "test-key";
   });
 
   it('throws DocumentExtractionError("unsupported_language") on the explicit "unsupported" sentinel', async () => {

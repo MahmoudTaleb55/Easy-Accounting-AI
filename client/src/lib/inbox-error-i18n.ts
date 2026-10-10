@@ -21,10 +21,11 @@ import type { Locale } from "@/contexts/locale-context";
  * Stable codes the server may emit. Keep in sync with
  * `ExtractionErrorCode` in `server/services/document-extraction.ts`.
  */
-export type InboxErrorCode = "unsupported_language";
+export type InboxErrorCode = "unsupported_language" | "ai_not_configured";
 
 const KNOWN_CODES: ReadonlySet<string> = new Set<InboxErrorCode>([
   "unsupported_language",
+  "ai_not_configured",
 ]);
 
 type ErrorCopy = {
@@ -71,6 +72,28 @@ const COPY: Record<InboxErrorCode, Record<Locale, ErrorCopy>> = {
       title: "Langue de document non prise en charge",
       body: "Nous prenons actuellement en charge uniquement les documents en arabe, anglais, allemand et français.",
       hint: "Essayez de téléverser le PDF original ou une version traduite dans l'une des langues prises en charge.",
+    },
+  },
+  ai_not_configured: {
+    ar: {
+      title: "لم يتم إعداد الاستخراج بالذكاء الاصطناعي",
+      body: "لم يتم إعداد استخراج المستندات بالذكاء الاصطناعي (مفتاح OpenAI API مفقود). تم رفع المستند؛ أضف OPENAI_API_KEY لتفعيل القراءة التلقائية.",
+      hint: "اطلب من المسؤول ضبط OPENAI_API_KEY ثم أعد رفع المستند.",
+    },
+    en: {
+      title: "AI extraction not configured",
+      body: "AI document extraction isn't configured (missing OpenAI API key). The document was uploaded; add OPENAI_API_KEY to enable automatic reading.",
+      hint: "Ask your administrator to set OPENAI_API_KEY, then re-upload.",
+    },
+    de: {
+      title: "KI-Extraktion nicht konfiguriert",
+      body: "Die KI-Dokumentenextraktion ist nicht konfiguriert (OpenAI-API-Schlüssel fehlt). Das Dokument wurde hochgeladen; fügen Sie OPENAI_API_KEY hinzu, um das automatische Lesen zu aktivieren.",
+      hint: "Bitten Sie Ihren Administrator, OPENAI_API_KEY zu setzen, und laden Sie das Dokument erneut hoch.",
+    },
+    fr: {
+      title: "Extraction par IA non configurée",
+      body: "L'extraction de documents par IA n'est pas configurée (clé API OpenAI manquante). Le document a été téléversé ; ajoutez OPENAI_API_KEY pour activer la lecture automatique.",
+      hint: "Demandez à votre administrateur de définir OPENAI_API_KEY, puis téléversez à nouveau.",
     },
   },
 };
