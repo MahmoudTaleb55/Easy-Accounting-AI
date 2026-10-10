@@ -24,6 +24,13 @@ const createAccountSchema = insertBankAccountSchema.extend({
 // Mirrors the coercion applied in `POST /api/banking/transactions`.
 const createTxnSchema = insertBankTransactionSchema.extend({
   amount: z.coerce.string(),
+  txnDate: z.coerce.date().optional(),
+});
+
+// The prior amount-only schema — kept to pin the BUG B regression: it rejected
+// a string `txnDate` because `txnDate` is a Drizzle timestamp → zod date.
+const amountOnlyTxnSchema = insertBankTransactionSchema.extend({
+  amount: z.coerce.string(),
 });
 
 describe("BUG 3 — bank account openingBalance coercion", () => {
@@ -71,5 +78,33 @@ describe("BUG 3 — bank transaction amount coercion (sibling defect)", () => {
       expect(typeof parsed.data.amount).toBe("string");
       expect(parsed.data.amount).toBe("150");
     }
+  });
+});
+
+describe("BUG B — bank transaction txnDate coercion", () => {
+  it("accepts a string txnDate + numeric amount and coerces txnDate to a Date", () => {
+    const parsed = createTxnSchema.safeParse({
+      bankAccountId: 1,
+      txnType: "deposit",
+      amount: 150, // JSON number
+      description: "test",
+      txnDate: "2026-10-10", // ISO date string — what the client form sends
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.txnDate).toBeInstanceOf(Date);
+      expect(typeof parsed.data.amount).toBe("string");
+    }
+  });
+
+  it("rejects the same string-txnDate body on the amount-only schema (the original 400)", () => {
+    const parsed = amountOnlyTxnSchema.safeParse({
+      bankAccountId: 1,
+      txnType: "deposit",
+      amount: 150,
+      description: "test",
+      txnDate: "2026-10-10",
+    });
+    expect(parsed.success).toBe(false);
   });
 });

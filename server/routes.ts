@@ -3933,8 +3933,13 @@ function registerInventoryRoutes(app: Express) {
       // Same numeric-column/zod-string mismatch as bank accounts: `amount`
       // is a Drizzle numeric → zod string, but the client sends a number.
       // Coerce to string at the boundary so a numeric body validates.
+      // `txnDate` is a Drizzle timestamp → zod date, but the client sends an
+      // ISO date STRING ('YYYY-MM-DD'), which produced the HTTP 400 'expected
+      // date, received string'. Coerce it to a Date here too. `.optional()` is
+      // correct because the column defaultNow()s when omitted.
       const createTxnSchema = insertBankTransactionSchema.extend({
         amount: z.coerce.string(),
+        txnDate: z.coerce.date().optional(),
       });
       const parsed = createTxnSchema.safeParse(req.body);
       if (!parsed.success) return void res.status(400).json({ message: parsed.error.issues[0]?.message ?? "بيانات غير صحيحة" });
