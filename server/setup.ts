@@ -75,12 +75,7 @@ export async function setupAuth(app: Express): Promise<void> {
 
   app.use(
     session({
-      // `connect-pg-simple`'s types expect a node-postgres Pool, but we now
-      // hand it the @neondatabase/serverless Pool. The two are API-compatible
-      // for the `.query()`/`.connect()` calls connect-pg-simple makes; only
-      // their TypeScript shapes differ (setTypeParser signature), so cast at
-      // this one seam. Runtime behavior is unchanged.
-      store: new PgSession({ pool: pool as unknown as never, tableName: "sessions" }),
+      store: new PgSession({ pool, tableName: "sessions" }),
       secret: resolveSessionSecret(),
       resave: false,
       saveUninitialized: false,

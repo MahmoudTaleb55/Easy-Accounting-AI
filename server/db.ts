@@ -1,36 +1,22 @@
-// Neon serverless driver (replaces node-postgres) so the pool survives Neon's
-// free-tier scale-to-zero: on this plan the compute suspends the instant it is
-// idle (suspend_timeout_seconds=0, not changeable on the plan), and a plain pg
-// TCP pool then hands out connections Neon has already dropped — surfacing as
-// "Connection terminated due to connection timeout / unexpectedly" on the next
-// request. @neondatabase/serverless connects over a WebSocket that transparently
-// re-establishes across a cold start, so a suspended DB causes a slow first
-// request instead of a hard error. The `Pool` here is API-compatible with
-// pg.Pool for everything this module relies on (`pool.connect()`,
-// `client.query(sqlString)` for the RLS session GUCs/SET ROLE, `client.release()`,
-// and the `max`/`connectionTimeoutMillis` options), and `drizzle-orm/neon-serverless`
-// is the matching adapter that (like node-postgres) accepts both the Pool and a
-// single checked-out client — which withCompanyScope/withRlsBypass require to pin
-// one client across multiple SET statements and a transaction. All RLS,
-// SET ROLE app_api, and GUC semantics below are preserved unchanged.
-import { drizzle, type NeonDatabase } from "drizzle-orm/neon-serverless";
-import { Pool, neonConfig, type PoolClient } from "@neondatabase/serverless";
-import ws from "ws";
+// node-postgres (`pg`) driver. We deliberately use pg (NOT
+// @neondatabase/serverless) because this app's row-level-security model pins
+// ONE physical client per request in withCompanyScope/withRlsBypass and sets
+// session GUCs on it (SET app.current_company_id / SET app.rls_bypass /
+// SET ROLE app_api). pg's checked-out client is a single dedicated physical
+// connection, so that session state reliably applies to every subsequent query
+// in the scope. The @neondatabase/serverless WebSocket pool did NOT reliably
+// preserve per-client session state across the SET statements and the following
+// queries, so writes intermittently ran with no app.current_company_id and the
+// RLS WITH CHECK rejected INSERT/UPDATE (SQLSTATE 42501). Neon free-tier cold
+// starts are instead handled below without touching the session model, via TCP
+// keepalive, an idle-client error handler, and a small bounded retry on
+// transient connection failures when acquiring a client (connectWithRetry).
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import pg from "pg";
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as schema from "@shared/schema";
 
-// Re-export the driver's Pool/PoolClient types as the project's canonical DB
-// types. After the node-postgres → @neondatabase/serverless swap, consumers
-// that previously typed a parameter as pg's `Pool`/`PoolClient` (server/
-// index.ts, server/migrate.ts, server/setup.ts) must use THESE so the types
-// line up with the pool this module actually hands them. Runtime behavior is
-// identical; this only keeps the TypeScript seams consistent.
-export type DbPool = Pool;
-export type DbPoolClient = PoolClient;
-
-// The Neon serverless driver needs a WebSocket implementation under Node
-// (browsers supply one natively). `ws` is already a project dependency.
-neonConfig.webSocketConstructor = ws;
+const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -57,10 +43,83 @@ export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: DB_POOL_MAX,
   connectionTimeoutMillis: DB_ACQUIRE_TIMEOUT_MS,
+  // Neon free-tier cold-start hardening (does NOT change the RLS/session model):
+  //  - keepAlive keeps the TCP connection from being silently dropped while idle.
+  //  - idleTimeoutMillis recycles pooled clients that have gone stale (e.g. a
+  //    compute suspend) rather than handing out a dead connection on the next
+  //    request.
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
+  idleTimeoutMillis: 30_000,
 });
 
+// node-postgres emits 'error' on IDLE clients (e.g. when Neon drops a suspended
+// connection in the background). Without a listener that event is unhandled and
+// can crash the process. Log and swallow it — the pool will recycle the dead
+// client and connectWithRetry() re-acquires a fresh one on the next request.
+pool.on("error", (err) => {
+  console.error(
+    "[db] idle client error (ignored, pool will recycle):",
+    (err as { message?: string } | undefined)?.message ?? err,
+  );
+});
+
+/**
+ * Acquire a pooled client, retrying a SMALL, BOUNDED number of times ONLY on
+ * transient Neon cold-start connection failures. Each attempt acquires a FRESH
+ * client, so the SET session GUCs that follow always run on a live connection.
+ *
+ * This deliberately does NOT retry application/SQL errors (e.g. RLS 42501) —
+ * those are real and must surface. It only exists so a Neon cold start turns a
+ * hard "Connection terminated" into a brief delay + a successful retry, while
+ * every query within a scope still runs on ONE pinned pg client with the GUCs
+ * reliably set.
+ */
+const CONNECT_RETRY_BACKOFF_MS = [250, 750, 1500];
+
+function isTransientConnectError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | undefined;
+  const code = e?.code;
+  if (code === "57P01" || code === "ECONNRESET" || code === "ETIMEDOUT") {
+    return true;
+  }
+  const message = (e?.message ?? "").toLowerCase();
+  return (
+    message.includes("connection terminated") ||
+    message.includes("terminated unexpectedly") ||
+    message.includes("timeout")
+  );
+}
+
+async function connectWithRetry(): Promise<pg.PoolClient> {
+  let lastErr: unknown;
+  // One initial attempt + up to CONNECT_RETRY_BACKOFF_MS.length retries.
+  for (let attempt = 0; attempt <= CONNECT_RETRY_BACKOFF_MS.length; attempt++) {
+    try {
+      return await pool.connect();
+    } catch (err) {
+      lastErr = err;
+      // Only retry transient connection errors; surface everything else at once.
+      if (
+        attempt >= CONNECT_RETRY_BACKOFF_MS.length ||
+        !isTransientConnectError(err)
+      ) {
+        throw err;
+      }
+      const delay = CONNECT_RETRY_BACKOFF_MS[attempt];
+      console.warn(
+        `[db] transient connection error acquiring client (attempt ${attempt + 1}), ` +
+          `retrying in ${delay}ms:`,
+        (err as { message?: string } | undefined)?.message ?? err,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastErr;
+}
+
 type Schema = typeof schema;
-type Drizzle = NeonDatabase<Schema>;
+type Drizzle = NodePgDatabase<Schema>;
 
 const baseDb = drizzle(pool, { schema });
 
@@ -245,7 +304,7 @@ export async function withCompanyScope<T>(
   if (!Number.isInteger(companyId) || companyId <= 0) {
     throw new Error(`withCompanyScope: invalid companyId ${companyId}`);
   }
-  const client = await pool.connect();
+  const client = await connectWithRetry();
   try {
     // Escape: pg-node does not parameterise SET. companyId is a positive
     // integer at this point so the literal interpolation is safe.
@@ -287,7 +346,7 @@ export async function withRlsBypass<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   if (!reason) throw new Error("withRlsBypass: reason is required for audit");
-  const client = await pool.connect();
+  const client = await connectWithRetry();
   try {
     await client.query(`SET app.rls_bypass = 'on'`);
     const scoped = drizzle(client, { schema });

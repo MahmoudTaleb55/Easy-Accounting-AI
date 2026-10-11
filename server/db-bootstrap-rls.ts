@@ -62,7 +62,7 @@
  * per table — the historical migrations 0008 and 0016 are immutable
  * records of how each database first reached its current state.
  */
-import type { DbPoolClient as PoolClient } from "./db";
+import type { PoolClient } from "pg";
 
 /**
  * Every workspace-scoped table that must have RLS enabled, FORCEd, and

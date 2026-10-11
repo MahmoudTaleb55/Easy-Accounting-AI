@@ -54,7 +54,7 @@
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { DbPool as Pool, DbPoolClient as PoolClient } from "./db";
+import type { Pool, PoolClient } from "pg";
 import { pool as defaultPool } from "./db";
 
 // Filename shape every checked-in migration must follow. The
