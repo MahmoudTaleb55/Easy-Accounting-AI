@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import session from "express-session";
 import passport from "passport";
 import connectPgSimple from "connect-pg-simple";
-import { pool } from "./db";
+import { sessionPool } from "./db";
 
 const PgSession = connectPgSimple(session);
 
@@ -75,7 +75,11 @@ export async function setupAuth(app: Express): Promise<void> {
 
   app.use(
     session({
-      store: new PgSession({ pool, tableName: "sessions" }),
+      // Uses the dedicated `sessionPool` (NOT the request-scoped `pool`) so
+      // session reads — which run on every request before withCompanyScope —
+      // can never be starved waiting behind long-lived request-pinned RLS
+      // clients. See the pool-budget note in server/db.ts.
+      store: new PgSession({ pool: sessionPool, tableName: "sessions" }),
       secret: resolveSessionSecret(),
       resave: false,
       saveUninitialized: false,

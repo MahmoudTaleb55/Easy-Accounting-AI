@@ -30,13 +30,48 @@ if (!process.env.DATABASE_URL) {
 // concurrent request would block FOREVER waiting for a client — an all-tenant
 // denial of service — and a handler that needs a second client while 10 are
 // held would deadlock. We therefore:
-//   - size the pool from DB_POOL_MAX (default 20, up from pg's 10), and
+//   - size the pool from DB_POOL_MAX, and
 //   - set connectionTimeoutMillis so a client acquire REJECTS after a bound
 //     instead of hanging indefinitely (the rejection surfaces as a clean 500
 //     for that one request via the async-middleware guard, task H-4).
-// This is a mitigation, not the full connection-model refactor the design doc
-// defers; it removes the indefinite-hang DoS without changing request shape.
-const DB_POOL_MAX = Number(process.env.DB_POOL_MAX) || 20;
+//
+// POOL SIZE vs the Supabase SESSION POOLER CAP (workspace-resolution fix):
+// This app connects through the Supabase *session* pooler (host
+// aws-0-...pooler.supabase.com, port 5432), which enforces a HARD server-side
+// ceiling on simultaneous client connections (`pool_size`, 15 on this tier).
+// Because withCompanyScope pins ONE physical client for the whole request
+// lifetime AND the connect-pg-simple session store shares THIS SAME pool, the
+// post-login fan-out of ~15 concurrent /api/* GETs demands many clients at
+// once. With the previous default (max: 20 > 15) the pg pool would try to open
+// a 16th+ physical connection, which the session pooler rejects with a FATAL
+// `XX000 (EMAXCONNSESSION) max clients reached in session mode` — surfacing as
+// an INTERMITTENT 500/403 "No active workspace" for the SAME authenticated
+// user in the same instant (the membership lookup's connect() is what fails).
+//
+// The deterministic fix has two parts, both keeping the TOTAL simultaneous
+// physical connections safely below the session-pooler ceiling:
+//
+//   1. Keep the request-scoped pool's `max` (DB_POOL_MAX) below the ceiling so
+//      an over-limit acquire QUEUES client-side (up to connectionTimeoutMillis)
+//      instead of attempting a 16th physical connection the pooler would FATAL.
+//
+//   2. Give the connect-pg-simple SESSION STORE its OWN small, dedicated pool
+//      (sessionPool, DB_SESSION_POOL_MAX) instead of sharing this pool. Session
+//      reads happen on EVERY request (the gate runs before withCompanyScope),
+//      so when they shared the one pool their acquires queued behind the
+//      long-lived, request-pinned scoped clients and timed out ("timeout
+//      exceeded when trying to connect" from PGStore._asyncQuery) under the
+//      post-login fan-out — the same intermittent 500/403 by a different route.
+//      Separating the pools means a session read can never be starved by a
+//      pinned RLS client, and vice-versa.
+//
+// Budget: DB_POOL_MAX (8) + DB_SESSION_POOL_MAX (4) = 12 < 15 (the Supabase
+// session-pooler pool_size on this tier), leaving headroom for the few
+// connections opened outside both pools (boot migrations, transient
+// reconnects). Deployments on a larger pooler tier can raise these, but their
+// SUM must never exceed the pooler's own pool_size.
+const DB_POOL_MAX = Number(process.env.DB_POOL_MAX) || 8;
+const DB_SESSION_POOL_MAX = Number(process.env.DB_SESSION_POOL_MAX) || 4;
 const DB_ACQUIRE_TIMEOUT_MS = Number(process.env.DB_ACQUIRE_TIMEOUT_MS) || 10_000;
 
 export const pool = new Pool({
@@ -53,13 +88,33 @@ export const pool = new Pool({
   idleTimeoutMillis: 30_000,
 });
 
-// node-postgres emits 'error' on IDLE clients (e.g. when Neon drops a suspended
-// connection in the background). Without a listener that event is unhandled and
-// can crash the process. Log and swallow it — the pool will recycle the dead
-// client and connectWithRetry() re-acquires a fresh one on the next request.
+// Dedicated pool for the express-session store (connect-pg-simple). It only
+// ever touches the auth-tier `sessions` table — never a workspace-scoped table
+// — so it has no RLS/GUC involvement and must stay independent of the pinned
+// request-scoped clients drawn from `pool`. See the budget note above.
+export const sessionPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: DB_SESSION_POOL_MAX,
+  connectionTimeoutMillis: DB_ACQUIRE_TIMEOUT_MS,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
+  idleTimeoutMillis: 30_000,
+});
+
+// node-postgres emits 'error' on IDLE clients (e.g. when the pooler drops a
+// suspended connection in the background). Without a listener that event is
+// unhandled and can crash the process. Log and swallow it — the pool will
+// recycle the dead client and connectWithRetry() re-acquires a fresh one on
+// the next request.
 pool.on("error", (err) => {
   console.error(
     "[db] idle client error (ignored, pool will recycle):",
+    (err as { message?: string } | undefined)?.message ?? err,
+  );
+});
+sessionPool.on("error", (err) => {
+  console.error(
+    "[db] idle session-pool client error (ignored, pool will recycle):",
     (err as { message?: string } | undefined)?.message ?? err,
   );
 });
