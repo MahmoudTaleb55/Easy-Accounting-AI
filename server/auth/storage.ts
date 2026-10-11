@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, withUnscopedDb } from "../db";
 import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import {
   users,
@@ -251,19 +251,27 @@ export const authBizStorage = {
 
   // ---------- memberships ----------
   async listMembershipsForUser(userId: string) {
-    return db
-      .select({
-        id: memberships.id,
-        userId: memberships.userId,
-        companyId: memberships.companyId,
-        role: memberships.role,
-        createdAt: memberships.createdAt,
-        company: companies,
-      })
-      .from(memberships)
-      .leftJoin(companies, eq(companies.id, memberships.companyId))
-      .where(eq(memberships.userId, userId))
-      .orderBy(desc(memberships.createdAt));
+    // Lists ALL workspaces a user belongs to — inherently cross-workspace,
+    // and `memberships`/`companies` are auth-tier tables intentionally outside
+    // the workspace_isolation RLS scope. Wrap in withUnscopedDb so the task
+    // #193 runtime guard (which throws in dev when WORKSPACE_ISOLATION_GUARD
+    // is strict) doesn't abort this legitimate pre-/cross-workspace lookup —
+    // the same marker the sibling auth lookups already use.
+    return withUnscopedDb("auth:list-memberships-for-user", async () =>
+      db
+        .select({
+          id: memberships.id,
+          userId: memberships.userId,
+          companyId: memberships.companyId,
+          role: memberships.role,
+          createdAt: memberships.createdAt,
+          company: companies,
+        })
+        .from(memberships)
+        .leftJoin(companies, eq(companies.id, memberships.companyId))
+        .where(eq(memberships.userId, userId))
+        .orderBy(desc(memberships.createdAt)),
+    );
   },
 
   async listMembersForCompany(companyId: number) {

@@ -651,7 +651,18 @@ export async function ensureDefaultCompanyAndCategories(): Promise<void> {
   const existingCats = await db.select().from(assetCategories).where(eq(assetCategories.companyId, companyId));
   if (existingCats.length > 0) return;
 
-  const allAccounts = await db.select().from(accounts);
+  // Scope the account lookup to THIS company. Account codes (e.g. "1500")
+  // repeat across every workspace, so an unfiltered select would map a code
+  // to whichever company's row happened to come first — and then the
+  // asset_categories insert (stamped with THIS companyId) would reference an
+  // account id owned by a DIFFERENT company, violating the composite FK
+  // asset_categories_asset_cost_company_fk (code 23503) and aborting the
+  // whole IFRS bootstrap. Filtering by companyId keeps every resolved id
+  // within the same workspace as the category row we insert.
+  const allAccounts = await db
+    .select()
+    .from(accounts)
+    .where(eq(accounts.companyId, companyId));
   const codeToId = new Map(allAccounts.map((a) => [a.code, a.id]));
   const get = (code: string) => codeToId.get(code);
 
