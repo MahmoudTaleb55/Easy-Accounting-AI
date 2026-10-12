@@ -125,6 +125,28 @@ function isSelfServiceWrite(path: string): boolean {
   return SELF_SERVICE_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
 }
 
+// Handlers that perform SLOW external work (OpenAI vision/chat, S3/file I/O)
+// that does NO DB work, and that scope their OWN short DB writes via
+// withCompanyScope. For these the global gate must NOT pin an RLS client
+// around the whole handler — otherwise one pooled client is held for the
+// multi-second external call (and, for the upload path, a SECOND client is
+// held by the nested withCompanyScope at the same time), which is exactly the
+// pool-saturation the connection-exhaustion fix removes. The gate still runs
+// requireAuth + attachMembership + the write-role gate for these paths; only
+// the connection pin is skipped. Each handler below is responsible for running
+// EVERY workspace-scoped query inside its own withCompanyScope(cid, …) so RLS
+// isolation is unchanged.
+function isSelfScopedSlow(path: string, method: string): boolean {
+  // Only the upload (POST /api/documents) and the analysis (POST /api/analysis)
+  // are slow + self-scoped. GET/list/detail under /api/documents are ordinary
+  // scoped reads and must keep the gate pin. (Paths from the shared contract:
+  // api.analysis.generate.path === "/api/analysis".)
+  if (method !== "POST") return false;
+  if (path === "/api/analysis") return true;
+  if (path === "/api/documents") return true;
+  return false;
+}
+
 // Using the OpenAI integration blueprint
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -210,15 +232,56 @@ export async function registerRoutes(
             | { companyId: number }
             | undefined;
           if (!ctx) return next(); // self-service / pre-membership paths
+          // Slow external-work handlers scope their OWN DB writes; do not pin
+          // an RLS client around the whole handler (see isSelfScopedSlow).
+          if (isSelfScopedSlow(req.path, req.method)) {
+            return next();
+          }
           return withCompanyScope(ctx.companyId, () =>
-            // Register listeners *before* invoking next() so a
-            // synchronous res.end() inside the handler can't beat us.
-            // Both events are wired so an aborted request still releases
-            // the pinned client.
+            // The pinned RLS client must be held only while the handler is
+            // doing DB work — NOT across JSON serialization and the socket
+            // flush. On a latency-y remote pooler, holding it until
+            // res.finish pins one of a handful of clients for the whole
+            // response drain, so a post-login fan-out of ~15 concurrent
+            // /api/* requests saturates the pool and acquires time out.
+            //
+            // We therefore resolve this scope promise the instant the
+            // handler DISPATCHES its response — i.e. the first time res.end
+            // is entered (res.json -> res.send -> res.end, res.send -> end,
+            // or a direct res.end()/res.send(buffer)). By that point the
+            // handler has finished every awaited DB read/write and fully
+            // materialized the response object/body, so releasing the
+            // client here cannot interrupt an in-flight query. The remaining
+            // serialization + network flush then proceeds with the client
+            // already back in the pool.
+            //
+            // finish/close remain as a fallback so a request that ends
+            // WITHOUT ever calling res.end on this response object (an
+            // aborted connection, or an error short-circuit) still releases
+            // the client. settle() is idempotent.
             new Promise<void>((resolve) => {
-              const finish = () => resolve();
-              res.once("finish", finish);
-              res.once("close", finish);
+              let settled = false;
+              const settle = () => {
+                if (settled) return;
+                settled = true;
+                resolve();
+              };
+
+              // Wrap res.end so the scope releases at response dispatch,
+              // before the flush. Preserve the exact return value and
+              // argument forwarding so streaming/callback forms are intact.
+              const originalEnd = res.end.bind(res) as (
+                ...args: any[]
+              ) => Response;
+              (res as any).end = function patchedEnd(...args: any[]): Response {
+                settle();
+                return originalEnd(...args);
+              };
+
+              // Fallbacks: an aborted socket (close) or a finish that somehow
+              // precedes our wrapped end still release the client.
+              res.once("finish", settle);
+              res.once("close", settle);
               next();
             }),
           ).catch(next);
@@ -2544,38 +2607,44 @@ function registerDocumentRoutes(app: Express) {
         throw new InvalidDocumentError();
       }
 
+      // S3/file write — no DB, no RLS client needed.
       const saved = await saveDocumentFile({
         companyId,
         buffer: file.buffer,
         originalName: file.originalname,
       });
 
-      const created = await storage.createDocument(companyId, {
-        companyId,
-        fileName: file.originalname,
-        // Persist the sniffed MIME, not the caller-supplied one — otherwise
-        // a forged `Content-Type` would still leak through to the row's
-        // `mimeType` and the GET /api/documents/:id/file response header.
-        mimeType: detectedMime,
-        sizeBytes: saved.sizeBytes,
-        storagePath: saved.storagePath,
-        status: "extracting",
-        uploadedBy: userIdFromReq(req),
-      });
+      // This handler is on the gate's self-scoped-slow allowlist, so NO RLS
+      // client is pinned around it. Scope every DB write ourselves with a
+      // short withCompanyScope so each query runs under app.current_company_id
+      // + SET ROLE app_api, and the pooled client is released the instant the
+      // write completes — never held across the OpenAI vision call below.
+      const created = await withCompanyScope(companyId, () =>
+        storage.createDocument(companyId, {
+          companyId,
+          fileName: file.originalname,
+          // Persist the sniffed MIME, not the caller-supplied one — otherwise
+          // a forged `Content-Type` would still leak through to the row's
+          // `mimeType` and the GET /api/documents/:id/file response header.
+          mimeType: detectedMime,
+          sizeBytes: saved.sizeBytes,
+          storagePath: saved.storagePath,
+          status: "extracting",
+          uploadedBy: userIdFromReq(req),
+        }),
+      );
 
       // Kick off extraction. We await so the response carries the result
       // (and any errors are surfaced to the user immediately).
       //
-      // The OpenAI vision call inside `extractDocument` runs the request
-      // through the SDK's fetch dispatcher, which under load can detach
-      // the AsyncLocalStorage context that the global `/api` gate set up
-      // via `withCompanyScope`. When that happens the post-extraction
-      // `storage.*` calls land on the unscoped `db` proxy and the
-      // workspace-isolation guard throws with a stack trace that bubbles
-      // straight into the inbox row. Re-pinning the scope around the
-      // downstream storage operations is defensive and cheap — the GUC
-      // is reapplied to a fresh pooled client, so the queries always run
-      // under RLS regardless of whether the outer scope survived.
+      // extractDocument runs the OpenAI vision call with NO RLS client
+      // pinned (this handler is on the gate's self-scoped-slow allowlist and
+      // we only hold a client inside the short withCompanyScope above/below).
+      // That is the whole point of the connection-exhaustion fix: the
+      // multi-second OpenAI round-trip must not pin one of the handful of
+      // pooled clients. Each downstream DB operation re-pins its OWN
+      // withCompanyScope, so the GUC + SET ROLE app_api are applied to a
+      // fresh pooled client and every query still runs under RLS.
       try {
         const extracted = await extractDocument(file.buffer, detectedMime);
         const updated = await withCompanyScope(companyId, async () => {
