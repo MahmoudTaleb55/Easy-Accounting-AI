@@ -5,6 +5,9 @@ import { apiRequest, queryClient, invalidateAccountBalances, ApiError } from "@/
 import { useToast } from "@/hooks/use-toast";
 import { useCompany } from "@/contexts/company-context";
 import { useFormatMoney } from "@/lib/format";
+import { useT, type StringKey } from "@/i18n/dict";
+import { useLocale } from "@/contexts/locale-context";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,19 +38,19 @@ import { PeriodChip } from "@/components/dashboard/period-chip";
 import { usePeriod } from "@/contexts/period-context";
 import type { Account, AssetCategory, AssetComponent, Company, FixedAsset, FxRate, DepreciationMethod } from "@shared/schema";
 
-const METHODS: Array<{ value: DepreciationMethod; label: string }> = [
-  { value: "straight_line", label: "القسط الثابت" },
-  { value: "declining_balance", label: "الرصيد المتناقص" },
-  { value: "double_declining", label: "الرصيد المتناقص المضاعف" },
-  { value: "syd", label: "مجموع أرقام السنوات" },
-  { value: "units_of_production", label: "وحدات الإنتاج" },
-  { value: "custom", label: "جدول مخصص" },
+const METHODS: Array<{ value: DepreciationMethod; labelKey: StringKey }> = [
+  { value: "straight_line", labelKey: "asset_m_straight" },
+  { value: "declining_balance", labelKey: "asset_m_declining" },
+  { value: "double_declining", labelKey: "asset_m_double_declining" },
+  { value: "syd", labelKey: "asset_m_syd" },
+  { value: "units_of_production", labelKey: "asset_m_units" },
+  { value: "custom", labelKey: "asset_m_custom" },
 ];
 
-const STATUS_LABEL: Record<string, string> = {
-  active: "نشط",
-  disposed: "مستبعَد",
-  fully_depreciated: "مهلك بالكامل",
+const STATUS_LABEL: Record<string, StringKey> = {
+  active: "asset_st_active",
+  disposed: "asset_st_disposed",
+  fully_depreciated: "asset_st_fully_dep",
 };
 
 type FixedAssetWithCarrying = FixedAsset & { carryingAmount: number };
@@ -108,6 +111,7 @@ function useAssetMoneyFmt() {
 }
 
 export default function FixedAssetsPage() {
+  const t = useT();
   const { activeCompany } = useCompany();
   const canManage = useCanManageWorkspace();
   // Controlled tabs so JE source-link badges can deep-link to a specific
@@ -127,15 +131,15 @@ export default function FixedAssetsPage() {
     <div className="space-y-8" data-testid="page-fixed-assets">
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-2 max-w-2xl">
-          <div className="eyebrow text-muted-foreground/80">الموارد والأصول</div>
+          <div className="eyebrow text-muted-foreground/80">{t("asset_eyebrow")}</div>
           <h1
             className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
-            الأصول الثابتة، تُدار بثقة محاسبية.
+            {t("asset_page_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            سجل الأصول، الإهلاك، إعادة التقييم والاستبعاد — كاملةً وفق IAS 16 وIAS 36.
+            {t("asset_page_sub")}
           </p>
         </div>
         <PeriodChip />
@@ -143,11 +147,11 @@ export default function FixedAssetsPage() {
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className={`grid ${canManage ? "grid-cols-5" : "grid-cols-3"} w-full`}>
-          <TabsTrigger value="register" data-testid="tab-register">سجل الأصول</TabsTrigger>
-          <TabsTrigger value="depreciation" data-testid="tab-depreciation">الإهلاك</TabsTrigger>
-          <TabsTrigger value="categories" data-testid="tab-categories">التصنيفات</TabsTrigger>
-          {canManage && <TabsTrigger value="companies" data-testid="tab-companies">الشركات</TabsTrigger>}
-          {canManage && <TabsTrigger value="fx" data-testid="tab-fx">أسعار الصرف</TabsTrigger>}
+          <TabsTrigger value="register" data-testid="tab-register">{t("asset_tab_register")}</TabsTrigger>
+          <TabsTrigger value="depreciation" data-testid="tab-depreciation">{t("asset_tab_depreciation")}</TabsTrigger>
+          <TabsTrigger value="categories" data-testid="tab-categories">{t("asset_tab_categories")}</TabsTrigger>
+          {canManage && <TabsTrigger value="companies" data-testid="tab-companies">{t("asset_tab_companies")}</TabsTrigger>}
+          {canManage && <TabsTrigger value="fx" data-testid="tab-fx">{t("asset_tab_fx")}</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="register" className="mt-6">
@@ -174,8 +178,8 @@ export default function FixedAssetsPage() {
       {!canManage && (
         <EmptyState
           icon={<Building2 className="w-5 h-5" />}
-          title="الشركات وأسعار الصرف يديرها المالك"
-          description="إعداد الشركات وأسعار الصرف متاح لمالك مساحة العمل فقط. تواصل معه إن احتجت إضافة شركة أو تحديث سعر صرف."
+          title={t("asset_owner_only_title")}
+          description={t("asset_owner_only_desc")}
           testId="empty-owner-only-fa-companies-fx"
         />
       )}
@@ -202,6 +206,7 @@ function mapHashToFaTab(hash: string, fallback: string): string {
 // ============================================================================
 
 function AssetRegister({ company }: { company: Company }) {
+  const t = useT();
   const { toast } = useToast();
   const fmt = useAssetMoneyFmt();
   const { period, compareToPrevious, previousRange } = usePeriod();
@@ -287,45 +292,45 @@ function AssetRegister({ company }: { company: Company }) {
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/fixed-assets/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets"] });
-      toast({ title: "تم حذف الأصل" });
+      toast({ title: t("asset_toast_deleted") });
     },
-    onError: (e: Error) => toast({ title: "تعذر الحذف", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("asset_delete_failed"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-3 flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
-          <CardTitle className="text-lg">سجل الأصول</CardTitle>
+          <CardTitle className="text-lg">{t("asset_tab_register")}</CardTitle>
           <div className="flex items-center gap-2 flex-wrap">
-            <Input placeholder="ابحث…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-44" data-testid="input-search-assets" />
+            <Input placeholder={t("asset_search_ph")} value={search} onChange={(e) => setSearch(e.target.value)} className="w-44" data-testid="input-search-assets" />
             <Select value={filterCategoryId || "all"} onValueChange={(v) => setFilterCategoryId(v === "all" ? "" : v)}>
-              <SelectTrigger className="w-44" data-testid="select-filter-category"><SelectValue placeholder="كل التصنيفات" /></SelectTrigger>
+              <SelectTrigger className="w-44" data-testid="select-filter-category"><SelectValue placeholder={t("asset_all_categories")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">كل التصنيفات</SelectItem>
+                <SelectItem value="all">{t("asset_all_categories")}</SelectItem>
                 {(cats || []).map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={filterLocation || "all"} onValueChange={(v) => setFilterLocation(v === "all" ? "" : v)}>
-              <SelectTrigger className="w-36" data-testid="select-filter-location"><SelectValue placeholder="كل المواقع" /></SelectTrigger>
+              <SelectTrigger className="w-36" data-testid="select-filter-location"><SelectValue placeholder={t("asset_all_locations")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">كل المواقع</SelectItem>
+                <SelectItem value="all">{t("asset_all_locations")}</SelectItem>
                 {locations.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={filterStatus || "all"} onValueChange={(v) => setFilterStatus(v === "all" ? "" : v)}>
               <SelectTrigger className="w-36" data-testid="select-filter-status"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">كل الحالات</SelectItem>
-                <SelectItem value="active">نشط</SelectItem>
-                <SelectItem value="disposed">مستبعَد</SelectItem>
-                <SelectItem value="fully_depreciated">مهلك بالكامل</SelectItem>
+                <SelectItem value="all">{t("asset_all_statuses")}</SelectItem>
+                <SelectItem value="active">{t("asset_st_active")}</SelectItem>
+                <SelectItem value="disposed">{t("asset_st_disposed")}</SelectItem>
+                <SelectItem value="fully_depreciated">{t("asset_st_fully_dep")}</SelectItem>
               </SelectContent>
             </Select>
             <Dialog open={openAdd} onOpenChange={setOpenAdd}>
               <WriteGuard forceDisabled={!cats || cats.length === 0}>
                 <Button data-testid="button-add-asset" onClick={() => setOpenAdd(true)}>
-                  <Plus className="w-4 h-4 ml-1" /> إضافة أصل
+                  <Plus className="w-4 h-4 ml-1" /> {t("asset_add")}
                 </Button>
               </WriteGuard>
               <AddAssetDialog
@@ -341,8 +346,8 @@ function AssetRegister({ company }: { company: Company }) {
             <ListSkeleton rows={4} testId="skeleton-assets" />
           ) : filtered.length === 0 ? (
             <EmptyState
-              title="لا توجد أصول بعد"
-              description="أضف أول أصل ثابت لاحتسابه في جدول الإهلاك وتحديث القوائم المالية."
+              title={t("asset_empty_title")}
+              description={t("asset_empty_desc")}
               testId="empty-fixed-assets"
             />
           ) : (
@@ -350,17 +355,17 @@ function AssetRegister({ company }: { company: Company }) {
               <table className="w-full text-sm">
                 <thead className="text-muted-foreground border-b">
                   <tr>
-                    <th className="text-right py-2 px-2">الكود</th>
-                    <th className="text-right py-2 px-2">الاسم</th>
-                    <th className="text-right py-2 px-2">التصنيف</th>
-                    <th className="text-right py-2 px-2">الموقع</th>
-                    <th className="text-right py-2 px-2">التكلفة</th>
-                    <th className="text-right py-2 px-2">مجمع الإهلاك</th>
-                    <th className="text-right py-2 px-2">مجمع الانخفاض</th>
-                    <th className="text-right py-2 px-2">فائض إعادة التقييم</th>
-                    <th className="text-right py-2 px-2 font-bold">القيمة الدفترية</th>
-                    <th className="text-right py-2 px-2">الحالة</th>
-                    <th className="text-right py-2 px-2">إجراءات</th>
+                    <th className="text-right py-2 px-2">{t("asset_code")}</th>
+                    <th className="text-right py-2 px-2">{t("asset_name")}</th>
+                    <th className="text-right py-2 px-2">{t("asset_category")}</th>
+                    <th className="text-right py-2 px-2">{t("asset_location")}</th>
+                    <th className="text-right py-2 px-2">{t("asset_cost")}</th>
+                    <th className="text-right py-2 px-2">{t("asset_accum_dep")}</th>
+                    <th className="text-right py-2 px-2">{t("asset_accum_impair")}</th>
+                    <th className="text-right py-2 px-2">{t("asset_reval_surplus")}</th>
+                    <th className="text-right py-2 px-2 font-bold">{t("asset_carrying")}</th>
+                    <th className="text-right py-2 px-2">{t("asset_status")}</th>
+                    <th className="text-right py-2 px-2">{t("asset_actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -377,30 +382,30 @@ function AssetRegister({ company }: { company: Company }) {
                         <td className="py-2 px-2 tabular-nums text-rose-600">{fmt(a.accumImpairment)}</td>
                         <td className="py-2 px-2 tabular-nums text-emerald-600">{fmt(a.revalSurplus)}</td>
                         <td className="py-2 px-2 tabular-nums font-bold" data-testid={`text-nbv-${a.id}`}>{fmt(a.carryingAmount, company.currencySymbol)}</td>
-                        <td className="py-2 px-2"><Badge variant="secondary">{STATUS_LABEL[a.status] || a.status}</Badge></td>
+                        <td className="py-2 px-2"><Badge variant="secondary">{STATUS_LABEL[a.status] ? t(STATUS_LABEL[a.status]) : a.status}</Badge></td>
                         <td className="py-2 px-2">
                           <div className="flex gap-1">
                             <WriteGuard forceDisabled={a.status !== "active"}>
-                              <Button size="sm" variant="ghost" title="انخفاض القيمة"
+                              <Button size="sm" variant="ghost" title={t("asset_impairment")}
                                 onClick={() => { setOpAssetId(a.id); setOpType("impairment"); }} data-testid={`button-impairment-${a.id}`}>
                                 <ArrowDownCircle className="w-4 h-4" />
                               </Button>
                             </WriteGuard>
                             <WriteGuard forceDisabled={a.status !== "active"}>
-                              <Button size="sm" variant="ghost" title="إعادة تقييم"
+                              <Button size="sm" variant="ghost" title={t("asset_revaluation")}
                                 onClick={() => { setOpAssetId(a.id); setOpType("revaluation"); }} data-testid={`button-revaluation-${a.id}`}>
                                 <RefreshCw className="w-4 h-4" />
                               </Button>
                             </WriteGuard>
                             <WriteGuard forceDisabled={a.status !== "active"}>
-                              <Button size="sm" variant="ghost" title="استبعاد"
+                              <Button size="sm" variant="ghost" title={t("asset_disposal")}
                                 onClick={() => { setOpAssetId(a.id); setOpType("dispose"); }} data-testid={`button-dispose-${a.id}`}>
                                 <Truck className="w-4 h-4" />
                               </Button>
                             </WriteGuard>
                             <WriteGuard>
-                              <Button size="sm" variant="ghost" title="حذف"
-                                onClick={() => { if (confirm("حذف الأصل وكل قيوده المخططة؟")) deleteMutation.mutate(a.id); }}
+                              <Button size="sm" variant="ghost" title={t("asset_delete")}
+                                onClick={() => { if (confirm(t("asset_delete_confirm"))) deleteMutation.mutate(a.id); }}
                                 data-testid={`button-delete-${a.id}`}>
                                 <Trash2 className="w-4 h-4 text-rose-600" />
                               </Button>
@@ -413,7 +418,7 @@ function AssetRegister({ company }: { company: Company }) {
                 </tbody>
                 <tfoot>
                   <tr className="font-bold border-t-2">
-                    <td colSpan={4} className="py-2 px-2" data-testid="text-totals-count">الإجمالي ({filtered.length})</td>
+                    <td colSpan={4} className="py-2 px-2" data-testid="text-totals-count">{t("asset_totals_count").replace("{n}", String(filtered.length))}</td>
                     <td className="py-2 px-2 tabular-nums" data-testid="text-totals-cost">{fmt(totals.cost)}</td>
                     <td className="py-2 px-2 tabular-nums text-rose-600" data-testid="text-totals-accdep">{fmt(totals.accDep)}</td>
                     <td className="py-2 px-2 tabular-nums text-rose-600" data-testid="text-totals-accimp">{fmt(totals.accImp)}</td>
@@ -430,7 +435,7 @@ function AssetRegister({ company }: { company: Company }) {
                     };
                     return (
                       <tr className="text-xs text-muted-foreground border-t">
-                        <td colSpan={4} className="py-1 px-2">مقارنة بالفترة السابقة</td>
+                        <td colSpan={4} className="py-1 px-2">{t("asset_compare_prev")}</td>
                         <td className="py-1 px-2 tabular-nums" data-testid="text-delta-cost">{delta(totals.cost, prevTotals.cost)}</td>
                         <td className="py-1 px-2 tabular-nums" data-testid="text-delta-accdep">{delta(totals.accDep, prevTotals.accDep)}</td>
                         <td className="py-1 px-2 tabular-nums" data-testid="text-delta-accimp">{delta(totals.accImp, prevTotals.accImp)}</td>
@@ -487,6 +492,8 @@ interface ComponentFormRow {
 }
 
 function AddAssetDialog({ company, categories, onClose }: { company: Company; categories: AssetCategory[]; onClose: () => void }) {
+  const t = useT();
+  const { dir } = useLocale();
   const { toast } = useToast();
   const firstCat = categories[0];
   const [form, setForm] = useState<AssetFormState>({
@@ -551,26 +558,26 @@ function AddAssetDialog({ company, categories, onClose }: { company: Company; ca
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets"] });
-      toast({ title: "تم تسجيل الأصل" });
+      toast({ title: t("asset_toast_created") });
       onClose();
     },
-    onError: (e: Error) => toast({ title: "فشل", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("asset_failed"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   return (
-    <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+    <DialogContent dir={dir} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle>إضافة أصل ثابت جديد</DialogTitle>
-        <DialogDescription>وفق IAS 16. القيم بعملة المعاملة، تُحوَّل تلقائياً للعملة الوظيفية للشركة.</DialogDescription>
+        <DialogTitle>{t("asset_add_dialog_title")}</DialogTitle>
+        <DialogDescription>{t("asset_add_dialog_desc")}</DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
         <div className="grid grid-cols-2 gap-3">
-          <div><Label>الكود</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} data-testid="input-asset-code" /></div>
-          <div><Label>الاسم</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="input-asset-name" /></div>
+          <div><Label>{t("asset_code")}</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} data-testid="input-asset-code" /></div>
+          <div><Label>{t("asset_name")}</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="input-asset-name" /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>التصنيف</Label>
+            <Label>{t("asset_category")}</Label>
             <Select value={form.categoryId} onValueChange={(v) => {
               const c = categories.find((x) => x.id === Number(v));
               setForm({ ...form, categoryId: v, usefulLifeMonths: String(c?.defaultUsefulLifeMonths ?? 60), method: (c?.defaultMethod as DepreciationMethod) ?? "straight_line" });
@@ -580,54 +587,54 @@ function AddAssetDialog({ company, categories, onClose }: { company: Company; ca
             </Select>
           </div>
           <div>
-            <Label>طريقة الإهلاك</Label>
+            <Label>{t("asset_dep_method")}</Label>
             <Select value={form.method} onValueChange={(v) => setForm({ ...form, method: v as DepreciationMethod })}>
               <SelectTrigger data-testid="select-asset-method"><SelectValue /></SelectTrigger>
-              <SelectContent>{METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{t(m.labelKey)}</SelectItem>)}</SelectContent>
             </Select>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <div><Label>تاريخ الاقتناء</Label><Input type="date" value={form.acquisitionDate} onChange={(e) => setForm({ ...form, acquisitionDate: e.target.value })} data-testid="input-acquisition-date" /></div>
-          <div><Label>تاريخ التشغيل</Label><Input type="date" value={form.inServiceDate} onChange={(e) => setForm({ ...form, inServiceDate: e.target.value })} data-testid="input-service-date" /></div>
-          <div><Label>العمر الإنتاجي (شهر)</Label><Input type="number" value={form.usefulLifeMonths} onChange={(e) => setForm({ ...form, usefulLifeMonths: e.target.value })} data-testid="input-useful-life" /></div>
+          <div><Label>{t("asset_acq_date")}</Label><Input type="date" value={form.acquisitionDate} onChange={(e) => setForm({ ...form, acquisitionDate: e.target.value })} data-testid="input-acquisition-date" /></div>
+          <div><Label>{t("asset_service_date")}</Label><Input type="date" value={form.inServiceDate} onChange={(e) => setForm({ ...form, inServiceDate: e.target.value })} data-testid="input-service-date" /></div>
+          <div><Label>{t("asset_useful_life_m")}</Label><Input type="number" value={form.usefulLifeMonths} onChange={(e) => setForm({ ...form, usefulLifeMonths: e.target.value })} data-testid="input-useful-life" /></div>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <div><Label>العملة</Label><Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} data-testid="input-currency" /></div>
-          <div><Label>التكلفة بعملة المعاملة</Label><Input type="number" value={form.txCost} onChange={(e) => setForm({ ...form, txCost: e.target.value })} data-testid="input-tx-cost" /></div>
-          <div><Label>سعر الصرف ← {company.functionalCurrency}</Label><Input type="number" step="0.0001" value={form.fxRate} onChange={(e) => setForm({ ...form, fxRate: e.target.value })} data-testid="input-fx-rate" /></div>
+          <div><Label>{t("asset_currency")}</Label><Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })} data-testid="input-currency" /></div>
+          <div><Label>{t("asset_tx_cost")}</Label><Input type="number" value={form.txCost} onChange={(e) => setForm({ ...form, txCost: e.target.value })} data-testid="input-tx-cost" /></div>
+          <div><Label>{t("asset_fx_rate_label").replace("{c}", company.functionalCurrency)}</Label><Input type="number" step="0.0001" value={form.fxRate} onChange={(e) => setForm({ ...form, fxRate: e.target.value })} data-testid="input-fx-rate" /></div>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <div><Label>القيمة المتبقية</Label><Input type="number" value={form.residual} onChange={(e) => setForm({ ...form, residual: e.target.value })} data-testid="input-residual" /></div>
-          <div><Label>الموقع</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} data-testid="input-location" /></div>
-          <div><Label>الموكل بالحفظ</Label><Input value={form.custodian} onChange={(e) => setForm({ ...form, custodian: e.target.value })} data-testid="input-custodian" /></div>
+          <div><Label>{t("asset_residual")}</Label><Input type="number" value={form.residual} onChange={(e) => setForm({ ...form, residual: e.target.value })} data-testid="input-residual" /></div>
+          <div><Label>{t("asset_location")}</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} data-testid="input-location" /></div>
+          <div><Label>{t("asset_custodian")}</Label><Input value={form.custodian} onChange={(e) => setForm({ ...form, custodian: e.target.value })} data-testid="input-custodian" /></div>
         </div>
         {form.method === "units_of_production" && (
-          <div><Label>إجمالي الوحدات الإنتاجية المتوقعة</Label><Input type="number" value={form.unitsTotal} onChange={(e) => setForm({ ...form, unitsTotal: e.target.value })} data-testid="input-units-total" /></div>
+          <div><Label>{t("asset_units_total")}</Label><Input type="number" value={form.unitsTotal} onChange={(e) => setForm({ ...form, unitsTotal: e.target.value })} data-testid="input-units-total" /></div>
         )}
         {form.method === "custom" && (
           <div>
-            <Label>الجدول المخصّص (مبالغ شهرية مفصولة بفواصل أو مسافات)</Label>
+            <Label>{t("asset_custom_schedule")}</Label>
             <Input value={form.customSchedule} onChange={(e) => setForm({ ...form, customSchedule: e.target.value })} placeholder="200, 200, 180, 180, ..." data-testid="input-custom-schedule" />
-            <div className="text-xs text-muted-foreground mt-1">سيتم استخدام كل قيمة كإهلاك شهر واحد ابتداءً من تاريخ التشغيل.</div>
+            <div className="text-xs text-muted-foreground mt-1">{t("asset_custom_hint")}</div>
           </div>
         )}
 
         <div className="border-t pt-3">
           <div className="flex items-center justify-between mb-2">
-            <Label>المكوّنات (اختياري — IAS 16)</Label>
+            <Label>{t("asset_components_opt")}</Label>
             <Button size="sm" variant="outline" onClick={addComponent} data-testid="button-add-component">
-              <Plus className="w-4 h-4 ml-1" /> إضافة مكون
+              <Plus className="w-4 h-4 ml-1" /> {t("asset_add_component")}
             </Button>
           </div>
           {components.map((c, i) => (
             <div key={i} className="grid grid-cols-5 gap-2 mb-2">
-              <Input placeholder="اسم" value={c.name} onChange={(e) => { const n = [...components]; n[i].name = e.target.value; setComponents(n); }} data-testid={`input-component-name-${i}`} />
-              <Input placeholder="تكلفة" type="number" value={c.cost} onChange={(e) => { const n = [...components]; n[i].cost = e.target.value; setComponents(n); }} data-testid={`input-component-cost-${i}`} />
-              <Input placeholder="عمر شهر" type="number" value={c.usefulLifeMonths} onChange={(e) => { const n = [...components]; n[i].usefulLifeMonths = e.target.value; setComponents(n); }} data-testid={`input-component-life-${i}`} />
+              <Input placeholder={t("asset_name_ph")} value={c.name} onChange={(e) => { const n = [...components]; n[i].name = e.target.value; setComponents(n); }} data-testid={`input-component-name-${i}`} />
+              <Input placeholder={t("asset_cost_ph")} type="number" value={c.cost} onChange={(e) => { const n = [...components]; n[i].cost = e.target.value; setComponents(n); }} data-testid={`input-component-cost-${i}`} />
+              <Input placeholder={t("asset_life_ph")} type="number" value={c.usefulLifeMonths} onChange={(e) => { const n = [...components]; n[i].usefulLifeMonths = e.target.value; setComponents(n); }} data-testid={`input-component-life-${i}`} />
               <Select value={c.method} onValueChange={(v) => { const n = [...components]; n[i].method = v as DepreciationMethod; setComponents(n); }}>
                 <SelectTrigger data-testid={`select-component-method-${i}`}><SelectValue /></SelectTrigger>
-                <SelectContent>{METHODS.filter(m => m.value !== "units_of_production" && m.value !== "custom").map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                <SelectContent>{METHODS.filter(m => m.value !== "units_of_production" && m.value !== "custom").map((m) => <SelectItem key={m.value} value={m.value}>{t(m.labelKey)}</SelectItem>)}</SelectContent>
               </Select>
               <Button size="sm" variant="ghost" onClick={() => setComponents(components.filter((_, j) => j !== i))} data-testid={`button-remove-component-${i}`}>
                 <Trash2 className="w-4 h-4 text-rose-600" />
@@ -638,7 +645,7 @@ function AddAssetDialog({ company, categories, onClose }: { company: Company; ca
       </div>
       <DialogFooter>
         <Button onClick={() => m.mutate()} disabled={m.isPending || !form.code || !form.name || !form.txCost || !form.categoryId} data-testid="button-save-asset">
-          حفظ
+          {t("asset_save")}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -650,6 +657,8 @@ function AddAssetDialog({ company, categories, onClose }: { company: Company; ca
 // ============================================================================
 
 function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; company: Company; onClose: () => void }) {
+  const t = useT();
+  const { dir } = useLocale();
   const fmt = useAssetMoneyFmt();
   const { toast } = useToast();
   const { data, isLoading } = useQuery<AssetDetail>({
@@ -681,7 +690,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
   >(null);
 
   const eventDeleteOptions = (path: string) => {
-    const fallback = "تعذّر حذف الحدث: مرتبط بسجلات لاحقة على نفس الأصل.";
+    const fallback = t("asset_evt_del_blocked");
     return {
       mutationFn: async (id: number) => apiRequest("DELETE", `/api/${path}/${id}`),
       onSuccess: () => {
@@ -689,7 +698,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
         queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets"] });
         queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
         invalidateAccountBalances();
-        toast({ title: "تم", description: "تم حذف الحدث وعكس قيده المحاسبي" });
+        toast({ title: t("asset_done"), description: t("asset_evt_deleted") });
       },
       onError: (e: Error) => {
         if (e instanceof ApiError && e.status === 409) {
@@ -699,7 +708,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
           setConflictMessage(serverMsg);
           return;
         }
-        toast({ title: "خطأ", description: e.message, variant: "destructive" });
+        toast({ title: t("asset_error"), description: t(mapErrorKey(e)), variant: "destructive" });
       },
     };
   };
@@ -714,7 +723,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
   // JE-orphan) still apply, so we route those into the same conflict modal
   // the per-event delete uses.
   const cascadeDeleteOptions = (path: string) => {
-    const fallback = "تعذّر تنفيذ التراجع المتسلسل: مرتبط بسجلات أخرى.";
+    const fallback = t("asset_cascade_blocked");
     return {
       mutationFn: async (id: number) =>
         apiRequest("DELETE", `/api/${path}/${id}?cascade=true`),
@@ -726,8 +735,8 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
         queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
         invalidateAccountBalances();
         toast({
-          title: "تم",
-          description: `تم حذف الحدث وعكس ${laterCount} حدث لاحق على نفس الأصل (${reversedCount} قيد إجمالاً).`,
+          title: t("asset_done"),
+          description: t("asset_evt_del_summary").replace("{n}", String(laterCount)).replace("{m}", String(reversedCount)),
         });
         setCascadePending(null);
       },
@@ -740,7 +749,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
           setConflictMessage(serverMsg);
           return;
         }
-        toast({ title: "خطأ", description: e.message, variant: "destructive" });
+        toast({ title: t("asset_error"), description: t(mapErrorKey(e)), variant: "destructive" });
       },
     };
   };
@@ -814,15 +823,15 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
   const history = useMemo(() => {
     if (!data) return [];
     const rows: Array<{ date: string; type: string; amount: number; je: number | null; notes: string }> = [];
-    data.impairments.forEach((e) => rows.push({ date: e.eventDate, type: Number(e.lossAmount) >= 0 ? "خسارة انخفاض" : "عكس انخفاض", amount: Number(e.lossAmount), je: e.journalEntryId, notes: e.notes || "" }));
-    data.revaluations.forEach((e) => rows.push({ date: e.eventDate, type: `إعادة تقييم (${e.method})`, amount: Number(e.surplusDelta) + Number(e.plImpact), je: e.journalEntryId, notes: e.notes || "" }));
-    data.disposals.forEach((e) => rows.push({ date: e.eventDate, type: `استبعاد (${e.method})`, amount: Number(e.gainLoss), je: e.journalEntryId, notes: e.notes || "" }));
+    data.impairments.forEach((e) => rows.push({ date: e.eventDate, type: Number(e.lossAmount) >= 0 ? t("asset_impair_loss") : t("asset_impair_reversal"), amount: Number(e.lossAmount), je: e.journalEntryId, notes: e.notes || "" }));
+    data.revaluations.forEach((e) => rows.push({ date: e.eventDate, type: t("asset_reval_row").replace("{n}", e.method), amount: Number(e.surplusDelta) + Number(e.plImpact), je: e.journalEntryId, notes: e.notes || "" }));
+    data.disposals.forEach((e) => rows.push({ date: e.eventDate, type: t("asset_disposal_row").replace("{n}", e.method), amount: Number(e.gainLoss), je: e.journalEntryId, notes: e.notes || "" }));
     (data.depreciations || []).forEach((d) => rows.push({
       date: `${d.year}-${String(d.month).padStart(2, "0")}-28`,
-      type: "إهلاك شهري",
+      type: t("asset_monthly_dep"),
       amount: d.amount,
       je: d.journalEntryId,
-      notes: `دفعة الإهلاك #${d.runId}`,
+      notes: t("asset_monthly_dep_note").replace("{n}", String(d.runId)),
     }));
     return rows.sort((a, b) => a.date.localeCompare(b.date));
   }, [data]);
@@ -830,45 +839,45 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
   return (
     <>
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent dir="rtl" className="sm:max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-asset-detail">
+      <DialogContent dir={dir} className="sm:max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-asset-detail">
         <DialogHeader>
           <DialogTitle>{data?.name || "..."}</DialogTitle>
-          <DialogDescription>التفاصيل الكاملة والسجلات المرتبطة بهذا الأصل.</DialogDescription>
+          <DialogDescription>{t("asset_detail_desc")}</DialogDescription>
         </DialogHeader>
         {isLoading || !data ? <Skeleton className="h-40" /> : (
           <Tabs defaultValue="summary">
             <TabsList className="grid grid-cols-8 w-full">
-              <TabsTrigger value="summary" data-testid="tab-detail-summary">ملخص</TabsTrigger>
-              <TabsTrigger value="schedule" data-testid="tab-detail-schedule">الجدول</TabsTrigger>
-              <TabsTrigger value="history" data-testid="tab-detail-history">السجل المحاسبي</TabsTrigger>
-              <TabsTrigger value="changes" data-testid="tab-detail-changes">التغييرات</TabsTrigger>
-              <TabsTrigger value="impairments" data-testid="tab-detail-impairments">الانخفاض</TabsTrigger>
-              <TabsTrigger value="revaluations" data-testid="tab-detail-revaluations">إعادة تقييم</TabsTrigger>
-              <TabsTrigger value="disposals" data-testid="tab-detail-disposals">الاستبعاد</TabsTrigger>
-              <TabsTrigger value="components" data-testid="tab-detail-components">المكونات</TabsTrigger>
+              <TabsTrigger value="summary" data-testid="tab-detail-summary">{t("asset_tab_summary")}</TabsTrigger>
+              <TabsTrigger value="schedule" data-testid="tab-detail-schedule">{t("asset_tab_schedule")}</TabsTrigger>
+              <TabsTrigger value="history" data-testid="tab-detail-history">{t("asset_tab_ledger")}</TabsTrigger>
+              <TabsTrigger value="changes" data-testid="tab-detail-changes">{t("asset_tab_changes")}</TabsTrigger>
+              <TabsTrigger value="impairments" data-testid="tab-detail-impairments">{t("asset_tab_impairments")}</TabsTrigger>
+              <TabsTrigger value="revaluations" data-testid="tab-detail-revaluations">{t("asset_revaluation")}</TabsTrigger>
+              <TabsTrigger value="disposals" data-testid="tab-detail-disposals">{t("asset_tab_disposals")}</TabsTrigger>
+              <TabsTrigger value="components" data-testid="tab-detail-components">{t("asset_tab_components")}</TabsTrigger>
             </TabsList>
             <TabsContent value="summary" className="mt-4">
               <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div><dt className="text-muted-foreground">الكود</dt><dd className="font-mono">{data.code}</dd></div>
-                <div><dt className="text-muted-foreground">الحالة</dt><dd>{STATUS_LABEL[data.status]}</dd></div>
-                <div><dt className="text-muted-foreground">العملة</dt><dd>{data.currency} (سعر الصرف {data.fxRate})</dd></div>
-                <div><dt className="text-muted-foreground">التكلفة (أصلية)</dt><dd>{fmt(data.txCost)} {data.currency}</dd></div>
-                <div><dt className="text-muted-foreground">التكلفة الوظيفية</dt><dd>{fmt(data.cost, company.currencySymbol)}</dd></div>
-                <div><dt className="text-muted-foreground">القيمة الدفترية</dt><dd className="font-bold">{fmt(data.carryingAmount, company.currencySymbol)}</dd></div>
-                <div><dt className="text-muted-foreground">مجمع الإهلاك</dt><dd>{fmt(data.accumDepreciation, company.currencySymbol)}</dd></div>
-                <div><dt className="text-muted-foreground">مجمع الانخفاض</dt><dd>{fmt(data.accumImpairment, company.currencySymbol)}</dd></div>
-                <div><dt className="text-muted-foreground">فائض إعادة التقييم</dt><dd>{fmt(data.revalSurplus, company.currencySymbol)}</dd></div>
-                <div><dt className="text-muted-foreground">إهلاك بدون انخفاض (للحد الأعلى للعكس)</dt><dd>{fmt(data.accumDepNoImpairment, company.currencySymbol)}</dd></div>
-                <div><dt className="text-muted-foreground">العمر الإنتاجي</dt><dd>{data.usefulLifeMonths} شهر</dd></div>
-                <div><dt className="text-muted-foreground">الطريقة</dt><dd>{METHODS.find((m) => m.value === data.method)?.label}</dd></div>
-                <div><dt className="text-muted-foreground">الموقع</dt><dd>{data.location || "—"}</dd></div>
-                <div><dt className="text-muted-foreground">الموكل بالحفظ</dt><dd>{data.custodian || "—"}</dd></div>
-                <div><dt className="text-muted-foreground">آخر شهر مهلك</dt><dd>{data.lastDepreciatedPeriod || "—"}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_code")}</dt><dd className="font-mono">{data.code}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_status")}</dt><dd>{t(STATUS_LABEL[data.status])}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_currency")}</dt><dd>{data.currency} ({t("asset_rate")} {data.fxRate})</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_cost_original")}</dt><dd>{fmt(data.txCost)} {data.currency}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_cost_functional")}</dt><dd>{fmt(data.cost, company.currencySymbol)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_carrying")}</dt><dd className="font-bold">{fmt(data.carryingAmount, company.currencySymbol)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_accum_dep")}</dt><dd>{fmt(data.accumDepreciation, company.currencySymbol)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_accum_impair")}</dt><dd>{fmt(data.accumImpairment, company.currencySymbol)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_reval_surplus")}</dt><dd>{fmt(data.revalSurplus, company.currencySymbol)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_dep_no_impair")}</dt><dd>{fmt(data.accumDepNoImpairment, company.currencySymbol)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_useful_life")}</dt><dd>{t("asset_months_suffix").replace("{n}", String(data.usefulLifeMonths))}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_method")}</dt><dd>{(() => { const m = METHODS.find((x) => x.value === data.method); return m ? t(m.labelKey) : data.method; })()}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_location")}</dt><dd>{data.location || "—"}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_custodian")}</dt><dd>{data.custodian || "—"}</dd></div>
+                <div><dt className="text-muted-foreground">{t("asset_last_dep_period")}</dt><dd>{data.lastDepreciatedPeriod || "—"}</dd></div>
               </dl>
             </TabsContent>
             <TabsContent value="schedule" className="mt-4 max-h-96 overflow-y-auto">
-              {data.schedule.length === 0 ? <div className="text-sm text-muted-foreground">لا يوجد جدول.</div> : (
-                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="text-muted-foreground border-b"><tr><th className="text-right py-2">الشهر</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">الحالة</th></tr></thead>
+              {data.schedule.length === 0 ? <div className="text-sm text-muted-foreground">{t("asset_no_schedule")}</div> : (
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="text-muted-foreground border-b"><tr><th className="text-right py-2">{t("asset_month")}</th><th className="text-right py-2">{t("asset_amount")}</th><th className="text-right py-2">{t("asset_status")}</th></tr></thead>
                   <tbody>{data.schedule.map((r) => (
                     <tr key={r.id} className="border-b" data-testid={`row-schedule-${r.id}`}>
                       <td className="py-1">{r.periodYear}-{String(r.periodMonth).padStart(2, "0")}</td>
@@ -879,9 +888,9 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
               )}
             </TabsContent>
             <TabsContent value="history" className="mt-4 max-h-96 overflow-y-auto" data-testid="tab-content-history">
-              {history.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد قيود مرتبطة بعد.</div> : (
+              {history.length === 0 ? <div className="text-sm text-muted-foreground">{t("asset_no_entries")}</div> : (
                 <div className="table-sticky-first"><table className="w-full text-sm">
-                  <thead className="text-muted-foreground border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">النوع</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">القيد</th><th className="text-right py-2">ملاحظات</th></tr></thead>
+                  <thead className="text-muted-foreground border-b"><tr><th className="text-right py-2">{t("asset_date")}</th><th className="text-right py-2">{t("asset_type")}</th><th className="text-right py-2">{t("asset_amount")}</th><th className="text-right py-2">{t("asset_entry")}</th><th className="text-right py-2">{t("asset_notes")}</th></tr></thead>
                   <tbody>{history.map((r, i) => (
                     <tr key={i} className="border-b" data-testid={`row-history-${i}`}>
                       <td className="py-1">{r.date}</td>
@@ -892,7 +901,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           id={r.je}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-history-${i}`}
-                          title={`فتح قيد اليومية JE ${r.je}`}
+                          title={t("asset_open_je").replace("{n}", String(r.je))}
                         >
                           JE {r.je}
                         </JournalEntryRefLink>
@@ -904,7 +913,9 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
               )}
               {data.disposals.length > 0 && (
                 <div className="mt-4 text-xs text-muted-foreground">
-                  الأصل تم استبعاده في {data.disposals[0].eventDate} مع متحصلات {fmt(data.disposals[0].proceeds, company.currencySymbol)}.
+                  {t("asset_disposed_note")
+                    .replace("{d}", String(data.disposals[0].eventDate))
+                    .replace("{n}", fmt(data.disposals[0].proceeds, company.currencySymbol))}
                 </div>
               )}
             </TabsContent>
@@ -918,8 +929,8 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
               </div>
             </TabsContent>
             <TabsContent value="impairments" className="mt-4">
-              {data.impairments.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد قيود انخفاض.</div> : (
-                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة الاستردادية</th><th className="text-right py-2">المبلغ</th><th className="text-right py-2">القيد</th><th className="text-right py-2"></th></tr></thead>
+              {data.impairments.length === 0 ? <div className="text-sm text-muted-foreground">{t("asset_no_impairments")}</div> : (
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">{t("asset_date")}</th><th className="text-right py-2">{t("asset_recoverable")}</th><th className="text-right py-2">{t("asset_amount")}</th><th className="text-right py-2">{t("asset_entry")}</th><th className="text-right py-2"></th></tr></thead>
                   <tbody>{data.impairments.map((e) => (
                     <tr key={e.id} className="border-b" data-testid={`row-impairment-${e.id}`}>
                       <td className="py-1">{e.eventDate}</td>
@@ -930,7 +941,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           id={e.journalEntryId}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-impairment-${e.id}`}
-                          title={`فتح قيد اليومية JE ${e.journalEntryId}`}
+                          title={t("asset_open_je").replace("{n}", String(e.journalEntryId))}
                         >
                           JE {e.journalEntryId}
                         </JournalEntryRefLink>
@@ -943,7 +954,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                             onClick={() => handleEventDelete("impairment", e)}
                             disabled={deleteImpairment.isPending || cascadeIsPending}
                             data-testid={`button-delete-impairment-${e.id}`}
-                            title="حذف الحدث وعكس قيده المحاسبي"
+                            title={t("asset_evt_del_title")}
                           >
                             <Trash2 className="w-4 h-4 text-rose-600" />
                           </Button>
@@ -954,8 +965,8 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
               )}
             </TabsContent>
             <TabsContent value="revaluations" className="mt-4">
-              {data.revaluations.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد عمليات إعادة تقييم.</div> : (
-                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">القيمة العادلة</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">فائض</th><th className="text-right py-2">P&L</th><th className="text-right py-2">القيد</th><th className="text-right py-2"></th></tr></thead>
+              {data.revaluations.length === 0 ? <div className="text-sm text-muted-foreground">{t("asset_no_revaluations")}</div> : (
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">{t("asset_date")}</th><th className="text-right py-2">{t("asset_fair_value")}</th><th className="text-right py-2">{t("asset_method")}</th><th className="text-right py-2">{t("asset_surplus")}</th><th className="text-right py-2">P&L</th><th className="text-right py-2">{t("asset_entry")}</th><th className="text-right py-2"></th></tr></thead>
                   <tbody>{data.revaluations.map((e) => (
                     <tr key={e.id} className="border-b" data-testid={`row-revaluation-${e.id}`}>
                       <td className="py-1">{e.eventDate}</td>
@@ -968,7 +979,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           id={e.journalEntryId}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-revaluation-${e.id}`}
-                          title={`فتح قيد اليومية JE ${e.journalEntryId}`}
+                          title={t("asset_open_je").replace("{n}", String(e.journalEntryId))}
                         >
                           JE {e.journalEntryId}
                         </JournalEntryRefLink>
@@ -981,7 +992,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                             onClick={() => handleEventDelete("revaluation", e)}
                             disabled={deleteRevaluation.isPending || cascadeIsPending}
                             data-testid={`button-delete-revaluation-${e.id}`}
-                            title="حذف الحدث وعكس قيده المحاسبي"
+                            title={t("asset_evt_del_title")}
                           >
                             <Trash2 className="w-4 h-4 text-rose-600" />
                           </Button>
@@ -992,8 +1003,8 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
               )}
             </TabsContent>
             <TabsContent value="disposals" className="mt-4">
-              {data.disposals.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد عمليات استبعاد.</div> : (
-                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">المتحصلات</th><th className="text-right py-2">ربح/خسارة</th><th className="text-right py-2">القيد</th><th className="text-right py-2"></th></tr></thead>
+              {data.disposals.length === 0 ? <div className="text-sm text-muted-foreground">{t("asset_no_disposals")}</div> : (
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">{t("asset_date")}</th><th className="text-right py-2">{t("asset_method")}</th><th className="text-right py-2">{t("asset_proceeds")}</th><th className="text-right py-2">{t("asset_gain_loss")}</th><th className="text-right py-2">{t("asset_entry")}</th><th className="text-right py-2"></th></tr></thead>
                   <tbody>{data.disposals.map((e) => (
                     <tr key={e.id} className="border-b" data-testid={`row-disposal-${e.id}`}>
                       <td className="py-1">{e.eventDate}</td>
@@ -1005,7 +1016,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                           id={e.journalEntryId}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-disposal-${e.id}`}
-                          title={`فتح قيد اليومية JE ${e.journalEntryId}`}
+                          title={t("asset_open_je").replace("{n}", String(e.journalEntryId))}
                         >
                           JE {e.journalEntryId}
                         </JournalEntryRefLink>
@@ -1018,7 +1029,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
                             onClick={() => handleEventDelete("disposal", e)}
                             disabled={deleteDisposal.isPending || cascadeIsPending}
                             data-testid={`button-delete-disposal-${e.id}`}
-                            title="حذف الحدث وعكس قيده المحاسبي"
+                            title={t("asset_evt_del_title")}
                           >
                             <Trash2 className="w-4 h-4 text-rose-600" />
                           </Button>
@@ -1029,14 +1040,14 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
               )}
             </TabsContent>
             <TabsContent value="components" className="mt-4">
-              {data.components.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد مكونات.</div> : (
-                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">الاسم</th><th className="text-right py-2">التكلفة</th><th className="text-right py-2">العمر</th><th className="text-right py-2">الطريقة</th><th className="text-right py-2">مجمع الإهلاك</th></tr></thead>
+              {data.components.length === 0 ? <div className="text-sm text-muted-foreground">{t("asset_no_components")}</div> : (
+                <div className="table-sticky-first"><table className="w-full text-sm"><thead className="border-b"><tr><th className="text-right py-2">{t("asset_name")}</th><th className="text-right py-2">{t("asset_cost")}</th><th className="text-right py-2">{t("asset_life")}</th><th className="text-right py-2">{t("asset_method")}</th><th className="text-right py-2">{t("asset_accum_dep")}</th></tr></thead>
                   <tbody>{data.components.map((c) => (
                     <tr key={c.id} className="border-b">
                       <td className="py-1">{c.name}</td>
                       <td className="py-1 tabular-nums">{fmt(c.cost)}</td>
-                      <td className="py-1">{c.usefulLifeMonths} شهر</td>
-                      <td className="py-1">{METHODS.find(m => m.value === c.method)?.label}</td>
+                      <td className="py-1">{t("asset_months_suffix").replace("{n}", String(c.usefulLifeMonths))}</td>
+                      <td className="py-1">{(() => { const m = METHODS.find(x => x.value === c.method); return m ? t(m.labelKey) : c.method; })()}</td>
                       <td className="py-1 tabular-nums">{fmt(c.accumDepreciation)}</td>
                     </tr>
                   ))}</tbody></table></div>
@@ -1067,18 +1078,18 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
       open={!!cascadePending}
       onOpenChange={(o) => { if (!o && !cascadeIsPending) setCascadePending(null); }}
     >
-      <AlertDialogContent dir="rtl" data-testid="dialog-asset-event-cascade-confirm">
+      <AlertDialogContent dir={dir} data-testid="dialog-asset-event-cascade-confirm">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2 text-right">
             <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
-            تراجع متسلسل عن سلسلة من الأحداث
+            {t("asset_cascade_title")}
           </AlertDialogTitle>
           <AlertDialogDescription
             className="text-sm leading-relaxed text-foreground text-right whitespace-pre-line"
             data-testid="text-asset-event-cascade-message"
           >
-            {`هذا الحدث مسبوق بـ ${cascadePending?.laterCount ?? 0} حدث لاحق على نفس الأصل. ` +
-              "لحذفه يجب عكس كل تلك الأحداث أولاً (من الأحدث إلى الأقدم) ثم حذف هذا الحدث، وكل ذلك ضمن معاملة واحدة."}
+            {t("asset_cascade_pending").replace("{n}", String(cascadePending?.laterCount ?? 0)) +
+              t("asset_cascade_desc")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -1086,7 +1097,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
             disabled={cascadeIsPending}
             data-testid="button-asset-event-cascade-cancel"
           >
-            إلغاء
+            {t("asset_cancel")}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={(ev) => {
@@ -1096,7 +1107,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
             disabled={cascadeIsPending}
             data-testid="button-asset-event-cascade-confirm"
           >
-            {`حذف الحدث وعكس ${cascadePending?.laterCount ?? 0} حدث لاحق`}
+            {t("asset_cascade_delete_btn").replace("{n}", String(cascadePending?.laterCount ?? 0))}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -1105,11 +1116,11 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
       open={!!conflictMessage}
       onOpenChange={(o) => { if (!o) setConflictMessage(null); }}
     >
-      <AlertDialogContent dir="rtl" data-testid="dialog-asset-event-delete-conflict">
+      <AlertDialogContent dir={dir} data-testid="dialog-asset-event-delete-conflict">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2 text-right">
             <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
-            تعذّر حذف الحدث
+            {t("asset_evt_del_fail_title")}
           </AlertDialogTitle>
           <AlertDialogDescription
             className="text-sm leading-relaxed text-foreground text-right whitespace-pre-line"
@@ -1123,7 +1134,7 @@ function AssetDetailDialog({ assetId, company, onClose }: { assetId: number; com
             onClick={() => setConflictMessage(null)}
             data-testid="button-asset-event-delete-conflict-close"
           >
-            فهمت
+            {t("asset_understood")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -1149,6 +1160,8 @@ interface OperationFormState {
 type OperationPreview = ImpairmentPreview | RevaluationPreview | DisposalPreview;
 
 function OperationDialog({ assetId, type, company, onClose }: { assetId: number; type: "impairment" | "revaluation" | "dispose"; company: Company; onClose: () => void }) {
+  const t = useT();
+  const { dir } = useLocale();
   const { toast } = useToast();
   const fmt = useAssetMoneyFmt();
   const [form, setForm] = useState<OperationFormState>({
@@ -1178,7 +1191,7 @@ function OperationDialog({ assetId, type, company, onClose }: { assetId: number;
       return res.json() as Promise<{ preview: OperationPreview }>;
     },
     onSuccess: (d) => setPreview(d.preview),
-    onError: (e: Error) => toast({ title: "تعذر المعاينة", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("asset_preview_failed"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   const confirmMutation = useMutation({
@@ -1190,36 +1203,36 @@ function OperationDialog({ assetId, type, company, onClose }: { assetId: number;
       queryClient.invalidateQueries({ queryKey: ["/api/fixed-assets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       invalidateAccountBalances();
-      toast({ title: "تم الترحيل", description: `قيد رقم JE ${d.journalEntryId}` });
+      toast({ title: t("asset_posted"), description: t("asset_je_number").replace("{n}", String(d.journalEntryId)) });
       onClose();
     },
-    onError: (e: Error) => toast({ title: "فشل الترحيل", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("asset_post_failed"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
-  const titles = { impairment: "إثبات انخفاض في القيمة (IAS 36)", revaluation: "إعادة تقييم (IAS 16)", dispose: "استبعاد الأصل" };
+  const titles = { impairment: t("asset_impair_title"), revaluation: t("asset_reval_title"), dispose: t("asset_disposal_title") };
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent dir="rtl" className="sm:max-w-lg" data-testid={`dialog-op-${type}`}>
+      <DialogContent dir={dir} className="sm:max-w-lg" data-testid={`dialog-op-${type}`}>
         <DialogHeader>
           <DialogTitle>{titles[type]}</DialogTitle>
-          <DialogDescription>راجع التأثير ثم اضغط ترحيل لإنشاء قيد محاسبي.</DialogDescription>
+          <DialogDescription>{t("asset_review_then_post")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
-          <div><Label>التاريخ</Label><Input type="date" value={form.eventDate} onChange={(e) => setForm({ ...form, eventDate: e.target.value })} data-testid="input-op-date" /></div>
+          <div><Label>{t("asset_date")}</Label><Input type="date" value={form.eventDate} onChange={(e) => setForm({ ...form, eventDate: e.target.value })} data-testid="input-op-date" /></div>
           {type === "impairment" && (
-            <div><Label>القيمة الاستردادية</Label><Input type="number" value={form.recoverableAmount} onChange={(e) => setForm({ ...form, recoverableAmount: e.target.value })} data-testid="input-recoverable" /></div>
+            <div><Label>{t("asset_recoverable")}</Label><Input type="number" value={form.recoverableAmount} onChange={(e) => setForm({ ...form, recoverableAmount: e.target.value })} data-testid="input-recoverable" /></div>
           )}
           {type === "revaluation" && (
             <>
-              <div><Label>القيمة العادلة</Label><Input type="number" value={form.fairValue} onChange={(e) => setForm({ ...form, fairValue: e.target.value })} data-testid="input-fair-value" /></div>
+              <div><Label>{t("asset_fair_value")}</Label><Input type="number" value={form.fairValue} onChange={(e) => setForm({ ...form, fairValue: e.target.value })} data-testid="input-fair-value" /></div>
               <div>
-                <Label>طريقة إعادة التقييم</Label>
+                <Label>{t("asset_reval_method")}</Label>
                 <Select value={form.method} onValueChange={(v) => setForm({ ...form, method: v as "elimination" | "proportional" })}>
                   <SelectTrigger data-testid="select-reval-method"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="elimination">إلغاء مجمع الإهلاك</SelectItem>
-                    <SelectItem value="proportional">إعادة بيان نسبية</SelectItem>
+                    <SelectItem value="elimination">{t("asset_reval_elim")}</SelectItem>
+                    <SelectItem value="proportional">{t("asset_reval_proportional")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1227,49 +1240,49 @@ function OperationDialog({ assetId, type, company, onClose }: { assetId: number;
           )}
           {type === "dispose" && (
             <>
-              <div><Label>قيمة البيع / المتحصلات</Label><Input type="number" value={form.proceeds} onChange={(e) => setForm({ ...form, proceeds: e.target.value })} data-testid="input-proceeds" /></div>
+              <div><Label>{t("asset_sale_proceeds")}</Label><Input type="number" value={form.proceeds} onChange={(e) => setForm({ ...form, proceeds: e.target.value })} data-testid="input-proceeds" /></div>
               <div>
-                <Label>الطريقة</Label>
+                <Label>{t("asset_method")}</Label>
                 <Select value={form.disposalMethod} onValueChange={(v) => setForm({ ...form, disposalMethod: v as "sale" | "scrap" | "writeoff" })}>
                   <SelectTrigger data-testid="select-disposal-method"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="sale">بيع</SelectItem>
-                    <SelectItem value="scrap">تخريد</SelectItem>
-                    <SelectItem value="writeoff">شطب</SelectItem>
+                    <SelectItem value="sale">{t("asset_disp_sale")}</SelectItem>
+                    <SelectItem value="scrap">{t("asset_disp_scrap")}</SelectItem>
+                    <SelectItem value="writeoff">{t("asset_disp_writeoff")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </>
           )}
-          <div><Label>ملاحظات</Label><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} data-testid="input-op-notes" /></div>
+          <div><Label>{t("asset_notes")}</Label><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} data-testid="input-op-notes" /></div>
           <Button variant="outline" onClick={() => previewMutation.mutate()} disabled={previewMutation.isPending} data-testid="button-preview-op">
-            <Calculator className="w-4 h-4 ml-1" /> معاينة
+            <Calculator className="w-4 h-4 ml-1" /> {t("asset_preview")}
           </Button>
           {preview && (
             <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1" data-testid="text-op-preview">
               {type === "impairment" && (() => { const p = preview as ImpairmentPreview; return (
                 <>
-                  <div>القيمة الدفترية الحالية: <span className="font-bold tabular-nums">{fmt(p.carrying, company.currencySymbol)}</span></div>
-                  <div>القيمة الدفترية الافتراضية (بدون انخفاض): <span className="tabular-nums">{fmt(p.hypotheticalCarrying, company.currencySymbol)}</span></div>
-                  <div>المبلغ: <span className={`font-bold tabular-nums ${p.isReversal ? "text-emerald-600" : "text-rose-600"}`}>{fmt(p.amount, company.currencySymbol)}</span> {p.isReversal && "(عكس مقيد بـ " + fmt(p.reversalCap, company.currencySymbol) + ")"}</div>
-                  <div>القيمة الدفترية الجديدة: <span className="font-bold tabular-nums">{fmt(p.newCarrying, company.currencySymbol)}</span></div>
+                  <div>{t("asset_cur_carrying")}<span className="font-bold tabular-nums">{fmt(p.carrying, company.currencySymbol)}</span></div>
+                  <div>{t("asset_default_carrying")}<span className="tabular-nums">{fmt(p.hypotheticalCarrying, company.currencySymbol)}</span></div>
+                  <div>{t("asset_amount_colon")}<span className={`font-bold tabular-nums ${p.isReversal ? "text-emerald-600" : "text-rose-600"}`}>{fmt(p.amount, company.currencySymbol)}</span> {p.isReversal && t("asset_reversal_capped") + fmt(p.reversalCap, company.currencySymbol) + ")"}</div>
+                  <div>{t("asset_new_carrying")}<span className="font-bold tabular-nums">{fmt(p.newCarrying, company.currencySymbol)}</span></div>
                 </>
               ); })()}
               {type === "revaluation" && (() => { const p = preview as RevaluationPreview; return (
                 <>
-                  <div>التكلفة الإجمالية الجديدة: <span className="font-bold tabular-nums">{fmt(p.result.newGrossCost, company.currencySymbol)}</span></div>
-                  <div>مجمع الإهلاك الجديد: <span className="font-bold tabular-nums">{fmt(p.result.newAccumDep, company.currencySymbol)}</span></div>
-                  <div>مجمع الانخفاض الجديد: <span className="font-bold tabular-nums">{fmt(p.result.newAccumImp, company.currencySymbol)}</span></div>
-                  <div>تغيّر الفائض (OCI): <span className="font-bold tabular-nums text-emerald-600">{fmt(p.result.surplusDelta, company.currencySymbol)}</span></div>
-                  <div>تأثير الأرباح والخسائر: <span className={`font-bold tabular-nums ${p.result.plImpact >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{fmt(p.result.plImpact, company.currencySymbol)}</span></div>
-                  {p.result.priorLossReversal > 0 && <div className="text-xs text-muted-foreground">يعكس خسارة P&L سابقة بمقدار {fmt(p.result.priorLossReversal, company.currencySymbol)}</div>}
+                  <div>{t("asset_new_total_cost")}<span className="font-bold tabular-nums">{fmt(p.result.newGrossCost, company.currencySymbol)}</span></div>
+                  <div>{t("asset_new_accum_dep")}<span className="font-bold tabular-nums">{fmt(p.result.newAccumDep, company.currencySymbol)}</span></div>
+                  <div>{t("asset_new_accum_impair")}<span className="font-bold tabular-nums">{fmt(p.result.newAccumImp, company.currencySymbol)}</span></div>
+                  <div>{t("asset_surplus_change")}<span className="font-bold tabular-nums text-emerald-600">{fmt(p.result.surplusDelta, company.currencySymbol)}</span></div>
+                  <div>{t("asset_pl_impact")}<span className={`font-bold tabular-nums ${p.result.plImpact >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{fmt(p.result.plImpact, company.currencySymbol)}</span></div>
+                  {p.result.priorLossReversal > 0 && <div className="text-xs text-muted-foreground">{t("asset_prior_loss_rev").replace("{n}", fmt(p.result.priorLossReversal, company.currencySymbol))}</div>}
                 </>
               ); })()}
               {type === "dispose" && (() => { const p = preview as DisposalPreview; return (
                 <>
-                  <div>القيمة الدفترية: <span className="font-bold tabular-nums">{fmt(p.carrying, company.currencySymbol)}</span></div>
-                  <div>الربح/الخسارة: <span className={`font-bold tabular-nums ${p.result.gainLoss >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{fmt(p.result.gainLoss, company.currencySymbol)}</span></div>
-                  <div>تحويل فائض إعادة التقييم للأرباح المحتجزة: <span className="font-bold tabular-nums">{fmt(p.result.surplusTransferred, company.currencySymbol)}</span></div>
+                  <div>{t("asset_carrying_colon")}<span className="font-bold tabular-nums">{fmt(p.carrying, company.currencySymbol)}</span></div>
+                  <div>{t("asset_gain_loss_colon")}<span className={`font-bold tabular-nums ${p.result.gainLoss >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{fmt(p.result.gainLoss, company.currencySymbol)}</span></div>
+                  <div>{t("asset_surplus_to_re")}<span className="font-bold tabular-nums">{fmt(p.result.surplusTransferred, company.currencySymbol)}</span></div>
                 </>
               ); })()}
             </div>
@@ -1277,7 +1290,7 @@ function OperationDialog({ assetId, type, company, onClose }: { assetId: number;
         </div>
         <DialogFooter>
           <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending || !preview} data-testid="button-confirm-op">
-            ترحيل القيد
+            {t("asset_post_entry")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1290,6 +1303,7 @@ function OperationDialog({ assetId, type, company, onClose }: { assetId: number;
 // ============================================================================
 
 function DepreciationPanel({ company }: { company: Company }) {
+  const t = useT();
   const { toast } = useToast();
   const fmt = useAssetMoneyFmt();
   const today = new Date();
@@ -1341,7 +1355,7 @@ function DepreciationPanel({ company }: { company: Company }) {
       return res.json() as Promise<DepreciationPreview>;
     },
     onSuccess: (d) => setPreview(d),
-    onError: (e: Error) => toast({ title: "تعذر", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("asset_generic_failed"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   const postMut = useMutation({
@@ -1354,48 +1368,48 @@ function DepreciationPanel({ company }: { company: Company }) {
       queryClient.invalidateQueries({ queryKey: ["/api/depreciation-runs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       invalidateAccountBalances();
-      toast({ title: "تم ترحيل قيد الإهلاك", description: `JE ${d.journalEntryId}` });
+      toast({ title: t("asset_dep_posted"), description: `JE ${d.journalEntryId}` });
       setPreview(null);
       setUsage([]);
     },
-    onError: (e: Error) => toast({ title: "فشل", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("asset_failed"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader><CardTitle className="text-lg">تشغيل الإهلاك الشهري</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-lg">{t("asset_run_monthly_dep")}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-end gap-3">
-            <div><Label>السنة</Label><Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-28" data-testid="input-dep-year" /></div>
-            <div><Label>الشهر</Label><Input type="number" min={1} max={12} value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-20" data-testid="input-dep-month" /></div>
+            <div><Label>{t("asset_year")}</Label><Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-28" data-testid="input-dep-year" /></div>
+            <div><Label>{t("asset_month")}</Label><Input type="number" min={1} max={12} value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-20" data-testid="input-dep-month" /></div>
             <Button variant="outline" onClick={() => previewMut.mutate()} disabled={previewMut.isPending} data-testid="button-preview-dep">
-              <Calculator className="w-4 h-4 ml-1" /> معاينة
+              <Calculator className="w-4 h-4 ml-1" /> {t("asset_preview")}
             </Button>
             <WriteGuard forceDisabled={postMut.isPending || !preview}>
               <Button onClick={() => postMut.mutate()} data-testid="button-post-dep">
-                ترحيل قيد الإهلاك
+                {t("asset_post_dep")}
               </Button>
             </WriteGuard>
           </div>
           {preview && (
             <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-2" data-testid="text-dep-preview">
-              <div className="font-bold">إجمالي الإهلاك: {fmt(preview.total, company.currencySymbol)}</div>
+              <div className="font-bold">{t("asset_total_dep").replace("{n}", fmt(preview.total, company.currencySymbol))}</div>
               <div className="grid gap-1">
                 {preview.byCategory.map((c) => (
                   <div key={c.categoryId} className="flex justify-between"><span>{c.categoryName}</span><span className="tabular-nums font-bold">{fmt(c.amount, company.currencySymbol)}</span></div>
                 ))}
               </div>
-              <div className="text-xs text-muted-foreground">{preview.postings.length} بند مفصّل</div>
+              <div className="text-xs text-muted-foreground">{t("asset_detailed_postings").replace("{n}", String(preview.postings.length))}</div>
               {preview.needsUsage.length > 0 && (
                 <div className="border-t pt-2 mt-2 space-y-2">
-                  <div className="text-amber-700 dark:text-amber-400 font-semibold text-xs">أصول وحدات الإنتاج تحتاج إدخال وحدات الفترة:</div>
+                  <div className="text-amber-700 dark:text-amber-400 font-semibold text-xs">{t("asset_units_need_input")}</div>
                   {preview.needsUsage.map((n) => {
                     const cur = usage.find((u) => u.assetId === n.assetId && u.componentId === n.componentId);
                     return (
                       <div key={`${n.assetId}-${n.componentId ?? "x"}`} className="flex items-center justify-between gap-3">
                         <span className="text-xs">{n.assetName}</span>
-                        <Input type="number" min={0} className="w-32 h-8" placeholder="عدد الوحدات"
+                        <Input type="number" min={0} className="w-32 h-8" placeholder={t("asset_units_count")}
                           value={cur?.units ?? ""}
                           onChange={(e) => setUsageUnits(n.assetId, n.componentId, Number(e.target.value || 0))}
                           data-testid={`input-usage-${n.assetId}-${n.componentId ?? "asset"}`}
@@ -1403,7 +1417,7 @@ function DepreciationPanel({ company }: { company: Company }) {
                       </div>
                     );
                   })}
-                  <Button size="sm" variant="outline" onClick={() => previewMut.mutate()} data-testid="button-recalc-usage">إعادة المعاينة بعد إدخال الوحدات</Button>
+                  <Button size="sm" variant="outline" onClick={() => previewMut.mutate()} data-testid="button-recalc-usage">{t("asset_repreview_units")}</Button>
                 </div>
               )}
             </div>
@@ -1412,11 +1426,11 @@ function DepreciationPanel({ company }: { company: Company }) {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-lg">سجل تشغيلات الإهلاك</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-lg">{t("asset_dep_runs_log")}</CardTitle></CardHeader>
         <CardContent>
-          {!runs || runs.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد تشغيلات بعد.</div> : (
+          {!runs || runs.length === 0 ? <div className="text-sm text-muted-foreground">{t("asset_no_runs")}</div> : (
             <div className="table-sticky-first"><table className="w-full text-sm">
-              <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">الفترة</th><th className="text-right py-2">الإجمالي</th><th className="text-right py-2">الحالة</th><th className="text-right py-2">القيد</th></tr></thead>
+              <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">{t("asset_period")}</th><th className="text-right py-2">{t("asset_total")}</th><th className="text-right py-2">{t("asset_status")}</th><th className="text-right py-2">{t("asset_entry")}</th></tr></thead>
               <tbody>{runs.map((r) => (
                 <tr
                   key={r.id}
@@ -1438,7 +1452,7 @@ function DepreciationPanel({ company }: { company: Company }) {
                       id={r.journalEntryId}
                       className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                       data-testid={`link-journal-entry-depreciation-run-${r.id}`}
-                      title={`فتح قيد اليومية JE ${r.journalEntryId}`}
+                      title={t("asset_open_je").replace("{n}", String(r.journalEntryId))}
                     >
                       JE {r.journalEntryId}
                     </JournalEntryRefLink>
@@ -1472,6 +1486,8 @@ interface CategoryFormState {
 }
 
 function CategoriesPanel({ company }: { company: Company }) {
+  const t = useT();
+  const { dir } = useLocale();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const { data: cats } = useQuery<AssetCategory[]>({
@@ -1515,17 +1531,17 @@ function CategoriesPanel({ company }: { company: Company }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/asset-categories"] });
-      toast({ title: "تم إضافة التصنيف" });
+      toast({ title: t("asset_cat_added") });
       setOpen(false);
     },
-    onError: (e: Error) => toast({ title: "فشل", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("asset_failed"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   const accSelect = (label: string, key: keyof CategoryFormState) => (
     <div>
       <Label>{label}</Label>
       <Select value={form[key]} onValueChange={(v) => setForm({ ...form, [key]: v })}>
-        <SelectTrigger data-testid={`select-cat-${String(key)}`}><SelectValue placeholder="اختر حساب" /></SelectTrigger>
+        <SelectTrigger data-testid={`select-cat-${String(key)}`}><SelectValue placeholder={t("asset_pick_account")} /></SelectTrigger>
         <SelectContent>{(accounts || []).filter((a) => !a.isHeader).map((a) => <SelectItem key={a.id} value={String(a.id)}>{a.code} — {a.nameAr}</SelectItem>)}</SelectContent>
       </Select>
     </div>
@@ -1534,62 +1550,62 @@ function CategoriesPanel({ company }: { company: Company }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg">تصنيفات الأصول</CardTitle>
+        <CardTitle className="text-lg">{t("asset_categories_title")}</CardTitle>
         <Dialog open={open} onOpenChange={setOpen}>
-          <WriteGuard><Button data-testid="button-add-category" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-1" /> إضافة تصنيف</Button></WriteGuard>
-          <DialogContent dir="rtl" className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <WriteGuard><Button data-testid="button-add-category" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-1" />{t("asset_add_category")}</Button></WriteGuard>
+          <DialogContent dir={dir} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>تصنيف أصول جديد</DialogTitle>
-              <DialogDescription>اربط الحسابات المحاسبية لهذا التصنيف.</DialogDescription>
+              <DialogTitle>{t("asset_new_category")}</DialogTitle>
+              <DialogDescription>{t("asset_cat_link_accounts")}</DialogDescription>
             </DialogHeader>
             <div className="grid gap-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>الاسم</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="input-cat-name" /></div>
+                <div><Label>{t("asset_name")}</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="input-cat-name" /></div>
                 <div>
-                  <Label>نموذج القياس</Label>
+                  <Label>{t("asset_measurement_model")}</Label>
                   <Select value={form.measurementModel} onValueChange={(v) => setForm({ ...form, measurementModel: v as "cost" | "revaluation" })}>
                     <SelectTrigger data-testid="select-cat-model"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cost">التكلفة</SelectItem>
-                      <SelectItem value="revaluation">إعادة التقييم</SelectItem>
+                      <SelectItem value="cost">{t("asset_cost")}</SelectItem>
+                      <SelectItem value="revaluation">{t("asset_reval_model")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>العمر الافتراضي (شهر)</Label><Input type="number" value={form.defaultUsefulLifeMonths} onChange={(e) => setForm({ ...form, defaultUsefulLifeMonths: e.target.value })} data-testid="input-cat-life" /></div>
+                <div><Label>{t("asset_default_life")}</Label><Input type="number" value={form.defaultUsefulLifeMonths} onChange={(e) => setForm({ ...form, defaultUsefulLifeMonths: e.target.value })} data-testid="input-cat-life" /></div>
                 <div>
-                  <Label>الطريقة الافتراضية</Label>
+                  <Label>{t("asset_default_method")}</Label>
                   <Select value={form.defaultMethod} onValueChange={(v) => setForm({ ...form, defaultMethod: v as DepreciationMethod })}>
                     <SelectTrigger data-testid="select-cat-method"><SelectValue /></SelectTrigger>
-                    <SelectContent>{METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                    <SelectContent>{METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{t(m.labelKey)}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                {accSelect("حساب تكلفة الأصل", "assetCostAccountId")}
-                {accSelect("حساب مجمع الإهلاك", "accumulatedDepAccountId")}
-                {accSelect("حساب مصروف الإهلاك", "depExpenseAccountId")}
-                {accSelect("حساب مجمع الانخفاض", "accumulatedImpAccountId")}
-                {accSelect("حساب خسائر الانخفاض", "impLossAccountId")}
-                {accSelect("حساب فائض إعادة التقييم", "revalSurplusAccountId")}
-                {accSelect("حساب أرباح/خسائر الاستبعاد", "gainLossDisposalAccountId")}
+                {accSelect(t("asset_acc_cost"), "assetCostAccountId")}
+                {accSelect(t("asset_acc_accum_dep"), "accumulatedDepAccountId")}
+                {accSelect(t("asset_acc_dep_exp"), "depExpenseAccountId")}
+                {accSelect(t("asset_acc_accum_impair"), "accumulatedImpAccountId")}
+                {accSelect(t("asset_acc_impair_loss"), "impLossAccountId")}
+                {accSelect(t("asset_acc_reval_surplus"), "revalSurplusAccountId")}
+                {accSelect(t("asset_acc_disposal_pl"), "gainLossDisposalAccountId")}
               </div>
             </div>
-            <DialogFooter><Button onClick={() => m.mutate()} disabled={m.isPending || !form.name} data-testid="button-save-category">حفظ</Button></DialogFooter>
+            <DialogFooter><Button onClick={() => m.mutate()} disabled={m.isPending || !form.name} data-testid="button-save-category">{t("asset_save")}</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       </CardHeader>
       <CardContent>
-        {!cats || cats.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد تصنيفات.</div> : (
+        {!cats || cats.length === 0 ? <div className="text-sm text-muted-foreground">{t("asset_no_categories")}</div> : (
           <div className="table-sticky-first"><table className="w-full text-sm">
-            <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">الاسم</th><th className="text-right py-2">النموذج</th><th className="text-right py-2">العمر</th><th className="text-right py-2">الطريقة</th></tr></thead>
+            <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">{t("asset_name")}</th><th className="text-right py-2">{t("asset_model")}</th><th className="text-right py-2">{t("asset_life")}</th><th className="text-right py-2">{t("asset_method")}</th></tr></thead>
             <tbody>{cats.map((c) => (
               <tr key={c.id} className="border-b" data-testid={`row-category-${c.id}`}>
                 <td className="py-2">{c.name}</td>
-                <td className="py-2">{c.measurementModel === "cost" ? "التكلفة" : "إعادة التقييم"}</td>
-                <td className="py-2">{c.defaultUsefulLifeMonths} شهر</td>
-                <td className="py-2">{METHODS.find((m) => m.value === c.defaultMethod)?.label}</td>
+                <td className="py-2">{c.measurementModel === "cost" ? t("asset_cost") : t("asset_reval_model")}</td>
+                <td className="py-2">{t("asset_months_suffix").replace("{n}", String(c.defaultUsefulLifeMonths))}</td>
+                <td className="py-2">{(() => { const m = METHODS.find((x) => x.value === c.defaultMethod); return m ? t(m.labelKey) : c.defaultMethod; })()}</td>
               </tr>
             ))}</tbody>
           </table></div>
@@ -1604,6 +1620,8 @@ function CategoriesPanel({ company }: { company: Company }) {
 // ============================================================================
 
 export function CompaniesPanel() {
+  const t = useT();
+  const { dir } = useLocale();
   const { toast } = useToast();
   const { data: companies } = useQuery<Company[]>({ queryKey: ["/api/companies"] });
   const [open, setOpen] = useState(false);
@@ -1613,43 +1631,43 @@ export function CompaniesPanel() {
     mutationFn: async () => (await apiRequest("POST", "/api/companies", form)).json(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
-      toast({ title: "تم إضافة الشركة" });
+      toast({ title: t("asset_company_added") });
       setOpen(false);
     },
-    onError: (e: Error) => toast({ title: "فشل", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("asset_failed"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg">الشركات</CardTitle>
+        <CardTitle className="text-lg">{t("asset_tab_companies")}</CardTitle>
         <Dialog open={open} onOpenChange={setOpen}>
-          <OwnerGuard><Button data-testid="button-add-company" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-1" /> إضافة شركة</Button></OwnerGuard>
-          <DialogContent dir="rtl">
-            <DialogHeader><DialogTitle>شركة جديدة</DialogTitle></DialogHeader>
+          <OwnerGuard><Button data-testid="button-add-company" onClick={() => setOpen(true)}><Plus className="w-4 h-4 ml-1" />{t("asset_add_company")}</Button></OwnerGuard>
+          <DialogContent dir={dir}>
+            <DialogHeader><DialogTitle>{t("asset_new_company")}</DialogTitle></DialogHeader>
             <div className="grid gap-3">
-              <div><Label>الاسم</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="input-company-name" /></div>
+              <div><Label>{t("asset_name")}</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="input-company-name" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>العملة الوظيفية</Label><Input value={form.functionalCurrency} onChange={(e) => setForm({ ...form, functionalCurrency: e.target.value.toUpperCase() })} data-testid="input-company-currency" /></div>
-                <div><Label>الرمز</Label><Input value={form.currencySymbol} onChange={(e) => setForm({ ...form, currencySymbol: e.target.value })} data-testid="input-company-symbol" /></div>
+                <div><Label>{t("asset_functional_currency")}</Label><Input value={form.functionalCurrency} onChange={(e) => setForm({ ...form, functionalCurrency: e.target.value.toUpperCase() })} data-testid="input-company-currency" /></div>
+                <div><Label>{t("asset_symbol")}</Label><Input value={form.currencySymbol} onChange={(e) => setForm({ ...form, currencySymbol: e.target.value })} data-testid="input-company-symbol" /></div>
               </div>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} data-testid="checkbox-company-default" />
-                تعيين كشركة افتراضية
+                {t("asset_set_default_company")}
               </label>
             </div>
-            <DialogFooter><Button onClick={() => m.mutate()} disabled={m.isPending || !form.name} data-testid="button-save-company">حفظ</Button></DialogFooter>
+            <DialogFooter><Button onClick={() => m.mutate()} disabled={m.isPending || !form.name} data-testid="button-save-company">{t("asset_save")}</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       </CardHeader>
       <CardContent>
         <div className="table-sticky-first"><table className="w-full text-sm">
-          <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">الاسم</th><th className="text-right py-2">العملة</th><th className="text-right py-2">افتراضية</th></tr></thead>
+          <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">{t("asset_name")}</th><th className="text-right py-2">{t("asset_currency")}</th><th className="text-right py-2">{t("asset_default_badge")}</th></tr></thead>
           <tbody>{(companies || []).map((c) => (
             <tr key={c.id} className="border-b" data-testid={`row-company-${c.id}`}>
               <td className="py-2">{c.name}</td>
               <td className="py-2">{c.functionalCurrency} ({c.currencySymbol})</td>
-              <td className="py-2">{c.isDefault ? <Badge>افتراضية</Badge> : "—"}</td>
+              <td className="py-2">{c.isDefault ? <Badge>{t("asset_default_badge")}</Badge> : "—"}</td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -1663,6 +1681,7 @@ export function CompaniesPanel() {
 // ============================================================================
 
 export function FxPanel({ company }: { company: Company }) {
+  const t = useT();
   const { toast } = useToast();
   const { data: rates } = useQuery<FxRate[]>({
     queryKey: ["/api/fx-rates", company.id],
@@ -1674,8 +1693,8 @@ export function FxPanel({ company }: { company: Company }) {
 
   const m = useMutation({
     mutationFn: async () => (await apiRequest("POST", "/api/fx-rates", { companyId: company.id, ...form, rate: Number(form.rate) })).json(),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/fx-rates"] }); toast({ title: "تم حفظ السعر" }); },
-    onError: (e: Error) => toast({ title: "فشل", description: e.message, variant: "destructive" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/fx-rates"] }); toast({ title: t("asset_rate_saved") }); },
+    onError: (e: unknown) => toast({ title: t("asset_failed"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
   const del = useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/fx-rates/${id}`),
@@ -1684,20 +1703,20 @@ export function FxPanel({ company }: { company: Company }) {
 
   return (
     <Card>
-      <CardHeader><CardTitle className="text-lg">أسعار الصرف ({company.functionalCurrency})</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="text-lg">{t("asset_fx_rates_title").replace("{c}", company.functionalCurrency)}</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-5 gap-2 items-end">
-          <div><Label>من</Label><Input value={form.fromCurrency} onChange={(e) => setForm({ ...form, fromCurrency: e.target.value.toUpperCase() })} data-testid="input-fx-from" /></div>
-          <div><Label>إلى</Label><Input value={form.toCurrency} onChange={(e) => setForm({ ...form, toCurrency: e.target.value.toUpperCase() })} data-testid="input-fx-to" /></div>
-          <div><Label>التاريخ</Label><Input type="date" value={form.rateDate} onChange={(e) => setForm({ ...form, rateDate: e.target.value })} data-testid="input-fx-date" /></div>
-          <div><Label>السعر</Label><Input type="number" step="0.0001" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} data-testid="input-fx-rate-value" /></div>
+          <div><Label>{t("asset_from")}</Label><Input value={form.fromCurrency} onChange={(e) => setForm({ ...form, fromCurrency: e.target.value.toUpperCase() })} data-testid="input-fx-from" /></div>
+          <div><Label>{t("asset_to")}</Label><Input value={form.toCurrency} onChange={(e) => setForm({ ...form, toCurrency: e.target.value.toUpperCase() })} data-testid="input-fx-to" /></div>
+          <div><Label>{t("asset_date")}</Label><Input type="date" value={form.rateDate} onChange={(e) => setForm({ ...form, rateDate: e.target.value })} data-testid="input-fx-date" /></div>
+          <div><Label>{t("asset_rate")}</Label><Input type="number" step="0.0001" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} data-testid="input-fx-rate-value" /></div>
           <OwnerGuard forceDisabled={m.isPending}>
-            <Button onClick={() => m.mutate()} data-testid="button-save-fx"><Plus className="w-4 h-4 ml-1" /> إضافة</Button>
+            <Button onClick={() => m.mutate()} data-testid="button-save-fx"><Plus className="w-4 h-4 ml-1" />{t("asset_add_short")}</Button>
           </OwnerGuard>
         </div>
-        {!rates || rates.length === 0 ? <div className="text-sm text-muted-foreground">لا توجد أسعار صرف.</div> : (
+        {!rates || rates.length === 0 ? <div className="text-sm text-muted-foreground">{t("asset_no_rates")}</div> : (
           <div className="table-sticky-first"><table className="w-full text-sm">
-            <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">التاريخ</th><th className="text-right py-2">من</th><th className="text-right py-2">إلى</th><th className="text-right py-2">السعر</th><th /></tr></thead>
+            <thead className="border-b text-muted-foreground"><tr><th className="text-right py-2">{t("asset_date")}</th><th className="text-right py-2">{t("asset_from")}</th><th className="text-right py-2">{t("asset_to")}</th><th className="text-right py-2">{t("asset_rate")}</th><th /></tr></thead>
             <tbody>{rates.map((r) => (
               <tr key={r.id} className="border-b" data-testid={`row-fx-${r.id}`}>
                 <td className="py-2">{r.rateDate}</td>
