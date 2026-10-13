@@ -3,6 +3,7 @@ import { Moon, Sun, Languages, ArrowUpRight, Check, ChevronDown } from "lucide-r
 import { Brand } from "./Brand"
 import { cn } from "@/lib/utils"
 import { useLocale, type Locale } from "@/contexts/locale-context"
+import { t, type StringKey } from "@/i18n/dict"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,71 +36,73 @@ interface AppNavbarProps {
 
 const ALL_LOCALES: readonly Locale[] = ["ar", "en", "de", "fr"] as const
 
-function buildNav(ar: boolean): NavItem[] {
+function buildNav(locale: Locale): NavItem[] {
+  const tr = (k: StringKey) => t(k, locale)
+  const flag = (emoji: string, k: StringKey) => `${emoji} ${t(k, locale)}`
   return [
     {
       type: "group",
-      label: ar ? "المنتج" : "Product",
+      label: tr("mktnav_product"),
       items: [
-        { label: ar ? "المنصة"               : "Platform",          href: "/platform" },
-        { label: ar ? "الفواتير"              : "Invoicing",         href: "/product/invoices" },
-        { label: ar ? "المحاسبة"              : "Accounting",        href: "/product/accounting" },
-        { label: ar ? "الرواتب والموارد البشرية" : "Payroll & HR",   href: "/product/hr" },
-        { label: ar ? "الأصول الثابتة"        : "Fixed Assets",     href: "/product/fixed-assets" },
-        { label: ar ? "التقارير المالية"       : "Financial Reports", href: "/product/reports" },
+        { label: tr("mktnav_platform"),          href: "/platform" },
+        { label: tr("mktnav_invoicing"),          href: "/product/invoices" },
+        { label: tr("mktnav_accounting"),         href: "/product/accounting" },
+        { label: tr("mktnav_payroll_hr"),         href: "/product/hr" },
+        { label: tr("mktnav_fixed_assets"),       href: "/product/fixed-assets" },
+        { label: tr("mktnav_financial_reports"),  href: "/product/reports" },
       ],
     },
     {
       type: "group",
-      label: ar ? "الذكاء الاصطناعي" : "AI",
+      label: tr("mktnav_ai"),
       items: [
-        { label: ar ? "المساعد المحاسبي" : "AI Assistant",        href: "/ai/assistant" },
-        { label: ar ? "كوكبت القرار"      : "Decision Cockpit",   href: "/ai/cockpit" },
-        { label: ar ? "تحليلات تنبؤية"    : "Predictive Analytics", href: "/ai/predictive" },
+        { label: tr("mktnav_ai_assistant"),       href: "/ai/assistant" },
+        { label: tr("mktnav_decision_cockpit"),   href: "/ai/cockpit" },
+        { label: tr("mktnav_predictive"),         href: "/ai/predictive" },
       ],
     },
     {
       type: "group",
-      label: ar ? "الدول" : "Countries",
+      label: tr("mktnav_countries"),
       items: [
-        { label: ar ? "🇸🇦 السعودية"         : "🇸🇦 Saudi Arabia",    href: "/countries/sa" },
-        { label: ar ? "🇦🇪 الإمارات"         : "🇦🇪 UAE",             href: "/countries/ae" },
-        { label: ar ? "🇪🇬 مصر"              : "🇪🇬 Egypt",           href: "/countries/eg" },
-        { label: ar ? "🇰🇼 الكويت"           : "🇰🇼 Kuwait",          href: "/countries/kw" },
-        { label: ar ? "🇶🇦 قطر"              : "🇶🇦 Qatar",           href: "/countries/qa" },
-        { label: ar ? "🇯🇴 الأردن"           : "🇯🇴 Jordan",          href: "/countries/jo" },
-        { label: ar ? "🇧🇭 البحرين"          : "🇧🇭 Bahrain",         href: "/countries/international" },
-        { label: ar ? "🇴🇲 عُمان"            : "🇴🇲 Oman",            href: "/countries/international" },
-        { label: ar ? "🇲🇦 المغرب"           : "🇲🇦 Morocco",         href: "/countries/international" },
-        { label: ar ? "🇮🇶 العراق"           : "🇮🇶 Iraq",            href: "/countries/international" },
-        { label: ar ? "🇬🇧 المملكة المتّحدة" : "🇬🇧 United Kingdom",  href: "/countries/international" },
-        { label: ar ? "🇩🇪 ألمانيا"          : "🇩🇪 Germany",         href: "/countries/international" },
-        { label: ar ? "🇫🇷 فرنسا"            : "🇫🇷 France",          href: "/countries/international" },
-        { label: ar ? "🇳🇱 هولندا"           : "🇳🇱 Netherlands",     href: "/countries/international" },
-        { label: ar ? "🇺🇸 الولايات المتّحدة" : "🇺🇸 United States",  href: "/countries/international" },
-        { label: ar ? "🇳🇬 نيجيريا"          : "🇳🇬 Nigeria",         href: "/countries/international" },
-        { label: ar ? "🇰🇪 كينيا"            : "🇰🇪 Kenya",           href: "/countries/international" },
-        { label: ar ? "🇮🇳 الهند"            : "🇮🇳 India",           href: "/countries/international" },
-        { label: ar ? "🇸🇬 سنغافورة"         : "🇸🇬 Singapore",       href: "/countries/international" },
-        { label: ar ? "🇹🇷 تركيا"            : "🇹🇷 Turkey",          href: "/countries/international" },
-        { label: ar ? "🇧🇷 البرازيل"          : "🇧🇷 Brazil",          href: "/countries/international" },
-        { label: "🌐 International",                                     href: "/countries/international" },
+        { label: flag("🇸🇦", "country_sa"),  href: "/countries/sa" },
+        { label: flag("🇦🇪", "country_ae"),  href: "/countries/ae" },
+        { label: flag("🇪🇬", "country_eg"),  href: "/countries/eg" },
+        { label: flag("🇰🇼", "country_kw"),  href: "/countries/kw" },
+        { label: flag("🇶🇦", "country_qa"),  href: "/countries/qa" },
+        { label: flag("🇯🇴", "country_jo"),  href: "/countries/jo" },
+        { label: flag("🇧🇭", "country_bh"),  href: "/countries/international" },
+        { label: flag("🇴🇲", "country_om"),  href: "/countries/international" },
+        { label: flag("🇲🇦", "country_ma"),  href: "/countries/international" },
+        { label: flag("🇮🇶", "country_iq"),  href: "/countries/international" },
+        { label: flag("🇬🇧", "country_gb"),  href: "/countries/international" },
+        { label: flag("🇩🇪", "country_de"),  href: "/countries/international" },
+        { label: flag("🇫🇷", "country_fr"),  href: "/countries/international" },
+        { label: flag("🇳🇱", "country_nl"),  href: "/countries/international" },
+        { label: flag("🇺🇸", "country_us"),  href: "/countries/international" },
+        { label: flag("🇳🇬", "country_ng"),  href: "/countries/international" },
+        { label: flag("🇰🇪", "country_ke"),  href: "/countries/international" },
+        { label: flag("🇮🇳", "country_in"),  href: "/countries/international" },
+        { label: flag("🇸🇬", "country_sg"),  href: "/countries/international" },
+        { label: flag("🇹🇷", "country_tr"),  href: "/countries/international" },
+        { label: flag("🇧🇷", "country_br"),  href: "/countries/international" },
+        { label: flag("🌐", "country_intl"), href: "/countries/international" },
       ],
     },
     {
       type: "group",
-      label: ar ? "الشركة" : "Company",
+      label: tr("mktnav_company"),
       items: [
-        { label: ar ? "من نحن"     : "About",     href: "/about" },
-        { label: ar ? "العملاء"    : "Customers", href: "/customers" },
-        { label: ar ? "المدوّنة"   : "Blog",      href: "/blog" },
-        { label: ar ? "الوظائف"   : "Jobs",      href: "/jobs" },
-        { label: ar ? "تواصل معنا" : "Contact",  href: "/contact" },
+        { label: tr("mktnav_about"),     href: "/about" },
+        { label: tr("mktnav_customers"), href: "/customers" },
+        { label: tr("mktnav_blog"),      href: "/blog" },
+        { label: tr("mktnav_jobs"),      href: "/jobs" },
+        { label: tr("mktnav_contact"),   href: "/contact" },
       ],
     },
     {
       type: "link",
-      label: ar ? "الأسعار" : "Pricing",
+      label: tr("mktnav_pricing"),
       href: "/#pricing",
     },
   ]
@@ -119,9 +122,9 @@ export function AppNavbar({
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { locale, setLocale } = useLocale()
   const ar = locale === "ar"
-  const resolvedCta      = ctaLabel      ?? (ar ? "افتح التطبيق" : "Open app")
-  const resolvedTertiary = tertiaryLabel ?? (ar ? "تسجيل الدخول" : "Sign in")
-  const navItems = buildNav(ar)
+  const resolvedCta      = ctaLabel      ?? t("mktnav_open_app", locale)
+  const resolvedTertiary = tertiaryLabel ?? t("mktnav_sign_in", locale)
+  const navItems = buildNav(locale)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -259,7 +262,7 @@ export function AppNavbar({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  aria-label={ar ? "تغيير اللغة" : "Change language"}
+                  aria-label={t("mktnav_change_language", locale)}
                   data-testid="button-locale-toggle"
                   title={LANG_NATIVE[locale]}
                   className="size-9 grid place-items-center rounded-full text-foreground/65 hover:text-foreground hover-elevate transition-colors duration-150"

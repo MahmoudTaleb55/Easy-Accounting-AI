@@ -1,10 +1,9 @@
 import { cn } from "@/lib/utils"
 import { BrandMark } from "@/components/brand/mark"
+import { useT } from "@/i18n/dict"
 
 /**
- * Brand — typographic wordmark logo for Orqam (أرقام).
- *
- *   ▣  محاسب · ذكي
+ * Brand — typographic wordmark logo for Orqam.
  *
  * Composes the signature BrandMark glyph (three stacked ledger bars
  * + accent dot) with the bilingual typographic wordmark. The middot
@@ -35,6 +34,7 @@ export function Brand({
   href = "/",
 }: BrandProps) {
   const s = sizeMap[size]
+  const t = useT()
   return (
     <a
       href={href}
@@ -52,24 +52,16 @@ export function Brand({
       )}
       <div className="inline-flex flex-col items-start gap-0.5">
         {/*
-         * The wordmark is two Arabic words separated by a dot. We keep them
-         * in logical reading order (محاسب · ذكي) and let the parent's
-         * direction decide the visual order via flex. In an RTL document
-         * the flex naturally reverses to show محاسب on the right; in an
-         * LTR document it shows محاسب on the left. Hard-coding dir="rtl"
-         * here used to flip the order incorrectly when the page was
-         * English, producing "ذكي محاسب".
-         */}
-        {/*
-         * Orqam (أرقام — "numbers") wordmark logo. A single word; the accent
+         * Orqam ("numbers") wordmark logo. A single word; the accent
          * dot after the first glyph is the brand's signature "spark" beat.
+         * Direction is governed by the document-level `<html dir>`.
          */}
         <bdi className={cn("flex items-baseline font-serif font-semibold tracking-tight text-foreground", s.mark)}>
-          <span>Orqam</span>
+          <span>{t("brand")}</span>
           <span className="inline-block w-1.5 h-1.5 rounded-full translate-y-[-0.1em] ms-0.5" style={{ background: "hsl(var(--luxe))" }} aria-hidden />
         </bdi>
         {withTagline && (
-          <span className={cn("eyebrow", s.tag)}>Accounting OS</span>
+          <span className={cn("eyebrow", s.tag)}>{t("layout_accounting_os")}</span>
         )}
       </div>
     </a>

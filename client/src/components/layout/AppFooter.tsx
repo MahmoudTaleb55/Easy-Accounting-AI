@@ -1,6 +1,7 @@
 import { Brand } from "./Brand"
 import { cn } from "@/lib/utils"
-import { useLocale } from "@/contexts/locale-context"
+import { useLocale, type Locale } from "@/contexts/locale-context"
+import { t, type StringKey } from "@/i18n/dict"
 
 interface FooterLink   { label: string; href: string }
 interface FooterColumn { title: string; links: FooterLink[] }
@@ -10,72 +11,48 @@ interface AppFooterProps {
   className?: string
 }
 
-function defaultColumns(ar: boolean): FooterColumn[] {
+function defaultColumns(locale: Locale): FooterColumn[] {
+  const tr = (k: StringKey) => t(k, locale)
   return [
     {
-      title: ar ? "المنتج" : "Product",
-      links: ar ? [
-        { label: "المنصة",                   href: "/platform" },
-        { label: "الفواتير",                  href: "/product/invoices" },
-        { label: "المحاسبة",                  href: "/product/accounting" },
-        { label: "الرواتب والموارد البشرية",  href: "/product/hr" },
-        { label: "الأصول الثابتة",            href: "/product/fixed-assets" },
-        { label: "التقارير المالية",          href: "/product/reports" },
-      ] : [
-        { label: "Platform",            href: "/platform" },
-        { label: "Invoicing",           href: "/product/invoices" },
-        { label: "Accounting",          href: "/product/accounting" },
-        { label: "Payroll & HR",        href: "/product/hr" },
-        { label: "Fixed Assets",        href: "/product/fixed-assets" },
-        { label: "Financial Reports",   href: "/product/reports" },
+      title: tr("mktnav_product"),
+      links: [
+        { label: tr("mktnav_platform"),          href: "/platform" },
+        { label: tr("mktnav_invoicing"),          href: "/product/invoices" },
+        { label: tr("mktnav_accounting"),         href: "/product/accounting" },
+        { label: tr("mktnav_payroll_hr"),         href: "/product/hr" },
+        { label: tr("mktnav_fixed_assets"),       href: "/product/fixed-assets" },
+        { label: tr("mktnav_financial_reports"),  href: "/product/reports" },
       ],
     },
     {
-      title: ar ? "الذكاء الاصطناعي" : "Intelligence",
-      links: ar ? [
-        { label: "المساعد المحاسبي", href: "/ai/assistant" },
-        { label: "كوكبت القرار",      href: "/ai/cockpit" },
-        { label: "تحليلات تنبؤية",    href: "/ai/predictive" },
-      ] : [
-        { label: "AI Assistant",         href: "/ai/assistant" },
-        { label: "Decision Cockpit",     href: "/ai/cockpit" },
-        { label: "Predictive Analytics", href: "/ai/predictive" },
+      title: tr("mktnav_intelligence"),
+      links: [
+        { label: tr("mktnav_ai_assistant"),       href: "/ai/assistant" },
+        { label: tr("mktnav_decision_cockpit"),   href: "/ai/cockpit" },
+        { label: tr("mktnav_predictive"),         href: "/ai/predictive" },
       ],
     },
     {
-      title: ar ? "الدول" : "Countries",
-      links: ar ? [
-        { label: "السعودية",    href: "/countries/sa" },
-        { label: "الإمارات",    href: "/countries/ae" },
-        { label: "مصر",         href: "/countries/eg" },
-        { label: "الكويت",      href: "/countries/kw" },
-        { label: "قطر",         href: "/countries/qa" },
-        { label: "الأردن",      href: "/countries/jo" },
-        { label: "International", href: "/countries/international" },
-      ] : [
-        { label: "Saudi Arabia",  href: "/countries/sa" },
-        { label: "UAE",           href: "/countries/ae" },
-        { label: "Egypt",         href: "/countries/eg" },
-        { label: "Kuwait",        href: "/countries/kw" },
-        { label: "Qatar",         href: "/countries/qa" },
-        { label: "Jordan",        href: "/countries/jo" },
-        { label: "International", href: "/countries/international" },
+      title: tr("mktnav_countries"),
+      links: [
+        { label: tr("country_sa"),   href: "/countries/sa" },
+        { label: tr("country_ae"),   href: "/countries/ae" },
+        { label: tr("country_eg"),   href: "/countries/eg" },
+        { label: tr("country_kw"),   href: "/countries/kw" },
+        { label: tr("country_qa"),   href: "/countries/qa" },
+        { label: tr("country_jo"),   href: "/countries/jo" },
+        { label: tr("country_intl"), href: "/countries/international" },
       ],
     },
     {
-      title: ar ? "الشركة" : "Company",
-      links: ar ? [
-        { label: "من نحن",     href: "/about" },
-        { label: "العملاء",    href: "/customers" },
-        { label: "المدوّنة",   href: "/blog" },
-        { label: "الوظائف",    href: "/jobs" },
-        { label: "تواصل معنا", href: "/contact" },
-      ] : [
-        { label: "About",     href: "/about" },
-        { label: "Customers", href: "/customers" },
-        { label: "Blog",      href: "/blog" },
-        { label: "Jobs",      href: "/jobs" },
-        { label: "Contact",   href: "/contact" },
+      title: tr("mktnav_company"),
+      links: [
+        { label: tr("mktnav_about"),     href: "/about" },
+        { label: tr("mktnav_customers"), href: "/customers" },
+        { label: tr("mktnav_blog"),      href: "/blog" },
+        { label: tr("mktnav_jobs"),      href: "/jobs" },
+        { label: tr("mktnav_contact"),   href: "/contact" },
       ],
     },
   ]
@@ -83,16 +60,13 @@ function defaultColumns(ar: boolean): FooterColumn[] {
 
 export function AppFooter({ columns, tagline, className }: AppFooterProps) {
   const { locale } = useLocale()
-  const ar = locale === "ar"
-  const cols = columns ?? defaultColumns(ar)
+  const cols = columns ?? defaultColumns(locale)
   const year = new Date().getFullYear()
-  const brandName = "Orqam"
-  const resolvedTagline = tagline ?? (ar
-    ? "نظام محاسبيّ ذكيّ، مبنيّ وفق IFRS، عالميّ في الجوهر، يمنح الشركة الحديثة مركز قيادة ماليّ واحداً — من أوّل فاتورة إلى آخر تقرير."
-    : "An IFRS-grade, AI-native accounting system that gives the modern business one financial command center — from invoices to insight.")
-  const privacy  = ar ? "الخصوصيّة" : "Privacy"
-  const terms    = ar ? "الشروط"     : "Terms"
-  const security = ar ? "الأمان"     : "Security"
+  const brandName = t("brand", locale)
+  const resolvedTagline = tagline ?? t("mktnav_tagline", locale)
+  const privacy  = t("mktnav_privacy", locale)
+  const terms    = t("mktnav_terms", locale)
+  const security = t("mktnav_security", locale)
 
   return (
     <footer

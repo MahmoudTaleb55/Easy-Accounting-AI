@@ -8,10 +8,12 @@ import type { User } from "@shared/models/auth";
 
 type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
-import { apiRequest, ApiError, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import { useLocale } from "@/contexts/locale-context";
+import { useLocale, type Locale } from "@/contexts/locale-context";
 import { useToast } from "@/hooks/use-toast";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +29,7 @@ export default function ProfilePage() {
   const { user, signOut, isSigningOut } = useAuth();
   const { locale, setLocale } = useLocale();
   const { toast } = useToast();
+  const t = useT();
   const ar = locale === "ar";
 
   // The avatar image is now managed by the upload picker below and is
@@ -68,9 +71,9 @@ export default function ProfilePage() {
       if (u?.preferredLocale === "ar" || u?.preferredLocale === "en") {
         setLocale(u.preferredLocale);
       }
-      toast({ title: ar ? "تم الحفظ" : "Saved" });
+      toast({ title: t("prof_saved") });
     },
-    onError: (e) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e) => toast({ title: t("settings_error"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   const uploadAvatar = useMutation<User, Error, File>({
@@ -96,12 +99,12 @@ export default function ProfilePage() {
       queryClient.setQueryData<User>(["/api/auth/user"], u);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/members"] });
-      toast({ title: ar ? "تم تحديث الصورة" : "Photo updated" });
+      toast({ title: t("prof_photo_updated") });
     },
     onError: (e) =>
       toast({
-        title: ar ? "تعذر رفع الصورة" : "Upload failed",
-        description: e.message,
+        title: t("prof_upload_failed"),
+        description: t(mapErrorKey(e)),
         variant: "destructive",
       }),
   });
@@ -113,9 +116,9 @@ export default function ProfilePage() {
       queryClient.setQueryData<User>(["/api/auth/user"], u);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/members"] });
-      toast({ title: ar ? "تم حذف الصورة" : "Photo removed" });
+      toast({ title: t("prof_photo_removed") });
     },
-    onError: (e) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e) => toast({ title: t("settings_error"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -126,20 +129,16 @@ export default function ProfilePage() {
     if (!file) return;
     if (!ACCEPTED_AVATAR_TYPES.includes(file.type)) {
       toast({
-        title: ar ? "نوع ملف غير مدعوم" : "Unsupported file type",
-        description: ar
-          ? "اختر صورة بصيغة PNG أو JPEG أو WEBP أو GIF."
-          : "Choose a PNG, JPEG, WEBP or GIF image.",
+        title: t("prof_bad_type"),
+        description: t("prof_bad_type_desc"),
         variant: "destructive",
       });
       return;
     }
     if (file.size > MAX_AVATAR_BYTES) {
       toast({
-        title: ar ? "الصورة كبيرة جداً" : "Image too large",
-        description: ar
-          ? "الحد الأقصى لحجم الصورة هو ٢ ميغابايت."
-          : "Maximum image size is 2 MB.",
+        title: t("prof_too_large"),
+        description: t("prof_too_large_desc"),
         variant: "destructive",
       });
       return;
@@ -151,14 +150,12 @@ export default function ProfilePage() {
     mutationFn: async (v) => (await apiRequest("POST", "/api/auth/change-password", v)).json(),
     onSuccess: () => {
       passwordForm.reset();
-      toast({ title: ar ? "تم تغيير كلمة المرور" : "Password updated" });
+      toast({ title: t("prof_password_updated") });
     },
-    onError: (e: Error) => {
-      const bodyMessage =
-        e instanceof ApiError && e.body && typeof e.body === "object"
-          ? (e.body as { message?: unknown }).message
-          : undefined;
-      setPasswordError(typeof bodyMessage === "string" ? bodyMessage : e.message);
+    onError: (e: unknown) => {
+      // Surface a localized message by status rather than the raw server
+      // body so the error reads in the active UI language.
+      setPasswordError(t(mapErrorKey(e)));
     },
   });
 
@@ -170,15 +167,15 @@ export default function ProfilePage() {
   return (
     <div className="space-y-8 max-w-3xl">
       <header>
-        <h1 className="font-serif text-3xl tracking-tight">{ar ? "الملف الشخصي" : "Your profile"}</h1>
+        <h1 className="font-serif text-3xl tracking-tight">{t("prof_title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ar ? "حدّث معلوماتك الشخصية وتفضيلاتك." : "Update your personal info and preferences."}
+          {t("prof_subtitle")}
         </p>
       </header>
 
       <Card data-testid="card-profile">
         <CardHeader>
-          <CardTitle>{ar ? "المعلومات الشخصية" : "Personal info"}</CardTitle>
+          <CardTitle>{t("prof_personal_info")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex items-start gap-4">
@@ -219,7 +216,7 @@ export default function ProfilePage() {
                     ) : (
                       <Upload className="mr-2 h-4 w-4" />
                     )}
-                    {ar ? "اختر صورة" : "Choose photo"}
+                    {t("prof_choose_photo")}
                   </Button>
                   {user?.profileImageUrl && (
                     <Button
@@ -235,13 +232,11 @@ export default function ProfilePage() {
                       ) : (
                         <Trash2 className="mr-2 h-4 w-4" />
                       )}
-                      {ar ? "إزالة الصورة" : "Remove photo"}
+                      {t("prof_remove_photo")}
                     </Button>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    {ar
-                      ? "أو اسحب وأسقط صورة هنا. PNG / JPEG / WEBP / GIF حتى ٢ ميغابايت."
-                      : "Or drag & drop. PNG, JPEG, WEBP or GIF up to 2 MB."}
+                    {t("prof_drop_hint")}
                   </p>
                 </div>
                 <input
@@ -277,7 +272,7 @@ export default function ProfilePage() {
           >
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="firstName">{ar ? "الاسم الأول" : "First name"}</Label>
+                <Label htmlFor="firstName">{t("prof_first_name")}</Label>
                 <Input
                   id="firstName"
                   maxLength={80}
@@ -286,12 +281,12 @@ export default function ProfilePage() {
                 />
                 {profileForm.formState.errors.firstName && (
                   <p className="text-xs text-destructive" data-testid="error-first-name">
-                    {ar ? "الاسم الأول غير صالح" : "Invalid first name"}
+                    {t("prof_first_invalid")}
                   </p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName">{ar ? "اسم العائلة" : "Last name"}</Label>
+                <Label htmlFor="lastName">{t("prof_last_name")}</Label>
                 <Input
                   id="lastName"
                   maxLength={80}
@@ -300,13 +295,13 @@ export default function ProfilePage() {
                 />
                 {profileForm.formState.errors.lastName && (
                   <p className="text-xs text-destructive" data-testid="error-last-name">
-                    {ar ? "اسم العائلة غير صالح" : "Invalid last name"}
+                    {t("prof_last_invalid")}
                   </p>
                 )}
               </div>
             </div>
             <div className="space-y-2">
-              <Label>{ar ? "اللغة المفضلة" : "Preferred language"}</Label>
+              <Label>{t("prof_pref_lang")}</Label>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -324,7 +319,7 @@ export default function ProfilePage() {
             </div>
             <Button type="submit" disabled={saveProfile.isPending} data-testid="button-save-profile">
               {saveProfile.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {ar ? "حفظ التغييرات" : "Save changes"}
+              {t("prof_save_changes")}
             </Button>
           </form>
         </CardContent>
@@ -333,17 +328,17 @@ export default function ProfilePage() {
       {user?.provider === "local" && (
         <Card data-testid="card-password">
           <CardHeader>
-            <CardTitle>{ar ? "تغيير كلمة المرور" : "Change password"}</CardTitle>
-            <CardDescription>{ar ? "اختر كلمة مرور قوية، ٨ أحرف على الأقل." : "Pick a strong password, 8 characters or more."}</CardDescription>
+            <CardTitle>{t("prof_change_password")}</CardTitle>
+            <CardDescription>{t("prof_password_hint")}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={passwordForm.handleSubmit((v) => { setPasswordError(null); changePw.mutate(v); })} className="space-y-4" data-testid="form-change-password">
               <div className="space-y-2">
-                <Label htmlFor="currentPassword">{ar ? "كلمة المرور الحالية" : "Current password"}</Label>
+                <Label htmlFor="currentPassword">{t("prof_current_password")}</Label>
                 <Input id="currentPassword" type="password" data-testid="input-current-password" {...passwordForm.register("currentPassword")} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="newPassword">{ar ? "كلمة المرور الجديدة" : "New password"}</Label>
+                <Label htmlFor="newPassword">{t("prof_new_password")}</Label>
                 <Input id="newPassword" type="password" data-testid="input-new-password" {...passwordForm.register("newPassword")} />
               </div>
               {passwordError && (
@@ -353,24 +348,24 @@ export default function ProfilePage() {
               )}
               <Button type="submit" disabled={changePw.isPending} data-testid="button-change-password">
                 {changePw.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {ar ? "تحديث" : "Update password"}
+                {t("prof_update_password")}
               </Button>
             </form>
           </CardContent>
         </Card>
       )}
 
-      <ActiveSessionsCard ar={ar} />
+      <ActiveSessionsCard locale={locale} />
 
       <Card data-testid="card-session">
         <CardHeader>
-          <CardTitle>{ar ? "الجلسة" : "Session"}</CardTitle>
-          <CardDescription>{ar ? "تسجيل الخروج من جميع الأجهزة." : "Sign out of this session."}</CardDescription>
+          <CardTitle>{t("prof_session")}</CardTitle>
+          <CardDescription>{t("prof_session_desc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <Button variant="outline" onClick={() => signOut()} disabled={isSigningOut} data-testid="button-signout">
             <LogOut className="mr-2 h-4 w-4" />
-            {ar ? "تسجيل الخروج" : "Sign out"}
+            {t("prof_sign_out")}
           </Button>
         </CardContent>
       </Card>
@@ -380,17 +375,18 @@ export default function ProfilePage() {
 
 type ActiveSession = { sid: string; expiresAt: string; isCurrent: boolean; provider: string };
 
-function ActiveSessionsCard({ ar }: { ar: boolean }) {
+function ActiveSessionsCard({ locale }: { locale: Locale }) {
   const { toast } = useToast();
+  const t = useT();
   const { data: sessions, isLoading } = useQuery<ActiveSession[]>({ queryKey: ["/api/auth/sessions"] });
 
   const signOutOthers = useMutation({
     mutationFn: async () => (await apiRequest("POST", "/api/auth/sessions/sign-out-others", {})).json(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/sessions"] });
-      toast({ title: ar ? "تم تسجيل الخروج من الجلسات الأخرى" : "Signed out of other sessions" });
+      toast({ title: t("prof_signed_out_others") });
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("settings_error"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   const others = (sessions ?? []).filter((s) => !s.isCurrent);
@@ -398,15 +394,15 @@ function ActiveSessionsCard({ ar }: { ar: boolean }) {
   return (
     <Card data-testid="card-active-sessions">
       <CardHeader>
-        <CardTitle>{ar ? "الجلسات النشطة" : "Active sessions"}</CardTitle>
+        <CardTitle>{t("prof_active_sessions")}</CardTitle>
         <CardDescription>
-          {ar ? "الأجهزة المسجّل عليها حسابك حالياً." : "Devices currently signed into your account."}
+          {t("prof_active_sessions_desc")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {isLoading ? (
           <div className="flex items-center text-sm text-muted-foreground">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {ar ? "جارٍ التحميل…" : "Loading…"}
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t("prof_loading")}
           </div>
         ) : (
           <ul className="space-y-2" data-testid="list-sessions">
@@ -418,23 +414,21 @@ function ActiveSessionsCard({ ar }: { ar: boolean }) {
               >
                 <div>
                   <span className="font-medium">
-                    {s.provider === "local"
-                      ? ar ? "بريد + كلمة مرور" : "Email & password"
-                      : ar ? "SSO" : "SSO"}
+                    {s.provider === "local" ? t("prof_email_password") : "SSO"}
                   </span>
                   {s.isCurrent && (
                     <span className="ml-2 rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                      {ar ? "الحالية" : "current"}
+                      {t("prof_current")}
                     </span>
                   )}
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  {ar ? "تنتهي" : "expires"} {new Date(s.expiresAt).toLocaleString()}
+                  {t("prof_expires")} {new Date(s.expiresAt).toLocaleString(locale)}
                 </span>
               </li>
             ))}
             {(sessions ?? []).length === 0 && (
-              <li className="text-sm text-muted-foreground">{ar ? "لا توجد جلسات أخرى." : "No active sessions."}</li>
+              <li className="text-sm text-muted-foreground">{t("prof_no_sessions")}</li>
             )}
           </ul>
         )}
@@ -445,7 +439,7 @@ function ActiveSessionsCard({ ar }: { ar: boolean }) {
           data-testid="button-signout-others"
         >
           {signOutOthers.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {ar ? "تسجيل الخروج من الأجهزة الأخرى" : "Sign out other devices"}
+          {t("prof_signout_others")}
         </Button>
       </CardContent>
     </Card>

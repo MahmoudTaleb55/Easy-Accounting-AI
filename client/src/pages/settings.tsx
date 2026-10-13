@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ApiError, apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateAccountBalances } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,8 @@ import { TeamPanel } from "@/components/team/team-panel";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/contexts/locale-context";
+import { useT, type StringKey } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { OwnerGuard, OwnerOnly } from "@/components/auth/write-guard";
 import { EmptyState } from "@/components/feedback/empty-state";
 
@@ -46,30 +48,35 @@ interface LocalizationPack {
   zakatApplicable: boolean;
 }
 
-const formSchema = z.object({
-  orgName: z.string().min(1, "اسم المنشأة مطلوب").max(100, "اسم المنشأة طويل جداً (حد أقصى 100 حرف)"),
-  countryCode: z.string().min(2, "اختر الدولة").max(8),
-  locale: z.enum(["ar", "en", "de", "fr"]),
-  currencyCode: z.string().min(1, "أدخل رمز العملة"),
-  currencySymbol: z.string().min(1, "أدخل الرمز الظاهر للعملة"),
-  vatRate: z.coerce.number({ invalid_type_error: "أدخل رقماً صحيحاً" }).min(0, "لا يمكن أن تكون النسبة سالبة").max(99, "النسبة كبيرة جداً"),
-  zakatEnabled: z.boolean(),
-  fiscalYearStartMonth: z.coerce.number({ invalid_type_error: "أدخل رقم شهر بين 1 و 12" }).int("يجب أن يكون رقم شهر صحيح").min(1, "الشهر بين 1 و 12").max(12, "الشهر بين 1 و 12"),
-  businessType: z.enum(["service", "trading", "manufacturing"]),
-});
-type FormVals = z.infer<typeof formSchema>;
+type TFn = (key: StringKey) => string;
+
+// Validation messages are resolved against the active locale so form
+// errors surface in the user's language rather than always in Arabic.
+function makeFormSchema(t: TFn) {
+  return z.object({
+    orgName: z.string().min(1, t("settings_v_org_required")).max(100, t("settings_v_org_long")),
+    countryCode: z.string().min(2, t("settings_v_country")).max(8),
+    locale: z.enum(["ar", "en", "de", "fr"]),
+    currencyCode: z.string().min(1, t("settings_v_currency_code")),
+    currencySymbol: z.string().min(1, t("settings_v_currency_symbol")),
+    vatRate: z.coerce.number({ invalid_type_error: t("settings_v_number") }).min(0, t("settings_v_vat_neg")).max(99, t("settings_v_vat_big")),
+    zakatEnabled: z.boolean(),
+    fiscalYearStartMonth: z.coerce.number({ invalid_type_error: t("settings_v_month_num") }).int(t("settings_v_month_int")).min(1, t("settings_v_month_range")).max(12, t("settings_v_month_range")),
+    businessType: z.enum(["service", "trading", "manufacturing"]),
+  });
+}
+type FormVals = z.infer<ReturnType<typeof makeFormSchema>>;
 
 function SettingsSubpagesNav() {
   const { can } = useAuth();
-  const { locale } = useLocale();
-  const ar = locale === "ar";
+  const t = useT();
   const settings = useSettings();
   const items = [
     {
       href: "/app/settings/profile",
       icon: UserIcon,
-      title: ar ? "الملف الشخصي" : "Profile",
-      desc: ar ? "اسمك وكلمة المرور وتفضيلاتك." : "Your name, password and preferences.",
+      title: t("settings_profile"),
+      desc: t("settings_profile_desc"),
       testid: "link-settings-profile",
     },
     ...(can.view
@@ -77,14 +84,8 @@ function SettingsSubpagesNav() {
           {
             href: "/app/settings/members",
             icon: Users,
-            title: ar ? "الأعضاء والصلاحيات" : "Members & roles",
-            desc: ar
-              ? can.invite
-                ? "ادعُ الفريق وحدّد الأدوار."
-                : "اعرض أعضاء مساحة العمل."
-              : can.invite
-              ? "Invite teammates and set roles."
-              : "View workspace members.",
+            title: t("settings_members"),
+            desc: can.invite ? t("settings_members_invite") : t("settings_members_view"),
             testid: "link-settings-members",
           },
         ]
@@ -94,10 +95,8 @@ function SettingsSubpagesNav() {
           {
             href: "/app/settings/email-delivery",
             icon: MailCheck,
-            title: ar ? "صحة بريد المعاملات" : "Email delivery health",
-            desc: ar
-              ? "كل دعوات الفريق ورسائل استعادة كلمة المرور وحالاتها."
-              : "Every team invitation and password-reset email and its status.",
+            title: t("settings_email_health"),
+            desc: t("settings_email_health_desc"),
             testid: "link-settings-email-delivery",
           },
           ...(settings.countryCode === "SA"
@@ -105,10 +104,8 @@ function SettingsSubpagesNav() {
                 {
                   href: "/app/settings/zatca",
                   icon: QrCode,
-                  title: ar ? "الفوترة الإلكترونية ZATCA" : "ZATCA e-invoicing",
-                  desc: ar
-                    ? "ربط منظومة الفوترة الإلكترونية مع هيئة الزكاة والضريبة."
-                    : "Connect with Saudi Arabia's e-invoicing authority.",
+                  title: t("settings_zatca"),
+                  desc: t("settings_zatca_desc"),
                   testid: "link-settings-zatca",
                 },
               ]
@@ -153,7 +150,7 @@ interface BackfillLastRun {
 function DataToolsCard() {
   const { toast } = useToast();
   const { locale } = useLocale();
-  const ar = locale === "ar";
+  const t = useT();
   const [lastResult, setLastResult] = useState<{ created: number; skipped: number } | null>(null);
 
   // Last-run audit row drives the "Last run by <owner> on <date>" line
@@ -211,26 +208,20 @@ function DataToolsCard() {
         queryKey: [api.admin.backfillJournalEntriesLastRun.path],
       });
       toast({
-        title: ar ? "تمّ الإصلاح" : "Done",
-        description: ar
-          ? `أُنشئ ${data.created} قيد يومية، وتُخطّي ${data.skipped}.`
-          : `Created ${data.created} journal entries, skipped ${data.skipped}.`,
+        title: t("settings_repair_done"),
+        description: t("settings_repair_result")
+          .replace("{created}", String(data.created))
+          .replace("{skipped}", String(data.skipped)),
       });
     },
     onError: (e: unknown) => {
       // The endpoint can fail with a 403 (role drift between page load and
       // click), a 500 (e.g. cash account missing), or a generic network
-      // error. ApiError preserves the parsed JSON `{ message }` body the
-      // server returns; fall back to the Error message for non-HTTP failures.
-      const fromApi =
-        e instanceof ApiError && typeof (e.body as { message?: unknown })?.message === "string"
-          ? ((e.body as { message: string }).message)
-          : undefined;
-      const fromError = e instanceof Error ? e.message : undefined;
+      // error. We surface a localized message by status rather than the
+      // raw server body so the UI never leaks backend wording.
       toast({
-        title: ar ? "خطأ" : "Error",
-        description:
-          fromApi || fromError || (ar ? "تعذّر استكمال قيود اليومية" : "Backfill failed"),
+        title: t("settings_error"),
+        description: t(mapErrorKey(e)),
         variant: "destructive",
       });
     },
@@ -241,26 +232,20 @@ function DataToolsCard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Wrench className="w-5 h-5" />
-          {ar ? "أدوات البيانات (للمالك فقط)" : "Data tools (owner only)"}
+          {t("settings_data_tools")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          {ar
-            ? "إجراءات استرجاع نادرة. استخدمها فقط إذا لاحظت قيوداً مفقودة."
-            : "Rare recovery actions. Only use these if you notice missing journal entries."}
+          {t("settings_data_tools_desc")}
         </p>
         <div className="rounded-md border p-4 space-y-3">
           <div className="space-y-1">
             <div className="text-sm font-medium" data-testid="text-repair-journal-entries-title">
-              {ar
-                ? "إعادة ربط قيود اليومية المفقودة"
-                : "Re-pair missing journal entries"}
+              {t("settings_repair_title")}
             </div>
             <div className="text-xs text-muted-foreground">
-              {ar
-                ? "تفحّص جميع المعاملات في مساحة العمل وتُنشئ قيد يومية متوازن لكل معاملة لا قيد لها. تكرار التشغيل آمن."
-                : "Walks every transaction in this workspace and posts a balanced double-entry for any one missing its journal entry. Safe to re-run."}
+              {t("settings_repair_desc")}
             </div>
           </div>
           {/*
@@ -280,7 +265,7 @@ function DataToolsCard() {
               className="text-sm text-muted-foreground"
               data-testid="text-repair-journal-entries-count-loading"
             >
-              {ar ? "جارٍ حساب القيود المفقودة..." : "Counting missing entries..."}
+              {t("settings_repair_counting")}
             </div>
           ) : hasZero ? (
             <div
@@ -288,16 +273,14 @@ function DataToolsCard() {
               data-testid="status-repair-journal-entries-in-sync"
             >
               <CheckCircle2 className="w-4 h-4" />
-              {ar ? "كل شيء متزامن — لا توجد قيود مفقودة." : "Everything is in sync — no missing entries."}
+              {t("settings_repair_in_sync")}
             </div>
           ) : missingCount !== undefined ? (
             <div
               className="text-sm text-foreground"
               data-testid="text-repair-journal-entries-count"
             >
-              {ar
-                ? `${missingCount} معاملة بدون قيد يومية.`
-                : `${missingCount} ${missingCount === 1 ? "transaction is" : "transactions are"} missing journal entries.`}
+              {t("settings_repair_count").replace("{n}", String(missingCount))}
             </div>
           ) : null}
           <div className="flex items-center gap-3 flex-wrap">
@@ -309,39 +292,29 @@ function DataToolsCard() {
                   disabled={mutation.isPending || hasZero}
                   data-testid="button-repair-journal-entries"
                 >
-                  {mutation.isPending
-                    ? ar
-                      ? "جارٍ التشغيل..."
-                      : "Running..."
-                    : ar
-                      ? "إعادة الربط الآن"
-                      : "Re-pair now"}
+                  {mutation.isPending ? t("settings_repair_running") : t("settings_repair_now")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>
-                    {ar ? "تأكيد إعادة ربط القيود" : "Confirm re-pair"}
+                    {t("settings_repair_confirm_title")}
                   </AlertDialogTitle>
                   <AlertDialogDescription data-testid="text-repair-journal-entries-confirm">
                     {missingCount !== undefined
-                      ? ar
-                        ? `سيتم إنشاء ${missingCount} قيد يومية — هل تريد المتابعة؟`
-                        : `This will create ${missingCount} journal ${missingCount === 1 ? "entry" : "entries"} — continue?`
-                      : ar
-                        ? "ستُنشأ قيود يومية لأي معاملة في مساحة العمل لا قيد لها. تكرار التشغيل لا يُكرّر القيود."
-                        : "Journal entries will be created for any transaction in this workspace that is missing one. Running again does not duplicate entries."}
+                      ? t("settings_repair_confirm_n").replace("{n}", String(missingCount))
+                      : t("settings_repair_confirm_generic")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel data-testid="button-cancel-repair-journal-entries">
-                    {ar ? "إلغاء" : "Cancel"}
+                    {t("settings_cancel")}
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => mutation.mutate()}
                     data-testid="button-confirm-repair-journal-entries"
                   >
-                    {ar ? "متابعة" : "Continue"}
+                    {t("settings_continue")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -351,9 +324,9 @@ function DataToolsCard() {
                 className="text-sm text-foreground"
                 data-testid="text-repair-journal-entries-result"
               >
-                {ar
-                  ? `أُنشئ ${lastResult.created} قيد يومية، وتُخطّي ${lastResult.skipped}.`
-                  : `Created ${lastResult.created} journal entries, skipped ${lastResult.skipped}.`}
+                {t("settings_repair_result")
+                  .replace("{created}", String(lastResult.created))
+                  .replace("{skipped}", String(lastResult.skipped))}
               </div>
             )}
             {lastRun && (
@@ -369,18 +342,14 @@ function DataToolsCard() {
                 data-testid="text-repair-journal-entries-last-run"
               >
                 {(() => {
-                  const actor =
-                    lastRun.actor ?? (ar ? "النظام" : "the system");
-                  const when = new Intl.DateTimeFormat(
-                    ar ? "ar" : "en",
-                    {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    },
-                  ).format(new Date(lastRun.occurredAt));
-                  return ar
-                    ? `آخر إصلاح بواسطة ${actor} في ${when}`
-                    : `Last run by ${actor} on ${when}`;
+                  const actor = lastRun.actor ?? t("settings_system");
+                  const when = new Intl.DateTimeFormat(locale, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }).format(new Date(lastRun.occurredAt));
+                  return t("settings_repair_last_run")
+                    .replace("{actor}", actor)
+                    .replace("{when}", when);
                 })()}
               </div>
             )}
@@ -393,13 +362,14 @@ function DataToolsCard() {
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const t = useT();
   const { data: settings } = useQuery<OrgSettings>({ queryKey: ["/api/settings"] });
   const { data: packs } = useQuery<LocalizationPack[]>({ queryKey: ["/api/localization/packs"] });
   const { activeCompany } = useCompany();
   const { setLocale } = useLocale();
 
   const form = useForm<FormVals>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(makeFormSchema(t)),
     defaultValues: {
       orgName: "My Business",
       countryCode: "INTL",
@@ -450,9 +420,9 @@ export default function SettingsPage() {
       // (which has no auth context and can't read /api/settings) reflects
       // the user's choice next time they visit while signed out.
       savePublicCurrency({ code: vals.currencyCode, symbol: vals.currencySymbol });
-      toast({ title: "تم الحفظ", description: "تم تحديث الإعدادات بنجاح" });
+      toast({ title: t("settings_saved_toast"), description: t("settings_saved_desc") });
     },
-    onError: (e: any) => toast({ title: "خطأ", description: e?.message || "فشل الحفظ", variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t("settings_error"), description: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   function applyPack(code: string) {
@@ -468,15 +438,15 @@ export default function SettingsPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-8" data-testid="settings-page">
       <header className="space-y-2">
-        <div className="eyebrow text-muted-foreground/80">الإعدادات</div>
+        <div className="eyebrow text-muted-foreground/80">{t("settings_eyebrow")}</div>
         <h1
           className="font-display text-3xl md:text-4xl tracking-tight text-foreground"
           data-testid="text-page-title"
         >
-          إعدادات المنشأة
+          {t("settings_org_title")}
         </h1>
         <p className="text-sm text-muted-foreground max-w-xl">
-          الموقع، العملة، الضرائب، والكيانات — كل ما يحدد سلوك دفاترك في مكان واحد.
+          {t("settings_org_subtitle")}
         </p>
       </header>
 
@@ -485,11 +455,11 @@ export default function SettingsPage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-6">
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><Globe className="w-5 h-5" />الموقع والعملة</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Globe className="w-5 h-5" />{t("settings_location_currency")}</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="orgName" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>اسم المنشأة</FormLabel>
+                  <FormLabel>{t("settings_org_name")}</FormLabel>
                   <FormControl><Input {...field} data-testid="input-org-name" /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -497,7 +467,7 @@ export default function SettingsPage() {
 
               <FormField control={form.control} name="countryCode" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>الدولة (تطبق إعدادات افتراضية تلقائياً)</FormLabel>
+                  <FormLabel>{t("settings_country")}</FormLabel>
                   <Select value={field.value} onValueChange={(v) => { field.onChange(v); applyPack(v); }}>
                     <FormControl><SelectTrigger data-testid="select-country"><SelectValue /></SelectTrigger></FormControl>
                     <SelectContent>
@@ -506,31 +476,31 @@ export default function SettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormDescription>اختيار الدولة يضبط العملة وضريبة القيمة المضافة وقواعد العمل افتراضياً، ويمكنك تعديلها يدوياً بعدها.</FormDescription>
+                  <FormDescription>{t("settings_country_desc")}</FormDescription>
                 </FormItem>
               )} />
 
               <div className="grid grid-cols-2 gap-3">
                 <FormField control={form.control} name="currencyCode" render={({ field }) => (
-                  <FormItem><FormLabel>رمز العملة</FormLabel>
+                  <FormItem><FormLabel>{t("settings_currency_code")}</FormLabel>
                     <FormControl><Input {...field} data-testid="input-currency-code" /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="currencySymbol" render={({ field }) => (
-                  <FormItem><FormLabel>رمز الظاهر</FormLabel>
+                  <FormItem><FormLabel>{t("settings_currency_symbol")}</FormLabel>
                     <FormControl><Input {...field} data-testid="input-currency-symbol" /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
 
               <FormField control={form.control} name="locale" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>لغة العرض</FormLabel>
+                  <FormLabel>{t("settings_display_lang")}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl><SelectTrigger data-testid="select-locale"><SelectValue /></SelectTrigger></FormControl>
                     <SelectContent>
                       <SelectItem value="ar">العربية</SelectItem>
                       <SelectItem value="en">English</SelectItem>
-                      <SelectItem value="de">Deutsch (الألمانية)</SelectItem>
-                      <SelectItem value="fr">Français (الفرنسية)</SelectItem>
+                      <SelectItem value="de">Deutsch</SelectItem>
+                      <SelectItem value="fr">Français</SelectItem>
                     </SelectContent>
                   </Select>
                 </FormItem>
@@ -539,13 +509,13 @@ export default function SettingsPage() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>الضرائب والزكاة</CardTitle></CardHeader>
+            <CardHeader><CardTitle>{t("settings_taxes_zakat")}</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="vatRate" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>نسبة ضريبة القيمة المضافة (%)</FormLabel>
+                  <FormLabel>{t("settings_vat_rate")}</FormLabel>
                   <FormControl><Input type="number" step="0.5" {...field} data-testid="input-vat-rate" /></FormControl>
-                  <FormDescription>اضبطها على 0 لتعطيل الضريبة في تقدير الضرائب.</FormDescription>
+                  <FormDescription>{t("settings_vat_desc")}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -553,8 +523,8 @@ export default function SettingsPage() {
               <FormField control={form.control} name="zakatEnabled" render={({ field }) => (
                 <FormItem className="flex items-center justify-between rounded-md border p-3">
                   <div>
-                    <FormLabel>تفعيل تقدير الزكاة</FormLabel>
-                    <FormDescription>يظهر تقدير الزكاة في مركز القرارات.</FormDescription>
+                    <FormLabel>{t("settings_zakat_enable")}</FormLabel>
+                    <FormDescription>{t("settings_zakat_desc")}</FormDescription>
                   </div>
                   <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-zakat" /></FormControl>
                 </FormItem>
@@ -562,7 +532,7 @@ export default function SettingsPage() {
 
               <FormField control={form.control} name="fiscalYearStartMonth" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>أول شهر في السنة المالية</FormLabel>
+                  <FormLabel>{t("settings_fiscal_start")}</FormLabel>
                   <FormControl><Input type="number" min="1" max="12" {...field} data-testid="input-fiscal-month" /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -574,13 +544,13 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Building2 className="w-5 h-5" />
-                نوع النشاط
+                {t("settings_business_type")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="businessType" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>نوع المنشأة</FormLabel>
+                  <FormLabel>{t("settings_org_type")}</FormLabel>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger data-testid="select-business-type">
@@ -589,18 +559,18 @@ export default function SettingsPage() {
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="service" data-testid="option-business-type-service">
-                        شركة خدمات (بدون تكلفة بضائع مباعة)
+                        {t("settings_bt_service")}
                       </SelectItem>
                       <SelectItem value="trading" data-testid="option-business-type-trading">
-                        شركة تجارية (تشمل تكلفة البضائع المباعة)
+                        {t("settings_bt_trading")}
                       </SelectItem>
                       <SelectItem value="manufacturing" data-testid="option-business-type-manufacturing">
-                        شركة تصنيع (تشمل تكلفة البضائع المباعة)
+                        {t("settings_bt_manufacturing")}
                       </SelectItem>
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    شركات الخدمات لا يظهر فيها قسم "تكلفة البضائع المباعة" في قائمة الدخل، بينما تظهر تلقائياً للشركات التجارية والصناعية.
+                    {t("settings_bt_desc")}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -611,7 +581,7 @@ export default function SettingsPage() {
           <OwnerGuard forceDisabled={mutation.isPending}>
             <Button type="submit" size="lg" data-testid="button-save-settings">
               <Save className="w-4 h-4 ml-2" />
-              {mutation.isPending ? "جاري الحفظ..." : "حفظ الإعدادات"}
+              {mutation.isPending ? t("settings_saving") : t("settings_save")}
             </Button>
           </OwnerGuard>
         </form>
@@ -621,15 +591,15 @@ export default function SettingsPage() {
         fallback={
           <EmptyState
             icon={<Building2 className="w-5 h-5" />}
-            title="الشركات وأسعار الصرف يديرها المالك"
-            description="يستطيع مالك مساحة العمل فقط إضافة الشركات وضبط أسعار الصرف. تواصل معه إن احتجت تغييراً هنا."
+            title={t("settings_companies_fx_owner")}
+            description={t("settings_companies_fx_owner_desc")}
             testId="empty-owner-only-companies-fx"
           />
         }
       >
         <Card data-testid="card-settings-companies">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Building2 className="w-5 h-5" />الشركات (متعدد الكيانات)</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Building2 className="w-5 h-5" />{t("settings_companies_title")}</CardTitle>
           </CardHeader>
           <CardContent>
             <CompaniesPanel />
@@ -644,13 +614,13 @@ export default function SettingsPage() {
       <OwnerOnly>
         <Card data-testid="card-settings-fx">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Globe className="w-5 h-5" />أسعار الصرف</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Globe className="w-5 h-5" />{t("settings_fx_title")}</CardTitle>
           </CardHeader>
           <CardContent>
             {activeCompany ? (
               <FxPanel company={activeCompany} />
             ) : (
-              <div className="text-sm text-muted-foreground">لا توجد شركة نشطة. أضف شركة أولاً ثم اخترها من شريط العلوي.</div>
+              <div className="text-sm text-muted-foreground">{t("settings_no_active_company")}</div>
             )}
           </CardContent>
         </Card>

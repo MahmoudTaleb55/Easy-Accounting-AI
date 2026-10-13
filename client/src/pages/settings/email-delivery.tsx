@@ -6,9 +6,11 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useLocale } from "@/contexts/locale-context";
+import { useLocale, type Locale } from "@/contexts/locale-context";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { useT, type StringKey } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { isString, useSessionStorageState } from "@/hooks/use-session-storage-state";
 import {
   isRangePreset,
@@ -124,25 +126,27 @@ const RANGE_PRESET_STORAGE_KEY = "email-delivery:range";
 const RANGE_FROM_STORAGE_KEY = "email-delivery:range-from";
 const RANGE_TO_STORAGE_KEY = "email-delivery:range-to";
 
-function trendWindowLabel(window: TrendWindow, ar: boolean): string {
+type TFn = (key: StringKey) => string;
+
+function trendWindowLabel(window: TrendWindow, tr: TFn): string {
   switch (window) {
     case "1":
-      return ar ? "آخر 24 ساعة" : "Last 24 hours";
+      return tr("edh_win_24h");
     case "7":
-      return ar ? "آخر 7 أيام" : "Last 7 days";
+      return tr("edh_win_7d");
     case "30":
-      return ar ? "آخر 30 يومًا" : "Last 30 days";
+      return tr("edh_win_30d");
   }
 }
 
-function trendWindowShort(window: TrendWindow, ar: boolean): string {
+function trendWindowShort(window: TrendWindow, tr: TFn): string {
   switch (window) {
     case "1":
-      return ar ? "٢٤س" : "24h";
+      return tr("edh_win_24h_short");
     case "7":
-      return ar ? "٧ أيام" : "7d";
+      return tr("edh_win_7d_short");
     case "30":
-      return ar ? "٣٠ يومًا" : "30d";
+      return tr("edh_win_30d_short");
   }
 }
 
@@ -181,31 +185,31 @@ function toDateOnly(d: Date): string {
 
 function statusDescriptor(
   status: DeliveryStatus | string,
-  ar: boolean,
+  tr: TFn,
 ): { label: string; tone: DeliveryTone; Icon: typeof MailCheck } {
   switch (status) {
     case "sent":
-      return { label: ar ? "أُرسلت" : "Sent", tone: "info", Icon: Send };
+      return { label: tr("edh_st_sent"), tone: "info", Icon: Send };
     case "delivered":
-      return { label: ar ? "وصلت" : "Delivered", tone: "success", Icon: MailCheck };
+      return { label: tr("edh_st_delivered"), tone: "success", Icon: MailCheck };
     case "delivery_delayed":
-      return { label: ar ? "تأخّر التسليم" : "Delayed", tone: "warning", Icon: Clock };
+      return { label: tr("edh_st_delayed"), tone: "warning", Icon: Clock };
     case "bounced":
-      return { label: ar ? "ارتدّت" : "Bounced", tone: "destructive", Icon: MailX };
+      return { label: tr("edh_st_bounced"), tone: "destructive", Icon: MailX };
     case "complained":
-      return { label: ar ? "بلاغ سبام" : "Spam report", tone: "destructive", Icon: MailWarning };
+      return { label: tr("edh_st_spam"), tone: "destructive", Icon: MailWarning };
     case "opened":
-      return { label: ar ? "فُتحت" : "Opened", tone: "info", Icon: Eye };
+      return { label: tr("edh_st_opened"), tone: "info", Icon: Eye };
     case "clicked":
-      return { label: ar ? "نُقر عليها" : "Clicked", tone: "info", Icon: MousePointerClick };
+      return { label: tr("edh_st_clicked"), tone: "info", Icon: MousePointerClick };
     case "send_failed":
-      return { label: ar ? "فشل الإرسال" : "Failed", tone: "destructive", Icon: AlertTriangle };
+      return { label: tr("edh_st_failed"), tone: "destructive", Icon: AlertTriangle };
     case "not_configured":
-      return { label: ar ? "البريد غير مفعّل" : "Email off", tone: "muted", Icon: Mail };
+      return { label: tr("edh_st_email_off"), tone: "muted", Icon: Mail };
     case "queued":
-      return { label: ar ? "بانتظار" : "Queued", tone: "muted", Icon: Mail };
+      return { label: tr("edh_st_queued"), tone: "muted", Icon: Mail };
     default:
-      return { label: ar ? "بانتظار" : "Pending", tone: "muted", Icon: Mail };
+      return { label: tr("edh_st_pending"), tone: "muted", Icon: Mail };
   }
 }
 
@@ -222,18 +226,18 @@ const TONE_BADGE: Record<DeliveryTone, string> = {
 
 function transportDescriptor(
   transport: Transport,
-  ar: boolean,
+  tr: TFn,
 ): { label: string; Icon: typeof Mail } {
   if (transport === "invitation") {
-    return { label: ar ? "دعوة فريق" : "Invitation", Icon: UserPlus };
+    return { label: tr("edh_tr_invitation"), Icon: UserPlus };
   }
-  return { label: ar ? "استعادة كلمة المرور" : "Password reset", Icon: KeyRound };
+  return { label: tr("edh_tr_password"), Icon: KeyRound };
 }
 
-function formatDate(value: string | null, ar: boolean): string {
+function formatDate(value: string | null, locale: Locale): string {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString(ar ? "ar" : "en", {
+    return new Date(value).toLocaleString(locale, {
       dateStyle: "medium",
       timeStyle: "short",
     });
@@ -245,6 +249,7 @@ function formatDate(value: string | null, ar: boolean): string {
 export default function EmailDeliveryPage() {
   const { locale } = useLocale();
   const ar = locale === "ar";
+  const tr = useT();
   const { role } = useAuth();
   const isAdmin = role === "owner";
 
@@ -421,11 +426,9 @@ export default function EmailDeliveryPage() {
   if (role && !isAdmin) {
     return (
       <div className="max-w-2xl py-12" data-testid="email-delivery-forbidden">
-        <h1 className="font-serif text-2xl tracking-tight">{ar ? "غير مصرح" : "Not authorized"}</h1>
+        <h1 className="font-serif text-2xl tracking-tight">{tr("edh_not_authorized")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {ar
-            ? "صحة بريد المعاملات متاحة لمالك مساحة العمل فقط."
-            : "Email delivery health is restricted to workspace admins."}
+          {tr("edh_forbidden_desc")}
         </p>
       </div>
     );
@@ -435,39 +438,37 @@ export default function EmailDeliveryPage() {
     <div className="space-y-8 max-w-6xl" data-testid="page-email-delivery">
       <header>
         <h1 className="font-serif text-3xl tracking-tight">
-          {ar ? "صحة بريد المعاملات" : "Email delivery health"}
+          {tr("edh_title")}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ar
-            ? "كل عمليات الإرسال الأخيرة عبر دعوات الفريق ورسائل استعادة كلمة المرور — مع حالة التسليم وأي إخفاقات."
-            : "Every recent send across team invitations and password-reset emails — with delivery status and any failures."}
+          {tr("edh_subtitle")}
         </p>
       </header>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="grid-summary">
-        <SummaryStat label={ar ? "إجمالي" : "Total"} value={summary.all} testid="stat-total" />
+        <SummaryStat label={tr("edh_total")} value={summary.all} testid="stat-total" />
         <SummaryStat
-          label={ar ? "وصلت" : "Delivered"}
+          label={tr("edh_delivered")}
           value={summary.delivered}
           tone="success"
           testid="stat-delivered"
         />
         <SummaryStat
-          label={ar ? "إخفاقات" : "Failures"}
+          label={tr("edh_failures")}
           value={summary.failed}
           tone="destructive"
           testid="stat-failed"
         />
         <SummaryStat
-          label={ar ? "بالانتظار" : "Pending"}
+          label={tr("edh_pending")}
           value={summary.pending}
           tone="muted"
           testid="stat-pending"
         />
       </div>
 
-      {role === "owner" && <AlertSettingsCard ar={ar} />}
-      {role === "owner" && <RecentAlertsCard ar={ar} />}
+      {role === "owner" && <AlertSettingsCard locale={locale} />}
+      {role === "owner" && <RecentAlertsCard locale={locale} />}
 
       {trends && (() => {
         const isAllQuiet =
@@ -483,17 +484,13 @@ export default function EmailDeliveryPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground" data-testid="text-trends-window-label">
-                  {trendWindowLabel(trendWindow, ar)}
+                  {trendWindowLabel(trendWindow, tr)}
                 </div>
                 <div className="mt-0.5 text-sm font-medium">
-                  {ar
-                    ? "تنبيهات سمعة المُرسِل"
-                    : "Sender-reputation signals"}
+                  {tr("edh_reputation_alerts")}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground sm:hidden">
-                  {ar
-                    ? "مرّر فوق رقم لرؤية التوزيع اليومي."
-                    : "Hover a chip to see the daily breakdown."}
+                  {tr("edh_hover_daily")}
                 </p>
               </div>
               <div className="flex flex-col items-start gap-2 sm:items-end">
@@ -505,53 +502,51 @@ export default function EmailDeliveryPage() {
                   onValueChange={(value) => {
                     if (isTrendWindow(value)) setTrendWindow(value);
                   }}
-                  aria-label={ar ? "اختيار نافذة الاتجاه" : "Select trend window"}
+                  aria-label={tr("edh_select_window")}
                   data-testid="toggle-trend-window"
                 >
                   {TREND_WINDOWS.map((w) => (
                     <ToggleGroupItem
                       key={w}
                       value={w}
-                      aria-label={trendWindowLabel(w, ar)}
+                      aria-label={trendWindowLabel(w, tr)}
                       data-testid={`toggle-trend-window-${w}`}
                     >
-                      {trendWindowShort(w, ar)}
+                      {trendWindowShort(w, tr)}
                     </ToggleGroupItem>
                   ))}
                 </ToggleGroup>
                 <p className="hidden text-xs text-muted-foreground sm:block">
-                  {ar
-                    ? "مرّر فوق رقم لرؤية التوزيع اليومي."
-                    : "Hover a chip to see the daily breakdown."}
+                  {tr("edh_hover_daily")}
                 </p>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="grid-trends">
               <TrendChip
-                label={ar ? "ارتدّت" : "Bounced"}
+                label={tr("edh_bounced")}
                 Icon={MailX}
                 series={trends.series.bounced}
                 total={trends.totals.bounced}
-                ar={ar}
-                windowLabel={trendWindowLabel(trendWindow, ar)}
+                locale={locale}
+                windowLabel={trendWindowLabel(trendWindow, tr)}
                 testid="chip-trend-bounced"
               />
               <TrendChip
-                label={ar ? "بلاغات سبام" : "Spam reports"}
+                label={tr("edh_spam_reports")}
                 Icon={MailWarning}
                 series={trends.series.complained}
                 total={trends.totals.complained}
-                ar={ar}
-                windowLabel={trendWindowLabel(trendWindow, ar)}
+                locale={locale}
+                windowLabel={trendWindowLabel(trendWindow, tr)}
                 testid="chip-trend-complained"
               />
               <TrendChip
-                label={ar ? "فشل الإرسال" : "Send failures"}
+                label={tr("edh_send_failures")}
                 Icon={AlertTriangle}
                 series={trends.series.send_failed}
                 total={trends.totals.send_failed}
-                ar={ar}
-                windowLabel={trendWindowLabel(trendWindow, ar)}
+                locale={locale}
+                windowLabel={trendWindowLabel(trendWindow, tr)}
                 testid="chip-trend-send-failed"
               />
             </div>
@@ -560,9 +555,7 @@ export default function EmailDeliveryPage() {
                 className="mt-3 text-xs text-muted-foreground"
                 data-testid="text-trends-empty"
               >
-                {ar
-                  ? `لا توجد تنبيهات سمعة المُرسِل خلال ${trendWindowShort(trendWindow, ar)}. ستظهر هنا أعداد الرسائل المرتدّة وبلاغات السبام وإخفاقات الإرسال إن حدثت.`
-                  : `No sender-reputation events in the last ${trendWindowShort(trendWindow, ar)}. Bounces, spam reports, and send failures will show up here when they happen.`}
+                {tr("edh_no_rep_alerts").replace("{window}", trendWindowShort(trendWindow, tr))}
               </p>
             )}
           </div>
@@ -572,50 +565,48 @@ export default function EmailDeliveryPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{ar ? "عمليات الإرسال الأخيرة" : "Recent sends"}</CardTitle>
+          <CardTitle>{tr("edh_recent_sends")}</CardTitle>
           <CardDescription>
-            {ar
-              ? "اضغط أي صف لرؤية كل أحداث دورة حياة الرسالة."
-              : "Click any row to see the full lifecycle of that message."}
+            {tr("edh_recent_hint")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-3" data-testid="filters">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="flex-1 space-y-1.5">
-                <Label htmlFor="filter-email">{ar ? "البريد الإلكتروني" : "Recipient"}</Label>
+                <Label htmlFor="filter-email">{tr("edh_recipient")}</Label>
                 <div className="relative">
                   <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="filter-email"
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
-                    placeholder={ar ? "ابحث ببريد المستلم…" : "Search by recipient…"}
+                    placeholder={tr("edh_search_recipient")}
                     className="ps-8"
                     data-testid="input-filter-email"
                   />
                 </div>
               </div>
               <div className="w-full sm:w-56 space-y-1.5">
-                <Label>{ar ? "الحالة" : "Status"}</Label>
+                <Label>{tr("edh_status")}</Label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger data-testid="select-filter-status">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all" data-testid="option-status-all">
-                      {ar ? "كل الحالات" : "All statuses"}
+                      {tr("edh_all_statuses")}
                     </SelectItem>
                     {STATUS_FILTERS.map((s) => (
                       <SelectItem key={s as string} value={s as string} data-testid={`option-status-${s}`}>
-                        {statusDescriptor(s, ar).label}
+                        {statusDescriptor(s, tr).label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="w-full sm:w-56 space-y-1.5">
-                <Label>{ar ? "الفترة الزمنية" : "Date range"}</Label>
+                <Label>{tr("edh_date_range")}</Label>
                 <Select
                   value={range}
                   onValueChange={(v) => setRange(v as RangePreset)}
@@ -625,19 +616,19 @@ export default function EmailDeliveryPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all" data-testid="option-range-all">
-                      {ar ? "كل الوقت" : "All time"}
+                      {tr("edh_all_time")}
                     </SelectItem>
                     <SelectItem value="7d" data-testid="option-range-7d">
-                      {ar ? "آخر 7 أيام" : "Last 7 days"}
+                      {tr("edh_win_7d")}
                     </SelectItem>
                     <SelectItem value="30d" data-testid="option-range-30d">
-                      {ar ? "آخر 30 يومًا" : "Last 30 days"}
+                      {tr("edh_win_30d")}
                     </SelectItem>
                     <SelectItem value="90d" data-testid="option-range-90d">
-                      {ar ? "آخر 90 يومًا" : "Last 90 days"}
+                      {tr("edh_win_90d")}
                     </SelectItem>
                     <SelectItem value="custom" data-testid="option-range-custom">
-                      {ar ? "نطاق مخصّص" : "Custom range"}
+                      {tr("edh_custom_range")}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -649,7 +640,7 @@ export default function EmailDeliveryPage() {
                 data-testid="custom-range"
               >
                 <div className="flex-1 space-y-1.5">
-                  <Label htmlFor="filter-from">{ar ? "من" : "From"}</Label>
+                  <Label htmlFor="filter-from">{tr("edh_from")}</Label>
                   <Input
                     id="filter-from"
                     type="date"
@@ -660,7 +651,7 @@ export default function EmailDeliveryPage() {
                   />
                 </div>
                 <div className="flex-1 space-y-1.5">
-                  <Label htmlFor="filter-to">{ar ? "إلى" : "To"}</Label>
+                  <Label htmlFor="filter-to">{tr("edh_to")}</Label>
                   <Input
                     id="filter-to"
                     type="date"
@@ -680,7 +671,7 @@ export default function EmailDeliveryPage() {
                 data-testid="button-refresh"
               >
                 <RefreshCw className={`me-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-                {ar ? "تحديث" : "Refresh"}
+                {tr("edh_refresh")}
               </Button>
               <Button
                 type="button"
@@ -694,7 +685,7 @@ export default function EmailDeliveryPage() {
                   download
                 >
                   <Download className="me-2 h-4 w-4" />
-                  {ar ? "تنزيل CSV" : "Download CSV"}
+                  {tr("edh_download_csv")}
                 </a>
               </Button>
               {/* Live row count for the current filters. Shown next to the
@@ -714,12 +705,8 @@ export default function EmailDeliveryPage() {
                     <Loader2 className="me-1 inline h-3 w-3 animate-spin align-[-2px]" />
                   )}
                   {exportAtCap
-                    ? ar
-                      ? `+${exportCap.toLocaleString("ar")} صفًا`
-                      : `${exportCap.toLocaleString("en")}+ rows`
-                    : ar
-                      ? `${exportRowCount.toLocaleString("ar")} صفًا للتصدير`
-                      : `${exportRowCount.toLocaleString("en")} ${exportRowCount === 1 ? "row" : "rows"} to export`}
+                    ? tr("edh_rows_cap").replace("{n}", exportCap.toLocaleString(locale))
+                    : tr("edh_rows_export").replace("{n}", exportRowCount.toLocaleString(locale))}
                 </span>
               )}
               {(dateBounds.from || dateBounds.to) && (
@@ -727,9 +714,9 @@ export default function EmailDeliveryPage() {
                   className="text-xs text-muted-foreground"
                   data-testid="text-active-range"
                 >
-                  {ar ? "النطاق:" : "Window:"} {dateBounds.from || (ar ? "—" : "—")}
+                  {tr("edh_window_label")} {dateBounds.from || "—"}
                   {" → "}
-                  {dateBounds.to || (ar ? "—" : "—")}
+                  {dateBounds.to || "—"}
                 </span>
               )}
             </div>
@@ -744,9 +731,7 @@ export default function EmailDeliveryPage() {
               >
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
-                  {ar
-                    ? `يعرض أحدث ${exportRowsDisplayed.toLocaleString("ar")} فقط — ضيّق النطاق للحصول على تصدير كامل.`
-                    : `Showing the most recent ${exportRowsDisplayed.toLocaleString("en")} — narrow the window for a full export.`}
+                  {tr("edh_showing_latest").replace("{n}", exportRowsDisplayed.toLocaleString(locale))}
                 </span>
               </div>
             )}
@@ -762,9 +747,7 @@ export default function EmailDeliveryPage() {
                 className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground"
                 data-testid="state-empty"
               >
-                {ar
-                  ? "لا توجد رسائل تطابق هذه المرشحات."
-                  : "No messages match these filters yet."}
+                {tr("edh_no_match")}
               </div>
             ) : (
               <div
@@ -773,24 +756,20 @@ export default function EmailDeliveryPage() {
               >
                 <Mail className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden />
                 <div className="mt-3 text-sm font-medium">
-                  {ar
-                    ? "لم تُرسَل أي دعوات أو رسائل استعادة كلمة المرور بعد."
-                    : "You haven't sent any invitations or password resets yet."}
+                  {tr("edh_no_sends_yet")}
                 </div>
                 <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-                  {ar
-                    ? "بمجرد دعوة زميل في الفريق أو طلب أحد المستخدمين استعادة كلمة المرور، ستظهر سجلات التسليم هنا."
-                    : "Once your team invites a teammate or someone resets their password, the delivery records will show up here."}
+                  {tr("edh_no_sends_hint")}
                 </p>
               </div>
             )
           ) : (
             <ul className="divide-y divide-border rounded-md border" data-testid="list-deliveries">
               {deliveries.map((d) => {
-                const s = statusDescriptor(d.latestStatus, ar);
+                const s = statusDescriptor(d.latestStatus, tr);
                 const StatusIcon = s.Icon;
-                const t = transportDescriptor(d.transport, ar);
-                const TransportIcon = t.Icon;
+                const transportDesc = transportDescriptor(d.transport, tr);
+                const TransportIcon = transportDesc.Icon;
                 const rowKey = `${d.transport}-${d.key}`;
                 return (
                   <li
@@ -805,7 +784,7 @@ export default function EmailDeliveryPage() {
                     >
                       <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground sm:w-44">
                         <TransportIcon className="h-3.5 w-3.5" />
-                        <span data-testid={`text-transport-${rowKey}`}>{t.label}</span>
+                        <span data-testid={`text-transport-${rowKey}`}>{transportDesc.label}</span>
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium" data-testid={`text-recipient-${rowKey}`}>
@@ -815,7 +794,7 @@ export default function EmailDeliveryPage() {
                           {d.latestError ? (
                             <span data-testid={`text-error-${rowKey}`}>{d.latestError}</span>
                           ) : (
-                            formatDate(d.latestAt ?? d.firstAt, ar)
+                            formatDate(d.latestAt ?? d.firstAt, locale)
                           )}
                         </div>
                       </div>
@@ -842,12 +821,10 @@ export default function EmailDeliveryPage() {
             <>
               <SheetHeader>
                 <SheetTitle>
-                  {transportDescriptor(selected.transport, ar).label} · {selected.recipient}
+                  {transportDescriptor(selected.transport, tr).label} · {selected.recipient}
                 </SheetTitle>
                 <SheetDescription>
-                  {ar
-                    ? "كل أحداث دورة حياة الرسالة، الأحدث أولاً."
-                    : "Every lifecycle event for this message, newest first."}
+                  {tr("edh_lifecycle_hint")}
                 </SheetDescription>
               </SheetHeader>
 
@@ -855,15 +832,15 @@ export default function EmailDeliveryPage() {
                 <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                   <div data-testid="text-message-id">
                     <span className="font-medium text-foreground">
-                      {ar ? "معرف الرسالة" : "Message ID"}:
+                      {tr("edh_message_id")}:
                     </span>{" "}
-                    {selected.messageId ?? (ar ? "(لم يصل معرف من المزود)" : "(no provider id yet)")}
+                    {selected.messageId ?? tr("edh_no_provider_id")}
                   </div>
                   <div className="mt-1">
                     <span className="font-medium text-foreground">
-                      {ar ? "آخر تحديث" : "Last update"}:
+                      {tr("edh_last_update")}:
                     </span>{" "}
-                    {formatDate(selected.latestAt ?? selected.firstAt, ar)}
+                    {formatDate(selected.latestAt ?? selected.firstAt, locale)}
                   </div>
                 </div>
 
@@ -874,16 +851,16 @@ export default function EmailDeliveryPage() {
                     </div>
                   ) : eventsError ? (
                     <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" data-testid="state-events-error">
-                      {ar ? "تعذّر تحميل الأحداث." : "Could not load events."}
+                      {tr("edh_events_error")}
                     </div>
                   ) : events.length === 0 ? (
                     <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground" data-testid="state-events-empty">
-                      {ar ? "لا توجد أحداث بعد." : "No events recorded yet."}
+                      {tr("edh_no_events")}
                     </div>
                   ) : (
                     <ol className="space-y-2" data-testid="list-events">
                       {events.map((ev) => {
-                        const s = statusDescriptor(ev.type, ar);
+                        const s = statusDescriptor(ev.type, tr);
                         const Icon = s.Icon;
                         return (
                           <li
@@ -900,7 +877,7 @@ export default function EmailDeliveryPage() {
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium">{s.label}</span>
                                 <span className="text-xs text-muted-foreground">
-                                  {formatDate(ev.createdAt, ar)}
+                                  {formatDate(ev.createdAt, locale)}
                                 </span>
                               </div>
                               {ev.error && (
@@ -929,7 +906,7 @@ function TrendChip({
   Icon,
   series,
   total,
-  ar,
+  locale,
   windowLabel,
   testid,
 }: {
@@ -937,7 +914,7 @@ function TrendChip({
   Icon: typeof Mail;
   series: TrendPoint[];
   total: number;
-  ar: boolean;
+  locale: Locale;
   windowLabel: string;
   testid: string;
 }) {
@@ -975,7 +952,7 @@ function TrendChip({
               data-testid={`${testid}-day-${p.date}`}
             >
               <span className="text-muted-foreground">
-                {new Date(`${p.date}T00:00:00Z`).toLocaleDateString(ar ? "ar" : "en", {
+                {new Date(`${p.date}T00:00:00Z`).toLocaleDateString(locale, {
                   weekday: "short",
                   month: "short",
                   day: "numeric",
@@ -1104,11 +1081,11 @@ const DEFAULT_RETRY_MINUTES = 60;
  */
 function OverrideBadge({
   isOverride,
-  ar,
+  tr,
   testid,
 }: {
   isOverride: boolean;
-  ar: boolean;
+  tr: TFn;
   testid: string;
 }) {
   if (isOverride) {
@@ -1119,7 +1096,7 @@ function OverrideBadge({
         data-testid={testid}
         data-source="custom"
       >
-        {ar ? "مخصّص" : "Custom"}
+        {tr("edh_custom")}
       </Badge>
     );
   }
@@ -1130,7 +1107,7 @@ function OverrideBadge({
       data-testid={testid}
       data-source="platform-default"
     >
-      {ar ? "افتراضي" : "Platform default"}
+      {tr("edh_platform_default")}
     </Badge>
   );
 }
@@ -1141,9 +1118,10 @@ function OverrideBadge({
  * threshold against them in the same view. The "evaluate now" button reuses
  * the same evaluator the cron uses, so it produces real banners.
  */
-function AlertSettingsCard({ ar }: { ar: boolean }) {
+function AlertSettingsCard({ locale }: { locale: Locale }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const tr = useT();
 
   const { data, isLoading } = useQuery<AlertSettings>({
     queryKey: ["/api/auth/email-delivery-alerts/settings"],
@@ -1197,17 +1175,15 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/auth/email-delivery-alerts/settings"] });
       toast({
-        title: ar ? "تم الحفظ" : "Saved",
-        description: ar
-          ? "تم تحديث إعدادات التنبيهات."
-          : "Alert thresholds updated.",
+        title: tr("edh_saved"),
+        description: tr("edh_settings_updated"),
       });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       toast({
         variant: "destructive",
-        title: ar ? "تعذّر الحفظ" : "Save failed",
-        description: err.message ?? "",
+        title: tr("edh_save_failed"),
+        description: tr(mapErrorKey(err)),
       });
     },
   });
@@ -1253,27 +1229,19 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/email-deliveries"] });
       const fired = result.fired === true;
       toast({
-        title: fired
-          ? ar
-            ? "تم إطلاق التنبيه"
-            : "Alert fired"
-          : ar
-          ? "لا يوجد تنبيه"
-          : "No alert",
+        title: fired ? tr("edh_alert_fired") : tr("edh_no_alert"),
         description: fired
-          ? ar
-            ? `تم تسجيل ${result.failures} إخفاقات خلال ${result.windowHours} ساعة.`
-            : `${result.failures} failures recorded in the last ${result.windowHours}h.`
-          : ar
-          ? "الإخفاقات الحالية ضمن الحد المسموح."
-          : "Current failures are within the configured thresholds.",
+          ? tr("edh_failures_window")
+              .replace("{failures}", String(result.failures))
+              .replace("{hours}", String(result.windowHours))
+          : tr("edh_within_limit"),
       });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       toast({
         variant: "destructive",
-        title: ar ? "تعذّر التشغيل" : "Evaluation failed",
-        description: err.message ?? "",
+        title: tr("edh_eval_failed"),
+        description: tr(mapErrorKey(err)),
       });
     },
   });
@@ -1304,11 +1272,9 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
   return (
     <Card data-testid="card-email-delivery-alerts">
       <CardHeader>
-        <CardTitle>{ar ? "تنبيهات صحة البريد" : "Delivery health alerts"}</CardTitle>
+        <CardTitle>{tr("edh_health_alerts")}</CardTitle>
         <CardDescription>
-          {ar
-            ? "نبّه المالكين عند ارتفاع نسبة إخفاقات بريد المعاملات فوق الحد المحدّد."
-            : "Notify workspace owners when transactional email failures spike past the configured threshold."}
+          {tr("edh_health_desc")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -1316,37 +1282,33 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
           <div className="flex items-start justify-between gap-4 rounded-md border bg-muted/30 p-3">
             <div>
               <Label className="text-sm font-medium">
-                {ar ? "تفعيل التنبيهات" : "Enable alerts"}
+                {tr("edh_enable_alerts")}
               </Label>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {ar
-                  ? "يعمل التقييم في الخلفية كل 10 دقائق."
-                  : "Evaluator runs in the background every 10 minutes."}
+                {tr("edh_eval_bg")}
               </p>
             </div>
             <Switch
               checked={enabled}
               onCheckedChange={setEnabled}
               data-testid="switch-alerts-enabled"
-              aria-label={ar ? "تفعيل التنبيهات" : "Enable alerts"}
+              aria-label={tr("edh_enable_alerts")}
             />
           </div>
           <div className="flex items-start justify-between gap-4 rounded-md border bg-muted/30 p-3">
             <div>
               <Label className="text-sm font-medium">
-                {ar ? "إرسال بريد للمالكين" : "Email owners on alert"}
+                {tr("edh_email_owners")}
               </Label>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {ar
-                  ? "بالإضافة إلى الشريط داخل التطبيق."
-                  : "In addition to the in-app banner."}
+                {tr("edh_in_addition")}
               </p>
             </div>
             <Switch
               checked={emailEnabled}
               onCheckedChange={setEmailEnabled}
               data-testid="switch-alerts-email-enabled"
-              aria-label={ar ? "إرسال بريد للمالكين" : "Email owners on alert"}
+              aria-label={tr("edh_email_owners")}
             />
           </div>
         </div>
@@ -1354,7 +1316,7 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="alert-window">
-              {ar ? "نافذة المراقبة (ساعات)" : "Window (hours)"}
+              {tr("edh_window_hours")}
             </Label>
             <Input
               id="alert-window"
@@ -1366,12 +1328,12 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
               data-testid="input-alert-window-hours"
             />
             <p className="text-xs text-muted-foreground">
-              {ar ? "1 إلى 168 ساعة." : "Between 1 and 168."}
+              {tr("edh_window_range")}
             </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="alert-absolute">
-              {ar ? "الحد المطلق للإخفاقات" : "Absolute failure threshold"}
+              {tr("edh_abs_threshold")}
             </Label>
             <Input
               id="alert-absolute"
@@ -1382,14 +1344,12 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
               data-testid="input-alert-absolute"
             />
             <p className="text-xs text-muted-foreground">
-              {ar
-                ? "يطلق عند بلوغ هذا العدد بصرف النظر عن الحجم."
-                : "Fires when failures hit this count regardless of volume."}
+              {tr("edh_abs_hint")}
             </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="alert-ratio">
-              {ar ? "حد النسبة (%)" : "Ratio threshold (%)"}
+              {tr("edh_ratio_threshold")}
             </Label>
             <Input
               id="alert-ratio"
@@ -1402,12 +1362,12 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
               data-testid="input-alert-ratio"
             />
             <p className="text-xs text-muted-foreground">
-              {ar ? "اضبط 0 للتعطيل." : "Set to 0 to disable the ratio rule."}
+              {tr("edh_ratio_disable")}
             </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="alert-min-samples">
-              {ar ? "أقل عدد رسائل لاحتساب النسبة" : "Minimum sends for ratio"}
+              {tr("edh_min_sends")}
             </Label>
             <Input
               id="alert-min-samples"
@@ -1418,14 +1378,12 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
               data-testid="input-alert-min-samples"
             />
             <p className="text-xs text-muted-foreground">
-              {ar
-                ? "يمنع إطلاق التنبيه على أحجام صغيرة."
-                : "Avoids ratio alerts on tiny sample sizes."}
+              {tr("edh_min_sends_hint")}
             </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="alert-cooldown">
-              {ar ? "فترة التهدئة (دقائق)" : "Cooldown (minutes)"}
+              {tr("edh_cooldown")}
             </Label>
             <Input
               id="alert-cooldown"
@@ -1436,21 +1394,17 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
               data-testid="input-alert-cooldown"
             />
             <p className="text-xs text-muted-foreground">
-              {ar
-                ? "أقل فاصل بين تنبيهين متتاليين."
-                : "Minimum gap between consecutive alerts."}
+              {tr("edh_cooldown_hint")}
             </p>
           </div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="alert-dedupe-hours">
-                {ar
-                  ? "مهلة عدم تكرار البريد لنفس المستلم (ساعات)"
-                  : "Per-recipient email dedupe (hours)"}
+                {tr("edh_dedupe_window")}
               </Label>
               <OverrideBadge
                 isOverride={data?.dedupeHours != null}
-                ar={ar}
+                tr={tr}
                 testid="badge-alert-dedupe-source"
               />
             </div>
@@ -1468,21 +1422,17 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
               data-testid="input-alert-dedupe-hours"
             />
             <p className="text-xs text-muted-foreground">
-              {ar
-                ? "تخطّي إعادة بريد لنفس المالك لنفس السبب خلال هذه المدة. ارفعه لقوائم بريدية مزعجة، أو اضبط 0 للتعطيل."
-                : "Skip emailing the same owner about the same reason within this many hours. Raise it for chatty distribution lists, or set to 0 to disable."}
+              {tr("edh_dedupe_hint")}
             </p>
           </div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="alert-retry-minutes">
-                {ar
-                  ? "نافذة إعادة محاولة الإرسال (دقائق)"
-                  : "Failed-send retry window (minutes)"}
+                {tr("edh_retry_window")}
               </Label>
               <OverrideBadge
                 isOverride={data?.retryMinutes != null}
-                ar={ar}
+                tr={tr}
                 testid="badge-alert-retry-source"
               />
             </div>
@@ -1500,9 +1450,7 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
               data-testid="input-alert-retry-minutes"
             />
             <p className="text-xs text-muted-foreground">
-              {ar
-                ? "إعادة محاولة المستلمين الذين فشل بريدهم خلال هذه المدة. اضبط 0 لإيقاف إعادة المحاولة."
-                : "Re-attempt recipients whose previous send failed within this many minutes. Set to 0 to skip retries entirely."}
+              {tr("edh_retry_hint")}
             </p>
           </div>
         </div>
@@ -1514,26 +1462,14 @@ function AlertSettingsCard({ ar }: { ar: boolean }) {
             disabled={evaluateNow.isPending || isLoading}
             data-testid="button-evaluate-alerts-now"
           >
-            {evaluateNow.isPending
-              ? ar
-                ? "جارٍ التقييم..."
-                : "Evaluating..."
-              : ar
-              ? "تقييم الآن"
-              : "Evaluate now"}
+            {evaluateNow.isPending ? tr("edh_evaluating") : tr("edh_evaluate_now")}
           </Button>
           <Button
             onClick={() => save.mutate()}
             disabled={!dirty || save.isPending || isLoading}
             data-testid="button-save-alert-settings"
           >
-            {save.isPending
-              ? ar
-                ? "جارٍ الحفظ..."
-                : "Saving..."
-              : ar
-              ? "حفظ الإعدادات"
-              : "Save settings"}
+            {save.isPending ? tr("edh_saving") : tr("edh_save_settings")}
           </Button>
         </div>
       </CardContent>
@@ -1573,9 +1509,10 @@ interface RecentAlertsPage {
 
 const RECENT_ALERTS_PAGE_SIZE = 20;
 
-function RecentAlertsCard({ ar }: { ar: boolean }) {
+function RecentAlertsCard({ locale }: { locale: Locale }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const tr = useT();
   // Track which alert rows are expanded so the recipients sub-row only
   // pays its query cost (and the SQL DISTINCT-ON roll-up) the first time
   // an admin asks to see the address list for that alert.
@@ -1627,23 +1564,15 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
         queryKey: ["/api/auth/email-delivery-alerts/active"],
       });
       toast({
-        title: result.cleared
-          ? ar ? "تم إعادة التسليح" : "Cooldown reset"
-          : ar ? "لا يوجد تنبيه حديث" : "Nothing to re-arm",
-        description: result.cleared
-          ? ar
-            ? "سيقوم المُقيِّم بإعادة الفحص في الجولة التالية."
-            : "The evaluator will re-check on the next pass."
-          : ar
-            ? "لا يوجد تنبيه حديث يحجب التقييم."
-            : "There is no recent alert blocking evaluation.",
+        title: result.cleared ? tr("edh_cooldown_reset") : tr("edh_nothing_rearm"),
+        description: result.cleared ? tr("edh_rearm_next") : tr("edh_rearm_none"),
       });
     },
-    onError: (err: Error) => {
+    onError: (err: unknown) => {
       toast({
         variant: "destructive",
-        title: ar ? "تعذّر إعادة التسليح" : "Re-arm failed",
-        description: err.message ?? "",
+        title: tr("edh_rearm_failed"),
+        description: tr(mapErrorKey(err)),
       });
     },
   });
@@ -1667,12 +1596,10 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
           <div>
             <CardTitle className="flex items-center gap-2">
               <History className="h-4 w-4" />
-              {ar ? "آخر التنبيهات" : "Recent alerts"}
+              {tr("edh_recent_alerts")}
             </CardTitle>
             <CardDescription>
-              {ar
-                ? "سجل لمن أسكت كل تنبيه ومتى. أعِد التسليح لتجاوز فترة التهدئة في الجولة التالية."
-                : "Audit log of who silenced each alert and when. Re-arm to bypass the cooldown on the next evaluator pass."}
+              {tr("edh_recent_alerts_hint")}
             </CardDescription>
           </div>
           <Button
@@ -1683,9 +1610,7 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
             data-testid="button-reset-cooldown"
           >
             <ShieldOff className="me-2 h-4 w-4" />
-            {rearm.isPending
-              ? ar ? "جارٍ..." : "Working..."
-              : ar ? "إعادة تسليح التهدئة" : "Reset cooldown"}
+            {rearm.isPending ? tr("edh_working") : tr("edh_reset_cooldown")}
           </Button>
         </div>
       </CardHeader>
@@ -1693,16 +1618,14 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
         {isLoading ? (
           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            {ar ? "جارٍ التحميل..." : "Loading..."}
+            {tr("edh_loading")}
           </div>
         ) : rows.length === 0 ? (
           <div
             className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground"
             data-testid="empty-recent-alerts"
           >
-            {ar
-              ? "لا توجد تنبيهات سابقة. سيظهر التنبيه هنا فور إطلاقه."
-              : "No alerts have fired yet. They will appear here as soon as one does."}
+            {tr("edh_no_past_alerts")}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1711,22 +1634,22 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                 <tr className="border-b">
                   <th className="w-8 px-2 py-2" aria-hidden="true" />
                   <th className="px-2 py-2 text-start font-medium">
-                    {ar ? "أُطلق في" : "Fired"}
+                    {tr("edh_col_fired")}
                   </th>
                   <th className="px-2 py-2 text-start font-medium">
-                    {ar ? "السبب" : "Reason"}
+                    {tr("edh_col_reason")}
                   </th>
                   <th className="px-2 py-2 text-start font-medium">
-                    {ar ? "إخفاقات / إرسالات" : "Failures / sends"}
+                    {tr("edh_col_fail_sends")}
                   </th>
                   <th className="px-2 py-2 text-start font-medium">
-                    {ar ? "البريد" : "Email"}
+                    {tr("edh_col_email")}
                   </th>
                   <th className="px-2 py-2 text-start font-medium">
-                    {ar ? "أُسكت بواسطة" : "Dismissed by"}
+                    {tr("edh_col_dismissed_by")}
                   </th>
                   <th className="px-2 py-2 text-end font-medium">
-                    {ar ? "إجراء" : "Action"}
+                    {tr("edh_col_action")}
                   </th>
                 </tr>
               </thead>
@@ -1737,7 +1660,7 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                   const dismissedDisplay = dismissed
                     ? row.dismissedByName ||
                       row.dismissedByEmail ||
-                      (ar ? "مستخدم محذوف" : "Removed user")
+                      tr("edh_removed_user")
                     : null;
                   const isExpanded = !!expanded[row.id];
                   return (
@@ -1756,9 +1679,7 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                             }))
                           }
                           aria-expanded={isExpanded}
-                          aria-label={
-                            ar ? "إظهار المستلمين" : "Show recipients"
-                          }
+                          aria-label={tr("edh_show_recipients")}
                           data-testid={`button-toggle-recipients-${row.id}`}
                           className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                         >
@@ -1770,18 +1691,14 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                         </button>
                       </td>
                       <td className="px-2 py-2 align-top whitespace-nowrap" data-testid={`text-fired-at-${row.id}`}>
-                        {formatDate(row.firedAt, ar)}
+                        {formatDate(row.firedAt, locale)}
                         <div className="text-xs text-muted-foreground">
-                          {ar
-                            ? `نافذة ${row.windowHours} ساعة`
-                            : `${row.windowHours}h window`}
+                          {tr("edh_window_n_hours").replace("{n}", String(row.windowHours))}
                         </div>
                       </td>
                       <td className="px-2 py-2 align-top" data-testid={`text-reason-${row.id}`}>
                         <Badge variant={row.reason === "ratio" ? "secondary" : "destructive"}>
-                          {row.reason === "ratio"
-                            ? ar ? "نسبة" : "Ratio"
-                            : ar ? "مطلق" : "Absolute"}
+                          {row.reason === "ratio" ? tr("edh_reason_ratio") : tr("edh_reason_absolute")}
                         </Badge>
                       </td>
                       <td className="px-2 py-2 align-top" data-testid={`text-counts-${row.id}`}>
@@ -1790,22 +1707,21 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                         </div>
                         {row.snapshot && (
                           <div className="text-xs text-muted-foreground">
-                            {ar
-                              ? `مرتد ${row.snapshot.bounced} · شكوى ${row.snapshot.complained} · فشل إرسال ${row.snapshot.send_failed}`
-                              : `${row.snapshot.bounced} bounced · ${row.snapshot.complained} complained · ${row.snapshot.send_failed} send-failed`}
+                            {tr("edh_snapshot")
+                              .replace("{bounced}", String(row.snapshot.bounced))
+                              .replace("{complained}", String(row.snapshot.complained))
+                              .replace("{failed}", String(row.snapshot.send_failed))}
                           </div>
                         )}
                       </td>
                       <td className="px-2 py-2 align-top" data-testid={`text-email-${row.id}`}>
                         {row.emailSent ? (
                           <Badge variant="outline">
-                            {ar
-                              ? `أُرسل (${row.emailRecipients})`
-                              : `Sent (${row.emailRecipients})`}
+                            {tr("edh_sent_n").replace("{n}", String(row.emailRecipients))}
                           </Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">
-                            {ar ? "لا يوجد" : "—"}
+                            {tr("edh_none")}
                           </span>
                         )}
                       </td>
@@ -1816,12 +1732,12 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                               {dismissedDisplay}
                             </div>
                             <div className="text-xs text-muted-foreground" data-testid={`text-dismissed-at-${row.id}`}>
-                              {formatDate(row.dismissedAt, ar)}
+                              {formatDate(row.dismissedAt, locale)}
                             </div>
                           </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">
-                            {ar ? "نشط" : "Active"}
+                            {tr("edh_active")}
                           </span>
                         )}
                       </td>
@@ -1837,18 +1753,12 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                                   disabled={!isMostRecent || rearm.isPending}
                                   data-testid={`button-rearm-${row.id}`}
                                 >
-                                  {ar ? "إعادة تسليح" : "Re-arm"}
+                                  {tr("edh_rearm")}
                                 </Button>
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="top">
-                              {isMostRecent
-                                ? ar
-                                  ? "يلغي فترة التهدئة لهذه الجولة."
-                                  : "Clears the cooldown for the next pass."
-                                : ar
-                                  ? "فقط أحدث تنبيه يحجب فترة التهدئة."
-                                  : "Only the most recent alert gates the cooldown."}
+                              {isMostRecent ? tr("edh_rearm_cancel") : tr("edh_rearm_latest")}
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -1862,7 +1772,7 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                         <td colSpan={7} className="px-2 pb-3 pt-0">
                           <RecipientsPanel
                             alertId={row.id}
-                            ar={ar}
+                            locale={locale}
                             variant="card"
                           />
                         </td>
@@ -1888,10 +1798,10 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                 {isFetchingNextPage ? (
                   <>
                     <Loader2 className="me-2 h-4 w-4 animate-spin" />
-                    {ar ? "جارٍ التحميل..." : "Loading..."}
+                    {tr("edh_loading")}
                   </>
                 ) : (
-                  ar ? "تحميل الأقدم" : "Load older"
+                  tr("edh_load_older")
                 )}
               </Button>
             ) : (
@@ -1899,9 +1809,7 @@ function RecentAlertsCard({ ar }: { ar: boolean }) {
                 className="text-xs text-muted-foreground"
                 data-testid="text-no-more-alerts"
               >
-                {ar
-                  ? "لا توجد سجلات أقدم."
-                  : "No older alerts to show."}
+                {tr("edh_no_older")}
               </p>
             )}
           </div>

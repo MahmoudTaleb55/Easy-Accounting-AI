@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n/dict";
 
 interface BrandMarkProps {
   className?: string;
@@ -14,10 +15,10 @@ interface BrandMarkProps {
 }
 
 /**
- * Orqam (أرقام) signature mark.
+ * Orqam signature mark.
  *
  * Three stacked ledger bars (debit / credit / balance) of decreasing length,
- * crowned by an offset spark dot — the "ذكي / smart" beat over the ledger.
+ * crowned by an offset spark dot — the "smart" beat over the ledger.
  * Monochromatic foreground + a single token-colored accent dot.
  *
  * The mark sits on the *baseline* of the wordmark when paired with text,
@@ -61,7 +62,7 @@ export function BrandMark({
       </svg>
       {withWordmark && (
         <span className={cn("font-serif font-semibold tracking-tight leading-none", wordmarkSize)}>
-          {locale === "ar" ? "أرقام" : "Orqam"}
+          {t("brand", locale)}
         </span>
       )}
     </span>

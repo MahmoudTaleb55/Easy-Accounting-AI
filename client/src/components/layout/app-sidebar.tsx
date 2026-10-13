@@ -119,8 +119,8 @@ export function AppSidebar() {
           <BrandMark size="sm" />
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <div className="text-h4 font-semibold tracking-tight truncate font-serif">Orqam</div>
-              <div className="eyebrow text-muted-foreground/80" dir="rtl">نظام محاسبي ذكي</div>
+              <div className="text-h4 font-semibold tracking-tight truncate font-serif">{t("brand")}</div>
+              <div className="eyebrow text-muted-foreground/80" dir={dir}>{t("layout_tagline")}</div>
             </div>
           )}
         </div>
@@ -178,7 +178,7 @@ export function AppSidebar() {
           className="w-full inline-flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-caption text-muted-foreground hover:text-foreground hover-elevate"
           data-testid="button-toggle-sidebar"
         >
-          {!collapsed && <span>{dir === "rtl" ? "طيّ القائمة" : "Collapse"}</span>}
+          {!collapsed && <span>{t("layout_collapse")}</span>}
           {collapsed ? (
             <ChevronExpand className="size-4 mx-auto" />
           ) : (
@@ -192,6 +192,7 @@ export function AppSidebar() {
 
 function UserBadge({ collapsed }: { collapsed: boolean }) {
   const { user, role, signOut, activeMembership } = useAuth();
+  const t = useT();
   if (!user) return null;
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "—";
   const initials = ((user.firstName?.[0] ?? "") + (user.lastName?.[0] ?? "")) || (user.email?.[0]?.toUpperCase() ?? "?");
@@ -219,19 +220,19 @@ function UserBadge({ collapsed }: { collapsed: boolean }) {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild data-testid="menu-profile">
           <Link href="/app/settings/profile">
-            <a className="flex items-center gap-2"><UserIcon className="size-3.5" /> Profile</a>
+            <a className="flex items-center gap-2"><UserIcon className="size-3.5" /> {t("layout_profile")}</a>
           </Link>
         </DropdownMenuItem>
         {role === "owner" && (
           <DropdownMenuItem asChild data-testid="menu-members">
             <Link href="/app/settings/members">
-              <a className="flex items-center gap-2"><Users className="size-3.5" /> Members</a>
+              <a className="flex items-center gap-2"><Users className="size-3.5" /> {t("layout_members")}</a>
             </Link>
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => signOut()} data-testid="menu-sidebar-signout">
-          <LogOut className="size-3.5 mr-2" /> Sign out
+          <LogOut className="size-3.5 mr-2" /> {t("sign_out")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -240,11 +241,12 @@ function UserBadge({ collapsed }: { collapsed: boolean }) {
 
 export function MobileHeader() {
   const { toggleSidebar } = useSidebar();
+  const t = useT();
   return (
     <div className="md:hidden flex items-center justify-between px-4 h-12 bg-card border-b border-border sticky top-0 z-50 shadow-xs">
       <div className="flex items-center gap-2 text-foreground">
         <BrandMark size="sm" />
-        <h2 className="text-h4 font-semibold text-foreground font-serif">Orqam</h2>
+        <h2 className="text-h4 font-semibold text-foreground font-serif">{t("brand")}</h2>
       </div>
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar}>
         <Menu className="size-4" />

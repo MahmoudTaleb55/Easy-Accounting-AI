@@ -5,8 +5,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { inviteSchema, type Role, ROLES } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import { useLocale } from "@/contexts/locale-context";
+import { useLocale, type Locale } from "@/contexts/locale-context";
 import { useToast } from "@/hooks/use-toast";
+import { useT, type StringKey } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -108,38 +110,40 @@ const HISTORY_FILTER_TYPES: Record<Exclude<HistoryFilterId, "all">, readonly str
   failures: ["bounced", "complained", "send_failed", "not_configured"],
 };
 
-function historyFilterLabels(ar: boolean): Record<HistoryFilterId, string> {
+type TFn = (key: StringKey) => string;
+
+function historyFilterLabels(tr: TFn): Record<HistoryFilterId, string> {
   return {
-    all: ar ? "الكل" : "All",
-    delivery: ar ? "التسليم" : "Delivery",
-    engagement: ar ? "التفاعل" : "Engagement",
-    failures: ar ? "الإخفاقات" : "Failures",
+    all: tr("mem_filter_all"),
+    delivery: tr("mem_filter_delivery"),
+    engagement: tr("mem_filter_engagement"),
+    failures: tr("mem_filter_failures"),
   };
 }
 
 function eventDescriptor(
   type: string,
-  ar: boolean,
+  tr: TFn,
 ): { label: string; tone: DeliveryTone; Icon: typeof MailCheck } {
   switch (type) {
     case "sent":
-      return { label: ar ? "أُرسلت" : "Sent", tone: "info", Icon: Send };
+      return { label: tr("mem_ev_sent"), tone: "info", Icon: Send };
     case "delivered":
-      return { label: ar ? "وصلت" : "Delivered", tone: "success", Icon: MailCheck };
+      return { label: tr("mem_ev_delivered"), tone: "success", Icon: MailCheck };
     case "delivery_delayed":
-      return { label: ar ? "تأخّر التسليم" : "Delivery delayed", tone: "warning", Icon: Clock };
+      return { label: tr("mem_ev_delayed"), tone: "warning", Icon: Clock };
     case "bounced":
-      return { label: ar ? "ارتدّت" : "Bounced", tone: "destructive", Icon: MailX };
+      return { label: tr("mem_ev_bounced"), tone: "destructive", Icon: MailX };
     case "complained":
-      return { label: ar ? "بلاغ سبام" : "Spam report", tone: "destructive", Icon: MailWarning };
+      return { label: tr("mem_ev_spam"), tone: "destructive", Icon: MailWarning };
     case "opened":
-      return { label: ar ? "فُتحت" : "Opened", tone: "info", Icon: Eye };
+      return { label: tr("mem_ev_opened"), tone: "info", Icon: Eye };
     case "clicked":
-      return { label: ar ? "نُقر عليها" : "Clicked", tone: "info", Icon: MousePointerClick };
+      return { label: tr("mem_ev_clicked"), tone: "info", Icon: MousePointerClick };
     case "send_failed":
-      return { label: ar ? "فشل الإرسال" : "Send failed", tone: "destructive", Icon: AlertTriangle };
+      return { label: tr("mem_ev_send_failed"), tone: "destructive", Icon: AlertTriangle };
     case "not_configured":
-      return { label: ar ? "البريد غير مفعّل" : "Email not configured", tone: "muted", Icon: Mail };
+      return { label: tr("mem_ev_not_configured"), tone: "muted", Icon: Mail };
     default:
       return { label: type, tone: "muted", Icon: Mail };
   }
@@ -147,34 +151,39 @@ function eventDescriptor(
 
 function deliveryBadge(
   status: InvitationRow["lastEmailStatus"],
-  ar: boolean,
+  tr: TFn,
 ): { label: string; tone: DeliveryTone; Icon: typeof MailCheck } {
   switch (status) {
     case "delivered":
     case "opened":
     case "clicked":
-      return { label: ar ? "وصلت" : "Delivered", tone: "success", Icon: MailCheck };
+      return { label: tr("mem_badge_delivered"), tone: "success", Icon: MailCheck };
     case "sent":
-      return { label: ar ? "أُرسلت" : "Sent", tone: "info", Icon: Mail };
+      return { label: tr("mem_badge_sent"), tone: "info", Icon: Mail };
     case "delivery_delayed":
-      return { label: ar ? "تأخّر التسليم" : "Delayed", tone: "warning", Icon: Clock };
+      return { label: tr("mem_badge_delayed"), tone: "warning", Icon: Clock };
     case "bounced":
-      return { label: ar ? "ارتدّت" : "Bounced", tone: "destructive", Icon: MailX };
+      return { label: tr("mem_ev_bounced"), tone: "destructive", Icon: MailX };
     case "complained":
-      return { label: ar ? "بلاغ سبام" : "Spam report", tone: "destructive", Icon: MailWarning };
+      return { label: tr("mem_ev_spam"), tone: "destructive", Icon: MailWarning };
     case "send_failed":
-      return { label: ar ? "فشل الإرسال" : "Failed", tone: "destructive", Icon: AlertTriangle };
+      return { label: tr("mem_badge_failed"), tone: "destructive", Icon: AlertTriangle };
     case "not_configured":
-      return { label: ar ? "البريد غير مفعّل" : "Email off", tone: "muted", Icon: Mail };
+      return { label: tr("mem_badge_email_off"), tone: "muted", Icon: Mail };
     default:
-      return { label: ar ? "بانتظار" : "Pending", tone: "muted", Icon: Mail };
+      return { label: tr("mem_badge_pending"), tone: "muted", Icon: Mail };
   }
 }
 
-const ROLE_LABELS: Record<Role, { ar: string; en: string; tone: "default" | "secondary" | "outline" | "destructive" }> = {
-  owner:      { ar: "مالك",   en: "Owner",      tone: "default" },
-  accountant: { ar: "محاسب",  en: "Accountant", tone: "secondary" },
-  viewer:     { ar: "عارض",   en: "Viewer",     tone: "outline" },
+const ROLE_TONE: Record<Role, "default" | "secondary" | "outline" | "destructive"> = {
+  owner: "default",
+  accountant: "secondary",
+  viewer: "outline",
+};
+const ROLE_KEY: Record<Role, StringKey> = {
+  owner: "role_owner",
+  accountant: "role_accountant",
+  viewer: "role_viewer",
 };
 
 function initials(first?: string | null, last?: string | null, email?: string | null) {
@@ -187,6 +196,7 @@ function initials(first?: string | null, last?: string | null, email?: string | 
 export default function MembersPage() {
   const { locale } = useLocale();
   const ar = locale === "ar";
+  const t = useT();
   const { can, role, user: me } = useAuth();
   const { toast } = useToast();
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
@@ -278,24 +288,24 @@ export default function MembersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/invitations"] });
       inviteForm.reset();
       toast({
-        title: ar ? "تم إرسال الدعوة" : "Invitation sent",
-        description: data?.link ? (ar ? "انسخ الرابط من السجل أدناه." : "Copy the link from the list below.") : undefined,
+        title: t("mem_invite_sent"),
+        description: data?.link ? t("mem_invite_sent_desc") : undefined,
       });
     },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: t("settings_error"), description: t(mapErrorKey(err)), variant: "destructive" }),
   });
 
   const updateRole = useMutation({
     mutationFn: async (v: { id: string; role: Role }) =>
       (await apiRequest("PATCH", `/api/auth/members/${v.id}`, { role: v.role })).json(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/auth/members"] }),
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: t("settings_error"), description: t(mapErrorKey(err)), variant: "destructive" }),
   });
 
   const removeMember = useMutation({
     mutationFn: async (id: string) => (await apiRequest("DELETE", `/api/auth/members/${id}`)).text(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/auth/members"] }),
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: t("settings_error"), description: t(mapErrorKey(err)), variant: "destructive" }),
   });
 
   const resend = useMutation({
@@ -321,12 +331,10 @@ export default function MembersPage() {
     return (
       <div className="max-w-2xl py-12" data-testid="members-forbidden">
         <h1 className="font-serif text-2xl tracking-tight">
-          {ar ? "غير مصرح" : "Not authorized"}
+          {t("mem_not_authorized")}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {ar
-            ? "إدارة الأعضاء متاحة لمالك مساحة العمل فقط."
-            : "Member management is restricted to workspace owners."}
+          {t("mem_forbidden_desc")}
         </p>
       </div>
     );
@@ -335,20 +343,18 @@ export default function MembersPage() {
   return (
     <div className="space-y-8 max-w-5xl">
       <header>
-        <h1 className="font-serif text-3xl tracking-tight">{ar ? "الأعضاء والصلاحيات" : "Members & roles"}</h1>
+        <h1 className="font-serif text-3xl tracking-tight">{t("mem_title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ar
-            ? "ادعُ زملاء فريقك بدور محدد. يمكن للمالك إدارة الأدوار وحذف الأعضاء."
-            : "Invite teammates with a specific role. Owners can update roles and remove members."}
+          {t("mem_subtitle")}
         </p>
       </header>
 
       {can.invite && (
         <Card data-testid="card-invite">
           <CardHeader>
-            <CardTitle>{ar ? "دعوة عضو جديد" : "Invite a new member"}</CardTitle>
+            <CardTitle>{t("mem_invite_title")}</CardTitle>
             <CardDescription>
-              {ar ? "سيُرسل لهم رابط لقبول الدعوة. تنتهي الدعوات بعد 7 أيام." : "They'll receive a link to accept. Invitations expire after 7 days."}
+              {t("mem_invite_desc")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -358,11 +364,11 @@ export default function MembersPage() {
               data-testid="form-invite"
             >
               <div className="flex-1 space-y-1.5">
-                <Label htmlFor="email">{ar ? "البريد الإلكتروني" : "Email"}</Label>
+                <Label htmlFor="email">{t("mem_email")}</Label>
                 <Input id="email" type="email" data-testid="input-invite-email" {...inviteForm.register("email")} />
               </div>
               <div className="w-44 space-y-1.5">
-                <Label>{ar ? "الدور" : "Role"}</Label>
+                <Label>{t("mem_role")}</Label>
                 <Select
                   value={inviteForm.watch("role")}
                   onValueChange={(v) => inviteForm.setValue("role", v as Role)}
@@ -371,7 +377,7 @@ export default function MembersPage() {
                   <SelectContent>
                     {ROLES.map((r) => (
                       <SelectItem key={r} value={r} data-testid={`option-role-${r}`}>
-                        {ar ? ROLE_LABELS[r].ar : ROLE_LABELS[r].en}
+                        {t(ROLE_KEY[r])}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -381,7 +387,7 @@ export default function MembersPage() {
                 <Button type="submit" data-testid="button-send-invite">
                   {invite.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   <Mail className="mr-2 h-4 w-4" />
-                  {ar ? "إرسال" : "Send invite"}
+                  {t("mem_send_invite")}
                 </Button>
               </WriteGuard>
             </form>
@@ -391,10 +397,10 @@ export default function MembersPage() {
 
       <Tabs defaultValue="members">
         <TabsList>
-          <TabsTrigger value="members" data-testid="tab-members">{ar ? "الأعضاء" : "Members"} ({members.length})</TabsTrigger>
+          <TabsTrigger value="members" data-testid="tab-members">{t("mem_tab_members")} ({members.length})</TabsTrigger>
           {can.invite && (
             <TabsTrigger value="invitations" data-testid="tab-invitations">
-              {ar ? "الدعوات" : "Invitations"} ({invitations.filter((i) => i.status === "pending").length})
+              {t("mem_tab_invitations")} ({invitations.filter((i) => i.status === "pending").length})
             </TabsTrigger>
           )}
         </TabsList>
@@ -418,7 +424,7 @@ export default function MembersPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="truncate text-sm font-medium" data-testid={`text-member-name-${m.id}`}>{fullName}</span>
-                            {isMe && <span className="text-xs text-muted-foreground">({ar ? "أنت" : "you"})</span>}
+                            {isMe && <span className="text-xs text-muted-foreground">({t("mem_you")})</span>}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">{m.user.email}</div>
                         </div>
@@ -429,9 +435,9 @@ export default function MembersPage() {
                               const r = v as Role;
                               if (r === m.role) return;
                               const ok = window.confirm(
-                                ar
-                                  ? `هل تريد تغيير دور ${fullName} إلى "${ROLE_LABELS[r].ar}"؟`
-                                  : `Change role of ${fullName} to "${ROLE_LABELS[r].en}"?`
+                                t("mem_confirm_role")
+                                  .replace("{name}", fullName ?? "")
+                                  .replace("{role}", t(ROLE_KEY[r]))
                               );
                               if (ok) updateRole.mutate({ id: m.id, role: r });
                             }}
@@ -439,18 +445,18 @@ export default function MembersPage() {
                             <SelectTrigger className="w-36" data-testid={`select-role-${m.id}`}><SelectValue /></SelectTrigger>
                             <SelectContent>
                               {ROLES.map((r) => (
-                                <SelectItem key={r} value={r}>{ar ? ROLE_LABELS[r].ar : ROLE_LABELS[r].en}</SelectItem>
+                                <SelectItem key={r} value={r}>{t(ROLE_KEY[r])}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         ) : (
-                          <Badge variant={ROLE_LABELS[m.role].tone} data-testid={`badge-role-${m.id}`}>
-                            {ar ? ROLE_LABELS[m.role].ar : ROLE_LABELS[m.role].en}
+                          <Badge variant={ROLE_TONE[m.role]} data-testid={`badge-role-${m.id}`}>
+                            {t(ROLE_KEY[m.role])}
                           </Badge>
                         )}
                         <span className="text-xs text-muted-foreground" data-testid={`text-joined-${m.id}`}>
-                          {ar ? "انضم" : "joined"}{" "}
-                          {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—"}
+                          {t("mem_joined")}{" "}
+                          {m.createdAt ? new Date(m.createdAt).toLocaleDateString(locale) : "—"}
                         </span>
                         {isAdmin && (
                           <Button
@@ -458,10 +464,10 @@ export default function MembersPage() {
                             size="sm"
                             onClick={() => setActivityMemberId(m.id)}
                             data-testid={`link-activity-${m.id}`}
-                            aria-label={ar ? "النشاط" : "View activity"}
+                            aria-label={t("mem_view_activity")}
                           >
                             <ActivityIcon className="h-3.5 w-3.5 mr-1" />
-                            {ar ? "النشاط" : "Activity"}
+                            {t("mem_activity")}
                           </Button>
                         )}
                         {can.manageMembers && !isMe && (
@@ -471,9 +477,7 @@ export default function MembersPage() {
                               size="icon"
                               onClick={() => {
                                 const ok = window.confirm(
-                                  ar
-                                    ? `إزالة ${fullName} من مساحة العمل؟ سيفقد الوصول فوراً.`
-                                    : `Remove ${fullName} from this workspace? They'll lose access immediately.`
+                                  t("mem_confirm_remove").replace("{name}", fullName ?? "")
                                 );
                                 if (ok) removeMember.mutate(m.id);
                               }}
@@ -499,13 +503,13 @@ export default function MembersPage() {
               <CardContent className="p-0">
                 {invitations.length === 0 ? (
                   <div className="p-8 text-center text-sm text-muted-foreground" data-testid="text-no-invitations">
-                    {ar ? "لا توجد دعوات." : "No invitations yet."}
+                    {t("mem_no_invitations")}
                   </div>
                 ) : (
                   <TooltipProvider delayDuration={200}>
                     <ul className="divide-y divide-border">
                       {invitations.map((inv) => {
-                        const delivery = deliveryBadge(inv.lastEmailStatus, ar);
+                        const delivery = deliveryBadge(inv.lastEmailStatus, t);
                         const DeliveryIcon = delivery.Icon;
                         const failed =
                           inv.lastEmailStatus === "bounced" ||
@@ -514,17 +518,15 @@ export default function MembersPage() {
                         const reasonText = inv.lastEmailError
                           ? inv.lastEmailError
                           : inv.lastEmailStatus === "not_configured"
-                            ? ar
-                              ? "خدمة البريد غير مهيّأة. شارك الرابط يدوياً."
-                              : "Email service not configured. Share the link manually."
+                            ? t("mem_email_not_configured")
                             : null;
                         return (
                           <li key={inv.id} className="flex items-center gap-3 px-5 py-3" data-testid={`row-invitation-${inv.id}`}>
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-sm font-medium">{inv.email}</div>
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                <Badge variant={ROLE_LABELS[inv.role].tone}>
-                                  {ar ? ROLE_LABELS[inv.role].ar : ROLE_LABELS[inv.role].en}
+                                <Badge variant={ROLE_TONE[inv.role]}>
+                                  {t(ROLE_KEY[inv.role])}
                                 </Badge>
                                 {inv.status === "pending" ? (
                                   <Tooltip>
@@ -546,7 +548,7 @@ export default function MembersPage() {
                                         )}
                                         {inv.lastEmailEventAt && (
                                           <p className="mt-1 text-[11px] opacity-70">
-                                            {new Date(inv.lastEmailEventAt).toLocaleString()}
+                                            {new Date(inv.lastEmailEventAt).toLocaleString(locale)}
                                           </p>
                                         )}
                                       </TooltipContent>
@@ -557,7 +559,7 @@ export default function MembersPage() {
                                 )}
                                 <span>•</span>
                                 <span>
-                                  {ar ? "تنتهي" : "expires"} {new Date(inv.expiresAt).toLocaleDateString()}
+                                  {t("mem_expires")} {new Date(inv.expiresAt).toLocaleDateString(locale)}
                                 </span>
                               </div>
                             </div>
@@ -568,13 +570,13 @@ export default function MembersPage() {
                                   size="sm"
                                   onClick={() => setHistoryInvitation(inv)}
                                   data-testid={`button-history-${inv.id}`}
-                                  aria-label={ar ? "سجل التسليم" : "Delivery history"}
+                                  aria-label={t("mem_delivery_history")}
                                 >
                                   <HistoryIcon className="h-3.5 w-3.5" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                {ar ? "سجل التسليم" : "Delivery history"}
+                                {t("mem_delivery_history")}
                               </TooltipContent>
                             </Tooltip>
                             {inv.status === "pending" && (

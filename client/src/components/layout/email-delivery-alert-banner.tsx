@@ -12,9 +12,10 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useLocale } from "@/contexts/locale-context";
+import { useLocale, type Locale } from "@/contexts/locale-context";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useT } from "@/i18n/dict";
 
 interface ActiveAlert {
   id: string;
@@ -53,7 +54,7 @@ export function EmailDeliveryAlertBanner() {
   const { role } = useAuth();
   const isAdmin = role === "owner";
   const { locale } = useLocale();
-  const ar = locale === "ar";
+  const t = useT();
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
 
@@ -88,25 +89,22 @@ export function EmailDeliveryAlertBanner() {
     const window = alert.windowHours;
     const failures = alert.failureCount;
     const sends = alert.sendCount;
-    if (ar) {
-      const head =
-        reason === "ratio" && sends > 0
-          ? `ارتفعت نسبة إخفاقات بريد المعاملات إلى ${(
-              (failures / sends) * 100
-            ).toFixed(1)}% خلال آخر ${window} ساعة (${failures} من ${sends}).`
-          : `سُجّلت ${failures} إخفاقات بريد خلال آخر ${window} ساعة.`;
-      const detail = `الارتدادات: ${snap.bounced} · بلاغات السبام: ${snap.complained} · فشل الإرسال: ${snap.send_failed}`;
-      return { head, detail };
-    }
     const head =
       reason === "ratio" && sends > 0
-        ? `Email failure rate hit ${((failures / sends) * 100).toFixed(
-            1,
-          )}% over the last ${window}h (${failures} of ${sends}).`
-        : `${failures} email failures over the last ${window}h.`;
-    const detail = `Bounced ${snap.bounced} · Spam reports ${snap.complained} · Send failures ${snap.send_failed}`;
+        ? t("edab_head_ratio")
+            .replace("{rate}", ((failures / sends) * 100).toFixed(1))
+            .replace("{window}", String(window))
+            .replace("{failures}", String(failures))
+            .replace("{sends}", String(sends))
+        : t("edab_head_absolute")
+            .replace("{failures}", String(failures))
+            .replace("{window}", String(window));
+    const detail = t("edab_detail")
+      .replace("{bounced}", String(snap.bounced))
+      .replace("{complained}", String(snap.complained))
+      .replace("{failed}", String(snap.send_failed));
     return { head, detail };
-  }, [alert, ar]);
+  }, [alert, t]);
 
   if (!isAdmin || !alert || !summary) return null;
 
@@ -141,13 +139,9 @@ export function EmailDeliveryAlertBanner() {
               ) : (
                 <ChevronRight className="h-3 w-3" />
               )}
-              {ar
-                ? alert.emailSent
-                  ? `أُرسل إلى ${alert.emailRecipients} ${alert.emailRecipients === 1 ? "مالك" : "مالكين"} — اعرض القائمة`
-                  : "اعرض حالة البريد لكل مالك"
-                : alert.emailSent
-                  ? `Delivered to ${alert.emailRecipients} owner${alert.emailRecipients === 1 ? "" : "s"} — show details`
-                  : "Show per-owner delivery status"}
+              {alert.emailSent
+                ? t("edab_delivered_to").replace("{n}", String(alert.emailRecipients))
+                : t("edab_show_status")}
             </button>
           </div>
           <Link
@@ -155,13 +149,13 @@ export function EmailDeliveryAlertBanner() {
             className="hidden shrink-0 self-center text-sm font-medium underline-offset-2 hover:underline sm:inline"
             data-testid="link-email-delivery-alert"
           >
-            {ar ? "افتح صحة البريد" : "Open delivery health"}
+            {t("edab_open_health")}
           </Link>
           <button
             type="button"
             onClick={() => dismiss.mutate(alert.id)}
             disabled={dismiss.isPending}
-            aria-label={ar ? "تجاهل التنبيه" : "Dismiss alert"}
+            aria-label={t("edab_dismiss")}
             data-testid="button-dismiss-email-delivery-alert"
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-rose-900/80 transition-colors hover:bg-rose-100 hover:text-rose-900 disabled:opacity-50 dark:text-rose-100/80 dark:hover:bg-rose-900/40 dark:hover:text-rose-100"
           >
@@ -169,7 +163,7 @@ export function EmailDeliveryAlertBanner() {
           </button>
         </div>
         {expanded && (
-          <RecipientsPanel alertId={alert.id} ar={ar} variant="banner" />
+          <RecipientsPanel alertId={alert.id} locale={locale} variant="banner" />
         )}
       </div>
     </div>
@@ -178,7 +172,7 @@ export function EmailDeliveryAlertBanner() {
 
 interface RecipientsPanelProps {
   alertId: string;
-  ar: boolean;
+  locale: Locale;
   /**
    * `banner` styles for the rose-tinted shell banner; `card` styles for
    * the neutral surface inside the settings page so the recipient list
@@ -193,9 +187,10 @@ interface RecipientsPanelProps {
  * is collapsed. Used by both the in-app banner (active alert) and the
  * Recent alerts table (historical rows).
  */
-export function RecipientsPanel({ alertId, ar, variant }: RecipientsPanelProps) {
+export function RecipientsPanel({ alertId, locale, variant }: RecipientsPanelProps) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useT();
   const { data, isLoading, isFetching, error } = useQuery<RecipientsResponse>({
     queryKey: ["/api/auth/email-delivery-alerts", alertId, "recipients"],
   });
@@ -227,24 +222,22 @@ export function RecipientsPanel({ alertId, ar, variant }: RecipientsPanelProps) 
       });
       if (result.ok) {
         toast({
-          title: ar ? "تم الإرسال" : "Retry delivered",
-          description: ar
-            ? `أُرسل التنبيه إلى ${email}.`
-            : `Sent the alert to ${email}.`,
+          title: t("edab_retry_sent"),
+          description: t("edab_retry_sent_desc").replace("{email}", email),
         });
       } else {
         toast({
           variant: "destructive",
-          title: ar ? "فشل الإرسال" : "Retry failed",
-          description: result.error ?? (ar ? "خطأ غير معروف" : "Unknown error"),
+          title: t("edab_retry_failed"),
+          description: result.error ?? t("edab_unknown_error"),
         });
       }
     },
-    onError: (err) => {
+    onError: () => {
       toast({
         variant: "destructive",
-        title: ar ? "تعذّر الإعادة" : "Retry failed",
-        description: err.message ?? "",
+        title: t("edab_retry_unable"),
+        description: t("err_generic"),
       });
     },
   });
@@ -259,7 +252,7 @@ export function RecipientsPanel({ alertId, ar, variant }: RecipientsPanelProps) 
       <div className={surface} data-testid={`recipients-loading-${alertId}`}>
         <div className="flex items-center gap-2 text-xs">
           <Loader2 className="h-3 w-3 animate-spin" />
-          {ar ? "جارٍ تحميل المستلمين..." : "Loading recipients..."}
+          {t("edab_loading")}
         </div>
       </div>
     );
@@ -269,7 +262,7 @@ export function RecipientsPanel({ alertId, ar, variant }: RecipientsPanelProps) 
     return (
       <div className={surface} data-testid={`recipients-error-${alertId}`}>
         <p className="text-xs">
-          {ar ? "تعذّر تحميل قائمة المستلمين." : "Could not load the recipient list."}
+          {t("edab_load_error")}
         </p>
       </div>
     );
@@ -281,9 +274,7 @@ export function RecipientsPanel({ alertId, ar, variant }: RecipientsPanelProps) 
     return (
       <div className={surface} data-testid={`recipients-empty-${alertId}`}>
         <p className="text-xs">
-          {ar
-            ? "لم يُرسَل بريد لأي مالك. تحقق من تفعيل البريد في الإعدادات أو من قائمة المالكين."
-            : "No alert email was sent to any owner. Check that alert emails are enabled and that the workspace has an owner with a valid address."}
+          {t("edab_none_sent")}
         </p>
       </div>
     );
@@ -295,20 +286,14 @@ export function RecipientsPanel({ alertId, ar, variant }: RecipientsPanelProps) 
       data-testid={`recipients-panel-${alertId}`}
     >
       <div className="mb-2 flex items-center justify-between gap-2 text-xs uppercase tracking-wider">
-        <span>{ar ? "المستلمون" : "Recipients"}</span>
+        <span>{t("edab_recipients")}</span>
         {isFetching && <Loader2 className="h-3 w-3 animate-spin" />}
       </div>
       <ul className="divide-y divide-rose-200/40 text-xs dark:divide-rose-900/40">
         {recipients.map((r) => {
           const sent = r.status === "sent";
           const StatusIcon = sent ? MailCheck : MailX;
-          const statusLabel = sent
-            ? ar
-              ? "أُرسل"
-              : "Sent"
-            : ar
-              ? "فشل"
-              : "Failed";
+          const statusLabel = sent ? t("edab_sent") : t("edab_failed");
           const tone = sent
             ? "text-emerald-700 dark:text-emerald-300"
             : "text-rose-700 dark:text-rose-300";
@@ -334,11 +319,11 @@ export function RecipientsPanel({ alertId, ar, variant }: RecipientsPanelProps) 
                 className="text-muted-foreground"
                 data-testid={`text-recipient-attempted-${r.email}`}
               >
-                {formatTimestamp(r.attemptedAt, ar)}
+                {formatTimestamp(r.attemptedAt, locale)}
               </span>
               {r.attempts > 1 && (
                 <span className="text-muted-foreground">
-                  {ar ? `محاولات: ${r.attempts}` : `${r.attempts} attempts`}
+                  {t("edab_attempts").replace("{n}", String(r.attempts))}
                 </span>
               )}
               {!sent && r.error && (
@@ -359,12 +344,8 @@ export function RecipientsPanel({ alertId, ar, variant }: RecipientsPanelProps) 
                 >
                   <RefreshCw className="h-3 w-3" />
                   {retry.isPending && retry.variables === r.email
-                    ? ar
-                      ? "جارٍ..."
-                      : "Retrying..."
-                    : ar
-                      ? "إعادة الإرسال الآن"
-                      : "Retry now"}
+                    ? t("edab_retrying")
+                    : t("edab_retry_now")}
                 </button>
               )}
             </li>
@@ -375,10 +356,10 @@ export function RecipientsPanel({ alertId, ar, variant }: RecipientsPanelProps) 
   );
 }
 
-function formatTimestamp(value: string | null, ar: boolean): string {
+function formatTimestamp(value: string | null, locale: Locale): string {
   if (!value) return "—";
   try {
-    return new Date(value).toLocaleString(ar ? "ar" : "en", {
+    return new Date(value).toLocaleString(locale, {
       dateStyle: "short",
       timeStyle: "short",
     });
