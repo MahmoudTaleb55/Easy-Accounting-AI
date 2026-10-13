@@ -5,7 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useFormatMoney } from "@/lib/format";
-import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,8 +23,7 @@ import type { z } from "zod";
 type VendorForm = z.infer<typeof insertVendorSchema>;
 
 export default function PurchaseVendorsPage() {
-  const { locale } = useLocale();
-  const isAr = locale === "ar";
+  const t = useT();
   const formatMoney = useFormatMoney();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
@@ -57,12 +57,12 @@ export default function PurchaseVendorsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases/vendors"] });
       setCreateOpen(false);
       form.reset();
-      toast({ title: isAr ? "تم حفظ المورد" : "Vendor saved" });
+      toast({ title: t("vendor_toast_saved") });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast({
-        title: isAr ? "تعذر الحفظ" : "Save failed",
-        description: err?.message,
+        title: t("purch_save_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       });
     },
@@ -73,18 +73,16 @@ export default function PurchaseVendorsPage() {
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-2 max-w-2xl">
           <div className="eyebrow text-muted-foreground/80">
-            {isAr ? "بوابة المشتريات" : "Purchases Portal"}
+            {t("purch_portal")}
           </div>
           <h1
             className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
-            {isAr ? "الموردون" : "Vendors"}
+            {t("vendor_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            {isAr
-              ? "أنشئ مورديك وتتبّع أرصدتهم وفواتيرهم — مع تسجيل تلقائي في دفتر الأستاذ."
-              : "Create vendors, track their AP balance and bill history — auto-posted to the ledger."}
+            {t("vendor_sub")}
           </p>
         </div>
         <WriteGuard>
@@ -93,13 +91,13 @@ export default function PurchaseVendorsPage() {
             onClick={() => setCreateOpen(true)}
           >
             <Plus className="size-4 me-2" />
-            {isAr ? "مورد جديد" : "New vendor"}
+            {t("vendor_new")}
           </Button>
         </WriteGuard>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>{isAr ? "مورد جديد" : "New vendor"}</DialogTitle>
+              <DialogTitle>{t("vendor_new")}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form
@@ -111,7 +109,7 @@ export default function PurchaseVendorsPage() {
                   name="nameAr"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{isAr ? "الاسم بالعربية" : "Arabic name"}</FormLabel>
+                      <FormLabel>{t("vendor_name_ar")}</FormLabel>
                       <FormControl>
                         <Input {...field} value={field.value ?? ""} data-testid="input-vendor-name-ar" />
                       </FormControl>
@@ -124,7 +122,7 @@ export default function PurchaseVendorsPage() {
                   name="nameEn"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{isAr ? "الاسم بالإنجليزية" : "English name"}</FormLabel>
+                      <FormLabel>{t("vendor_name_en")}</FormLabel>
                       <FormControl>
                         <Input {...field} value={field.value ?? ""} data-testid="input-vendor-name-en" />
                       </FormControl>
@@ -138,7 +136,7 @@ export default function PurchaseVendorsPage() {
                     name="code"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "الكود" : "Code"}</FormLabel>
+                        <FormLabel>{t("vendor_code")}</FormLabel>
                         <FormControl>
                           <Input {...field} value={field.value ?? ""} data-testid="input-vendor-code" />
                         </FormControl>
@@ -151,7 +149,7 @@ export default function PurchaseVendorsPage() {
                     name="taxNumber"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "الرقم الضريبي" : "Tax number"}</FormLabel>
+                        <FormLabel>{t("vendor_tax")}</FormLabel>
                         <FormControl>
                           <Input {...field} value={field.value ?? ""} data-testid="input-vendor-tax" />
                         </FormControl>
@@ -165,7 +163,7 @@ export default function PurchaseVendorsPage() {
                     name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "الهاتف" : "Phone"}</FormLabel>
+                        <FormLabel>{t("vendor_phone")}</FormLabel>
                         <FormControl>
                           <Input {...field} value={field.value ?? ""} data-testid="input-vendor-phone" />
                         </FormControl>
@@ -177,7 +175,7 @@ export default function PurchaseVendorsPage() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "البريد" : "Email"}</FormLabel>
+                        <FormLabel>{t("vendor_email")}</FormLabel>
                         <FormControl>
                           <Input {...field} value={field.value ?? ""} data-testid="input-vendor-email" />
                         </FormControl>
@@ -190,9 +188,7 @@ export default function PurchaseVendorsPage() {
                   disabled={createMut.isPending}
                   data-testid="button-submit-vendor"
                 >
-                  {createMut.isPending
-                    ? isAr ? "جارٍ الحفظ…" : "Saving…"
-                    : isAr ? "حفظ" : "Save"}
+                  {createMut.isPending ? t("purch_saving") : t("purch_save")}
                 </Button>
               </form>
             </Form>
@@ -202,27 +198,27 @@ export default function PurchaseVendorsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{isAr ? "قائمة الموردين" : "Vendors"}</CardTitle>
+          <CardTitle>{t("vendor_list_title")}</CardTitle>
           <CardDescription>
-            {isAr ? "اضغط على مورد لرؤية رصيده وفواتيره" : "Click a vendor to view balance and bills"}
+            {t("vendor_list_desc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && <ListSkeleton rows={5} />}
           {!isLoading && (vendors?.length ?? 0) === 0 && (
             <EmptyState
-              title={isAr ? "لا يوجد موردون بعد" : "No vendors yet"}
-              description={isAr ? "أضف أول مورد لبدء استلام الفواتير." : "Add your first vendor to start recording bills."}
+              title={t("vendor_empty")}
+              description={t("vendor_empty_desc")}
             />
           )}
           {!isLoading && (vendors?.length ?? 0) > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{isAr ? "الاسم" : "Name"}</TableHead>
-                  <TableHead>{isAr ? "الكود" : "Code"}</TableHead>
-                  <TableHead>{isAr ? "الهاتف" : "Phone"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "الرصيد" : "Balance"}</TableHead>
+                  <TableHead>{t("vendor_col_name")}</TableHead>
+                  <TableHead>{t("vendor_code")}</TableHead>
+                  <TableHead>{t("vendor_phone")}</TableHead>
+                  <TableHead className="text-end">{t("vendor_col_balance")}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -233,7 +229,6 @@ export default function PurchaseVendorsPage() {
                     vendor={v}
                     onView={() => setSelected(v)}
                     formatMoney={formatMoney}
-                    isAr={isAr}
                   />
                 ))}
               </TableBody>
@@ -244,7 +239,7 @@ export default function PurchaseVendorsPage() {
 
       <Dialog open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
         <DialogContent className="max-w-2xl" data-testid="dialog-vendor-detail">
-          {selected && <VendorDetail vendor={selected} isAr={isAr} formatMoney={formatMoney} />}
+          {selected && <VendorDetail vendor={selected} formatMoney={formatMoney} />}
         </DialogContent>
       </Dialog>
     </div>
@@ -255,12 +250,10 @@ function VendorRow({
   vendor,
   onView,
   formatMoney,
-  isAr,
 }: {
   vendor: Vendor;
   onView: () => void;
   formatMoney: (v: number) => string;
-  isAr: boolean;
 }) {
   const { data } = useQuery<{ balance: number }>({
     queryKey: ["/api/purchases/vendors", vendor.id, "balance"],
@@ -294,13 +287,12 @@ function VendorRow({
 
 function VendorDetail({
   vendor,
-  isAr,
   formatMoney,
 }: {
   vendor: Vendor;
-  isAr: boolean;
   formatMoney: (v: number) => string;
 }) {
+  const t = useT();
   const { data: balance } = useQuery<{ balance: number }>({
     queryKey: ["/api/purchases/vendors", vendor.id, "balance"],
   });
@@ -318,7 +310,7 @@ function VendorDetail({
         <Wallet className="size-5 text-primary" />
         <div className="flex-1">
           <div className="eyebrow text-muted-foreground">
-            {isAr ? "الرصيد المستحق" : "Open AP balance"}
+            {t("vendor_open_ap")}
           </div>
           <div
             className="text-xl font-mono font-semibold"
@@ -330,20 +322,20 @@ function VendorDetail({
       </div>
       <div>
         <div className="text-sm font-medium mb-2">
-          {isAr ? "آخر الفواتير" : "Recent bills"}
+          {t("vendor_recent_bills")}
         </div>
         {(history?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">
-            {isAr ? "لا فواتير بعد." : "No bills yet."}
+            {t("vendor_no_bills")}
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{isAr ? "الرقم" : "#"}</TableHead>
-                <TableHead>{isAr ? "التاريخ" : "Date"}</TableHead>
-                <TableHead>{isAr ? "الحالة" : "Status"}</TableHead>
-                <TableHead className="text-end">{isAr ? "الإجمالي" : "Total"}</TableHead>
+                <TableHead>{t("purch_number_hash")}</TableHead>
+                <TableHead>{t("purch_date")}</TableHead>
+                <TableHead>{t("purch_status")}</TableHead>
+                <TableHead className="text-end">{t("purch_total")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

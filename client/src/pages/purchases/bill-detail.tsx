@@ -5,6 +5,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useFormatMoney } from "@/lib/format";
 import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,8 +35,8 @@ const STATUS_VARIANTS: Record<PurchaseInvoiceStatus, "secondary" | "default" | "
 export default function PurchaseBillDetailPage() {
   const params = useParams<{ id: string }>();
   const billId = Number(params.id);
-  const { locale } = useLocale();
-  const isAr = locale === "ar";
+  const { dir } = useLocale();
+  const t = useT();
   const formatMoney = useFormatMoney();
   const { toast } = useToast();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -59,12 +61,12 @@ export default function PurchaseBillDetailPage() {
     },
     onSuccess: () => {
       invalidate();
-      toast({ title: isAr ? "تم ترحيل الفاتورة" : "Bill posted" });
+      toast({ title: t("bill_toast_posted") });
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر الترحيل" : "Posting failed",
-        description: err?.message,
+        title: t("bill_post_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -76,12 +78,12 @@ export default function PurchaseBillDetailPage() {
     },
     onSuccess: () => {
       invalidate();
-      toast({ title: isAr ? "تم إلغاء الفاتورة" : "Bill cancelled" });
+      toast({ title: t("bill_toast_cancelled") });
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر الإلغاء" : "Cancel failed",
-        description: err?.message,
+        title: t("bill_cancel_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -93,13 +95,13 @@ export default function PurchaseBillDetailPage() {
     onSuccess: () => {
       invalidate();
       setConfirmDelete(false);
-      toast({ title: isAr ? "تم حذف الفاتورة" : "Bill deleted" });
+      toast({ title: t("bill_toast_deleted") });
       window.history.back();
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر الحذف" : "Delete failed",
-        description: err?.message,
+        title: t("bill_delete_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -116,13 +118,13 @@ export default function PurchaseBillDetailPage() {
   if (!bill) {
     return (
       <div className="text-sm text-muted-foreground" data-testid="purchase-bill-not-found">
-        {isAr ? "الفاتورة غير موجودة." : "Bill not found."}
+        {t("bill_not_found")}
       </div>
     );
   }
 
   const status = bill.status as PurchaseInvoiceStatus;
-  const BackIcon = isAr ? ArrowRight : ArrowLeft;
+  const BackIcon = dir === "rtl" ? ArrowRight : ArrowLeft;
 
   return (
     <div className="space-y-6" data-testid="purchase-bill-detail-page">
@@ -131,7 +133,7 @@ export default function PurchaseBillDetailPage() {
           <Link href="/app/purchases/bills">
             <Button variant="ghost" size="sm" data-testid="button-back-to-bills">
               <BackIcon className="size-4 me-1" />
-              {isAr ? "كل الفواتير" : "All bills"}
+              {t("bill_all")}
             </Button>
           </Link>
           <h1
@@ -160,7 +162,7 @@ export default function PurchaseBillDetailPage() {
                 data-testid="button-post-bill"
               >
                 <CheckCircle2 className="size-4 me-1" />
-                {isAr ? "ترحيل" : "Post"}
+                {t("bill_post")}
               </Button>
             </WriteGuard>
           )}
@@ -173,7 +175,7 @@ export default function PurchaseBillDetailPage() {
                 data-testid="button-cancel-bill"
               >
                 <XCircle className="size-4 me-1" />
-                {isAr ? "إلغاء وعكس القيد" : "Cancel & reverse"}
+                {t("bill_cancel_reverse")}
               </Button>
             </WriteGuard>
           )}
@@ -183,29 +185,27 @@ export default function PurchaseBillDetailPage() {
                 <AlertDialogTrigger asChild>
                   <Button variant="ghost" data-testid="button-delete-bill">
                     <Trash2 className="size-4 me-1 text-destructive" />
-                    {isAr ? "حذف" : "Delete"}
+                    {t("bill_delete")}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>
-                      {isAr ? "حذف الفاتورة؟" : "Delete bill?"}
+                      {t("bill_delete_q")}
                     </AlertDialogTitle>
                     <AlertDialogDescription>
-                      {isAr
-                        ? "لا يمكن التراجع عن هذا الإجراء."
-                        : "This action cannot be undone."}
+                      {t("bill_delete_desc")}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel data-testid="button-cancel-delete">
-                      {isAr ? "إلغاء" : "Cancel"}
+                      {t("purch_cancel")}
                     </AlertDialogCancel>
                     <AlertDialogAction
                       onClick={() => deleteMut.mutate()}
                       data-testid="button-confirm-delete"
                     >
-                      {isAr ? "حذف" : "Delete"}
+                      {t("bill_delete")}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -218,17 +218,17 @@ export default function PurchaseBillDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="md:col-span-2">
           <CardHeader>
-            <CardTitle>{isAr ? "البنود" : "Lines"}</CardTitle>
+            <CardTitle>{t("bill_lines")}</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{isAr ? "الوصف" : "Description"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "الكمية" : "Qty"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "التكلفة" : "Cost"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "ض.ق.م" : "VAT"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "الإجمالي" : "Total"}</TableHead>
+                  <TableHead>{t("bill_description")}</TableHead>
+                  <TableHead className="text-end">{t("bill_qty")}</TableHead>
+                  <TableHead className="text-end">{t("bill_cost")}</TableHead>
+                  <TableHead className="text-end">{t("bill_vat")}</TableHead>
+                  <TableHead className="text-end">{t("purch_total")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -256,46 +256,46 @@ export default function PurchaseBillDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>{isAr ? "الملخص" : "Summary"}</CardTitle>
+            <CardTitle>{t("bill_summary")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <Row label={isAr ? "المورد" : "Vendor"}>
+            <Row label={t("purch_vendor")}>
               {bill.vendor?.nameAr || bill.vendor?.nameEn || `#${bill.vendorId}`}
             </Row>
-            <Row label={isAr ? "التاريخ" : "Date"}>{bill.invoiceDate}</Row>
+            <Row label={t("purch_date")}>{bill.invoiceDate}</Row>
             {bill.dueDate && (
-              <Row label={isAr ? "الاستحقاق" : "Due"}>{bill.dueDate}</Row>
+              <Row label={t("bill_due")}>{bill.dueDate}</Row>
             )}
-            <Row label={isAr ? "طريقة الدفع" : "Payment"}>
-              {bill.paymentMethod === "cash" ? (isAr ? "نقدي" : "Cash") : isAr ? "آجل" : "Credit"}
+            <Row label={t("purch_payment")}>
+              {bill.paymentMethod === "cash" ? t("purch_cash") : t("purch_credit")}
             </Row>
             {bill.vendorReference && (
-              <Row label={isAr ? "مرجع المورد" : "Vendor ref"}>
+              <Row label={t("bill_vendor_ref")}>
                 <span className="font-mono">{bill.vendorReference}</span>
               </Row>
             )}
             <div className="border-t pt-2 mt-2 space-y-2">
-              <Row label={isAr ? "قبل الضريبة" : "Subtotal"}>
+              <Row label={t("purch_subtotal")}>
                 <span className="font-mono" data-testid="text-detail-subtotal">
                   {formatMoney(Number(bill.subtotal))}
                 </span>
               </Row>
-              <Row label={isAr ? "ضريبة المدخلات" : "Input VAT"}>
+              <Row label={t("purch_input_vat")}>
                 <span className="font-mono" data-testid="text-detail-vat">
                   {formatMoney(Number(bill.vatAmount))}
                 </span>
               </Row>
-              <Row label={isAr ? "الإجمالي" : "Total"}>
+              <Row label={t("purch_total")}>
                 <span className="font-mono font-semibold" data-testid="text-detail-total">
                   {formatMoney(Number(bill.totalAmount))}
                 </span>
               </Row>
-              <Row label={isAr ? "المدفوع" : "Paid"}>
+              <Row label={t("bill_paid")}>
                 <span className="font-mono" data-testid="text-detail-paid">
                   {formatMoney(Number(bill.paidAmount))}
                 </span>
               </Row>
-              <Row label={isAr ? "المتبقي" : "Open"}>
+              <Row label={t("purch_open")}>
                 <span className="font-mono font-semibold" data-testid="text-detail-open">
                   {formatMoney(Number(bill.totalAmount) - Number(bill.paidAmount))}
                 </span>

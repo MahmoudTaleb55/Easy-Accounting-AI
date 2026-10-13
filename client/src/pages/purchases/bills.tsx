@@ -6,7 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useFormatMoney } from "@/lib/format";
-import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,8 +37,7 @@ const STATUS_VARIANTS: Record<PurchaseInvoiceStatus, "secondary" | "default" | "
 };
 
 export default function PurchaseBillsPage() {
-  const { locale } = useLocale();
-  const isAr = locale === "ar";
+  const t = useT();
   const formatMoney = useFormatMoney();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -83,12 +83,12 @@ export default function PurchaseBillsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases/aging"] });
       setOpen(false);
       form.reset();
-      toast({ title: isAr ? "تم إنشاء الفاتورة" : "Bill created" });
+      toast({ title: t("bill_toast_created") });
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر الحفظ" : "Save failed",
-        description: err?.message,
+        title: t("purch_save_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -126,31 +126,29 @@ export default function PurchaseBillsPage() {
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-2 max-w-2xl">
           <div className="eyebrow text-muted-foreground/80">
-            {isAr ? "بوابة المشتريات" : "Purchases Portal"}
+            {t("purch_portal")}
           </div>
           <h1
             className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
-            {isAr ? "فواتير الشراء" : "Bills"}
+            {t("bill_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            {isAr
-              ? "أنشئ فواتير الموردين واعتمدها لتُرحَّل تلقائياً — المخزون وضريبة المدخلات والذمم الدائنة محسوبة لك."
-              : "Create and post vendor bills — inventory inbound, input VAT, and AP are auto-posted to the ledger."}
+            {t("bill_sub")}
           </p>
         </div>
         <WriteGuard>
           <Button data-testid="button-new-bill" onClick={() => setOpen(true)}>
             <Plus className="size-4 me-2" />
-            {isAr ? "فاتورة جديدة" : "New bill"}
+            {t("bill_new")}
           </Button>
         </WriteGuard>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
-                {isAr ? "فاتورة جديدة" : "New bill"}
+                {t("bill_new")}
                 {nextNum?.number ? (
                   <span className="ms-2 text-sm text-muted-foreground font-mono">
                     ({nextNum.number})
@@ -169,7 +167,7 @@ export default function PurchaseBillsPage() {
                     name="vendorId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "المورد" : "Vendor"}</FormLabel>
+                        <FormLabel>{t("purch_vendor")}</FormLabel>
                         <Select
                           onValueChange={(v) => field.onChange(Number(v))}
                           value={field.value ? String(field.value) : ""}
@@ -177,7 +175,7 @@ export default function PurchaseBillsPage() {
                           <FormControl>
                             <SelectTrigger data-testid="select-vendor">
                               <SelectValue
-                                placeholder={isAr ? "اختر مورد" : "Select vendor"}
+                                placeholder={t("purch_select_vendor")}
                               />
                             </SelectTrigger>
                           </FormControl>
@@ -202,7 +200,7 @@ export default function PurchaseBillsPage() {
                     name="paymentMethod"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "طريقة الدفع" : "Payment"}</FormLabel>
+                        <FormLabel>{t("purch_payment")}</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-payment-method">
@@ -210,8 +208,8 @@ export default function PurchaseBillsPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="credit">{isAr ? "آجل" : "Credit"}</SelectItem>
-                            <SelectItem value="cash">{isAr ? "نقدي" : "Cash"}</SelectItem>
+                            <SelectItem value="credit">{t("purch_credit")}</SelectItem>
+                            <SelectItem value="cash">{t("purch_cash")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </FormItem>
@@ -222,7 +220,7 @@ export default function PurchaseBillsPage() {
                     name="invoiceDate"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "تاريخ الفاتورة" : "Bill date"}</FormLabel>
+                        <FormLabel>{t("bill_date")}</FormLabel>
                         <FormControl>
                           <Input type="date" {...field} data-testid="input-bill-date" />
                         </FormControl>
@@ -234,7 +232,7 @@ export default function PurchaseBillsPage() {
                     name="dueDate"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "تاريخ الاستحقاق" : "Due date"}</FormLabel>
+                        <FormLabel>{t("bill_due_date")}</FormLabel>
                         <FormControl>
                           <Input
                             type="date"
@@ -251,7 +249,7 @@ export default function PurchaseBillsPage() {
                     name="vendorReference"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "رقم فاتورة المورد" : "Vendor ref"}</FormLabel>
+                        <FormLabel>{t("bill_vendor_ref")}</FormLabel>
                         <FormControl>
                           <Input {...field} value={field.value ?? ""} data-testid="input-vendor-ref" />
                         </FormControl>
@@ -263,14 +261,14 @@ export default function PurchaseBillsPage() {
                     name="locationId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "المخزن" : "Location"}</FormLabel>
+                        <FormLabel>{t("bill_location")}</FormLabel>
                         <Select
                           onValueChange={(v) => field.onChange(v ? Number(v) : null)}
                           value={field.value ? String(field.value) : ""}
                         >
                           <FormControl>
                             <SelectTrigger data-testid="select-location">
-                              <SelectValue placeholder={isAr ? "افتراضي" : "Default"} />
+                              <SelectValue placeholder={t("bill_default")} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -288,7 +286,7 @@ export default function PurchaseBillsPage() {
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-medium">{isAr ? "البنود" : "Lines"}</h4>
+                    <h4 className="text-sm font-medium">{t("bill_lines")}</h4>
                     <Button
                       type="button"
                       variant="outline"
@@ -306,7 +304,7 @@ export default function PurchaseBillsPage() {
                       data-testid="button-add-line"
                     >
                       <Plus className="size-4 me-1" />
-                      {isAr ? "إضافة بند" : "Add line"}
+                      {t("bill_add_line")}
                     </Button>
                   </div>
                   <div className="space-y-2">
@@ -322,7 +320,7 @@ export default function PurchaseBillsPage() {
                             value={form.watch(`lines.${idx}.productId`)?.toString() ?? ""}
                           >
                             <SelectTrigger data-testid={`select-product-${idx}`}>
-                              <SelectValue placeholder={isAr ? "اختر صنف (اختياري)" : "Pick product (optional)"} />
+                              <SelectValue placeholder={t("bill_pick_product")} />
                             </SelectTrigger>
                             <SelectContent>
                               {products?.map((p) => (
@@ -334,13 +332,13 @@ export default function PurchaseBillsPage() {
                           </Select>
                           <Input
                             className="mt-1"
-                            placeholder={isAr ? "وصف" : "Description"}
+                            placeholder={t("bill_description")}
                             {...form.register(`lines.${idx}.description`)}
                             data-testid={`input-line-desc-${idx}`}
                           />
                         </div>
                         <div className="col-span-2">
-                          <FormLabel className="text-xs">{isAr ? "الكمية" : "Qty"}</FormLabel>
+                          <FormLabel className="text-xs">{t("bill_qty")}</FormLabel>
                           <Input
                             type="number"
                             step="0.01"
@@ -349,7 +347,7 @@ export default function PurchaseBillsPage() {
                           />
                         </div>
                         <div className="col-span-2">
-                          <FormLabel className="text-xs">{isAr ? "التكلفة" : "Cost"}</FormLabel>
+                          <FormLabel className="text-xs">{t("bill_cost")}</FormLabel>
                           <Input
                             type="number"
                             step="0.01"
@@ -358,7 +356,7 @@ export default function PurchaseBillsPage() {
                           />
                         </div>
                         <div className="col-span-2">
-                          <FormLabel className="text-xs">{isAr ? "ض.ق.م" : "VAT %"}</FormLabel>
+                          <FormLabel className="text-xs">{t("bill_vat_pct")}</FormLabel>
                           <Input
                             type="number"
                             step="0.01"
@@ -385,19 +383,19 @@ export default function PurchaseBillsPage() {
 
                 <div className="rounded-md border bg-muted/30 p-3 space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{isAr ? "قبل الضريبة" : "Subtotal"}</span>
+                    <span className="text-muted-foreground">{t("purch_subtotal")}</span>
                     <span className="font-mono" data-testid="text-form-subtotal">
                       {formatMoney(totals.subtotal)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{isAr ? "ضريبة المدخلات" : "Input VAT"}</span>
+                    <span className="text-muted-foreground">{t("purch_input_vat")}</span>
                     <span className="font-mono" data-testid="text-form-vat">
                       {formatMoney(totals.vat)}
                     </span>
                   </div>
                   <div className="flex justify-between font-semibold border-t pt-1">
-                    <span>{isAr ? "الإجمالي" : "Total"}</span>
+                    <span>{t("purch_total")}</span>
                     <span className="font-mono" data-testid="text-form-total">
                       {formatMoney(totals.total)}
                     </span>
@@ -409,7 +407,7 @@ export default function PurchaseBillsPage() {
                   name="status"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{isAr ? "الحالة عند الحفظ" : "Save as"}</FormLabel>
+                      <FormLabel>{t("bill_save_as")}</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-status">
@@ -417,8 +415,8 @@ export default function PurchaseBillsPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="draft">{isAr ? "مسودة" : "Draft"}</SelectItem>
-                          <SelectItem value="posted">{isAr ? "ترحيل فوري" : "Post now"}</SelectItem>
+                          <SelectItem value="draft">{t("bill_draft")}</SelectItem>
+                          <SelectItem value="posted">{t("bill_post_now")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </FormItem>
@@ -432,16 +430,14 @@ export default function PurchaseBillsPage() {
                     onClick={() => setOpen(false)}
                     data-testid="button-cancel-bill"
                   >
-                    {isAr ? "إلغاء" : "Cancel"}
+                    {t("purch_cancel")}
                   </Button>
                   <Button
                     type="submit"
                     disabled={createMut.isPending}
                     data-testid="button-submit-bill"
                   >
-                    {createMut.isPending
-                      ? isAr ? "جارٍ الحفظ…" : "Saving…"
-                      : isAr ? "حفظ" : "Save"}
+                    {createMut.isPending ? t("purch_saving") : t("purch_save")}
                   </Button>
                 </div>
               </form>
@@ -452,28 +448,28 @@ export default function PurchaseBillsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{isAr ? "كل الفواتير" : "All bills"}</CardTitle>
+          <CardTitle>{t("bill_all")}</CardTitle>
           <CardDescription>
-            {isAr ? "اضغط على فاتورة لعرض التفاصيل والتحكم بالحالة." : "Click a bill to view details and lifecycle."}
+            {t("bill_all_desc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && <ListSkeleton rows={6} />}
           {!isLoading && (bills?.length ?? 0) === 0 && (
             <EmptyState
-              title={isAr ? "لا فواتير بعد" : "No bills yet"}
-              description={isAr ? "أنشئ أول فاتورة شراء لتتبّع المشتريات." : "Create your first bill to start tracking purchases."}
+              title={t("bill_empty")}
+              description={t("bill_empty_desc")}
             />
           )}
           {!isLoading && (bills?.length ?? 0) > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{isAr ? "الرقم" : "#"}</TableHead>
-                  <TableHead>{isAr ? "المورد" : "Vendor"}</TableHead>
-                  <TableHead>{isAr ? "التاريخ" : "Date"}</TableHead>
-                  <TableHead>{isAr ? "الحالة" : "Status"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "الإجمالي" : "Total"}</TableHead>
+                  <TableHead>{t("purch_number_hash")}</TableHead>
+                  <TableHead>{t("purch_vendor")}</TableHead>
+                  <TableHead>{t("purch_date")}</TableHead>
+                  <TableHead>{t("purch_status")}</TableHead>
+                  <TableHead className="text-end">{t("purch_total")}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>

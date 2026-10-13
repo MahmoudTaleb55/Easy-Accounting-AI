@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useFormatMoney } from "@/lib/format";
-import { useLocale } from "@/contexts/locale-context";
+import { useT, type StringKey } from "@/i18n/dict";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,17 +12,16 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Eye } from "lucide-react";
 import type { ApAgingReport, ApAgingRow } from "@shared/schema";
 
-const BUCKETS: Array<{ key: ApAgingRow["bucket"]; labelAr: string; labelEn: string }> = [
-  { key: "current", labelAr: "ضمن الاستحقاق", labelEn: "Current" },
-  { key: "1_30",    labelAr: "1–30 يوم",       labelEn: "1–30 days" },
-  { key: "31_60",   labelAr: "31–60 يوم",      labelEn: "31–60 days" },
-  { key: "61_90",   labelAr: "61–90 يوم",      labelEn: "61–90 days" },
-  { key: "over_90", labelAr: "أكثر من 90",     labelEn: "Over 90 days" },
+const BUCKETS: Array<{ key: ApAgingRow["bucket"]; labelKey: StringKey }> = [
+  { key: "current", labelKey: "apaging_bucket_current" },
+  { key: "1_30",    labelKey: "apaging_bucket_1_30" },
+  { key: "31_60",   labelKey: "apaging_bucket_31_60" },
+  { key: "61_90",   labelKey: "apaging_bucket_61_90" },
+  { key: "over_90", labelKey: "apaging_bucket_over_90" },
 ];
 
 export default function PurchaseApAgingPage() {
-  const { locale } = useLocale();
-  const isAr = locale === "ar";
+  const t = useT();
   const formatMoney = useFormatMoney();
   const today = new Date().toISOString().slice(0, 10);
   const [asOf, setAsOf] = useState(today);
@@ -50,24 +49,22 @@ export default function PurchaseApAgingPage() {
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-2 max-w-2xl">
           <div className="eyebrow text-muted-foreground/80">
-            {isAr ? "بوابة المشتريات" : "Purchases Portal"}
+            {t("purch_portal")}
           </div>
           <h1
             className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
-            {isAr ? "أعمار الذمم الدائنة" : "AP Aging"}
+            {t("apaging_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            {isAr
-              ? "تابع التزاماتك تجاه الموردين بحسب فئات التأخر — اضغط على فئة لتصفية الجدول."
-              : "Track what you owe vendors by aging bucket — click a bucket to filter the table."}
+            {t("apaging_sub")}
           </p>
         </div>
         <div className="flex items-end gap-2">
           <div className="space-y-1">
             <label className="eyebrow text-muted-foreground" htmlFor="asof">
-              {isAr ? "كما في" : "As of"}
+              {t("apaging_as_of")}
             </label>
             <Input
               id="asof"
@@ -99,7 +96,7 @@ export default function PurchaseApAgingPage() {
               data-testid={`bucket-${b.key}`}
             >
               <div className="eyebrow text-muted-foreground">
-                {isAr ? b.labelAr : b.labelEn}
+                {t(b.labelKey)}
               </div>
               <div className="text-lg font-mono font-semibold mt-1" data-testid={`bucket-total-${b.key}`}>
                 {formatMoney(value)}
@@ -111,33 +108,38 @@ export default function PurchaseApAgingPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{isAr ? "الفواتير المفتوحة" : "Open bills"}</CardTitle>
+          <CardTitle>{t("apaging_open_bills")}</CardTitle>
           <CardDescription>
             {bucket === "all"
-              ? isAr ? "كل الفواتير المفتوحة" : "All open bills"
-              : isAr ? `تصفية: ${BUCKETS.find((x) => x.key === bucket)?.labelAr}`
-                     : `Filter: ${BUCKETS.find((x) => x.key === bucket)?.labelEn}`}
+              ? t("apaging_all_open")
+              : t("apaging_filter").replace(
+                  "{bucket}",
+                  (() => {
+                    const b = BUCKETS.find((x) => x.key === bucket);
+                    return b ? t(b.labelKey) : "";
+                  })(),
+                )}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && <ListSkeleton rows={6} />}
           {!isLoading && filtered.length === 0 && (
             <EmptyState
-              title={isAr ? "لا توجد فواتير" : "No bills"}
-              description={isAr ? "لا توجد ذمم دائنة في هذه الفئة." : "No open AP in this bucket."}
+              title={t("apaging_empty")}
+              description={t("apaging_empty_desc")}
             />
           )}
           {!isLoading && filtered.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{isAr ? "الرقم" : "#"}</TableHead>
-                  <TableHead>{isAr ? "المورد" : "Vendor"}</TableHead>
-                  <TableHead>{isAr ? "التاريخ" : "Date"}</TableHead>
-                  <TableHead>{isAr ? "الاستحقاق" : "Due"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "أيام التأخر" : "Days"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "الإجمالي" : "Total"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "المتبقي" : "Open"}</TableHead>
+                  <TableHead>{t("purch_number_hash")}</TableHead>
+                  <TableHead>{t("purch_vendor")}</TableHead>
+                  <TableHead>{t("purch_date")}</TableHead>
+                  <TableHead>{t("bill_due")}</TableHead>
+                  <TableHead className="text-end">{t("apaging_days")}</TableHead>
+                  <TableHead className="text-end">{t("purch_total")}</TableHead>
+                  <TableHead className="text-end">{t("purch_open")}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>

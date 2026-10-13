@@ -5,7 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useFormatMoney } from "@/lib/format";
-import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,8 +28,7 @@ import {
 } from "@shared/schema";
 
 export default function PurchasePaymentsPage() {
-  const { locale } = useLocale();
-  const isAr = locale === "ar";
+  const t = useT();
   const formatMoney = useFormatMoney();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -89,12 +89,12 @@ export default function PurchasePaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases/aging"] });
       setOpen(false);
       form.reset();
-      toast({ title: isAr ? "تم تسجيل الدفعة" : "Payment recorded" });
+      toast({ title: t("purchpay_toast_saved") });
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر التسجيل" : "Save failed",
-        description: err?.message,
+        title: t("purchpay_save_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -107,12 +107,12 @@ export default function PurchasePaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchases/bills"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchases/aging"] });
-      toast({ title: isAr ? "تم عكس الدفعة" : "Payment reversed" });
+      toast({ title: t("purchpay_toast_reversed") });
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر العكس" : "Reverse failed",
-        description: err?.message,
+        title: t("purchpay_reverse_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -150,31 +150,29 @@ export default function PurchasePaymentsPage() {
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-2 max-w-2xl">
           <div className="eyebrow text-muted-foreground/80">
-            {isAr ? "بوابة المشتريات" : "Purchases Portal"}
+            {t("purch_portal")}
           </div>
           <h1
             className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
-            {isAr ? "دفعات الموردين" : "Vendor Payments"}
+            {t("purchpay_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            {isAr
-              ? "سدّد عدة فواتير من نفس المورد بدفعة واحدة — يُسجَّل القيد تلقائياً (مدين ذمم دائنة / دائن نقدية)."
-              : "Pay multiple bills from the same vendor in one shot — JE auto-posts (Dr AP / Cr Cash)."}
+            {t("purchpay_sub")}
           </p>
         </div>
         <WriteGuard>
           <Button data-testid="button-new-payment" onClick={() => setOpen(true)}>
             <Plus className="size-4 me-2" />
-            {isAr ? "دفعة جديدة" : "New payment"}
+            {t("purchpay_new")}
           </Button>
         </WriteGuard>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
-                {isAr ? "دفعة جديدة" : "New payment"}
+                {t("purchpay_new")}
                 {nextNum?.number ? (
                   <span className="ms-2 text-sm text-muted-foreground font-mono">
                     ({nextNum.number})
@@ -193,7 +191,7 @@ export default function PurchasePaymentsPage() {
                     name="vendorId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "المورد" : "Vendor"}</FormLabel>
+                        <FormLabel>{t("purch_vendor")}</FormLabel>
                         <Select
                           onValueChange={(v) => field.onChange(Number(v))}
                           value={field.value ? String(field.value) : ""}
@@ -201,7 +199,7 @@ export default function PurchasePaymentsPage() {
                           <FormControl>
                             <SelectTrigger data-testid="select-vendor">
                               <SelectValue
-                                placeholder={isAr ? "اختر مورد" : "Select vendor"}
+                                placeholder={t("purch_select_vendor")}
                               />
                             </SelectTrigger>
                           </FormControl>
@@ -226,7 +224,7 @@ export default function PurchasePaymentsPage() {
                     name="paymentDate"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "التاريخ" : "Payment date"}</FormLabel>
+                        <FormLabel>{t("purchpay_date")}</FormLabel>
                         <FormControl>
                           <Input type="date" {...field} data-testid="input-payment-date" />
                         </FormControl>
@@ -238,21 +236,21 @@ export default function PurchasePaymentsPage() {
                 {vendorId > 0 && (
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium">
-                      {isAr ? "اختر الفواتير المراد سدادها" : "Select bills to pay"}
+                      {t("purchpay_select_bills")}
                     </h4>
                     {openBills.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        {isAr ? "لا فواتير مفتوحة لهذا المورد." : "No open bills for this vendor."}
+                        {t("purchpay_no_open")}
                       </p>
                     ) : (
                       <Table>
                         <TableHeader>
                           <TableRow>
                             <TableHead></TableHead>
-                            <TableHead>{isAr ? "الرقم" : "#"}</TableHead>
-                            <TableHead>{isAr ? "التاريخ" : "Date"}</TableHead>
-                            <TableHead className="text-end">{isAr ? "المتبقي" : "Open"}</TableHead>
-                            <TableHead className="text-end">{isAr ? "المبلغ" : "Amount"}</TableHead>
+                            <TableHead>{t("purch_number_hash")}</TableHead>
+                            <TableHead>{t("purch_date")}</TableHead>
+                            <TableHead className="text-end">{t("purch_open")}</TableHead>
+                            <TableHead className="text-end">{t("purch_amount")}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -309,7 +307,7 @@ export default function PurchasePaymentsPage() {
 
                 <div className="rounded-md border bg-muted/30 p-3 flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">
-                    {isAr ? "إجمالي الدفعة" : "Payment total"}
+                    {t("purchpay_total")}
                   </span>
                   <span className="font-mono text-lg font-semibold" data-testid="text-form-total">
                     {formatMoney(totalAlloc)}
@@ -321,7 +319,7 @@ export default function PurchasePaymentsPage() {
                   name="notes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{isAr ? "ملاحظات" : "Notes"}</FormLabel>
+                      <FormLabel>{t("purchpay_notes")}</FormLabel>
                       <FormControl>
                         <Input {...field} value={field.value ?? ""} data-testid="input-payment-notes" />
                       </FormControl>
@@ -336,16 +334,14 @@ export default function PurchasePaymentsPage() {
                     onClick={() => setOpen(false)}
                     data-testid="button-cancel-payment"
                   >
-                    {isAr ? "إلغاء" : "Cancel"}
+                    {t("purch_cancel")}
                   </Button>
                   <Button
                     type="submit"
                     disabled={createMut.isPending || fields.length === 0}
                     data-testid="button-submit-payment"
                   >
-                    {createMut.isPending
-                      ? isAr ? "جارٍ الحفظ…" : "Saving…"
-                      : isAr ? "حفظ" : "Save"}
+                    {createMut.isPending ? t("purch_saving") : t("purch_save")}
                   </Button>
                 </div>
               </form>
@@ -356,28 +352,28 @@ export default function PurchasePaymentsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{isAr ? "كل الدفعات" : "All payments"}</CardTitle>
+          <CardTitle>{t("purchpay_all")}</CardTitle>
           <CardDescription>
-            {isAr ? "آخر دفعات الموردين والقيود المرتبطة بها." : "Recent vendor payments and their JE links."}
+            {t("purchpay_all_desc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && <ListSkeleton rows={6} />}
           {!isLoading && (payments?.length ?? 0) === 0 && (
             <EmptyState
-              title={isAr ? "لا دفعات بعد" : "No payments yet"}
-              description={isAr ? "سجّل أول دفعة لتقليل الذمم الدائنة." : "Record your first vendor payment to reduce AP."}
+              title={t("purchpay_empty")}
+              description={t("purchpay_empty_desc")}
             />
           )}
           {!isLoading && (payments?.length ?? 0) > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{isAr ? "الرقم" : "#"}</TableHead>
-                  <TableHead>{isAr ? "المورد" : "Vendor"}</TableHead>
-                  <TableHead>{isAr ? "التاريخ" : "Date"}</TableHead>
-                  <TableHead>{isAr ? "الفواتير" : "Bills"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "المبلغ" : "Amount"}</TableHead>
+                  <TableHead>{t("purch_number_hash")}</TableHead>
+                  <TableHead>{t("purch_vendor")}</TableHead>
+                  <TableHead>{t("purch_date")}</TableHead>
+                  <TableHead>{t("purchpay_bills")}</TableHead>
+                  <TableHead className="text-end">{t("purch_amount")}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -390,7 +386,7 @@ export default function PurchasePaymentsPage() {
                     <TableCell>{vendorName(p.vendorId)}</TableCell>
                     <TableCell className="text-muted-foreground">{p.paymentDate}</TableCell>
                     <TableCell className="text-muted-foreground text-xs">
-                      {p.allocations.length} {isAr ? "فاتورة" : "bills"}
+                      {p.allocations.length} {t("purchpay_bills_count")}
                     </TableCell>
                     <TableCell className="text-end font-mono" data-testid={`text-payment-amount-${p.id}`}>
                       {formatMoney(Number(p.amount))}
