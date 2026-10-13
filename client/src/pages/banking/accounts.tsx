@@ -6,6 +6,9 @@ import { insertBankAccountSchema, type BankAccount, BANK_ACCOUNT_TYPES } from "@
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocale } from "@/contexts/locale-context";
+import { useT, type StringKey } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
+import { BANKS_BY_COUNTRY } from "@/lib/mena-banks";
 import { useSettings } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,25 +32,16 @@ const formSchema = insertBankAccountSchema.extend({
 });
 type FormValues = z.infer<typeof formSchema>;
 
-const ACCOUNT_TYPE_LABELS: Record<string, { ar: string; en: string; icon: typeof Landmark }> = {
-  checking: { ar: "حساب جاري", en: "Checking", icon: Landmark },
-  savings:  { ar: "حساب توفير", en: "Savings",  icon: PiggyBank },
-  credit:   { ar: "بطاقة ائتمان", en: "Credit Card", icon: CreditCard },
-};
-
-const BANKS_BY_COUNTRY: Record<string, string[]> = {
-  SA: ["مصرف الراجحي", "البنك الأهلي السعودي", "بنك الرياض", "البنك العربي الوطني", "بنك البلاد", "بنك الإنماء", "بنك الجزيرة"],
-  AE: ["بنك أبوظبي الأول", "بنك الإمارات دبي الوطني", "بنك أبوظبي التجاري", "بنك دبي الإسلامي", "بنك المشرق"],
-  KW: ["بنك الكويت الوطني", "بنك بوبيان", "بنك الخليج", "البنك الأهلي الكويتي", "بنك برقان"],
-  QA: ["بنك قطر الوطني", "بنك قطر الإسلامي", "البنك التجاري", "بنك الدوحة"],
-  EG: ["البنك الأهلي المصري", "بنك مصر", "البنك التجاري الدولي", "بنك القاهرة"],
-  JO: ["البنك العربي", "بنك الأردن", "البنك الوطني الأردني", "بنك الإسكان"],
-  INTL: ["HSBC", "JPMorgan Chase", "Citibank", "Deutsche Bank", "BNP Paribas", "Barclays", "Standard Chartered"],
+const ACCOUNT_TYPE_LABELS: Record<string, { key: StringKey; icon: typeof Landmark }> = {
+  checking: { key: "bank_type_checking", icon: Landmark },
+  savings:  { key: "bank_type_savings",  icon: PiggyBank },
+  credit:   { key: "bank_type_credit", icon: CreditCard },
 };
 
 export default function BankingAccountsPage() {
   const { locale } = useLocale();
   const ar = locale === "ar";
+  const t = useT();
   const { toast } = useToast();
   const { can } = useAuth();
   const settings = useSettings();
@@ -70,21 +64,21 @@ export default function BankingAccountsPage() {
     mutationFn: (data: FormValues) => apiRequest("POST", "/api/banking/accounts", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/banking/accounts"] });
-      toast({ title: ar ? "تم إضافة الحساب البنكي" : "Bank account added" });
+      toast({ title: t("bank_toast_added") });
       setOpen(false);
       form.reset();
     },
-    onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/banking/accounts/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/banking/accounts"] });
-      toast({ title: ar ? "تم حذف الحساب" : "Account removed" });
+      toast({ title: t("bank_toast_removed") });
       setDeleteId(null);
     },
-    onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: t(mapErrorKey(e)), variant: "destructive" }),
   });
 
   return (
@@ -92,18 +86,16 @@ export default function BankingAccountsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-foreground" data-testid="text-page-title">
-            {ar ? "الحسابات البنكية" : "Bank Accounts"}
+            {t("bank_accounts_title")}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {ar
-              ? "ربط حسابات بنكية وتتبع التدفق النقدي تلقائياً"
-              : "Link bank accounts and track cash flow automatically"}
+            {t("bank_accounts_sub")}
           </p>
         </div>
         {can.write && (
           <Button size="sm" onClick={() => setOpen(true)} data-testid="button-add-account">
             <Plus className="h-4 w-4 me-1" />
-            {ar ? "إضافة حساب" : "Add account"}
+            {t("bank_add_account")}
           </Button>
         )}
       </div>
@@ -116,10 +108,10 @@ export default function BankingAccountsPage() {
         <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-border rounded-lg">
           <Landmark className="h-10 w-10 text-muted-foreground/40 mb-3" />
           <p className="text-sm font-medium text-muted-foreground">
-            {ar ? "لا توجد حسابات بنكية مُضافة بعد" : "No bank accounts linked yet"}
+            {t("bank_empty_title")}
           </p>
           <p className="text-xs text-muted-foreground/60 mt-1">
-            {ar ? "أضف حساباً للبدء في تتبع معاملاتك البنكية" : "Add an account to start tracking bank transactions"}
+            {t("bank_empty_hint")}
           </p>
         </div>
       ) : (
@@ -127,12 +119,12 @@ export default function BankingAccountsPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
-                <TableHead>{ar ? "الحساب" : "Account"}</TableHead>
-                <TableHead>{ar ? "البنك" : "Bank"}</TableHead>
-                <TableHead>{ar ? "النوع" : "Type"}</TableHead>
-                <TableHead>{ar ? "رقم IBAN" : "IBAN"}</TableHead>
-                <TableHead>{ar ? "العملة" : "Currency"}</TableHead>
-                <TableHead className="text-end">{ar ? "" : ""}</TableHead>
+                <TableHead>{t("bank_col_account")}</TableHead>
+                <TableHead>{t("bank_col_bank")}</TableHead>
+                <TableHead>{t("bank_col_type")}</TableHead>
+                <TableHead>{t("bank_col_iban")}</TableHead>
+                <TableHead>{t("bank_col_currency")}</TableHead>
+                <TableHead className="text-end" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -150,7 +142,7 @@ export default function BankingAccountsPage() {
                     <TableCell className="text-muted-foreground">{acct.bankName}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="text-xs">
-                        {ar ? typeInfo.ar : typeInfo.en}
+                        {t(typeInfo.key)}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
@@ -182,7 +174,7 @@ export default function BankingAccountsPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-add-account">
           <DialogHeader>
-            <DialogTitle>{ar ? "إضافة حساب بنكي" : "Add bank account"}</DialogTitle>
+            <DialogTitle>{t("bank_add_dialog_title")}</DialogTitle>
           </DialogHeader>
           <form
             onSubmit={form.handleSubmit((v) => createMutation.mutate(v))}
@@ -190,25 +182,25 @@ export default function BankingAccountsPage() {
           >
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>{ar ? "الاسم بالعربية" : "Arabic name"}</Label>
+                <Label>{t("bank_name_ar")}</Label>
                 <Input data-testid="input-name-ar" {...form.register("nameAr")} />
                 {form.formState.errors.nameAr && (
                   <p className="text-xs text-destructive">{form.formState.errors.nameAr.message}</p>
                 )}
               </div>
               <div className="space-y-1">
-                <Label>{ar ? "الاسم بالإنجليزية" : "English name"}</Label>
+                <Label>{t("bank_name_en")}</Label>
                 <Input data-testid="input-name-en" {...form.register("nameEn")} />
               </div>
             </div>
 
             <div className="space-y-1">
-              <Label>{ar ? "اسم البنك" : "Bank name"}</Label>
+              <Label>{t("bank_name_label")}</Label>
               <Input
                 list="bank-list"
                 data-testid="input-bank-name"
                 {...form.register("bankName")}
-                placeholder={ar ? "اسم البنك" : "Bank name"}
+                placeholder={t("bank_name_label")}
               />
               <datalist id="bank-list">
                 {(BANKS_BY_COUNTRY[settings.countryCode] || BANKS_BY_COUNTRY.INTL).map((b) => (
@@ -219,7 +211,7 @@ export default function BankingAccountsPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>{ar ? "نوع الحساب" : "Account type"}</Label>
+                <Label>{t("bank_account_type")}</Label>
                 <Select
                   value={form.watch("accountType")}
                   onValueChange={(v) => form.setValue("accountType", v as any)}
@@ -228,16 +220,16 @@ export default function BankingAccountsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {BANK_ACCOUNT_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {ar ? ACCOUNT_TYPE_LABELS[t].ar : ACCOUNT_TYPE_LABELS[t].en}
+                    {BANK_ACCOUNT_TYPES.map((bt) => (
+                      <SelectItem key={bt} value={bt}>
+                        {t(ACCOUNT_TYPE_LABELS[bt].key)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>{ar ? "العملة" : "Currency"}</Label>
+                <Label>{t("bank_currency")}</Label>
                 <Select
                   value={form.watch("currency")}
                   onValueChange={(v) => form.setValue("currency", v)}
@@ -255,7 +247,7 @@ export default function BankingAccountsPage() {
             </div>
 
             <div className="space-y-1">
-              <Label>{ar ? "رقم IBAN" : "IBAN"} <span className="text-muted-foreground text-xs">({ar ? "اختياري" : "optional"})</span></Label>
+              <Label>{t("bank_iban")} <span className="text-muted-foreground text-xs">({t("bank_optional")})</span></Label>
               <Input
                 data-testid="input-iban"
                 {...form.register("iban")}
@@ -265,7 +257,7 @@ export default function BankingAccountsPage() {
             </div>
 
             <div className="space-y-1">
-              <Label>{ar ? "الرصيد الافتتاحي" : "Opening balance"}</Label>
+              <Label>{t("bank_opening_balance")}</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -277,11 +269,11 @@ export default function BankingAccountsPage() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                {ar ? "إلغاء" : "Cancel"}
+                {t("bank_cancel")}
               </Button>
               <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-account">
                 {createMutation.isPending && <Loader2 className="h-4 w-4 animate-spin me-2" />}
-                {ar ? "إضافة" : "Add"}
+                {t("bank_add")}
               </Button>
             </DialogFooter>
           </form>
@@ -292,15 +284,13 @@ export default function BankingAccountsPage() {
       <Dialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>{ar ? "حذف الحساب البنكي؟" : "Remove bank account?"}</DialogTitle>
+            <DialogTitle>{t("bank_remove_title")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {ar
-              ? "سيتم إخفاء الحساب ولن يظهر في القائمة. لن تُحذف المعاملات المرتبطة به."
-              : "The account will be hidden. Linked transactions will not be deleted."}
+            {t("bank_remove_desc")}
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>{ar ? "إلغاء" : "Cancel"}</Button>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>{t("bank_cancel")}</Button>
             <Button
               variant="destructive"
               disabled={deleteMutation.isPending}
@@ -308,7 +298,7 @@ export default function BankingAccountsPage() {
               data-testid="button-confirm-delete-account"
             >
               {deleteMutation.isPending && <Loader2 className="h-4 w-4 animate-spin me-2" />}
-              {ar ? "حذف" : "Remove"}
+              {t("bank_remove")}
             </Button>
           </DialogFooter>
         </DialogContent>

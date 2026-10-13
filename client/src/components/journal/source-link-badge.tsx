@@ -1,17 +1,15 @@
 import { Link } from "wouter"
 import { useLocale } from "@/contexts/locale-context"
+import { useT } from "@/i18n/dict"
 import type { JournalEntrySourceLink } from "@shared/schema"
 
-// Localised month name (Arabic + English) used inside the badge body so
-// "From: Payroll Nov 2025" reads naturally in both locales.
-const MONTH_NAMES_AR = [
-  "يناير","فبراير","مارس","أبريل","مايو","يونيو",
-  "يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر",
-]
-const MONTH_NAMES_EN = [
-  "Jan","Feb","Mar","Apr","May","Jun",
-  "Jul","Aug","Sep","Oct","Nov","Dec",
-]
+// Short, locale-aware month name (localized per active language) used
+// inside the badge body so "From: Payroll Nov 2025" reads naturally in every
+// supported language. Uses the built-in Intl formatter (no new dependency).
+function shortMonth(locale: string, monthIndex0: number): string {
+  const bcp47 = locale === "ar" ? "ar" : locale === "de" ? "de" : locale === "fr" ? "fr" : "en"
+  return new Intl.DateTimeFormat(bcp47, { month: "short" }).format(new Date(2000, monthIndex0, 1))
+}
 
 // Renders a small "From: Payroll Nov 2025" badge that deep-links back to the
 // originating row (payroll run, depreciation run, or fixed-asset event).
@@ -32,26 +30,24 @@ export function SourceLinkBadge({
   surface?: string
 }) {
   const { locale } = useLocale()
-  const months = locale === "ar" ? MONTH_NAMES_AR : MONTH_NAMES_EN
+  const t = useT()
 
-  const fromPrefix = locale === "ar" ? "من:" : "From:"
-  const aria = locale === "ar" ? "فتح المصدر" : "Open source"
+  const fromPrefix = t("journal_src_from")
+  const aria = t("journal_src_open")
 
   const labelBody = (() => {
     if (link.kind === "payroll_run" && link.period) {
-      const word = locale === "ar" ? "كشف رواتب" : "Payroll"
-      return `${word} ${months[link.period.month - 1]} ${link.period.year}`
+      return `${t("journal_src_payroll")} ${shortMonth(locale, link.period.month - 1)} ${link.period.year}`
     }
     if (link.kind === "depreciation_run" && link.period) {
-      const word = locale === "ar" ? "إهلاك" : "Depreciation"
-      return `${word} ${months[link.period.month - 1]} ${link.period.year}`
+      return `${t("journal_src_depreciation")} ${shortMonth(locale, link.period.month - 1)} ${link.period.year}`
     }
     const kindLabel =
       link.kind === "impairment"
-        ? (locale === "ar" ? "انخفاض قيمة" : "Impairment")
+        ? t("journal_src_impairment")
         : link.kind === "revaluation"
-        ? (locale === "ar" ? "إعادة تقييم" : "Revaluation")
-        : (locale === "ar" ? "استبعاد" : "Disposal")
+        ? t("journal_src_revaluation")
+        : t("journal_src_disposal")
     const assetTag = link.assetCode || link.assetName
     return assetTag ? `${kindLabel} — ${assetTag}` : kindLabel
   })()

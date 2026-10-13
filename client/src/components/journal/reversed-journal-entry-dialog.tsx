@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { HistoryTimeline } from "@/components/audit/history-drawer"
-import { useLocale } from "@/contexts/locale-context"
+import { useT } from "@/i18n/dict"
 
 interface ReversedJournalEntryDialogProps {
   entryId: number
@@ -28,16 +28,11 @@ export function ReversedJournalEntryDialog({
   entryId,
   onClose,
 }: ReversedJournalEntryDialogProps) {
-  const { locale } = useLocale()
-  const ar = locale === "ar"
+  const t = useT()
   const labels = {
-    title: ar ? "قيد محذوف (تم عكسه)" : "Deleted entry (reversed)",
-    description: ar
-      ? "هذا القيد لم يعد موجوداً في الأستاذ العام لأنه تم عكسه تلقائياً عند حذف السجل المصدر. السجل التالي يوضح متى وبواسطة ماذا."
-      : "This journal entry no longer exists in the GL because it was auto-reversed when its source row was deleted. The trail below shows when and by what.",
-    notFound: ar
-      ? "تعذّر العثور على هذا القيد ولا توجد سجلات عكس مرتبطة."
-      : "We couldn't find this entry or any related reversal trail.",
+    title: t("journal_rev_title"),
+    description: t("journal_rev_desc"),
+    notFound: t("journal_rev_not_found"),
   }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react"
 import { Link } from "wouter"
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
-import { useLocale } from "@/contexts/locale-context"
+import { useT } from "@/i18n/dict"
 import { ReversedJournalEntryDialog } from "./reversed-journal-entry-dialog"
 
 interface JournalEntryRefLinkProps {
@@ -72,8 +72,7 @@ export function JournalEntryRefLink({
   ...rest
 }: JournalEntryRefLinkProps) {
   const testId = rest["data-testid"]
-  const { locale } = useLocale()
-  const ar = locale === "ar"
+  const t = useT()
   const [tombstoneOpen, setTombstoneOpen] = useState(false)
 
   const { data: entries } = useQuery<JEListItem[]>({
@@ -100,10 +99,8 @@ export function JournalEntryRefLink({
     )
   }
 
-  const reversedHintLabel = ar ? "محذوف" : "reversed"
-  const reversedTitle = ar
-    ? "تم عكس هذا القيد. اضغط لعرض الأثر."
-    : "This entry was reversed. Click to view the trail."
+  const reversedHintLabel = t("journal_ref_reversed_hint")
+  const reversedTitle = t("journal_ref_reversed_title")
 
   return (
     <>

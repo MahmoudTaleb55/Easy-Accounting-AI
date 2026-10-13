@@ -37,6 +37,8 @@ import { SourceLinkBadge } from "@/components/journal/source-link-badge"
 import { ReversedJournalEntryDialog } from "@/components/journal/reversed-journal-entry-dialog"
 import type { Account, JournalEntrySourceLink } from "@shared/schema"
 import { useLocale } from "@/contexts/locale-context"
+import { useT } from "@/i18n/dict"
+import { mapErrorKey } from "@/lib/error-messages"
 import { usePeriod } from "@/contexts/period-context"
 import { PeriodChip } from "@/components/dashboard/period-chip"
 import { useFormatMoney } from "@/lib/format"
@@ -61,6 +63,7 @@ interface JE {
 
 export default function JournalEntriesPage() {
   const { locale } = useLocale()
+  const tr = useT()
   const fmt = useFormatMoney()
   const { period, setPeriodKey } = usePeriod()
   // The global period defaults to the current calendar month, which hides
@@ -100,61 +103,43 @@ export default function JournalEntriesPage() {
 
   const t = useMemo(
     () => ({
-      eyebrow: locale === "ar" ? "قيود اليومية" : "Journal entries",
-      title:
-        locale === "ar"
-          ? "كل قيد، متوازن، مرحَّل."
-          : "Every entry, balanced, posted.",
-      subtitle:
-        locale === "ar"
-          ? "اليومية مزدوجة القيد. كل سطر يُعرض بمدين ودائن مع المرجع والمصدر."
-          : "Double-entry by design. Every line shows debit, credit, reference, and source.",
-      add: locale === "ar" ? "قيد جديد" : "New entry",
-      addTitle: locale === "ar" ? "تسجيل قيد يومية" : "Post a journal entry",
-      addDesc:
-        locale === "ar"
-          ? "حدّد التاريخ والبيان وسطور المدين والدائن. القيد لن يُحفظ إلا متوازناً."
-          : "Set date, memo, and debit/credit lines. The entry only posts when balanced.",
-      date: locale === "ar" ? "التاريخ" : "Date",
-      memo: locale === "ar" ? "البيان" : "Memo",
-      memoPh: locale === "ar" ? "وصف القيد" : "Entry description",
-      account: locale === "ar" ? "الحساب" : "Account",
-      debit: locale === "ar" ? "مدين" : "Debit",
-      credit: locale === "ar" ? "دائن" : "Credit",
-      total: locale === "ar" ? "الإجمالي" : "Total",
-      addLine: locale === "ar" ? "إضافة سطر" : "Add line",
-      balanced: locale === "ar" ? "القيد متوازن" : "Entry is balanced",
-      diff: locale === "ar" ? "الفرق" : "Difference",
-      save: locale === "ar" ? "حفظ القيد" : "Post entry",
-      created: locale === "ar" ? "تم تسجيل القيد" : "Entry posted",
-      saveFailed: locale === "ar" ? "فشل تسجيل القيد" : "Could not post entry",
-      deleted: locale === "ar" ? "تم الحذف" : "Deleted",
-      empty: locale === "ar" ? "لا توجد قيود بعد" : "No entries yet",
-      emptyHint:
-        locale === "ar"
-          ? "ابدأ بإضافة أول قيد يدوي، أو أنشئ معاملة من المساعد الذكي."
-          : "Add your first manual entry, or create a transaction from the assistant.",
-      pickAccount: locale === "ar" ? "اختر حساباً" : "Pick account",
-      sourceManual: locale === "ar" ? "يدوي" : "Manual",
-      sourceAuto: locale === "ar" ? "تلقائي" : "Auto",
+      eyebrow: tr("journal_eyebrow"),
+      title: tr("journal_title"),
+      subtitle: tr("journal_subtitle"),
+      add: tr("journal_add"),
+      addTitle: tr("journal_add_title"),
+      addDesc: tr("journal_add_desc"),
+      date: tr("journal_date"),
+      memo: tr("journal_memo"),
+      memoPh: tr("journal_memo_ph"),
+      account: tr("journal_account"),
+      debit: tr("journal_debit"),
+      credit: tr("journal_credit"),
+      total: tr("journal_total"),
+      addLine: tr("journal_add_line"),
+      balanced: tr("journal_balanced"),
+      diff: tr("journal_diff"),
+      save: tr("journal_save"),
+      created: tr("journal_created"),
+      saveFailed: tr("journal_save_failed"),
+      deleted: tr("journal_deleted"),
+      empty: tr("journal_empty"),
+      emptyHint: tr("journal_empty_hint"),
+      pickAccount: tr("journal_pick_account"),
+      sourceManual: tr("journal_source_manual"),
+      sourceAuto: tr("journal_source_auto"),
       sourceAi: "AI",
-      detailDesc:
-        locale === "ar"
-          ? "أسطر القيد وسجل التغييرات في مكان واحد."
-          : "Entry lines and change history in one place.",
-      tabLines: locale === "ar" ? "الأسطر" : "Lines",
-      tabChanges: locale === "ar" ? "التغييرات" : "Changes",
-      edit: locale === "ar" ? "تعديل" : "Edit",
-      editTitle: locale === "ar" ? "تعديل قيد اليومية" : "Edit journal entry",
-      editDesc:
-        locale === "ar"
-          ? "عدّل التاريخ أو البيان أو سطور المدين والدائن. القيد لا يُحفظ إلا متوازناً."
-          : "Update date, memo, or debit/credit lines. The entry only saves when balanced.",
-      saveEdit: locale === "ar" ? "حفظ التغييرات" : "Save changes",
-      edited: locale === "ar" ? "تم تحديث القيد" : "Entry updated",
-      editFailed: locale === "ar" ? "فشل تعديل القيد" : "Could not update entry",
+      detailDesc: tr("journal_detail_desc"),
+      tabLines: tr("journal_tab_lines"),
+      tabChanges: tr("journal_tab_changes"),
+      edit: tr("journal_edit"),
+      editTitle: tr("journal_edit_title"),
+      editDesc: tr("journal_edit_desc"),
+      saveEdit: tr("journal_save_edit"),
+      edited: tr("journal_edited"),
+      editFailed: tr("journal_edit_failed"),
     }),
-    [locale]
+    [tr]
   )
 
   const { data: allEntries, isLoading, isError, refetch } = useQuery<JE[]>({
@@ -281,8 +266,8 @@ export default function JournalEntriesPage() {
         { accountId: 0, debit: 0, credit: 0 },
       ])
     },
-    onError: (err: any) =>
-      toast({ title: t.saveFailed, description: err.message, variant: "destructive" }),
+    onError: (err: unknown) =>
+      toast({ title: t.saveFailed, description: tr(mapErrorKey(err)), variant: "destructive" }),
   })
 
   const deleteMutation = useMutation({
@@ -318,8 +303,8 @@ export default function JournalEntriesPage() {
       toast({ title: t.edited })
       setEditEntry(null)
     },
-    onError: (err: any) =>
-      toast({ title: t.editFailed, description: err.message, variant: "destructive" }),
+    onError: (err: unknown) =>
+      toast({ title: t.editFailed, description: tr(mapErrorKey(err)), variant: "destructive" }),
   })
 
   return (
@@ -538,9 +523,7 @@ export default function JournalEntriesPage() {
         >
           <div className="flex-1 min-w-0">
             <div className="font-medium">
-              {locale === "ar"
-                ? `القيد المطلوب ${targetEntry.reference} خارج الفترة المختارة`
-                : `Linked entry ${targetEntry.reference} is outside the selected period`}
+              {tr("journal_out_of_period").replace("{ref}", targetEntry.reference)}
             </div>
             <div className="text-xs text-muted-foreground mt-1 font-numeric tabular-nums">
               {format(new Date(targetEntry.entryDate), "d MMM yyyy", { locale: dfLocale })}
@@ -561,7 +544,7 @@ export default function JournalEntriesPage() {
             }}
             data-testid="button-jump-linked-entry"
           >
-            {locale === "ar" ? "عرض القيد" : "Show entry"}
+            {tr("journal_show_entry")}
           </Button>
         </div>
       )}
@@ -657,7 +640,7 @@ export default function JournalEntriesPage() {
                           size="icon-sm"
                           onClick={() => deleteMutation.mutate(je.id)}
                           data-testid={`button-delete-entry-${je.id}`}
-                          aria-label={locale === "ar" ? "حذف القيد" : "Delete entry"}
+                          aria-label={tr("journal_delete_entry")}
                           className="text-muted-foreground hover:text-destructive"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

@@ -9,6 +9,8 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocale } from "@/contexts/locale-context";
+import { useT, type StringKey } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,17 +32,19 @@ import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 
-const formSchema = insertBankTransactionSchema.extend({
-  amount: z.coerce.number().positive("يجب أن يكون المبلغ أكبر من صفر"),
-  txnDate: z.string().min(1),
-});
-type FormValues = z.infer<typeof formSchema>;
+function makeSchema(tr: (k: StringKey) => string) {
+  return insertBankTransactionSchema.extend({
+    amount: z.coerce.number().positive(tr("bank_txn_err_amount")),
+    txnDate: z.string().min(1),
+  });
+}
+type FormValues = z.infer<ReturnType<typeof makeSchema>>;
 
-const TXN_TYPE_META: Record<string, { ar: string; en: string; icon: React.ReactNode; color: string }> = {
-  deposit:    { ar: "إيداع",    en: "Deposit",    icon: <ArrowDownLeft className="h-3.5 w-3.5" />, color: "text-success" },
-  withdrawal: { ar: "سحب",     en: "Withdrawal", icon: <ArrowUpRight className="h-3.5 w-3.5" />,  color: "text-destructive" },
-  transfer:   { ar: "تحويل",   en: "Transfer",   icon: <ArrowLeftRight className="h-3.5 w-3.5" />, color: "text-primary" },
-  fee:        { ar: "رسوم",    en: "Fee",        icon: <Minus className="h-3.5 w-3.5" />,          color: "text-warning" },
+const TXN_TYPE_META: Record<string, { key: StringKey; icon: React.ReactNode; color: string }> = {
+  deposit:    { key: "bank_txn_deposit",    icon: <ArrowDownLeft className="h-3.5 w-3.5" />, color: "text-success" },
+  withdrawal: { key: "bank_txn_withdrawal", icon: <ArrowUpRight className="h-3.5 w-3.5" />,  color: "text-destructive" },
+  transfer:   { key: "bank_txn_transfer",   icon: <ArrowLeftRight className="h-3.5 w-3.5" />, color: "text-primary" },
+  fee:        { key: "bank_txn_fee",        icon: <Minus className="h-3.5 w-3.5" />,          color: "text-warning" },
 };
 
 function amountSign(type: string, isCredit: boolean): string {
@@ -53,10 +57,12 @@ function amountSign(type: string, isCredit: boolean): string {
 export default function BankingTransactionsPage() {
   const { locale } = useLocale();
   const ar = locale === "ar";
+  const tr = useT();
   const dfLocale = ar ? arLocale : enUS;
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [filterAccount, setFilterAccount] = useState<string>("all");
+  const formSchema = makeSchema(tr);
 
   const { data: accounts = [] } = useQuery<BankAccount[]>({
     queryKey: ["/api/banking/accounts"],
@@ -84,11 +90,11 @@ export default function BankingTransactionsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/banking/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/banking/accounts"] });
-      toast({ title: ar ? "تمت إضافة المعاملة" : "Transaction recorded" });
+      toast({ title: tr("bank_txn_toast_added") });
       setOpen(false);
       form.reset();
     },
-    onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: tr(mapErrorKey(e)), variant: "destructive" }),
   });
 
   const filtered = filterAccount === "all"
@@ -111,26 +117,24 @@ export default function BankingTransactionsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-foreground" data-testid="text-page-title">
-            {ar ? "معاملات البنك" : "Bank Transactions"}
+            {tr("bank_txn_title")}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {ar
-              ? "تسجيل الإيداعات والسحوبات والتحويلات مع ترحيل آلي للقيود"
-              : "Record deposits, withdrawals & transfers with automatic journal posting"}
+            {tr("bank_txn_sub")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {accounts.length === 0 ? (
             <Link href="/app/banking/accounts">
               <Button size="sm" variant="outline">
-                {ar ? "أضف حساباً أولاً" : "Add an account first"}
+                {tr("bank_txn_add_account_first")}
               </Button>
             </Link>
           ) : (
             <WriteGuard>
               <Button size="sm" onClick={() => setOpen(true)} data-testid="button-add-transaction">
                 <Plus className="h-4 w-4 me-1" />
-                {ar ? "معاملة جديدة" : "New transaction"}
+                {tr("bank_txn_new")}
               </Button>
             </WriteGuard>
           )}
@@ -145,7 +149,7 @@ export default function BankingTransactionsPage() {
             variant={filterAccount === "all" ? "default" : "outline"}
             onClick={() => setFilterAccount("all")}
           >
-            {ar ? "الكل" : "All"}
+            {tr("bank_txn_filter_all")}
           </Button>
           {accounts.map((a) => (
             <Button
@@ -168,7 +172,7 @@ export default function BankingTransactionsPage() {
         <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-border rounded-lg">
           <ListOrdered className="h-10 w-10 text-muted-foreground/40 mb-3" />
           <p className="text-sm font-medium text-muted-foreground">
-            {ar ? "لا توجد معاملات بعد" : "No transactions yet"}
+            {tr("bank_txn_empty")}
           </p>
         </div>
       ) : (
@@ -176,13 +180,13 @@ export default function BankingTransactionsPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
-                <TableHead>{ar ? "المرجع" : "Ref"}</TableHead>
-                <TableHead>{ar ? "التاريخ" : "Date"}</TableHead>
-                <TableHead>{ar ? "الحساب" : "Account"}</TableHead>
-                <TableHead>{ar ? "النوع" : "Type"}</TableHead>
-                <TableHead>{ar ? "البيان" : "Description"}</TableHead>
-                <TableHead className={ar ? "text-start" : "text-end"}>{ar ? "المبلغ" : "Amount"}</TableHead>
-                <TableHead>{ar ? "قيد" : "JE"}</TableHead>
+                <TableHead>{tr("bank_txn_col_ref")}</TableHead>
+                <TableHead>{tr("bank_txn_col_date")}</TableHead>
+                <TableHead>{tr("bank_txn_col_account")}</TableHead>
+                <TableHead>{tr("bank_txn_col_type")}</TableHead>
+                <TableHead>{tr("bank_txn_col_desc")}</TableHead>
+                <TableHead className={ar ? "text-start" : "text-end"}>{tr("bank_txn_col_amount")}</TableHead>
+                <TableHead>{tr("bank_txn_col_je")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -201,7 +205,7 @@ export default function BankingTransactionsPage() {
                     <TableCell>
                       <Badge variant="outline" className={cn("gap-1 text-xs", meta.color)}>
                         {meta.icon}
-                        {ar ? meta.ar : meta.en}
+                        {tr(meta.key)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm max-w-[200px] truncate">{t.description}</TableCell>
@@ -231,20 +235,20 @@ export default function BankingTransactionsPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-add-transaction">
           <DialogHeader>
-            <DialogTitle>{ar ? "تسجيل معاملة بنكية" : "Record bank transaction"}</DialogTitle>
+            <DialogTitle>{tr("bank_txn_dialog_title")}</DialogTitle>
           </DialogHeader>
           <form
             onSubmit={form.handleSubmit((v) => createMutation.mutate(v))}
             className="space-y-4"
           >
             <div className="space-y-1">
-              <Label>{ar ? "الحساب البنكي" : "Bank account"}</Label>
+              <Label>{tr("bank_txn_account")}</Label>
               <Select
                 value={form.watch("bankAccountId") ? String(form.watch("bankAccountId")) : ""}
                 onValueChange={(v) => form.setValue("bankAccountId", parseInt(v))}
               >
                 <SelectTrigger data-testid="select-bank-account">
-                  <SelectValue placeholder={ar ? "اختر حساباً" : "Select account"} />
+                  <SelectValue placeholder={tr("bank_txn_select_account")} />
                 </SelectTrigger>
                 <SelectContent>
                   {accounts.map((a) => (
@@ -255,13 +259,13 @@ export default function BankingTransactionsPage() {
                 </SelectContent>
               </Select>
               {form.formState.errors.bankAccountId && (
-                <p className="text-xs text-destructive">{ar ? "مطلوب" : "Required"}</p>
+                <p className="text-xs text-destructive">{tr("bank_txn_required")}</p>
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>{ar ? "نوع المعاملة" : "Type"}</Label>
+                <Label>{tr("bank_txn_type")}</Label>
                 <Select
                   value={form.watch("txnType")}
                   onValueChange={(v) => form.setValue("txnType", v as any)}
@@ -270,16 +274,16 @@ export default function BankingTransactionsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {BANK_TXN_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {ar ? TXN_TYPE_META[t].ar : TXN_TYPE_META[t].en}
+                    {BANK_TXN_TYPES.map((bt) => (
+                      <SelectItem key={bt} value={bt}>
+                        {tr(TXN_TYPE_META[bt].key)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>{ar ? "المبلغ" : "Amount"}</Label>
+                <Label>{tr("bank_txn_amount")}</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -295,13 +299,13 @@ export default function BankingTransactionsPage() {
 
             {txnType === "transfer" && (
               <div className="space-y-1">
-                <Label>{ar ? "التحويل إلى" : "Transfer to"}</Label>
+                <Label>{tr("bank_txn_transfer_to")}</Label>
                 <Select
                   value={form.watch("counterpartBankAccountId") ? String(form.watch("counterpartBankAccountId")) : ""}
                   onValueChange={(v) => form.setValue("counterpartBankAccountId", parseInt(v))}
                 >
                   <SelectTrigger data-testid="select-counterpart-account">
-                    <SelectValue placeholder={ar ? "اختر حساب الوجهة" : "Select destination account"} />
+                    <SelectValue placeholder={tr("bank_txn_select_dest")} />
                   </SelectTrigger>
                   <SelectContent>
                     {accounts
@@ -317,13 +321,13 @@ export default function BankingTransactionsPage() {
             )}
 
             <div className="space-y-1">
-              <Label>{ar ? "التاريخ" : "Date"}</Label>
+              <Label>{tr("bank_txn_date")}</Label>
               <Input type="date" data-testid="input-txn-date" {...form.register("txnDate")} />
             </div>
 
             <div className="space-y-1">
-              <Label>{ar ? "البيان" : "Description"}</Label>
-              <Input data-testid="input-description" {...form.register("description")} placeholder={ar ? "وصف المعاملة" : "Transaction description"} />
+              <Label>{tr("bank_txn_desc")}</Label>
+              <Input data-testid="input-description" {...form.register("description")} placeholder={tr("bank_txn_desc_ph")} />
               {form.formState.errors.description && (
                 <p className="text-xs text-destructive">{form.formState.errors.description.message}</p>
               )}
@@ -331,11 +335,11 @@ export default function BankingTransactionsPage() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                {ar ? "إلغاء" : "Cancel"}
+                {tr("bank_txn_cancel")}
               </Button>
               <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-transaction">
                 {createMutation.isPending && <Loader2 className="h-4 w-4 animate-spin me-2" />}
-                {ar ? "تسجيل" : "Record"}
+                {tr("bank_txn_record")}
               </Button>
             </DialogFooter>
           </form>
