@@ -6,6 +6,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocale } from "@/contexts/locale-context";
 import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { useFormatMoney } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -67,9 +68,9 @@ export default function InventoryTransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory/transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory/valuation"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory/alerts"] });
-      toast({ description: isAr ? "تم عكس الحركة" : "Reversed" });
+      toast({ description: t("inv_reversed_toast") });
     },
-    onError: (e: any) => toast({ variant: "destructive", description: e?.message ?? "Error" }),
+    onError: (e: unknown) => toast({ variant: "destructive", description: t(mapErrorKey(e)) }),
   });
 
   // Forms
@@ -109,9 +110,9 @@ export default function InventoryTransactionsPage() {
     purchaseForm.reset();
     adjustForm.reset();
     transferForm.reset();
-    toast({ description: isAr ? "تم الحفظ" : "Saved" });
+    toast({ description: t("toast_saved") });
   };
-  const onError = (e: any) => toast({ variant: "destructive", description: e?.message ?? "Error" });
+  const onError = (e: unknown) => toast({ variant: "destructive", description: t(mapErrorKey(e)) });
 
   const purchaseMut = useMutation({
     mutationFn: (d: PurchaseForm) => apiRequest("POST", "/api/inventory/purchases", d),
@@ -178,12 +179,12 @@ export default function InventoryTransactionsPage() {
                         <FormItem><FormLabel>{t("inv_reference")}</FormLabel><FormControl><Input {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
                       )} />
                       <FormField control={purchaseForm.control} name="paymentMethod" render={({ field }) => (
-                        <FormItem><FormLabel>{isAr ? "طريقة الدفع" : "Payment"}</FormLabel>
+                        <FormItem><FormLabel>{t("inv_payment")}</FormLabel>
                           <Select value={field.value} onValueChange={field.onChange}>
                             <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                             <SelectContent>
-                              <SelectItem value="credit">{isAr ? "آجل" : "Credit"}</SelectItem>
-                              <SelectItem value="cash">{isAr ? "نقدي" : "Cash"}</SelectItem>
+                              <SelectItem value="credit">{t("inv_credit")}</SelectItem>
+                              <SelectItem value="cash">{t("inv_cash")}</SelectItem>
                             </SelectContent>
                           </Select><FormMessage /></FormItem>
                       )} />
@@ -352,12 +353,12 @@ export default function InventoryTransactionsPage() {
           ) : (
             <Table>
               <TableHeader><TableRow>
-                <TableHead>{isAr ? "الرقم" : "No."}</TableHead>
+                <TableHead>{t("inv_no")}</TableHead>
                 <TableHead>{t("inv_txn_date")}</TableHead>
                 <TableHead>{t("inv_txn_type")}</TableHead>
                 <TableHead>{t("inv_location")}</TableHead>
                 <TableHead className="text-end">{t("inv_total_cost")}</TableHead>
-                <TableHead>{isAr ? "الحالة" : "Status"}</TableHead>
+                <TableHead>{t("inv_status")}</TableHead>
                 <TableHead></TableHead>
               </TableRow></TableHeader>
               <TableBody>

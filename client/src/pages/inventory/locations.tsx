@@ -6,6 +6,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocale } from "@/contexts/locale-context";
 import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,9 +46,9 @@ export default function InventoryLocationsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/inventory/locations"] });
       setCreateOpen(false);
       form.reset();
-      toast({ description: isAr ? "تم الحفظ" : "Saved" });
+      toast({ description: t("toast_saved") });
     },
-    onError: (e: any) => toast({ variant: "destructive", description: e?.message ?? "Error" }),
+    onError: (e: unknown) => toast({ variant: "destructive", description: t(mapErrorKey(e)) }),
   });
 
   return (

@@ -20,10 +20,10 @@ export function PeriodBar() {
     const t0 = Date.now();
     const id = setInterval(() => {
       const mins = Math.floor((Date.now() - t0) / 60000);
-      setSyncedAgo(mins === 0 ? (locale === "ar" ? "الآن" : "now") : `${mins}m`);
+      setSyncedAgo(mins === 0 ? t("period_now") : `${mins}m`);
     }, 30000);
     return () => clearInterval(id);
-  }, [locale]);
+  }, [locale, t]);
   useEffect(() => {
     setPulse(true);
     const id = setTimeout(() => setPulse(false), 900);
@@ -34,7 +34,7 @@ export function PeriodBar() {
     <div className="flex flex-wrap items-center justify-between gap-3 pb-1" data-testid="period-bar">
       <div className="flex items-center gap-3 min-w-0">
         <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-          {dir === "rtl" ? "اللوحة الرئيسية" : "Dashboard"}
+          {t("nav_dashboard")}
         </div>
         <span className="hairline-v hidden md:inline-block h-4" />
         <div className="text-sm font-medium text-foreground tabular-nums" data-testid="text-period-range">

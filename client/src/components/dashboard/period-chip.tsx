@@ -94,7 +94,7 @@ export function PeriodChip({ showCompare = true, className = "" }: PeriodChipPro
             about an unknown <select value>. */}
         {period.key === "custom" && (
           <option value="custom" hidden>
-            {locale === "ar" ? "نطاق مخصص" : "Custom range"}
+            {t("period_custom")}
           </option>
         )}
       </select>

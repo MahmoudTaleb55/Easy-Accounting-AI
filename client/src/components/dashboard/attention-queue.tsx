@@ -77,7 +77,7 @@ export function AttentionQueue() {
           kind: "inactivity",
           severity: "info",
           title: t("attention_inactive"),
-          description: dir === "rtl" ? "آخر معاملة قبل أكثر من 7 أيام." : "Last transaction was over 7 days ago.",
+          description: t("attention_inactive_desc"),
           href: "/app/transactions?new=1",
         });
       }
@@ -110,9 +110,9 @@ export function AttentionQueue() {
           <div className="text-base font-semibold tracking-tight text-foreground">{t("attention_caught_up_a")}</div>
           <div className="text-sm text-muted-foreground mt-0.5 tabular-nums">
             {txCount > 0
-              ? (dir === "rtl"
-                  ? `${txCount.toLocaleString("ar-SA")} حركة. الدفاتر محدّثة حتى ${ts}.`
-                  : `${txCount.toLocaleString("en-US")} transactions. Books current to ${ts}.`)
+              ? t("attention_caught_up_count")
+                  .replace("{n}", txCount.toLocaleString(dir === "rtl" ? "ar-SA" : "en-US"))
+                  .replace("{ts}", ts)
               : t("attention_caught_up_b")}
           </div>
         </div>

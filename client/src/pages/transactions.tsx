@@ -38,6 +38,7 @@ import {
   Inbox,
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
+import { useT } from "@/i18n/dict"
 import { usePeriod } from "@/contexts/period-context"
 import { PeriodChip } from "@/components/dashboard/period-chip"
 import { useFormatMoney } from "@/lib/format"
@@ -52,6 +53,7 @@ type Filter = "all" | "income" | "expense"
 
 export default function Transactions() {
   const { locale } = useLocale()
+  const tr = useT()
   const fmt = useFormatMoney()
   const { period } = usePeriod()
   const dfLocale = locale === "ar" ? ar : enUS
@@ -79,62 +81,39 @@ export default function Transactions() {
 
   const t = useMemo(
     () => ({
-      eyebrow: locale === "ar" ? "المعاملات" : "Transactions",
-      title: locale === "ar" ? "كل دخل ومصروف، في مكان واحد." : "Every dollar in and out, in one place.",
-      subtitle:
-        locale === "ar"
-          ? "ابحث وفلتر وأضف معاملات بسرعة. كل قيد ينشأ تلقائياً في اليومية."
-          : "Search, filter, and add entries fast. Every record auto-posts to the journal.",
-      add: locale === "ar" ? "معاملة جديدة" : "New transaction",
-      addDialogTitle: locale === "ar" ? "إضافة معاملة" : "Add transaction",
-      addDialogDesc:
-        locale === "ar"
-          ? "أدخل تفاصيل المعاملة لحفظها وترحيلها إلى دفتر اليومية."
-          : "Enter details to save and post this entry to the journal.",
-      searchPh:
-        locale === "ar"
-          ? "ابحث بالوصف أو الفئة أو المبلغ…"
-          : "Search description, category, or amount…",
-      filterAll: locale === "ar" ? "الكل" : "All",
-      filterIncome: locale === "ar" ? "إيرادات" : "Revenue",
-      filterExpense: locale === "ar" ? "مصروفات" : "Expenses",
-      emptyTitleHas: locale === "ar" ? "لا نتائج" : "No results",
-      emptyTitleNone: locale === "ar" ? "لا توجد معاملات بعد" : "No transactions yet",
-      emptyBodyHas:
-        locale === "ar"
-          ? "حاول تعديل البحث أو إزالة الفلتر."
-          : "Try adjusting your search or clearing the filter.",
-      emptyBodyNone:
-        locale === "ar"
-          ? "أضف أول معاملة من الزر أعلاه أو من المساعد الذكي."
-          : "Add your first transaction with the button above or the AI assistant.",
-      delTitle: locale === "ar" ? "حذف المعاملة؟" : "Delete this transaction?",
-      delDesc:
-        locale === "ar"
-          ? "هذا الإجراء لا يمكن التراجع عنه. سيتم إلغاء القيد المقابل في اليومية."
-          : "This cannot be undone. The matching journal entry will be reversed.",
-      delCancel: locale === "ar" ? "إلغاء" : "Cancel",
-      delConfirm: locale === "ar" ? "نعم، احذف" : "Yes, delete",
-      count: locale === "ar" ? "معاملة" : "transactions",
-      detailDesc:
-        locale === "ar"
-          ? "تفاصيل المعاملة وسجل التغييرات في مكان واحد."
-          : "Transaction details and change history in one place.",
-      tabSummary: locale === "ar" ? "الملخص" : "Summary",
-      tabChanges: locale === "ar" ? "التغييرات" : "Changes",
-      detailDate: locale === "ar" ? "التاريخ" : "Date",
-      detailCategory: locale === "ar" ? "الفئة" : "Category",
-      detailType: locale === "ar" ? "النوع" : "Type",
-      detailAmount: locale === "ar" ? "المبلغ" : "Amount",
-      typeIncome: locale === "ar" ? "إيراد" : "Revenue",
-      typeExpense: locale === "ar" ? "مصروف" : "Expense",
-      openDetailAria: locale === "ar" ? "فتح تفاصيل المعاملة" : "Open transaction details",
-      // "Posted as JE-…" deep-link in the detail dialog. Bilingual to match
-      // the rest of the dialog and the SourceLinkBadge on the JE page.
-      jePostedAs: locale === "ar" ? "مُرحّل في" : "Posted as",
-      jeOpenAria: locale === "ar" ? "فتح القيد المحاسبي" : "Open journal entry",
+      eyebrow: tr("txn_eyebrow"),
+      title: tr("txn_title"),
+      subtitle: tr("txn_subtitle"),
+      add: tr("txn_add"),
+      addDialogTitle: tr("txn_add_dialog_title"),
+      addDialogDesc: tr("txn_add_dialog_desc"),
+      searchPh: tr("txn_search_ph"),
+      filterAll: tr("txn_filter_all"),
+      filterIncome: tr("txn_filter_income"),
+      filterExpense: tr("txn_filter_expense"),
+      emptyTitleHas: tr("txn_empty_title_has"),
+      emptyTitleNone: tr("txn_empty_title_none"),
+      emptyBodyHas: tr("txn_empty_body_has"),
+      emptyBodyNone: tr("txn_empty_body_none"),
+      delTitle: tr("txn_del_title"),
+      delDesc: tr("txn_del_desc"),
+      delCancel: tr("txn_del_cancel"),
+      delConfirm: tr("txn_del_confirm"),
+      count: tr("txn_count"),
+      detailDesc: tr("txn_detail_desc"),
+      tabSummary: tr("txn_tab_summary"),
+      tabChanges: tr("txn_tab_changes"),
+      detailDate: tr("txn_detail_date"),
+      detailCategory: tr("txn_detail_category"),
+      detailType: tr("txn_detail_type"),
+      detailAmount: tr("txn_detail_amount"),
+      typeIncome: tr("txn_type_income"),
+      typeExpense: tr("txn_type_expense"),
+      openDetailAria: tr("txn_open_detail_aria"),
+      jePostedAs: tr("txn_je_posted_as"),
+      jeOpenAria: tr("txn_je_open_aria"),
     }),
-    [locale]
+    [tr]
   )
 
   const filtered = useMemo(() => {

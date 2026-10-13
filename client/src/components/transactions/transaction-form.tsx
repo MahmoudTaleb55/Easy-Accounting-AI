@@ -22,21 +22,32 @@ import {
 import { insertTransactionSchema } from "@shared/schema";
 import { useCreateTransaction } from "@/hooks/use-transactions";
 import { useSettings } from "@/lib/format";
+import { useT, type StringKey } from "@/i18n/dict";
+import { useLocale } from "@/contexts/locale-context";
 import { Loader2 } from "lucide-react";
 
-// The schema expects amount to be string or number, we'll cast it properly
-const formSchema = insertTransactionSchema.extend({
-  amount: z.coerce.number().min(0.01, "المبلغ يجب أن يكون أكبر من 0"),
-  description: z.string().min(2, "الوصف مطلوب"),
-  category: z.string().min(2, "الفئة مطلوبة"),
-});
+// The schema expects amount to be string or number, we'll cast it properly.
+// Built inside the component so Zod validation messages resolve through the
+// active-locale dictionary and <FormMessage> renders them translated.
+const baseSchema = insertTransactionSchema;
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<ReturnType<typeof makeSchema>>;
+
+function makeSchema(t: (k: StringKey) => string) {
+  return baseSchema.extend({
+    amount: z.coerce.number().min(0.01, t("txnf_err_amount")),
+    description: z.string().min(2, t("txnf_err_description")),
+    category: z.string().min(2, t("txnf_err_category")),
+  });
+}
 
 export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
   const mutation = useCreateTransaction();
   const settings = useSettings();
-  
+  const t = useT();
+  const { dir } = useLocale();
+  const formSchema = makeSchema(t);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -65,19 +76,19 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
             name="type"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-base font-semibold">نوع المعاملة</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value} dir="rtl">
+                <FormLabel className="text-base font-semibold">{t("txnf_type")}</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value} dir={dir}>
                   <FormControl>
                     <SelectTrigger
                       className="h-12 rounded-xl bg-background border-2 focus:ring-primary/20 transition-all"
                       data-testid="select-transaction-type"
                     >
-                      <SelectValue placeholder="اختر النوع" />
+                      <SelectValue placeholder={t("txnf_type_ph")} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="income" className="font-medium text-emerald-600 focus:text-emerald-700" data-testid="option-transaction-type-income">إيراد (+)</SelectItem>
-                    <SelectItem value="expense" className="font-medium text-rose-600 focus:text-rose-700" data-testid="option-transaction-type-expense">مصروف (-)</SelectItem>
+                    <SelectItem value="income" className="font-medium text-emerald-600 focus:text-emerald-700" data-testid="option-transaction-type-income">{t("txnf_income")}</SelectItem>
+                    <SelectItem value="expense" className="font-medium text-rose-600 focus:text-rose-700" data-testid="option-transaction-type-expense">{t("txnf_expense")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -90,7 +101,7 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
             name="amount"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-base font-semibold">المبلغ</FormLabel>
+                <FormLabel className="text-base font-semibold">{t("txnf_amount")}</FormLabel>
                 <FormControl>
                   <div className="relative">
                     <Input 
@@ -115,10 +126,10 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
           name="category"
           render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-base font-semibold">الفئة</FormLabel>
+              <FormLabel className="text-base font-semibold">{t("txnf_category")}</FormLabel>
               <FormControl>
                 <Input 
-                  placeholder="مثال: رواتب، إيجار، طعام..." 
+                  placeholder={t("txnf_category_ph")} 
                   className="h-12 rounded-xl bg-background border-2 focus:ring-primary/20 transition-all" 
                   data-testid="input-transaction-category"
                   {...field} 
@@ -134,10 +145,10 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
           name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-base font-semibold">الوصف</FormLabel>
+              <FormLabel className="text-base font-semibold">{t("txnf_description")}</FormLabel>
               <FormControl>
                 <Input 
-                  placeholder="وصف تفصيلي للمعاملة" 
+                  placeholder={t("txnf_description_ph")} 
                   className="h-12 rounded-xl bg-background border-2 focus:ring-primary/20 transition-all" 
                   data-testid="input-transaction-description"
                   {...field} 
@@ -155,9 +166,9 @@ export function TransactionForm({ onSuccess }: { onSuccess?: () => void }) {
           data-testid="button-submit-transaction"
         >
           {mutation.isPending ? (
-            <><Loader2 className="w-5 h-5 ml-2 animate-spin" /> جاري الحفظ...</>
+            <><Loader2 className="w-5 h-5 ml-2 animate-spin" /> {t("txnf_saving")}</>
           ) : (
-            "إضافة المعاملة"
+            t("txnf_submit")
           )}
         </Button>
       </form>
