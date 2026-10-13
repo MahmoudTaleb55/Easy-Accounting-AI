@@ -5,7 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useFormatMoney } from "@/lib/format";
-import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,8 +23,7 @@ import type { z } from "zod";
 type CustomerForm = z.infer<typeof insertCustomerSchema>;
 
 export default function SalesCustomersPage() {
-  const { locale } = useLocale();
-  const isAr = locale === "ar";
+  const t = useT();
   const formatMoney = useFormatMoney();
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
@@ -57,12 +57,12 @@ export default function SalesCustomersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales/customers"] });
       setCreateOpen(false);
       form.reset();
-      toast({ title: isAr ? "تم حفظ العميل" : "Customer saved" });
+      toast({ title: t("toast_saved") });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       toast({
-        title: isAr ? "تعذر الحفظ" : "Save failed",
-        description: err?.message,
+        title: t("salesinv_save_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       });
     },
@@ -73,18 +73,16 @@ export default function SalesCustomersPage() {
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-2 max-w-2xl">
           <div className="eyebrow text-muted-foreground/80">
-            {isAr ? "بوابة المبيعات" : "Sales Portal"}
+            {t("sales_portal")}
           </div>
           <h1
             className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
-            {isAr ? "العملاء" : "Customers"}
+            {t("salescust_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            {isAr
-              ? "أنشئ عملاءك وتتبّع أرصدتهم وفواتيرهم — مع تسجيل تلقائي في دفتر الأستاذ."
-              : "Create customers, track their AR balance and invoice history — auto-posted to the ledger."}
+            {t("salescust_sub")}
           </p>
         </div>
         <WriteGuard>
@@ -93,13 +91,13 @@ export default function SalesCustomersPage() {
             onClick={() => setCreateOpen(true)}
           >
             <Plus className="size-4 me-2" />
-            {isAr ? "عميل جديد" : "New customer"}
+            {t("salescust_new")}
           </Button>
         </WriteGuard>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>{isAr ? "عميل جديد" : "New customer"}</DialogTitle>
+                <DialogTitle>{t("salescust_new")}</DialogTitle>
               </DialogHeader>
               <Form {...form}>
                 <form
@@ -111,7 +109,7 @@ export default function SalesCustomersPage() {
                     name="nameAr"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "الاسم بالعربية" : "Arabic name"}</FormLabel>
+                        <FormLabel>{t("salescust_name_ar")}</FormLabel>
                         <FormControl>
                           <Input {...field} value={field.value ?? ""} data-testid="input-customer-name-ar" />
                         </FormControl>
@@ -124,7 +122,7 @@ export default function SalesCustomersPage() {
                     name="nameEn"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "الاسم بالإنجليزية" : "English name"}</FormLabel>
+                        <FormLabel>{t("salescust_name_en")}</FormLabel>
                         <FormControl>
                           <Input {...field} value={field.value ?? ""} data-testid="input-customer-name-en" />
                         </FormControl>
@@ -138,7 +136,7 @@ export default function SalesCustomersPage() {
                       name="code"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{isAr ? "الكود" : "Code"}</FormLabel>
+                          <FormLabel>{t("salescust_code")}</FormLabel>
                           <FormControl>
                             <Input {...field} value={field.value ?? ""} data-testid="input-customer-code" />
                           </FormControl>
@@ -150,7 +148,7 @@ export default function SalesCustomersPage() {
                       name="taxNumber"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{isAr ? "الرقم الضريبي" : "Tax number"}</FormLabel>
+                          <FormLabel>{t("salescust_tax")}</FormLabel>
                           <FormControl>
                             <Input {...field} value={field.value ?? ""} data-testid="input-customer-tax" />
                           </FormControl>
@@ -164,7 +162,7 @@ export default function SalesCustomersPage() {
                       name="phone"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{isAr ? "الهاتف" : "Phone"}</FormLabel>
+                          <FormLabel>{t("salescust_phone")}</FormLabel>
                           <FormControl>
                             <Input {...field} value={field.value ?? ""} data-testid="input-customer-phone" />
                           </FormControl>
@@ -176,7 +174,7 @@ export default function SalesCustomersPage() {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{isAr ? "البريد" : "Email"}</FormLabel>
+                          <FormLabel>{t("salescust_email")}</FormLabel>
                           <FormControl>
                             <Input {...field} value={field.value ?? ""} data-testid="input-customer-email" />
                           </FormControl>
@@ -189,9 +187,7 @@ export default function SalesCustomersPage() {
                     disabled={createMut.isPending}
                     data-testid="button-submit-customer"
                   >
-                    {createMut.isPending
-                      ? isAr ? "جارٍ الحفظ…" : "Saving…"
-                      : isAr ? "حفظ" : "Save"}
+                    {createMut.isPending ? t("sales_saving") : t("sales_save")}
                   </Button>
                 </form>
               </Form>
@@ -201,27 +197,27 @@ export default function SalesCustomersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{isAr ? "قائمة العملاء" : "Customers"}</CardTitle>
+          <CardTitle>{t("salescust_list_title")}</CardTitle>
           <CardDescription>
-            {isAr ? "اضغط على عميل لرؤية رصيده وفواتيره" : "Click a customer to view balance and invoices"}
+            {t("salescust_list_desc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && <ListSkeleton rows={5} />}
           {!isLoading && (customers?.length ?? 0) === 0 && (
             <EmptyState
-              title={isAr ? "لا يوجد عملاء بعد" : "No customers yet"}
-              description={isAr ? "أضف أول عميل لبدء فوترة المبيعات." : "Add your first customer to start invoicing."}
+              title={t("salescust_empty")}
+              description={t("salescust_empty_desc")}
             />
           )}
           {!isLoading && (customers?.length ?? 0) > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{isAr ? "الاسم" : "Name"}</TableHead>
-                  <TableHead>{isAr ? "الكود" : "Code"}</TableHead>
-                  <TableHead>{isAr ? "الهاتف" : "Phone"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "الرصيد" : "Balance"}</TableHead>
+                  <TableHead>{t("salescust_col_name")}</TableHead>
+                  <TableHead>{t("salescust_code")}</TableHead>
+                  <TableHead>{t("salescust_phone")}</TableHead>
+                  <TableHead className="text-end">{t("salescust_col_balance")}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -232,7 +228,6 @@ export default function SalesCustomersPage() {
                     customer={c}
                     onView={() => setSelected(c)}
                     formatMoney={formatMoney}
-                    isAr={isAr}
                   />
                 ))}
               </TableBody>
@@ -243,7 +238,7 @@ export default function SalesCustomersPage() {
 
       <Dialog open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
         <DialogContent className="max-w-2xl" data-testid="dialog-customer-detail">
-          {selected && <CustomerDetail customer={selected} isAr={isAr} formatMoney={formatMoney} />}
+          {selected && <CustomerDetail customer={selected} formatMoney={formatMoney} />}
         </DialogContent>
       </Dialog>
     </div>
@@ -254,12 +249,10 @@ function CustomerRow({
   customer,
   onView,
   formatMoney,
-  isAr,
 }: {
   customer: Customer;
   onView: () => void;
   formatMoney: (v: number) => string;
-  isAr: boolean;
 }) {
   const { data } = useQuery<{ balance: number }>({
     queryKey: ["/api/sales/customers", customer.id, "balance"],
@@ -293,13 +286,12 @@ function CustomerRow({
 
 function CustomerDetail({
   customer,
-  isAr,
   formatMoney,
 }: {
   customer: Customer;
-  isAr: boolean;
   formatMoney: (v: number) => string;
 }) {
+  const t = useT();
   const { data: balance } = useQuery<{ balance: number }>({
     queryKey: ["/api/sales/customers", customer.id, "balance"],
   });
@@ -317,7 +309,7 @@ function CustomerDetail({
         <Wallet className="size-5 text-primary" />
         <div className="flex-1">
           <div className="eyebrow text-muted-foreground">
-            {isAr ? "الرصيد المستحق" : "Open AR balance"}
+            {t("salescust_open_ar")}
           </div>
           <div
             className="text-xl font-mono font-semibold"
@@ -329,20 +321,20 @@ function CustomerDetail({
       </div>
       <div>
         <div className="text-sm font-medium mb-2">
-          {isAr ? "آخر الفواتير" : "Recent invoices"}
+          {t("salescust_recent_inv")}
         </div>
         {(history?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">
-            {isAr ? "لا فواتير بعد." : "No invoices yet."}
+            {t("salescust_no_inv")}
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{isAr ? "الرقم" : "#"}</TableHead>
-                <TableHead>{isAr ? "التاريخ" : "Date"}</TableHead>
-                <TableHead>{isAr ? "الحالة" : "Status"}</TableHead>
-                <TableHead className="text-end">{isAr ? "الإجمالي" : "Total"}</TableHead>
+                <TableHead>{t("sales_number_hash")}</TableHead>
+                <TableHead>{t("sales_date")}</TableHead>
+                <TableHead>{t("sales_status")}</TableHead>
+                <TableHead className="text-end">{t("sales_total")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

@@ -5,6 +5,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useFormatMoney } from "@/lib/format";
 import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,8 +35,8 @@ const STATUS_VARIANTS: Record<SalesInvoiceStatus, "secondary" | "default" | "des
 export default function SalesInvoiceDetailPage() {
   const params = useParams<{ id: string }>();
   const invoiceId = Number(params.id);
-  const { locale } = useLocale();
-  const isAr = locale === "ar";
+  const { locale, dir } = useLocale();
+  const t = useT();
   const formatMoney = useFormatMoney();
   const { toast } = useToast();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -58,12 +60,12 @@ export default function SalesInvoiceDetailPage() {
     },
     onSuccess: () => {
       invalidate();
-      toast({ title: isAr ? "تم ترحيل الفاتورة" : "Invoice posted" });
+      toast({ title: t("salesinv_toast_posted") });
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر الترحيل" : "Posting failed",
-        description: err?.message,
+        title: t("salesinv_post_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -75,12 +77,12 @@ export default function SalesInvoiceDetailPage() {
     },
     onSuccess: () => {
       invalidate();
-      toast({ title: isAr ? "تم إلغاء الفاتورة" : "Invoice cancelled" });
+      toast({ title: t("salesinv_toast_cancelled") });
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر الإلغاء" : "Cancel failed",
-        description: err?.message,
+        title: t("salesinv_cancel_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -92,13 +94,13 @@ export default function SalesInvoiceDetailPage() {
     onSuccess: () => {
       invalidate();
       setConfirmDelete(false);
-      toast({ title: isAr ? "تم حذف الفاتورة" : "Invoice deleted" });
+      toast({ title: t("salesinv_toast_deleted") });
       window.history.back();
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر الحذف" : "Delete failed",
-        description: err?.message,
+        title: t("salesinv_delete_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -119,10 +121,10 @@ export default function SalesInvoiceDetailPage() {
       a.download = `${invoice?.number || "invoice"}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
-        title: isAr ? "تعذر تنزيل الملف" : "Download failed",
-        description: err?.message,
+        title: t("salesinv_download_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       });
     }
@@ -140,13 +142,13 @@ export default function SalesInvoiceDetailPage() {
   if (!invoice) {
     return (
       <div className="text-sm text-muted-foreground" data-testid="sales-invoice-not-found">
-        {isAr ? "الفاتورة غير موجودة." : "Invoice not found."}
+        {t("salesinv_not_found")}
       </div>
     );
   }
 
   const status = invoice.status as SalesInvoiceStatus;
-  const BackIcon = isAr ? ArrowRight : ArrowLeft;
+  const BackIcon = dir === "rtl" ? ArrowRight : ArrowLeft;
 
   return (
     <div className="space-y-6" data-testid="sales-invoice-detail-page">
@@ -155,7 +157,7 @@ export default function SalesInvoiceDetailPage() {
           <Link href="/app/sales/invoices">
             <Button variant="ghost" size="sm" data-testid="button-back-to-invoices">
               <BackIcon className="size-4 me-1" />
-              {isAr ? "كل الفواتير" : "All invoices"}
+              {t("salesinv_all")}
             </Button>
           </Link>
           <h1
@@ -192,7 +194,7 @@ export default function SalesInvoiceDetailPage() {
                 data-testid="button-post-invoice"
               >
                 <CheckCircle2 className="size-4 me-1" />
-                {isAr ? "ترحيل" : "Post"}
+                {t("salesinv_post")}
               </Button>
             </WriteGuard>
           )}
@@ -205,7 +207,7 @@ export default function SalesInvoiceDetailPage() {
                 data-testid="button-cancel-invoice"
               >
                 <XCircle className="size-4 me-1" />
-                {isAr ? "إلغاء وعكس القيد" : "Cancel & reverse"}
+                {t("salesinv_cancel_reverse")}
               </Button>
             </WriteGuard>
           )}
@@ -215,29 +217,27 @@ export default function SalesInvoiceDetailPage() {
                 <AlertDialogTrigger asChild>
                   <Button variant="ghost" data-testid="button-delete-invoice">
                     <Trash2 className="size-4 me-1 text-destructive" />
-                    {isAr ? "حذف" : "Delete"}
+                    {t("salesinv_delete")}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>
-                      {isAr ? "حذف الفاتورة؟" : "Delete invoice?"}
+                      {t("salesinv_delete_q")}
                     </AlertDialogTitle>
                     <AlertDialogDescription>
-                      {isAr
-                        ? "لا يمكن التراجع عن هذا الإجراء."
-                        : "This action cannot be undone."}
+                      {t("salesinv_delete_desc")}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel data-testid="button-cancel-delete">
-                      {isAr ? "إلغاء" : "Cancel"}
+                      {t("sales_cancel")}
                     </AlertDialogCancel>
                     <AlertDialogAction
                       onClick={() => deleteMut.mutate()}
                       data-testid="button-confirm-delete"
                     >
-                      {isAr ? "حذف" : "Delete"}
+                      {t("salesinv_delete")}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -250,17 +250,17 @@ export default function SalesInvoiceDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="md:col-span-2">
           <CardHeader>
-            <CardTitle>{isAr ? "البنود" : "Lines"}</CardTitle>
+            <CardTitle>{t("salesinv_lines")}</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{isAr ? "الوصف" : "Description"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "الكمية" : "Qty"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "السعر" : "Price"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "ض.ق.م" : "VAT"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "الإجمالي" : "Total"}</TableHead>
+                  <TableHead>{t("salesinv_description")}</TableHead>
+                  <TableHead className="text-end">{t("salesinv_qty")}</TableHead>
+                  <TableHead className="text-end">{t("salesinv_price")}</TableHead>
+                  <TableHead className="text-end">{t("sales_vat")}</TableHead>
+                  <TableHead className="text-end">{t("sales_total")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -288,31 +288,31 @@ export default function SalesInvoiceDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>{isAr ? "الملخص" : "Summary"}</CardTitle>
+            <CardTitle>{t("salesinv_summary")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <Row label={isAr ? "العميل" : "Customer"}>
+            <Row label={t("sales_customer")}>
               {invoice.customer?.nameAr || invoice.customer?.nameEn || `#${invoice.customerId}`}
             </Row>
-            <Row label={isAr ? "التاريخ" : "Date"}>{invoice.invoiceDate}</Row>
+            <Row label={t("sales_date")}>{invoice.invoiceDate}</Row>
             {invoice.dueDate && (
-              <Row label={isAr ? "الاستحقاق" : "Due"}>{invoice.dueDate}</Row>
+              <Row label={t("salesinv_due")}>{invoice.dueDate}</Row>
             )}
-            <Row label={isAr ? "طريقة الدفع" : "Payment"}>
-              {invoice.paymentMethod === "cash" ? (isAr ? "نقدي" : "Cash") : isAr ? "آجل" : "Credit"}
+            <Row label={t("sales_payment")}>
+              {invoice.paymentMethod === "cash" ? t("sales_cash") : t("sales_credit")}
             </Row>
             <div className="border-t pt-2 mt-2 space-y-2">
-              <Row label={isAr ? "قبل الضريبة" : "Subtotal"}>
+              <Row label={t("sales_subtotal")}>
                 <span className="font-mono" data-testid="text-detail-subtotal">
                   {formatMoney(Number(invoice.subtotal))}
                 </span>
               </Row>
-              <Row label={isAr ? "ضريبة القيمة المضافة" : "VAT"}>
+              <Row label={t("sales_vat")}>
                 <span className="font-mono" data-testid="text-detail-vat">
                   {formatMoney(Number(invoice.vatAmount))}
                 </span>
               </Row>
-              <Row label={isAr ? "الإجمالي" : "Total"}>
+              <Row label={t("sales_total")}>
                 <span className="font-mono font-semibold" data-testid="text-detail-total">
                   {formatMoney(Number(invoice.totalAmount))}
                 </span>

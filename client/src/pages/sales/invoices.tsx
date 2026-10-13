@@ -6,7 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useFormatMoney } from "@/lib/format";
-import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,8 +36,7 @@ const STATUS_VARIANTS: Record<SalesInvoiceStatus, "secondary" | "default" | "des
 };
 
 export default function SalesInvoicesPage() {
-  const { locale } = useLocale();
-  const isAr = locale === "ar";
+  const t = useT();
   const formatMoney = useFormatMoney();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -76,12 +76,12 @@ export default function SalesInvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales/customers"] });
       setOpen(false);
       form.reset();
-      toast({ title: isAr ? "تم إنشاء الفاتورة" : "Invoice created" });
+      toast({ title: t("salesinv_toast_created") });
     },
-    onError: (err: any) =>
+    onError: (err: unknown) =>
       toast({
-        title: isAr ? "تعذر الحفظ" : "Save failed",
-        description: err?.message,
+        title: t("salesinv_save_failed"),
+        description: t(mapErrorKey(err)),
         variant: "destructive",
       }),
   });
@@ -120,18 +120,16 @@ export default function SalesInvoicesPage() {
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-2 max-w-2xl">
           <div className="eyebrow text-muted-foreground/80">
-            {isAr ? "بوابة المبيعات" : "Sales Portal"}
+            {t("sales_portal")}
           </div>
           <h1
             className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
-            {isAr ? "فواتير المبيعات" : "Sales Invoices"}
+            {t("salesinv_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            {isAr
-              ? "أنشئ فواتيرك واعتمدها لتُرحَّل تلقائياً إلى دفتر الأستاذ — ضريبة القيمة المضافة وتكلفة البضاعة المباعة محسوبة لك."
-              : "Create and post invoices — VAT and COGS are auto-posted to the ledger."}
+            {t("salesinv_sub")}
           </p>
         </div>
         <WriteGuard>
@@ -140,14 +138,14 @@ export default function SalesInvoicesPage() {
             onClick={() => setOpen(true)}
           >
             <Plus className="size-4 me-2" />
-            {isAr ? "فاتورة جديدة" : "New invoice"}
+            {t("salesinv_new")}
           </Button>
         </WriteGuard>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
-                  {isAr ? "فاتورة جديدة" : "New invoice"}
+                  {t("salesinv_new")}
                   {nextNum?.number ? (
                     <span className="ms-2 text-sm text-muted-foreground font-mono">
                       ({nextNum.number})
@@ -166,7 +164,7 @@ export default function SalesInvoicesPage() {
                       name="customerId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{isAr ? "العميل" : "Customer"}</FormLabel>
+                          <FormLabel>{t("sales_customer")}</FormLabel>
                           <Select
                             onValueChange={(v) => field.onChange(Number(v))}
                             value={field.value ? String(field.value) : ""}
@@ -174,7 +172,7 @@ export default function SalesInvoicesPage() {
                             <FormControl>
                               <SelectTrigger data-testid="select-customer">
                                 <SelectValue
-                                  placeholder={isAr ? "اختر عميل" : "Select customer"}
+                                  placeholder={t("sales_select_customer")}
                                 />
                               </SelectTrigger>
                             </FormControl>
@@ -199,7 +197,7 @@ export default function SalesInvoicesPage() {
                       name="paymentMethod"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{isAr ? "طريقة الدفع" : "Payment"}</FormLabel>
+                          <FormLabel>{t("sales_payment")}</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger data-testid="select-payment-method">
@@ -207,8 +205,8 @@ export default function SalesInvoicesPage() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="credit">{isAr ? "آجل" : "Credit"}</SelectItem>
-                              <SelectItem value="cash">{isAr ? "نقدي" : "Cash"}</SelectItem>
+                              <SelectItem value="credit">{t("sales_credit")}</SelectItem>
+                              <SelectItem value="cash">{t("sales_cash")}</SelectItem>
                             </SelectContent>
                           </Select>
                         </FormItem>
@@ -219,7 +217,7 @@ export default function SalesInvoicesPage() {
                       name="invoiceDate"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{isAr ? "تاريخ الفاتورة" : "Invoice date"}</FormLabel>
+                          <FormLabel>{t("salesinv_invoice_date")}</FormLabel>
                           <FormControl>
                             <Input type="date" {...field} data-testid="input-invoice-date" />
                           </FormControl>
@@ -231,7 +229,7 @@ export default function SalesInvoicesPage() {
                       name="dueDate"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{isAr ? "تاريخ الاستحقاق" : "Due date"}</FormLabel>
+                          <FormLabel>{t("salesinv_due_date")}</FormLabel>
                           <FormControl>
                             <Input
                               type="date"
@@ -247,7 +245,7 @@ export default function SalesInvoicesPage() {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-medium">{isAr ? "البنود" : "Lines"}</h4>
+                      <h4 className="text-sm font-medium">{t("salesinv_lines")}</h4>
                       <Button
                         type="button"
                         variant="outline"
@@ -265,7 +263,7 @@ export default function SalesInvoicesPage() {
                         data-testid="button-add-line"
                       >
                         <Plus className="size-4 me-1" />
-                        {isAr ? "إضافة بند" : "Add line"}
+                        {t("salesinv_add_line")}
                       </Button>
                     </div>
                     <div className="space-y-2">
@@ -281,7 +279,7 @@ export default function SalesInvoicesPage() {
                               value={form.watch(`lines.${idx}.productId`)?.toString() ?? ""}
                             >
                               <SelectTrigger data-testid={`select-product-${idx}`}>
-                                <SelectValue placeholder={isAr ? "اختر منتج" : "Pick product"} />
+                                <SelectValue placeholder={t("salesinv_pick_product")} />
                               </SelectTrigger>
                               <SelectContent>
                                 {products?.map((p) => (
@@ -293,13 +291,13 @@ export default function SalesInvoicesPage() {
                             </Select>
                             <Input
                               className="mt-1"
-                              placeholder={isAr ? "وصف" : "Description"}
+                              placeholder={t("salesinv_description")}
                               {...form.register(`lines.${idx}.description`)}
                               data-testid={`input-line-desc-${idx}`}
                             />
                           </div>
                           <div className="col-span-2">
-                            <FormLabel className="text-xs">{isAr ? "الكمية" : "Qty"}</FormLabel>
+                            <FormLabel className="text-xs">{t("salesinv_qty")}</FormLabel>
                             <Input
                               type="number"
                               step="0.01"
@@ -308,7 +306,7 @@ export default function SalesInvoicesPage() {
                             />
                           </div>
                           <div className="col-span-2">
-                            <FormLabel className="text-xs">{isAr ? "السعر" : "Price"}</FormLabel>
+                            <FormLabel className="text-xs">{t("salesinv_price")}</FormLabel>
                             <Input
                               type="number"
                               step="0.01"
@@ -317,7 +315,7 @@ export default function SalesInvoicesPage() {
                             />
                           </div>
                           <div className="col-span-2">
-                            <FormLabel className="text-xs">{isAr ? "ض.ق.م" : "VAT %"}</FormLabel>
+                            <FormLabel className="text-xs">{t("salesinv_vat_pct")}</FormLabel>
                             <Input
                               type="number"
                               step="0.01"
@@ -344,19 +342,19 @@ export default function SalesInvoicesPage() {
 
                   <div className="rounded-md border bg-muted/30 p-3 space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{isAr ? "الإجمالي قبل الضريبة" : "Subtotal"}</span>
+                      <span className="text-muted-foreground">{t("sales_subtotal")}</span>
                       <span className="font-mono" data-testid="text-form-subtotal">
                         {formatMoney(totals.subtotal)}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{isAr ? "ضريبة القيمة المضافة" : "VAT"}</span>
+                      <span className="text-muted-foreground">{t("sales_vat")}</span>
                       <span className="font-mono" data-testid="text-form-vat">
                         {formatMoney(totals.vat)}
                       </span>
                     </div>
                     <div className="flex justify-between font-semibold border-t pt-1">
-                      <span>{isAr ? "الإجمالي" : "Total"}</span>
+                      <span>{t("sales_total")}</span>
                       <span className="font-mono" data-testid="text-form-total">
                         {formatMoney(totals.total)}
                       </span>
@@ -368,7 +366,7 @@ export default function SalesInvoicesPage() {
                     name="status"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{isAr ? "الحالة عند الحفظ" : "Save as"}</FormLabel>
+                        <FormLabel>{t("salesinv_save_as")}</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-status">
@@ -376,8 +374,8 @@ export default function SalesInvoicesPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="draft">{isAr ? "مسودة" : "Draft"}</SelectItem>
-                            <SelectItem value="posted">{isAr ? "ترحيل فوري" : "Post now"}</SelectItem>
+                            <SelectItem value="draft">{t("salesinv_draft")}</SelectItem>
+                            <SelectItem value="posted">{t("salesinv_post_now")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </FormItem>
@@ -391,16 +389,14 @@ export default function SalesInvoicesPage() {
                       onClick={() => setOpen(false)}
                       data-testid="button-cancel-invoice"
                     >
-                      {isAr ? "إلغاء" : "Cancel"}
+                      {t("sales_cancel")}
                     </Button>
                     <Button
                       type="submit"
                       disabled={createMut.isPending}
                       data-testid="button-submit-invoice"
                     >
-                      {createMut.isPending
-                        ? isAr ? "جارٍ الحفظ…" : "Saving…"
-                        : isAr ? "حفظ" : "Save"}
+                      {createMut.isPending ? t("sales_saving") : t("sales_save")}
                     </Button>
                   </div>
                 </form>
@@ -411,28 +407,28 @@ export default function SalesInvoicesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{isAr ? "كل الفواتير" : "All invoices"}</CardTitle>
+          <CardTitle>{t("salesinv_all")}</CardTitle>
           <CardDescription>
-            {isAr ? "اضغط على الفاتورة لعرض التفاصيل والتحكم بالحالة." : "Click an invoice to view details and lifecycle."}
+            {t("salesinv_all_desc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && <ListSkeleton rows={6} />}
           {!isLoading && (invoices?.length ?? 0) === 0 && (
             <EmptyState
-              title={isAr ? "لا فواتير بعد" : "No invoices yet"}
-              description={isAr ? "أنشئ أول فاتورة لتتبّع المبيعات." : "Create your first invoice to start tracking sales."}
+              title={t("salesinv_empty")}
+              description={t("salesinv_empty_desc")}
             />
           )}
           {!isLoading && (invoices?.length ?? 0) > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{isAr ? "الرقم" : "#"}</TableHead>
-                  <TableHead>{isAr ? "العميل" : "Customer"}</TableHead>
-                  <TableHead>{isAr ? "التاريخ" : "Date"}</TableHead>
-                  <TableHead>{isAr ? "الحالة" : "Status"}</TableHead>
-                  <TableHead className="text-end">{isAr ? "الإجمالي" : "Total"}</TableHead>
+                  <TableHead>{t("sales_number_hash")}</TableHead>
+                  <TableHead>{t("sales_customer")}</TableHead>
+                  <TableHead>{t("sales_date")}</TableHead>
+                  <TableHead>{t("sales_status")}</TableHead>
+                  <TableHead className="text-end">{t("sales_total")}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
