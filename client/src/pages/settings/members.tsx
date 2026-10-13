@@ -194,8 +194,7 @@ function initials(first?: string | null, last?: string | null, email?: string | 
 }
 
 export default function MembersPage() {
-  const { locale } = useLocale();
-  const ar = locale === "ar";
+  const { locale, dir } = useLocale();
   const t = useT();
   const { can, role, user: me } = useAuth();
   const { toast } = useToast();
@@ -595,12 +594,12 @@ export default function MembersPage() {
                                         className={failed ? "border-destructive/40 text-destructive hover:bg-destructive/10" : undefined}
                                       >
                                         <RotateCw className={`h-3.5 w-3.5 ${failed ? "mr-1.5" : ""}`} />
-                                        {failed && (ar ? "أعد الإرسال" : "Resend")}
+                                        {failed && t("mem_resend")}
                                       </Button>
                                     </WriteGuard>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    {ar ? "إعادة إرسال الدعوة" : "Resend invitation"}
+                                    {t("mem_resend_invite")}
                                   </TooltipContent>
                                 </Tooltip>
                                 <WriteGuard>
@@ -625,26 +624,26 @@ export default function MembersPage() {
       <Dialog open={!!activityMemberId} onOpenChange={(open) => !open && setActivityMemberId(null)}>
         <DialogContent data-testid="dialog-member-activity">
           <DialogHeader>
-            <DialogTitle>{ar ? "نشاط العضو" : "Member activity"}</DialogTitle>
+            <DialogTitle>{t("mem_member_activity")}</DialogTitle>
             <DialogDescription>
-              {activity?.member.user.email ?? (ar ? "جاري التحميل…" : "Loading…")}
+              {activity?.member.user.email ?? t("mem_loading")}
             </DialogDescription>
           </DialogHeader>
           {loadingActivity ? (
             <div className="py-8 text-center"><Loader2 className="inline h-4 w-4 animate-spin" /></div>
           ) : !activity ? (
             <p className="py-6 text-sm text-muted-foreground" data-testid="text-no-activity">
-              {ar ? "لا توجد بيانات." : "No data."}
+              {t("mem_no_data")}
             </p>
           ) : (
             <div className="space-y-6">
               <section>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {ar ? "الجلسات النشطة" : "Active sessions"}
+                  {t("mem_active_sessions")}
                 </h3>
                 {activity.sessions.length === 0 ? (
                   <p className="text-sm text-muted-foreground" data-testid="text-no-sessions">
-                    {ar ? "لا توجد جلسات نشطة." : "No active sessions."}
+                    {t("mem_no_sessions")}
                   </p>
                 ) : (
                   <ul className="divide-y divide-border text-sm">
@@ -653,10 +652,10 @@ export default function MembersPage() {
                         <div>
                           <div className="font-medium capitalize">{s.provider}</div>
                           <div className="text-xs text-muted-foreground">
-                            {ar ? "تنتهي" : "expires"} {new Date(s.expiresAt).toLocaleString()}
+                            {t("mem_session_expires")} {new Date(s.expiresAt).toLocaleString(locale)}
                           </div>
                         </div>
-                        {s.isCurrent && <Badge variant="secondary">{ar ? "حالية" : "current"}</Badge>}
+                        {s.isCurrent && <Badge variant="secondary">{t("mem_session_current")}</Badge>}
                       </li>
                     ))}
                   </ul>
@@ -665,16 +664,16 @@ export default function MembersPage() {
 
               <section>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {ar ? "رسائل إعادة تعيين كلمة المرور" : "Password reset emails"}
+                  {t("mem_reset_emails")}
                 </h3>
                 {activity.passwordResetTokens.length === 0 ? (
                   <p className="text-sm text-muted-foreground" data-testid="text-no-reset-emails">
-                    {ar ? "لم يتم إرسال أي رسائل بعد." : "No reset emails sent yet."}
+                    {t("mem_no_reset_emails")}
                   </p>
                 ) : (
                   <ul className="divide-y divide-border text-sm">
                     {activity.passwordResetTokens.map((tok) => {
-                      const badge = deliveryBadge(tok.lastEmailStatus ?? null, ar);
+                      const badge = deliveryBadge(tok.lastEmailStatus ?? null, t);
                       const Icon = badge.Icon;
                       return (
                         <li
@@ -690,13 +689,13 @@ export default function MembersPage() {
                               </Badge>
                               {tok.usedAt && (
                                 <Badge variant="muted" size="sm">
-                                  {ar ? "استُخدمت" : "used"}
+                                  {t("mem_used")}
                                 </Badge>
                               )}
                             </div>
                             <div className="mt-1 text-xs text-muted-foreground">
-                              {ar ? "أُنشئت" : "requested"}{" "}
-                              {tok.createdAt ? new Date(tok.createdAt).toLocaleString() : "—"}
+                              {t("mem_requested")}{" "}
+                              {tok.createdAt ? new Date(tok.createdAt).toLocaleString(locale) : "—"}
                             </div>
                             {tok.lastEmailError && (
                               <div
@@ -715,13 +714,13 @@ export default function MembersPage() {
                                 size="sm"
                                 onClick={() => setHistoryResetToken(tok)}
                                 data-testid={`button-reset-history-${tok.id}`}
-                                aria-label={ar ? "سجل التسليم" : "Delivery history"}
+                                aria-label={t("mem_delivery_history")}
                               >
                                 <HistoryIcon className="h-3.5 w-3.5" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              {ar ? "سجل التسليم" : "Delivery history"}
+                              {t("mem_delivery_history")}
                             </TooltipContent>
                           </Tooltip>
                         </li>
@@ -740,12 +739,12 @@ export default function MembersPage() {
         onOpenChange={(open) => !open && setHistoryInvitation(null)}
       >
         <SheetContent
-          side={ar ? "left" : "right"}
+          side={dir === "rtl" ? "left" : "right"}
           className="w-full sm:max-w-md flex flex-col"
           data-testid="sheet-invitation-history"
         >
           <SheetHeader>
-            <SheetTitle>{ar ? "سجل تسليم الدعوة" : "Invitation delivery history"}</SheetTitle>
+            <SheetTitle>{t("mem_inv_history_title")}</SheetTitle>
             <SheetDescription data-testid="text-history-email">
               {historyInvitation?.email}
             </SheetDescription>
@@ -753,11 +752,11 @@ export default function MembersPage() {
           <div
             className="mt-3 flex flex-wrap gap-1.5"
             role="group"
-            aria-label={ar ? "تصفية الأحداث" : "Filter events"}
+            aria-label={t("mem_filter_events")}
             data-testid="group-history-filter"
           >
             {(["all", "delivery", "engagement", "failures"] as const).map((id) => {
-              const labels = historyFilterLabels(ar);
+              const labels = historyFilterLabels(t);
               const active = historyFilter === id;
               return (
                 <Button
@@ -791,31 +790,27 @@ export default function MembersPage() {
                 className="py-10 text-center text-sm text-destructive"
                 data-testid="text-history-error"
               >
-                {ar
-                  ? "تعذّر تحميل سجل التسليم."
-                  : "Couldn't load delivery history."}
+                {t("mem_history_error")}
               </p>
             ) : historyEvents.length === 0 ? (
               <p
                 className="py-10 text-center text-sm text-muted-foreground"
                 data-testid="text-no-history"
               >
-                {ar ? "لا توجد أحداث بعد." : "No events recorded yet."}
+                {t("mem_no_events")}
               </p>
             ) : filteredHistoryEvents.length === 0 ? (
               <p
                 className="py-10 text-center text-sm text-muted-foreground"
                 data-testid="text-no-history-filtered"
               >
-                {ar
-                  ? "لا توجد أحداث ضمن هذا التصفية."
-                  : "No events match this filter."}
+                {t("mem_no_events_filtered")}
               </p>
             ) : (
               <ScrollArea className="h-full pe-2">
                 <ol className="relative space-y-4 ps-5">
                   {filteredHistoryEvents.map((ev) => {
-                    const desc = eventDescriptor(ev.type, ar);
+                    const desc = eventDescriptor(ev.type, t);
                     const Icon = desc.Icon;
                     const dotColor =
                       desc.tone === "success"
@@ -880,19 +875,19 @@ export default function MembersPage() {
         onOpenChange={(open) => !open && setHistoryResetToken(null)}
       >
         <SheetContent
-          side={ar ? "left" : "right"}
+          side={dir === "rtl" ? "left" : "right"}
           className="w-full sm:max-w-md flex flex-col"
           data-testid="sheet-reset-history"
         >
           <SheetHeader>
             <SheetTitle>
-              {ar ? "سجل تسليم رسالة الاستعادة" : "Password reset delivery history"}
+              {t("mem_reset_history_title")}
             </SheetTitle>
             <SheetDescription data-testid="text-reset-history-meta">
               {historyResetToken?.createdAt
-                ? `${ar ? "أُنشئت" : "Requested"} ${new Date(
+                ? `${t("mem_requested_cap")} ${new Date(
                     historyResetToken.createdAt,
-                  ).toLocaleString()}`
+                  ).toLocaleString(locale)}`
                 : ""}
             </SheetDescription>
           </SheetHeader>
@@ -906,22 +901,20 @@ export default function MembersPage() {
                 className="py-10 text-center text-sm text-destructive"
                 data-testid="text-reset-history-error"
               >
-                {ar
-                  ? "تعذّر تحميل سجل التسليم."
-                  : "Couldn't load delivery history."}
+                {t("mem_history_error")}
               </p>
             ) : resetHistoryEvents.length === 0 ? (
               <p
                 className="py-10 text-center text-sm text-muted-foreground"
                 data-testid="text-no-reset-history"
               >
-                {ar ? "لا توجد أحداث بعد." : "No events recorded yet."}
+                {t("mem_no_events")}
               </p>
             ) : (
               <ScrollArea className="h-full pe-2">
                 <ol className="relative space-y-4 ps-5">
                   {resetHistoryEvents.map((ev) => {
-                    const desc = eventDescriptor(ev.type, ar);
+                    const desc = eventDescriptor(ev.type, t);
                     const Icon = desc.Icon;
                     const dotColor =
                       desc.tone === "success"

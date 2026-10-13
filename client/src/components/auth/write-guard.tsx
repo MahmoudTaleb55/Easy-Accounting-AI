@@ -1,5 +1,5 @@
 import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react"
-import { useLocale } from "@/contexts/locale-context"
+import { useT } from "@/i18n/dict"
 import { useCurrentRole } from "@/hooks/use-current-role"
 import {
   Tooltip,
@@ -16,17 +16,13 @@ export function useCanManageWorkspace() {
 }
 
 export function useReadOnlyMessage() {
-  const { locale } = useLocale()
-  return locale === "ar"
-    ? "ليست لديك صلاحية لتعديل البيانات في هذه المساحة"
-    : "You don't have permission to make changes here"
+  const t = useT()
+  return t("guard_readonly")
 }
 
 export function useOwnerOnlyMessage() {
-  const { locale } = useLocale()
-  return locale === "ar"
-    ? "هذا الإجراء متاح للمالك فقط"
-    : "Only the workspace owner can do this"
+  const t = useT()
+  return t("guard_owner_only")
 }
 
 interface GuardProps {

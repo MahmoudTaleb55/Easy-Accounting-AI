@@ -4,9 +4,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signInSchema, type SignInInput } from "@shared/schema";
-import { ApiError, apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { useLocale } from "@/contexts/locale-context";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,9 +19,7 @@ import { useEffect } from "react";
 
 export default function SignInPage() {
   const [, navigate] = useLocation();
-  const { toast } = useToast();
-  const { locale } = useLocale();
-  const ar = locale === "ar";
+  const t = useT();
   const [serverError, setServerError] = useState<string | null>(null);
   const { isAuthenticated } = useAuth();
   const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
@@ -60,37 +58,31 @@ export default function SignInPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/memberships"] });
       navigate(next);
     },
-    onError: (err: Error) => {
-      const bodyMessage =
-        err instanceof ApiError && err.body && typeof err.body === "object"
-          ? (err.body as { message?: unknown }).message
-          : undefined;
-      setServerError(typeof bodyMessage === "string" ? bodyMessage : err.message);
+    onError: (err: unknown) => {
+      // Surface a localized category message instead of the raw server text
+      // (which may be Arabic) so it matches the active UI language.
+      setServerError(t(mapErrorKey(err)));
     },
   });
 
   return (
     <AuthShell
-      title={ar ? "أهلاً بعودتك" : "Welcome back"}
-      subtitle={ar ? "سجّل دخولك للمتابعة إلى مساحة عملك." : "Sign in to continue to your workspace."}
+      title={t("auth_welcome_back")}
+      subtitle={t("auth_signin_subtitle")}
       side={{
-        title: ar ? "كل أرقامك في مكان واحد." : "All your numbers, one place.",
-        lede: ar
-          ? "محاسبة بمعايير دولية، تقارير لحظية، وفريق مدعو بصلاحيات دقيقة."
-          : "IFRS-aligned accounting, real-time reports, and granular team permissions.",
-        bullets: ar
-          ? ["دعم العربية والإنجليزية مع RTL/LTR.", "أدوار: مالك، محاسب، عارض.", "تدقيق وسجلات لكل تعديل."]
-          : ["Bilingual AR/EN with full RTL/LTR.", "Roles: Owner, Accountant, Viewer.", "Audit trail on every change."],
+        title: t("auth_side_signin_title"),
+        lede: t("auth_side_signin_lede"),
+        bullets: [t("auth_bullet_bilingual"), t("auth_bullet_roles"), t("auth_bullet_audit")],
       }}
       footer={
         <p>
-          {ar ? "ليس لديك حساب؟ " : "Don't have an account? "}
+          {t("auth_no_account")}
           <Link
             href="/signup"
             data-testid="link-to-signup"
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
-            {ar ? "أنشئ حساباً" : "Create one"}
+            {t("auth_create_one")}
           </Link>
         </p>
       }
@@ -104,7 +96,7 @@ export default function SignInPage() {
         data-testid="form-signin"
       >
         <div className="space-y-2">
-          <Label htmlFor="email">{ar ? "البريد الإلكتروني" : "Email"}</Label>
+          <Label htmlFor="email">{t("auth_email")}</Label>
           <Input
             id="email"
             type="email"
@@ -121,13 +113,13 @@ export default function SignInPage() {
 
         <div className="space-y-2">
           <div className="flex items-baseline justify-between">
-            <Label htmlFor="password">{ar ? "كلمة المرور" : "Password"}</Label>
+            <Label htmlFor="password">{t("auth_password")}</Label>
             <Link
               href="/forgot-password"
               data-testid="link-forgot-password"
               className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
-              {ar ? "نسيت كلمة المرور؟" : "Forgot password?"}
+              {t("auth_forgot_q")}
             </Link>
           </div>
           <Input
@@ -155,7 +147,7 @@ export default function SignInPage() {
 
         <Button type="submit" size="lg" className="w-full" disabled={m.isPending} data-testid="button-submit-signin">
           {m.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {ar ? "تسجيل الدخول" : "Sign in"}
+          {t("auth_signin")}
         </Button>
 
         {anyProvider && (
@@ -165,7 +157,7 @@ export default function SignInPage() {
                 <span className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase tracking-wider">
-                <span className="bg-background px-3 text-muted-foreground">{ar ? "أو" : "or"}</span>
+                <span className="bg-background px-3 text-muted-foreground">{t("auth_or")}</span>
               </div>
             </div>
 
@@ -179,7 +171,7 @@ export default function SignInPage() {
                 data-testid="button-sso-google"
               >
                 <LogIn className="h-4 w-4" />
-                {ar ? "المتابعة عبر Google" : "Continue with Google"}
+                {t("auth_continue_google")}
               </Button>
             )}
 
@@ -193,7 +185,7 @@ export default function SignInPage() {
                 data-testid="button-sso-microsoft"
               >
                 <LogIn className="h-4 w-4" />
-                {ar ? "المتابعة عبر Microsoft" : "Continue with Microsoft"}
+                {t("auth_continue_microsoft")}
               </Button>
             )}
           </>

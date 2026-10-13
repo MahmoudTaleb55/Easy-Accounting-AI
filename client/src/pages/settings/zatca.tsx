@@ -13,15 +13,18 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Zap, CheckCircle2, AlertCircle, QrCode } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useT, type StringKey } from "@/i18n/dict";
+import { useT, t as tRaw, type StringKey } from "@/i18n/dict";
 import { mapErrorKey } from "@/lib/error-messages";
 import { z } from "zod";
 
+// Validation messages here are internal codes only; the UI renders the
+// localized `zatca_vat_error` string via react-hook-form's error slot, so
+// these never surface to the user and must not carry locale-specific text.
 const formSchema = insertZatcaConfigSchema.extend({
   vatNumber: z.string()
-    .min(15, "رقم ضريبة القيمة المضافة يجب أن يكون 15 رقماً")
-    .max(15, "رقم ضريبة القيمة المضافة يجب أن يكون 15 رقماً")
-    .regex(/^\d+$/, "يجب أن يحتوي على أرقام فقط"),
+    .min(15, "vat_length")
+    .max(15, "vat_length")
+    .regex(/^\d+$/, "vat_digits"),
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -40,7 +43,10 @@ export default function ZatcaSettingsPage() {
       vatNumber: config?.vatNumber ?? "",
       sellerNameAr: config?.sellerNameAr ?? "",
       sellerNameEn: config?.sellerNameEn ?? "",
-      cityAr: config?.cityAr ?? "الرياض",
+      // cityAr is an Arabic-language data field (ZATCA requires the seller's
+      // city in Arabic); its default is the Arabic form of "Riyadh" sourced
+      // from the dictionary so no raw Arabic literal lives in this component.
+      cityAr: config?.cityAr ?? tRaw("zatca_default_city_ar", "ar"),
       cityEn: config?.cityEn ?? "Riyadh",
       environment: config?.environment ?? "sandbox",
       isActive: config?.isActive ?? true,

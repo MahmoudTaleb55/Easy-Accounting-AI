@@ -4,8 +4,10 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signUpSchema, type SignUpInput } from "@shared/schema";
-import { ApiError, apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,25 +19,27 @@ import { useAuth } from "@/hooks/use-auth";
 
 // Global-first ordering: the major international currencies lead, then the
 // MENA set the platform also supports. The whole list stays available.
-const CURRENCIES: Array<{ code: string; symbol: string; nameEn: string; nameAr: string }> = [
-  { code: "USD", symbol: "$", nameEn: "US Dollar", nameAr: "دولار أمريكي" },
-  { code: "EUR", symbol: "€", nameEn: "Euro", nameAr: "يورو" },
-  { code: "GBP", symbol: "£", nameEn: "British Pound", nameAr: "جنيه استرليني" },
-  { code: "INR", symbol: "₹", nameEn: "Indian Rupee", nameAr: "روبية هندية" },
-  { code: "SAR", symbol: "ر.س", nameEn: "Saudi Riyal", nameAr: "ريال سعودي" },
-  { code: "AED", symbol: "د.إ", nameEn: "UAE Dirham", nameAr: "درهم إماراتي" },
-  { code: "KWD", symbol: "د.ك", nameEn: "Kuwaiti Dinar", nameAr: "دينار كويتي" },
-  { code: "QAR", symbol: "ر.ق", nameEn: "Qatari Riyal", nameAr: "ريال قطري" },
-  { code: "BHD", symbol: "د.ب", nameEn: "Bahraini Dinar", nameAr: "دينار بحريني" },
-  { code: "OMR", symbol: "ر.ع", nameEn: "Omani Rial", nameAr: "ريال عماني" },
-  { code: "EGP", symbol: "ج.م", nameEn: "Egyptian Pound", nameAr: "جنيه مصري" },
-  { code: "JOD", symbol: "د.أ", nameEn: "Jordanian Dinar", nameAr: "دينار أردني" },
+const CURRENCIES: Array<{ code: string }> = [
+  { code: "USD" }, { code: "EUR" }, { code: "GBP" }, { code: "INR" },
+  { code: "SAR" }, { code: "AED" }, { code: "KWD" }, { code: "QAR" },
+  { code: "BHD" }, { code: "OMR" }, { code: "EGP" }, { code: "JOD" },
 ];
+
+// Locale-aware currency display name (built-in Intl, no new dependency). Falls
+// back to the ISO code if the runtime can't resolve a localized name.
+function currencyName(code: string, locale: string): string {
+  try {
+    return new Intl.DisplayNames([locale], { type: "currency" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
 
 export default function SignUpPage() {
   const [, navigate] = useLocation();
   const { locale } = useLocale();
   const ar = locale === "ar";
+  const t = useT();
   const [serverError, setServerError] = useState<string | null>(null);
   const { isAuthenticated } = useAuth();
   useEffect(() => {
@@ -102,45 +106,33 @@ export default function SignUpPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/memberships"] });
       navigate("/app");
     },
-    onError: (err: Error) => {
-      const bodyMessage =
-        err instanceof ApiError && err.body && typeof err.body === "object"
-          ? (err.body as { message?: unknown }).message
-          : undefined;
-      setServerError(typeof bodyMessage === "string" ? bodyMessage : err.message);
+    onError: (err: unknown) => {
+      setServerError(t(mapErrorKey(err)));
     },
   });
 
   return (
     <AuthShell
-      title={ar ? "ابدأ مساحة عملك" : "Start your workspace"}
+      title={t("auth_start_workspace")}
       subtitle={
         invite
-          ? ar
-            ? `تمت دعوتك للانضمام بدور ${invite.role}.`
-            : `You've been invited as ${invite.role}.`
-          : ar
-          ? "أنشئ حساباً مجانياً وادعُ فريقك خلال دقائق."
-          : "Create a free account and invite your team in minutes."
+          ? t("auth_invited_as").replace("{role}", invite.role)
+          : t("auth_signup_subtitle")
       }
       side={{
-        title: ar ? "ابدأ خلال 90 ثانية." : "Up and running in 90 seconds.",
-        lede: ar
-          ? "أنت تنشئ مساحة عمل مع تحكّم كامل بالأدوار، مدعوم بـ IFRS ومتعدد العملات."
-          : "You'll get a workspace with full role controls, IFRS-aligned books, multi-currency.",
-        bullets: ar
-          ? ["لا حاجة لبطاقة ائتمان.", "أربعة أدوار مع صلاحيات دقيقة.", "تشفير كلمات المرور والجلسات."]
-          : ["No credit card required.", "Four granular roles.", "Hashed passwords + secure sessions."],
+        title: t("auth_side_signup_title"),
+        lede: t("auth_side_signup_lede"),
+        bullets: [t("auth_bullet_nocard"), t("auth_bullet_four_roles"), t("auth_bullet_hashed")],
       }}
       footer={
         <p>
-          {ar ? "لديك حساب؟ " : "Already have an account? "}
+          {t("auth_have_account")}
           <Link
             href="/signin"
             data-testid="link-to-signin"
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
-            {ar ? "تسجيل الدخول" : "Sign in"}
+            {t("auth_signin")}
           </Link>
         </p>
       }
@@ -155,17 +147,17 @@ export default function SignUpPage() {
       >
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="firstName">{ar ? "الاسم الأول" : "First name"}</Label>
+            <Label htmlFor="firstName">{t("auth_first_name")}</Label>
             <Input id="firstName" data-testid="input-first-name" {...form.register("firstName")} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="lastName">{ar ? "اسم العائلة" : "Last name"}</Label>
+            <Label htmlFor="lastName">{t("auth_last_name")}</Label>
             <Input id="lastName" data-testid="input-last-name" {...form.register("lastName")} />
           </div>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="email">{ar ? "البريد الإلكتروني" : "Email"}</Label>
+          <Label htmlFor="email">{t("auth_email")}</Label>
           <Input
             id="email"
             type="email"
@@ -178,7 +170,7 @@ export default function SignUpPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="password">{ar ? "كلمة المرور (٨ أحرف على الأقل)" : "Password (8+ chars)"}</Label>
+          <Label htmlFor="password">{t("auth_password_hint")}</Label>
           <Input
             id="password"
             type="password"
@@ -193,7 +185,7 @@ export default function SignUpPage() {
 
         {!invite && (
           <div className="space-y-2">
-            <Label htmlFor="currency">{ar ? "عملة دفاترك" : "Books currency"}</Label>
+            <Label htmlFor="currency">{t("auth_books_currency")}</Label>
             <Select
               value={currencyCode}
               onValueChange={(code) => {
@@ -209,15 +201,13 @@ export default function SignUpPage() {
                 {CURRENCIES.map((c) => (
                   <SelectItem key={c.code} value={c.code} data-testid={`option-currency-${c.code}`}>
                     <span className="font-mono text-xs text-muted-foreground me-2">{c.code}</span>
-                    {ar ? c.nameAr : c.nameEn}
+                    {currencyName(c.code, locale)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              {ar
-                ? "يمكنك تغييرها لاحقاً من الإعدادات."
-                : "You can change this later in settings."}
+              {t("auth_currency_hint")}
             </p>
           </div>
         )}
@@ -230,7 +220,7 @@ export default function SignUpPage() {
 
         <Button type="submit" size="lg" className="w-full" disabled={m.isPending} data-testid="button-submit-signup">
           {m.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {ar ? "إنشاء الحساب" : "Create account"}
+          {t("auth_create_account")}
         </Button>
 
         {anyProvider && (
@@ -240,7 +230,7 @@ export default function SignUpPage() {
                 <span className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase tracking-wider">
-                <span className="bg-background px-3 text-muted-foreground">{ar ? "أو" : "or"}</span>
+                <span className="bg-background px-3 text-muted-foreground">{t("auth_or")}</span>
               </div>
             </div>
 
@@ -254,7 +244,7 @@ export default function SignUpPage() {
                 data-testid="button-sso-google"
               >
                 <LogIn className="h-4 w-4" />
-                {ar ? "المتابعة عبر Google" : "Continue with Google"}
+                {t("auth_continue_google")}
               </Button>
             )}
 
@@ -268,7 +258,7 @@ export default function SignUpPage() {
                 data-testid="button-sso-microsoft"
               >
                 <LogIn className="h-4 w-4" />
-                {ar ? "المتابعة عبر Microsoft" : "Continue with Microsoft"}
+                {t("auth_continue_microsoft")}
               </Button>
             )}
           </>

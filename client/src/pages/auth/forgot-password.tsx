@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
-import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,8 +15,7 @@ import { Loader2 } from "lucide-react";
 const schema = z.object({ email: z.string().email() });
 
 export default function ForgotPasswordPage() {
-  const { locale } = useLocale();
-  const ar = locale === "ar";
+  const t = useT();
   const [done, setDone] = useState(false);
   const [devLink, setDevLink] = useState<string | null>(null);
 
@@ -31,8 +30,8 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell
-      title={ar ? "استعادة كلمة المرور" : "Reset your password"}
-      subtitle={ar ? "أدخل بريدك وسنرسل لك رابط استعادة." : "Enter your email and we'll send you a reset link."}
+      title={t("auth_reset_title")}
+      subtitle={t("auth_reset_req_subtitle")}
       footer={
         <p>
           <Link
@@ -40,7 +39,7 @@ export default function ForgotPasswordPage() {
             data-testid="link-back-signin"
             className="text-primary underline-offset-4 hover:underline"
           >
-            {ar ? "العودة لتسجيل الدخول" : "Back to sign in"}
+            {t("auth_back_to_signin")}
           </Link>
         </p>
       }
@@ -48,13 +47,11 @@ export default function ForgotPasswordPage() {
       {done ? (
         <div className="space-y-4" data-testid="success-forgot-password">
           <div className="rounded-md border border-success/30 bg-success/5 px-3 py-3 text-sm">
-            {ar
-              ? "إن وُجد حساب بهذا البريد، فقد أرسلنا تعليمات الاستعادة."
-              : "If an account with that email exists, we've sent reset instructions."}
+            {t("auth_reset_sent")}
           </div>
           {devLink && (
             <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
-              <p className="mb-1 font-medium">{ar ? "رابط (وضع التطوير)" : "Dev reset link"}</p>
+              <p className="mb-1 font-medium">{t("auth_dev_link")}</p>
               <a
                 href={devLink}
                 className="block break-all font-mono text-primary underline-offset-4 hover:underline"
@@ -68,12 +65,12 @@ export default function ForgotPasswordPage() {
       ) : (
         <form onSubmit={form.handleSubmit((v) => m.mutate(v))} className="space-y-4" data-testid="form-forgot-password">
           <div className="space-y-2">
-            <Label htmlFor="email">{ar ? "البريد الإلكتروني" : "Email"}</Label>
+            <Label htmlFor="email">{t("auth_email")}</Label>
             <Input id="email" type="email" data-testid="input-email" {...form.register("email")} />
           </div>
           <Button type="submit" size="lg" className="w-full" disabled={m.isPending} data-testid="button-submit-forgot">
             {m.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {ar ? "إرسال رابط الاستعادة" : "Send reset link"}
+            {t("auth_send_reset")}
           </Button>
         </form>
       )}
