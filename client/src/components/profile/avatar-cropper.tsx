@@ -11,18 +11,19 @@ import {
 } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
 import { Loader2, ZoomIn, ZoomOut } from "lucide-react";
+import { useT } from "@/i18n/dict";
 
 const OUTPUT_SIZE = 512;
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 
 type Props = {
   file: File | null;
-  ar: boolean;
   onCancel: () => void;
   onCropped: (file: File) => void;
 };
 
-export function AvatarCropper({ file, ar, onCancel, onCropped }: Props) {
+export function AvatarCropper({ file, onCancel, onCropped }: Props) {
+  const t = useT();
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -64,11 +65,7 @@ export function AvatarCropper({ file, ar, onCancel, onCropped }: Props) {
         usePng,
       );
       if (blob.size > MAX_OUTPUT_BYTES) {
-        setError(
-          ar
-            ? "الصورة المقصوصة كبيرة جداً. جرّب تكبيراً أقل."
-            : "Cropped image is too large. Try a smaller zoom."
-        );
+        setError(t("avatar_too_large"));
         setIsProcessing(false);
         return;
       }
@@ -95,11 +92,9 @@ export function AvatarCropper({ file, ar, onCancel, onCropped }: Props) {
     >
       <DialogContent className="sm:max-w-md" data-testid="dialog-avatar-cropper">
         <DialogHeader>
-          <DialogTitle>{ar ? "اقتص الصورة" : "Crop your photo"}</DialogTitle>
+          <DialogTitle>{t("avatar_crop_title")}</DialogTitle>
           <DialogDescription>
-            {ar
-              ? "اسحب لتحريك الصورة واستخدم الشريط للتكبير. ستُحفظ مربعة."
-              : "Drag to position and use the slider to zoom. The result is saved as a square."}
+            {t("avatar_crop_desc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -133,7 +128,7 @@ export function AvatarCropper({ file, ar, onCancel, onCropped }: Props) {
             step={0.05}
             onValueChange={(v) => setZoom(v[0] ?? 1)}
             data-testid="slider-avatar-zoom"
-            aria-label={ar ? "تكبير" : "Zoom"}
+            aria-label={t("avatar_zoom")}
           />
           <ZoomIn className="h-4 w-4 text-muted-foreground" aria-hidden />
         </div>
@@ -152,7 +147,7 @@ export function AvatarCropper({ file, ar, onCancel, onCropped }: Props) {
             disabled={isProcessing}
             data-testid="button-cropper-cancel"
           >
-            {ar ? "إلغاء" : "Cancel"}
+            {t("avatar_cancel")}
           </Button>
           <Button
             type="button"
@@ -161,7 +156,7 @@ export function AvatarCropper({ file, ar, onCancel, onCropped }: Props) {
             data-testid="button-cropper-confirm"
           >
             {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {ar ? "استخدم الصورة" : "Use photo"}
+            {t("avatar_use_photo")}
           </Button>
         </DialogFooter>
       </DialogContent>

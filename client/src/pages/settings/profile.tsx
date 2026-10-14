@@ -256,7 +256,6 @@ export default function ProfilePage() {
 
           <AvatarCropper
             file={pendingFile}
-            ar={ar}
             onCancel={() => setPendingFile(null)}
             onCropped={(file) => {
               setPendingFile(null);

@@ -4,7 +4,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useLocale } from "@/contexts/locale-context";
+import { useT, type StringKey } from "@/i18n/dict";
+import { mapErrorKey } from "@/lib/error-messages";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,28 +55,22 @@ interface InvitationRow {
 
 type InviteForm = { email: string; role: Role };
 
-function roleLabel(role: Role, locale: string): string {
-  const map: Record<Role, { ar: string; en: string }> = {
-    owner: { ar: "مالك", en: "Owner" },
-    accountant: { ar: "محاسب", en: "Accountant" },
-    viewer: { ar: "مشاهد", en: "Viewer" },
+function roleLabel(role: Role, t: (k: StringKey) => string): string {
+  const map: Record<Role, StringKey> = {
+    owner: "role_owner",
+    accountant: "role_accountant",
+    viewer: "role_viewer",
   };
-  return map[role][locale === "ar" ? "ar" : "en"];
+  return t(map[role]);
 }
 
-function roleDescription(role: Role, locale: string): string {
-  if (locale === "ar") {
-    return role === "owner"
-      ? "كامل الصلاحيات بما فيها الإعدادات والفريق."
-      : role === "accountant"
-      ? "إنشاء وتعديل القيود والمعاملات والرواتب، بدون تعديل إعدادات المنشأة."
-      : "قراءة فقط — لا يمكن إجراء أي تعديل.";
-  }
-  return role === "owner"
-    ? "Full access including workspace settings and team."
-    : role === "accountant"
-    ? "Create and edit entries, transactions, and payroll. No workspace settings."
-    : "Read-only — cannot make changes.";
+function roleDescription(role: Role, t: (k: StringKey) => string): string {
+  const map: Record<Role, StringKey> = {
+    owner: "team_role_desc_owner",
+    accountant: "team_role_desc_accountant",
+    viewer: "team_role_desc_viewer",
+  };
+  return t(map[role]);
 }
 
 function memberDisplayName(m: MemberRow): string {
@@ -87,7 +82,7 @@ function memberDisplayName(m: MemberRow): string {
 }
 
 export function TeamPanel() {
-  const { locale } = useLocale();
+  const t = useT();
   const { toast } = useToast();
   const { user, role } = useAuth();
   const isOwner = role === "owner";
@@ -116,19 +111,16 @@ export function TeamPanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/invitations"] });
       toast({
-        title: locale === "ar" ? "تم إرسال الدعوة" : "Invite sent",
-        description:
-          locale === "ar"
-            ? "وصل البريد لزميلك. يمكنك أيضاً نسخ الرابط من القائمة أدناه."
-            : "Your teammate will receive an email. You can also copy the link from the list below.",
+        title: t("team_toast_invite_sent"),
+        description: t("team_toast_invite_sent_desc"),
       });
       form.reset({ email: "", role: "viewer" });
       setShowInvite(false);
     },
-    onError: (e: any) =>
+    onError: (e: unknown) =>
       toast({
-        title: locale === "ar" ? "تعذر إنشاء الدعوة" : "Could not create invite",
-        description: e?.message,
+        title: t("team_toast_invite_failed"),
+        description: t(mapErrorKey(e)),
         variant: "destructive",
       }),
   });
@@ -143,10 +135,10 @@ export function TeamPanel() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/memberships"] });
     },
-    onError: (e: any) =>
+    onError: (e: unknown) =>
       toast({
-        title: locale === "ar" ? "تعذر تحديث الدور" : "Could not update role",
-        description: e?.message,
+        title: t("team_toast_role_failed"),
+        description: t(mapErrorKey(e)),
         variant: "destructive",
       }),
   });
@@ -154,10 +146,10 @@ export function TeamPanel() {
   const removeMutation = useMutation({
     mutationFn: async (id: string) => apiRequest("DELETE", `/api/auth/members/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/auth/members"] }),
-    onError: (e: any) =>
+    onError: (e: unknown) =>
       toast({
-        title: locale === "ar" ? "تعذر الحذف" : "Could not remove",
-        description: e?.message,
+        title: t("team_toast_remove_failed"),
+        description: t(mapErrorKey(e)),
         variant: "destructive",
       }),
   });
@@ -188,12 +180,10 @@ export function TeamPanel() {
         <div className="space-y-1">
           <CardTitle className="flex items-center gap-2">
             <Users className="w-5 h-5 text-primary" />
-            {locale === "ar" ? "الفريق والصلاحيات" : "Team & roles"}
+            {t("team_title")}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            {locale === "ar"
-              ? "ادعُ زملاءك وتحكّم في ما يمكنهم رؤيته وتعديله داخل دفاترك."
-              : "Invite teammates and control what they can see and change in your books."}
+            {t("team_subtitle")}
           </p>
         </div>
         {isOwner && (
@@ -204,7 +194,7 @@ export function TeamPanel() {
               data-testid="button-toggle-invite"
             >
               <UserPlus className="w-4 h-4 me-1.5" />
-              {locale === "ar" ? "دعوة عضو" : "Invite member"}
+              {t("team_invite_member")}
             </Button>
           </WriteGuard>
         )}
@@ -217,9 +207,7 @@ export function TeamPanel() {
           >
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
-              {locale === "ar"
-                ? "إدارة الفريق متاحة للمالك فقط."
-                : "Only the workspace owner can manage the team."}
+              {t("team_owner_only")}
             </span>
           </div>
         )}
@@ -236,7 +224,7 @@ export function TeamPanel() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{locale === "ar" ? "البريد الإلكتروني" : "Email"}</FormLabel>
+                    <FormLabel>{t("team_email")}</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
@@ -254,7 +242,7 @@ export function TeamPanel() {
                 name="role"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{locale === "ar" ? "الدور" : "Role"}</FormLabel>
+                    <FormLabel>{t("team_role")}</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger data-testid="select-invite-role">
@@ -265,9 +253,9 @@ export function TeamPanel() {
                         {ROLES.map((r) => (
                           <SelectItem key={r} value={r}>
                             <div className="flex flex-col items-start">
-                              <span>{roleLabel(r, locale)}</span>
+                              <span>{roleLabel(r, t)}</span>
                               <span className="text-[11px] text-muted-foreground">
-                                {roleDescription(r, locale)}
+                                {roleDescription(r, t)}
                               </span>
                             </div>
                           </SelectItem>
@@ -286,7 +274,7 @@ export function TeamPanel() {
                   onClick={() => setShowInvite(false)}
                   data-testid="button-cancel-invite"
                 >
-                  {locale === "ar" ? "إلغاء" : "Cancel"}
+                  {t("team_cancel")}
                 </Button>
                 <WriteGuard forceDisabled={inviteMutation.isPending}>
                   <Button
@@ -294,13 +282,7 @@ export function TeamPanel() {
                     size="sm"
                     data-testid="button-submit-invite"
                   >
-                    {inviteMutation.isPending
-                      ? locale === "ar"
-                        ? "جاري الإرسال..."
-                        : "Sending..."
-                      : locale === "ar"
-                      ? "إرسال الدعوة"
-                      : "Send invite"}
+                    {inviteMutation.isPending ? t("team_sending") : t("team_send_invite")}
                   </Button>
                 </WriteGuard>
               </div>
@@ -312,10 +294,10 @@ export function TeamPanel() {
           <section className="space-y-2" data-testid="section-members">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-foreground">
-                {locale === "ar" ? "الأعضاء" : "Members"}
+                {t("team_members")}
               </h3>
               <span className="text-[11px] text-muted-foreground">
-                {members.length} {locale === "ar" ? "عضو" : "member(s)"}
+                {members.length} {t("team_member_count")}
               </span>
             </div>
             <ul className="divide-y divide-border rounded-md border border-border overflow-hidden">
@@ -335,7 +317,7 @@ export function TeamPanel() {
                         </p>
                         {isMe && (
                           <Badge variant="outline" className="text-[10px]">
-                            {locale === "ar" ? "أنت" : "You"}
+                            {t("team_you")}
                           </Badge>
                         )}
                       </div>
@@ -355,7 +337,7 @@ export function TeamPanel() {
                         <SelectContent>
                           {ROLES.map((r) => (
                             <SelectItem key={r} value={r}>
-                              {roleLabel(r, locale)}
+                              {roleLabel(r, t)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -363,7 +345,7 @@ export function TeamPanel() {
                     ) : (
                       <Badge variant="secondary" className="text-[11px]" data-testid={`badge-member-role-${m.id}`}>
                         <ShieldCheck className="w-3 h-3 me-1" />
-                        {roleLabel(m.role, locale)}
+                        {roleLabel(m.role, t)}
                       </Badge>
                     )}
                     {!isMe && (
@@ -373,7 +355,7 @@ export function TeamPanel() {
                           variant="ghost"
                           className="h-8 w-8 text-muted-foreground hover:text-destructive"
                           onClick={() => removeMutation.mutate(m.id)}
-                          aria-label={locale === "ar" ? "حذف العضو" : "Remove member"}
+                          aria-label={t("team_remove_member")}
                           data-testid={`button-remove-member-${m.id}`}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -390,7 +372,7 @@ export function TeamPanel() {
         {isOwner && pendingInvites.length > 0 && (
           <section className="space-y-2" data-testid="section-invites">
             <h3 className="text-sm font-semibold text-foreground">
-              {locale === "ar" ? "دعوات معلّقة" : "Pending invites"}
+              {t("team_pending_invites")}
             </h3>
             <ul className="divide-y divide-border rounded-md border border-border overflow-hidden">
               {pendingInvites.map((inv) => (
@@ -402,13 +384,11 @@ export function TeamPanel() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">{inv.email}</p>
                     <p className="text-[11px] text-muted-foreground truncate">
-                      {locale === "ar"
-                        ? `تنتهي ${new Date(inv.expiresAt).toLocaleDateString()}`
-                        : `Expires ${new Date(inv.expiresAt).toLocaleDateString()}`}
+                      {t("team_expires").replace("{date}", new Date(inv.expiresAt).toLocaleDateString())}
                     </p>
                   </div>
                   <Badge variant="outline" className="text-[11px]">
-                    {roleLabel(inv.role, locale)}
+                    {roleLabel(inv.role, t)}
                   </Badge>
                   <Button
                     size="sm"
@@ -421,7 +401,7 @@ export function TeamPanel() {
                     ) : (
                       <Copy className="w-4 h-4 me-1.5" />
                     )}
-                    {locale === "ar" ? "نسخ الرابط" : "Copy link"}
+                    {t("team_copy_link")}
                   </Button>
                   <WriteGuard>
                     <Button
@@ -429,7 +409,7 @@ export function TeamPanel() {
                       variant="ghost"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive"
                       onClick={() => revokeMutation.mutate(inv.id)}
-                      aria-label={locale === "ar" ? "إلغاء الدعوة" : "Revoke invite"}
+                      aria-label={t("team_revoke_invite")}
                       data-testid={`button-revoke-invite-${inv.id}`}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -439,24 +419,22 @@ export function TeamPanel() {
               ))}
             </ul>
             <p className="text-[11px] text-muted-foreground">
-              {locale === "ar"
-                ? "أرسلنا للزميل بريداً يحوي الرابط. يمكنك أيضاً نسخه ومشاركته يدوياً."
-                : "We emailed your teammate the link. You can also copy and share it manually."}
+              {t("team_invite_hint")}
             </p>
           </section>
         )}
 
         <div className="rounded-md border border-border bg-muted/30 p-3">
           <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            {locale === "ar" ? "ماذا يستطيع كل دور؟" : "What each role can do"}
+            {t("team_roles_legend")}
           </Label>
           <ul className="mt-2 grid gap-1.5 text-[12px] text-muted-foreground sm:grid-cols-3">
             {ROLES.map((r) => (
               <li key={r} className="rounded border border-border bg-background/40 p-2">
                 <div className="text-foreground text-xs font-medium mb-0.5">
-                  {roleLabel(r, locale)}
+                  {roleLabel(r, t)}
                 </div>
-                <div className="leading-relaxed">{roleDescription(r, locale)}</div>
+                <div className="leading-relaxed">{roleDescription(r, t)}</div>
               </li>
             ))}
           </ul>

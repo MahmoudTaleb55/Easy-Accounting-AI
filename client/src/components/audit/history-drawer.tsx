@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLocale } from "@/contexts/locale-context";
+import { useT, type StringKey } from "@/i18n/dict";
 import { format } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
 
@@ -103,25 +104,18 @@ function reversalSourceHref(source: ReversalSource): string {
 
 function reversalSourceLabel(
   source: ReversalSource,
-  locale: "ar" | "en",
+  t: (k: StringKey) => string,
 ): string {
-  const ar = locale === "ar";
-  switch (source.kind) {
-    case "payroll_run":
-      return ar ? `كشف رواتب #${source.id}` : `Payroll run #${source.id}`;
-    case "depreciation_run":
-      return ar ? `دورة إهلاك #${source.id}` : `Depreciation run #${source.id}`;
-    case "impairment_event":
-      return ar ? `انخفاض قيمة #${source.id}` : `Impairment #${source.id}`;
-    case "revaluation_event":
-      return ar ? `إعادة تقييم #${source.id}` : `Revaluation #${source.id}`;
-    case "disposal":
-      return ar ? `استبعاد #${source.id}` : `Disposal #${source.id}`;
-    case "document":
-      return ar ? `مستند مرفوع #${source.id}` : `Document #${source.id}`;
-    case "sales_invoice":
-      return ar ? `فاتورة مبيعات #${source.id}` : `Sales invoice #${source.id}`;
-  }
+  const keyMap: Record<ReversalSourceKind, StringKey> = {
+    payroll_run: "audit_rev_payroll",
+    depreciation_run: "audit_rev_depreciation",
+    impairment_event: "audit_rev_impairment",
+    revaluation_event: "audit_rev_revaluation",
+    disposal: "audit_rev_disposal",
+    document: "audit_rev_document",
+    sales_invoice: "audit_rev_sales_invoice",
+  };
+  return t(keyMap[source.kind]).replace("{id}", String(source.id));
 }
 
 export interface HistoryEvent {
@@ -169,12 +163,12 @@ const HIDDEN_CHANGE_FIELDS = new Set(["reversedBy", "companyId"]);
 
 const SOURCE_META: Record<
   HistorySource,
-  { icon: React.ComponentType<{ className?: string }>; ar: string; en: string; tone: string }
+  { icon: React.ComponentType<{ className?: string }>; labelKey: StringKey | null; tone: string }
 > = {
-  user:        { icon: User, ar: "مستخدم", en: "User", tone: "text-foreground" },
-  ai:          { icon: Bot,  ar: "AI",     en: "AI",   tone: "text-primary" },
-  integration: { icon: Cog,  ar: "تكامل",  en: "Integration", tone: "text-info" },
-  system:      { icon: Cog,  ar: "النظام", en: "System", tone: "text-muted-foreground" },
+  user:        { icon: User, labelKey: "audit_src_user", tone: "text-foreground" },
+  ai:          { icon: Bot,  labelKey: null, tone: "text-primary" },
+  integration: { icon: Cog,  labelKey: "audit_src_integration", tone: "text-info" },
+  system:      { icon: Cog,  labelKey: "audit_src_system", tone: "text-muted-foreground" },
 };
 
 function formatPrimitive(v: unknown): string {
@@ -366,32 +360,29 @@ export function HistoryTimeline({
   entityPeriod,
 }: HistoryTimelineProps) {
   const { locale } = useLocale();
+  const t = useT();
   const dfLocale = locale === "ar" ? ar : enUS;
   const labels = {
-    none: emptyLabel ?? (locale === "ar" ? "لا يوجد سجل بعد لهذا العنصر." : "No history yet for this item."),
-    loading: locale === "ar" ? "جارٍ التحميل…" : "Loading…",
-    error:
-      locale === "ar"
-        ? "تعذّر جلب السجل. حاول لاحقاً."
-        : "Could not load history. Try again shortly.",
-    create: locale === "ar" ? "تم الإنشاء" : "Created",
-    update: locale === "ar" ? "تم التعديل" : "Updated",
-    delete: locale === "ar" ? "تم الحذف" : "Deleted",
-    post: locale === "ar" ? "تم الترحيل" : "Posted",
-    reversed: locale === "ar" ? "تم العكس" : "Reversed",
-    reversedBy: locale === "ar" ? "بواسطة" : "by",
-    actorUnavailable: locale === "ar" ? "المنفّذ غير متوفر" : "Actor unavailable",
-    filterSource: locale === "ar" ? "المصدر" : "Source",
-    filterAction: locale === "ar" ? "الإجراء" : "Action",
-    filterPeriod: locale === "ar" ? "الفترة" : "Period",
-    filterReset: locale === "ar" ? "مسح" : "Reset",
-    noMatch:
-      locale === "ar" ? "لا توجد أحداث مطابقة للفلاتر." : "No events match your filters.",
-    periodAll: locale === "ar" ? "كل الأوقات" : "All time",
-    periodEntity: locale === "ar" ? "ضمن فترة العنصر" : "Within this period",
-    period7d: locale === "ar" ? "آخر 7 أيام" : "Last 7 days",
-    period30d: locale === "ar" ? "آخر 30 يوماً" : "Last 30 days",
-    period90d: locale === "ar" ? "آخر 90 يوماً" : "Last 90 days",
+    none: emptyLabel ?? t("audit_none"),
+    loading: t("audit_loading"),
+    error: t("audit_error"),
+    create: t("audit_created"),
+    update: t("audit_updated"),
+    delete: t("audit_deleted"),
+    post: t("audit_posted"),
+    reversed: t("audit_reversed"),
+    reversedBy: t("audit_reversed_by"),
+    actorUnavailable: t("audit_actor_unavailable"),
+    filterSource: t("audit_filter_source"),
+    filterAction: t("audit_filter_action"),
+    filterPeriod: t("audit_filter_period"),
+    filterReset: t("audit_filter_reset"),
+    noMatch: t("audit_no_match"),
+    periodAll: t("audit_period_all"),
+    periodEntity: t("audit_period_entity"),
+    period7d: t("audit_period_7d"),
+    period30d: t("audit_period_30d"),
+    period90d: t("audit_period_90d"),
   };
   const actionLabels: Record<HistoryAction, string> = {
     create: labels.create,
@@ -711,7 +702,7 @@ export function HistoryTimeline({
                   data-testid={`button-history-filter-source-${key}`}
                 >
                   <Icon className="w-3 h-3" />
-                  <span>{locale === "ar" ? meta.ar : meta.en}</span>
+                  <span>{meta.labelKey ? t(meta.labelKey) : "AI"}</span>
                   <span className="font-numeric tabular-nums opacity-80">{count}</span>
                 </button>
               );
@@ -818,7 +809,7 @@ export function HistoryTimeline({
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
                     {!isAiViaHuman && (
                       <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 font-normal">
-                        {locale === "ar" ? meta.ar : meta.en}
+                        {meta.labelKey ? t(meta.labelKey) : "AI"}
                       </Badge>
                     )}
                     {!isAiFallback && (
@@ -828,7 +819,7 @@ export function HistoryTimeline({
                             {ev.actor}
                             <span className="text-muted-foreground/80">
                               {" "}
-                              {locale === "ar" ? "عبر AI" : "via AI"}
+                              {t("audit_via_ai")}
                             </span>
                           </>
                         ) : (
@@ -848,7 +839,7 @@ export function HistoryTimeline({
                         className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] font-medium text-foreground hover:bg-muted hover:border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         data-testid={`link-history-reversal-source-${reversal.kind}-${reversal.id}`}
                       >
-                        {reversalSourceLabel(reversal, locale === "ar" ? "ar" : "en")}
+                        {reversalSourceLabel(reversal, t)}
                       </Link>
                     </div>
                   )}
@@ -896,9 +887,10 @@ export function HistoryDrawer({
   entityId,
   includeReversal = false,
 }: HistoryDrawerProps) {
-  const { locale, dir } = useLocale();
+  const { dir } = useLocale();
+  const t = useT();
   const labels = {
-    title: locale === "ar" ? "السجل والتغييرات" : "History & changes",
+    title: t("audit_history_title"),
   };
   const side: SheetSide = dir === "rtl" ? "left" : "right";
 

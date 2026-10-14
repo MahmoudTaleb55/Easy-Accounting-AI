@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AlertTriangle, RefreshCw, ExternalLink } from "lucide-react";
-import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
 
 interface ErrorStateProps {
   title?: string;
@@ -22,12 +22,12 @@ export function ErrorState({
   className,
   testId,
 }: ErrorStateProps) {
-  const { locale } = useLocale();
+  const tr = useT();
   const t = {
-    title: title || (locale === "ar" ? "تعذّر تحميل البيانات" : "We couldn't load that"),
-    cause: cause || (locale === "ar" ? "حدث خلل مؤقّت في الخدمة." : "A temporary service issue occurred."),
-    retry: locale === "ar" ? "إعادة المحاولة" : "Retry",
-    status: locale === "ar" ? "افتح حالة الخدمة" : "Open status",
+    title: title || tr("feedback_err_title"),
+    cause: cause || tr("feedback_err_cause"),
+    retry: tr("feedback_retry"),
+    status: tr("feedback_status"),
   };
   return (
     <Card
