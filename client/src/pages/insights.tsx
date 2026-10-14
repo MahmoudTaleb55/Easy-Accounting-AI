@@ -12,9 +12,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState as SharedErrorState } from "@/components/feedback/error-state";
 import { PeriodChip } from "@/components/dashboard/period-chip";
 import { usePeriod } from "@/contexts/period-context";
+import { useLocale } from "@/contexts/locale-context";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useT } from "@/i18n/dict";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useFormatMoney, useSettings } from "@/lib/format";
 import {
@@ -47,10 +49,11 @@ import {
 } from "recharts";
 
 function ErrorState({ onRetry }: { onRetry?: () => void }) {
+  const t = useT();
   return (
     <SharedErrorState
-      title="تعذّر تحميل البيانات"
-      cause="حدث خطأ أثناء جلب هذا القسم. يمكنك المحاولة مرة أخرى."
+      title={t("insight_err_title")}
+      cause={t("insight_err_cause")}
       onRetry={onRetry}
     />
   );
@@ -92,19 +95,20 @@ const severityStyle: Record<Alert["severity"], { bg: string; border: string; ico
 };
 
 export default function InsightsPage() {
+  const t = useT();
   return (
     <div className="space-y-8" data-testid="page-insights">
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-2 max-w-2xl">
-          <div className="eyebrow text-muted-foreground/80">الذكاء</div>
+          <div className="eyebrow text-muted-foreground/80">{t("insight_eyebrow")}</div>
           <h1
             className="text-2xl md:text-3xl font-semibold tracking-tight text-foreground leading-tight"
             data-testid="text-page-title"
           >
-            مركز القرارات
+            {t("insight_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            رؤى مالية لحظية تحوّل أرقامك إلى قرارات أفضل — صحة، إنذارات، توقعات، ومحاكاة.
+            {t("insight_subtitle")}
           </p>
         </div>
         <PeriodChip />
@@ -113,12 +117,12 @@ export default function InsightsPage() {
       <Tabs defaultValue="cockpit" className="w-full">
         <div className="overflow-x-auto no-scrollbar">
           <TabsList className="ledger-tabs">
-            <TabsTrigger value="cockpit" data-testid="tab-cockpit"><Activity   className="w-3.5 h-3.5 ms-1.5" />القيادة</TabsTrigger>
-            <TabsTrigger value="alerts"  data-testid="tab-alerts"> <AlertTriangle className="w-3.5 h-3.5 ms-1.5" />الإنذارات</TabsTrigger>
-            <TabsTrigger value="cash"    data-testid="tab-cash">   <TrendingUp className="w-3.5 h-3.5 ms-1.5" />تنبؤ النقد</TabsTrigger>
-            <TabsTrigger value="sim"     data-testid="tab-sim">    <Calculator className="w-3.5 h-3.5 ms-1.5" />المحاكي</TabsTrigger>
-            <TabsTrigger value="budget"  data-testid="tab-budget"> <Target     className="w-3.5 h-3.5 ms-1.5" />الميزانية</TabsTrigger>
-            <TabsTrigger value="coach"   data-testid="tab-coach">  <Brain      className="w-3.5 h-3.5 ms-1.5" strokeWidth={1.75} />المستشار</TabsTrigger>
+            <TabsTrigger value="cockpit" data-testid="tab-cockpit"><Activity   className="w-3.5 h-3.5 ms-1.5" />{t("insight_tab_cockpit")}</TabsTrigger>
+            <TabsTrigger value="alerts"  data-testid="tab-alerts"> <AlertTriangle className="w-3.5 h-3.5 ms-1.5" />{t("insight_tab_alerts")}</TabsTrigger>
+            <TabsTrigger value="cash"    data-testid="tab-cash">   <TrendingUp className="w-3.5 h-3.5 ms-1.5" />{t("insight_tab_cash")}</TabsTrigger>
+            <TabsTrigger value="sim"     data-testid="tab-sim">    <Calculator className="w-3.5 h-3.5 ms-1.5" />{t("insight_tab_sim")}</TabsTrigger>
+            <TabsTrigger value="budget"  data-testid="tab-budget"> <Target     className="w-3.5 h-3.5 ms-1.5" />{t("insight_tab_budget")}</TabsTrigger>
+            <TabsTrigger value="coach"   data-testid="tab-coach">  <Brain      className="w-3.5 h-3.5 ms-1.5" strokeWidth={1.75} />{t("insight_tab_coach")}</TabsTrigger>
           </TabsList>
         </div>
 
@@ -137,6 +141,7 @@ export default function InsightsPage() {
 // 1) Cockpit (overview)
 // ============================================================================
 function CockpitTab() {
+  const t = useT();
   const fmtMoney = useFormatMoney();
   const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
   const { qs, start, end } = usePeriodQS();
@@ -162,16 +167,16 @@ function CockpitTab() {
   const scoreClamped = Math.max(0, Math.min(100, Number(h.score) || 0));
   const scoreToken =
     scoreClamped >= 75 ? "hsl(var(--chart-1))" : scoreClamped >= 50 ? "hsl(var(--chart-3))" : "hsl(var(--chart-4))";
-  const scoreBadge = scoreClamped >= 75 ? "ممتاز" : scoreClamped >= 50 ? "متوسط" : "يحتاج اهتمام";
+  const scoreBadge = scoreClamped >= 75 ? t("insight_score_excellent") : scoreClamped >= 50 ? t("insight_score_average") : t("insight_score_needs");
 
   return (
     <div className="space-y-6">
       <div className="grid md:grid-cols-3 gap-4">
         <Card className="md:col-span-1 rounded-xl">
           <CardHeader>
-            <div className="eyebrow text-muted-foreground/80">الصحة المالية</div>
-            <CardTitle className="text-base font-semibold">تقييم شامل لوضعك</CardTitle>
-            <CardDescription>من 100</CardDescription>
+            <div className="eyebrow text-muted-foreground/80">{t("insight_health_eyebrow")}</div>
+            <CardTitle className="text-base font-semibold">{t("insight_health_title")}</CardTitle>
+            <CardDescription>{t("insight_out_of_100")}</CardDescription>
           </CardHeader>
           <CardContent className="text-center pb-6">
             <div
@@ -180,7 +185,7 @@ function CockpitTab() {
               aria-valuenow={scoreClamped}
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-label={`مؤشر الصحة المالية: ${scoreClamped} من 100 — ${scoreBadge}`}
+              aria-label={t("insight_health_aria").replace("{score}", String(scoreClamped)).replace("{badge}", scoreBadge)}
             >
               <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120" aria-hidden="true">
                 <circle
@@ -219,8 +224,8 @@ function CockpitTab() {
         </Card>
         <Card className="md:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">مكوّنات النتيجة</CardTitle>
-            <CardDescription>كل عامل ووزنه في النتيجة الإجمالية</CardDescription>
+            <CardTitle className="text-base">{t("insight_score_components")}</CardTitle>
+            <CardDescription>{t("insight_score_components_desc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {h.components.map((c) => (
@@ -237,26 +242,26 @@ function CockpitTab() {
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="الإيرادات" value={fmtCurrency(k.totalRevenue)} sub="إجمالي" delta={pickDelta(compareToPrevious, k.totalRevenue, prevHealth?.kpis?.totalRevenue, fmtCurrency)} />
-        <KpiCard label="صافي الربح" value={fmtCurrency(k.netProfit)} sub={`هامش ${(k.netMargin * 100).toFixed(1)}%`} positive={k.netProfit >= 0} delta={pickDelta(compareToPrevious, k.netProfit, prevHealth?.kpis?.netProfit, fmtCurrency)} />
-        <KpiCard label="النقد" value={fmtCurrency(k.cash)} sub="رصيد الصندوق" delta={pickDelta(compareToPrevious, k.cash, prevHealth?.kpis?.cash, fmtCurrency)} />
-        <KpiCard label="حقوق الملكية" value={fmtCurrency(k.totalEquity)} sub={`أصول ${fmtCurrency(k.totalAssets)}`} delta={pickDelta(compareToPrevious, k.totalEquity, prevHealth?.kpis?.totalEquity, fmtCurrency)} />
-        <KpiCard label="هامش الربح الإجمالي" value={`${(k.grossMargin * 100).toFixed(1)}%`} sub={`الحد الصحي > 30%`} />
-        <KpiCard label="هامش الربح الصافي" value={`${(k.netMargin * 100).toFixed(1)}%`} sub="الحد الصحي > 10%" />
-        <KpiCard label="نسبة المصروفات" value={`${(k.expenseRatio * 100).toFixed(0)}%`} sub="الحد الصحي < 70%" />
-        <KpiCard label="النسبة الجارية" value={k.currentRatio.toFixed(2)} sub="السيولة الصحية > 1.5" />
+        <KpiCard label={t("insight_kpi_revenue")} value={fmtCurrency(k.totalRevenue)} sub={t("insight_kpi_total")} delta={pickDelta(compareToPrevious, k.totalRevenue, prevHealth?.kpis?.totalRevenue, fmtCurrency)} />
+        <KpiCard label={t("insight_kpi_net_profit")} value={fmtCurrency(k.netProfit)} sub={t("insight_kpi_margin").replace("{n}", (k.netMargin * 100).toFixed(1))} positive={k.netProfit >= 0} delta={pickDelta(compareToPrevious, k.netProfit, prevHealth?.kpis?.netProfit, fmtCurrency)} />
+        <KpiCard label={t("insight_kpi_cash")} value={fmtCurrency(k.cash)} sub={t("insight_kpi_cash_balance")} delta={pickDelta(compareToPrevious, k.cash, prevHealth?.kpis?.cash, fmtCurrency)} />
+        <KpiCard label={t("insight_kpi_equity")} value={fmtCurrency(k.totalEquity)} sub={t("insight_kpi_assets").replace("{n}", fmtCurrency(k.totalAssets))} delta={pickDelta(compareToPrevious, k.totalEquity, prevHealth?.kpis?.totalEquity, fmtCurrency)} />
+        <KpiCard label={t("insight_kpi_gross_margin")} value={`${(k.grossMargin * 100).toFixed(1)}%`} sub={t("insight_healthy_gt_30")} />
+        <KpiCard label={t("insight_kpi_net_margin")} value={`${(k.netMargin * 100).toFixed(1)}%`} sub={t("insight_healthy_gt_10")} />
+        <KpiCard label={t("insight_kpi_expense_ratio")} value={`${(k.expenseRatio * 100).toFixed(0)}%`} sub={t("insight_healthy_lt_70")} />
+        <KpiCard label={t("insight_kpi_current_ratio")} value={k.currentRatio.toFixed(2)} sub={t("insight_healthy_liquidity")} />
       </div>
 
       {taxes && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2"><Receipt className="w-4 h-4" />تقدير الضرائب والزكاة</CardTitle>
-            <CardDescription>مؤشرات تخطيطية تساعدك على ادخار السيولة قبل الاستحقاق</CardDescription>
+            <CardTitle className="text-base flex items-center gap-2"><Receipt className="w-4 h-4" />{t("insight_tax_title")}</CardTitle>
+            <CardDescription>{t("insight_tax_desc")}</CardDescription>
           </CardHeader>
           <CardContent className={`grid gap-4 ${taxes.zakat.enabled ? "md:grid-cols-2" : ""}`}>
             <div className="border rounded-xl p-4">
               <div className="flex justify-between items-baseline mb-1">
-                <span className="text-muted-foreground text-sm">ضريبة القيمة المضافة ({(taxes.vat.rate * 100).toFixed(1)}%)</span>
+                <span className="text-muted-foreground text-sm">{t("insight_vat").replace("{n}", (taxes.vat.rate * 100).toFixed(1))}</span>
                 <span className="text-2xl font-semibold tabular-nums" data-testid="text-vat">{fmtCurrency(taxes.vat.payable)}</span>
               </div>
               <p className="text-xs text-muted-foreground mt-2">{taxes.vat.note}</p>
@@ -264,7 +269,7 @@ function CockpitTab() {
             {taxes.zakat.enabled && (
               <div className="border rounded-xl p-4">
                 <div className="flex justify-between items-baseline mb-1">
-                  <span className="text-muted-foreground text-sm">الزكاة التقديرية (2.5%)</span>
+                  <span className="text-muted-foreground text-sm">{t("insight_zakat")}</span>
                   <span className="text-2xl font-semibold tabular-nums" data-testid="text-zakat">{fmtCurrency(taxes.zakat.payable)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">{taxes.zakat.note}</p>
@@ -278,6 +283,7 @@ function CockpitTab() {
 }
 
 function KpiCard({ label, value, sub, positive, delta }: { label: string; value: string; sub?: string; positive?: boolean; delta?: { text: string; positive: boolean } | null }) {
+  const t = useT();
   return (
     <Card data-testid={`card-kpi-${label}`}>
       <CardContent className="p-4">
@@ -289,7 +295,7 @@ function KpiCard({ label, value, sub, positive, delta }: { label: string; value:
             className={`text-xs mt-1 tabular-nums ${delta.positive ? "text-green-600 dark:text-green-400" : "text-destructive"}`}
             data-testid={`text-delta-${label}`}
           >
-            {delta.text} مقارنة بالفترة السابقة
+            {t("insight_vs_prev").replace("{text}", delta.text)}
           </div>
         )}
       </CardContent>
@@ -348,6 +354,7 @@ function AlertsTab() {
 // 3) Cash forecast
 // ============================================================================
 function CashTab() {
+  const t = useT();
   const fmtMoney = useFormatMoney();
   const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
   const fmt = (n: number | string | null | undefined) => fmtMoney(n, { symbol: false });
@@ -363,13 +370,13 @@ function CashTab() {
   return (
     <div className="space-y-4">
       <div className="grid md:grid-cols-4 gap-3">
-        <KpiCard label="النقد الحالي" value={fmtCurrency(data.currentCash)} sub="رصيد الصندوق" />
-        <KpiCard label="متوسط الدخل اليومي" value={fmtCurrency(data.avgDailyIn)} sub="آخر 90 يوم" />
-        <KpiCard label="متوسط الصرف اليومي" value={fmtCurrency(data.avgDailyOut)} sub="آخر 90 يوم" />
+        <KpiCard label={t("insight_current_cash")} value={fmtCurrency(data.currentCash)} sub={t("insight_kpi_cash_balance")} />
+        <KpiCard label={t("insight_avg_daily_in")} value={fmtCurrency(data.avgDailyIn)} sub={t("insight_last_90")} />
+        <KpiCard label={t("insight_avg_daily_out")} value={fmtCurrency(data.avgDailyOut)} sub={t("insight_last_90")} />
         <KpiCard
-          label="صافي يومي"
+          label={t("insight_net_daily")}
           value={fmtCurrency(data.avgDailyNet)}
-          sub={cushion !== null ? `يكفي ${cushion} يوم` : data.avgDailyNet >= 0 ? "موجب — لا يوجد خطر نفاد" : "—"}
+          sub={cushion !== null ? t("insight_cushion").replace("{n}", String(cushion)) : data.avgDailyNet >= 0 ? t("insight_positive_no_risk") : "—"}
           positive={data.avgDailyNet >= 0}
         />
       </div>
@@ -378,13 +385,13 @@ function CashTab() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wallet className="w-5 h-5" />
-            توقع رصيد النقد القادم
+            {t("insight_forecast_title")}
           </CardTitle>
-          <CardDescription>إسقاط مبني على متوسط حركة آخر 90 يوم</CardDescription>
+          <CardDescription>{t("insight_forecast_desc")}</CardDescription>
           <div className="flex gap-2 mt-2">
             {[30, 60, 90, 180].map((d) => (
               <Button key={d} variant={days === d ? "default" : "outline"} size="sm" onClick={() => setDays(d)} data-testid={`button-days-${d}`}>
-                {d} يوم
+                {t("insight_days_suffix").replace("{n}", String(d))}
               </Button>
             ))}
           </div>
@@ -398,7 +405,7 @@ function CashTab() {
                 <YAxis tickFormatter={(v) => fmt(v)} />
                 <ReTooltip
                   formatter={(v: any) => fmtCurrency(v)}
-                  labelFormatter={(l) => `بعد ${l} يوم`}
+                  labelFormatter={(l) => t("insight_after_days").replace("{n}", String(l))}
                 />
                 <ReferenceLine y={0} stroke="hsl(var(--destructive))" strokeDasharray="3 3" />
                 <Line type="monotone" dataKey="balance" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
@@ -415,6 +422,7 @@ function CashTab() {
 // 4) What-If Simulator
 // ============================================================================
 function SimulatorTab() {
+  const t = useT();
   const fmtMoney = useFormatMoney();
   const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
   const fmt = (n: number | string | null | undefined) => fmtMoney(n, { symbol: false });
@@ -433,65 +441,65 @@ function SimulatorTab() {
         priceChangePct, costChangePct, newMonthlyExpense, expenseReductionPct, monthsAhead,
       }).then((r) => r.json()),
     onSuccess: (data) => setResult(data),
-    onError: () => toast({ variant: "destructive", title: "تعذر تشغيل المحاكاة" }),
+    onError: () => toast({ variant: "destructive", title: t("insight_sim_run_failed") }),
   });
 
   return (
     <div className="grid lg:grid-cols-2 gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>المتغيرات</CardTitle>
-          <CardDescription>عدّل القيم وشاهد التأثير على ربحيتك المتوقعة</CardDescription>
+          <CardTitle>{t("insight_sim_vars")}</CardTitle>
+          <CardDescription>{t("insight_sim_vars_desc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          <SliderField label="تغيير الأسعار" value={priceChangePct} onChange={setPrice} min={-50} max={100} suffix="%" testid="slider-price" />
-          <SliderField label="تغيير تكلفة المبيعات" value={costChangePct} onChange={setCost} min={-50} max={100} suffix="%" testid="slider-cost" />
-          <SliderField label="تخفيض المصروفات التشغيلية" value={expenseReductionPct} onChange={setRed} min={0} max={80} suffix="%" testid="slider-reduction" />
+          <SliderField label={t("insight_sim_price")} value={priceChangePct} onChange={setPrice} min={-50} max={100} suffix="%" testid="slider-price" />
+          <SliderField label={t("insight_sim_cost")} value={costChangePct} onChange={setCost} min={-50} max={100} suffix="%" testid="slider-cost" />
+          <SliderField label={t("insight_sim_reduction")} value={expenseReductionPct} onChange={setRed} min={0} max={80} suffix="%" testid="slider-reduction" />
           <div>
-            <Label>مصروف ثابت شهري جديد (راتب موظف، إيجار…)</Label>
+            <Label>{t("insight_sim_fixed")}</Label>
             <Input type="number" min={0} value={newMonthlyExpense} onChange={(e) => setExp(Number(e.target.value || 0))} className="mt-2" data-testid="input-new-expense" />
           </div>
           <div>
-            <Label>عدد الأشهر القادمة</Label>
+            <Label>{t("insight_sim_months")}</Label>
             <Input type="number" min={1} max={36} value={monthsAhead} onChange={(e) => setMonths(Number(e.target.value || 1))} className="mt-2" data-testid="input-months" />
           </div>
           <Button onClick={() => sim.mutate()} disabled={sim.isPending} className="w-full" data-testid="button-simulate">
-            {sim.isPending ? "جارٍ الحساب..." : "شغّل المحاكاة"}
+            {sim.isPending ? t("insight_sim_calculating") : t("insight_sim_run")}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>النتيجة</CardTitle>
-          <CardDescription>مقارنة الوضع الحالي بالسيناريو المقترح</CardDescription>
+          <CardTitle>{t("insight_sim_result")}</CardTitle>
+          <CardDescription>{t("insight_sim_result_desc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {!result ? (
-            <p className="text-muted-foreground text-center py-12">شغّل المحاكاة لرؤية النتائج</p>
+            <p className="text-muted-foreground text-center py-12">{t("insight_sim_run_hint")}</p>
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div className="border rounded-lg p-3">
-                  <div className="text-muted-foreground text-xs mb-1">الوضع الحالي / شهرياً</div>
-                  <div>إيراد: {fmtCurrency(result.base.monthlyRevenue)}</div>
-                  <div>مصروف: {fmtCurrency(result.base.monthlyExpense)}</div>
-                  <div className="font-bold mt-1">ربح: {fmtCurrency(result.base.monthlyProfit)}</div>
+                  <div className="text-muted-foreground text-xs mb-1">{t("insight_sim_current_monthly")}</div>
+                  <div>{t("insight_sim_rev").replace("{v}", fmtCurrency(result.base.monthlyRevenue))}</div>
+                  <div>{t("insight_sim_exp").replace("{v}", fmtCurrency(result.base.monthlyExpense))}</div>
+                  <div className="font-bold mt-1">{t("insight_sim_profit").replace("{v}", fmtCurrency(result.base.monthlyProfit))}</div>
                 </div>
                 <div className="border-2 border-primary rounded-lg p-3 bg-primary/5">
-                  <div className="text-muted-foreground text-xs mb-1">السيناريو / شهرياً</div>
-                  <div>إيراد: {fmtCurrency(result.scenario.monthlyRevenue)}</div>
-                  <div>مصروف: {fmtCurrency(result.scenario.monthlyExpense)}</div>
-                  <div className="font-bold mt-1">ربح: {fmtCurrency(result.scenario.monthlyProfit)}</div>
+                  <div className="text-muted-foreground text-xs mb-1">{t("insight_sim_scenario_monthly")}</div>
+                  <div>{t("insight_sim_rev").replace("{v}", fmtCurrency(result.scenario.monthlyRevenue))}</div>
+                  <div>{t("insight_sim_exp").replace("{v}", fmtCurrency(result.scenario.monthlyExpense))}</div>
+                  <div className="font-bold mt-1">{t("insight_sim_profit").replace("{v}", fmtCurrency(result.scenario.monthlyProfit))}</div>
                 </div>
               </div>
               <div className={`text-center p-3 rounded-lg font-bold ${result.scenario.profitDelta >= 0 ? "bg-green-500/10 text-green-700 dark:text-green-400" : "bg-destructive/10 text-destructive"}`} data-testid="text-profit-delta">
-                {result.scenario.profitDelta >= 0 ? "+" : ""}{fmtCurrency(result.scenario.profitDelta)} شهرياً
+                {t("insight_sim_monthly_suffix").replace("{v}", `${result.scenario.profitDelta >= 0 ? "+" : ""}${fmtCurrency(result.scenario.profitDelta)}`)}
                 {" "}({result.scenario.profitDeltaPct >= 0 ? "+" : ""}{result.scenario.profitDeltaPct.toFixed(1)}%)
               </div>
               <div className="border-t pt-3 text-sm space-y-1">
-                <div className="flex justify-between"><span className="text-muted-foreground">نقطة التعادل (إيراد شهري)</span><span className="font-bold">{fmtCurrency(result.breakEvenMonthlyRevenue)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">هامش المساهمة</span><span className="font-bold">{(result.contributionMargin * 100).toFixed(1)}%</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("insight_sim_breakeven")}</span><span className="font-bold">{fmtCurrency(result.breakEvenMonthlyRevenue)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("insight_sim_contribution")}</span><span className="font-bold">{(result.contributionMargin * 100).toFixed(1)}%</span></div>
               </div>
               <div dir="ltr" className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
@@ -501,8 +509,8 @@ function SimulatorTab() {
                     <YAxis tickFormatter={(v) => fmt(v)} />
                     <ReTooltip formatter={(v: any) => fmtCurrency(v)} />
                     <Legend />
-                    <Line type="monotone" dataKey="cumCash" name="النقد المتراكم" stroke="hsl(var(--primary))" strokeWidth={2} />
-                    <Line type="monotone" dataKey="profit" name="الربح الشهري" stroke="hsl(var(--chart-2))" strokeWidth={2} />
+                    <Line type="monotone" dataKey="cumCash" name={t("insight_sim_cum_cash")} stroke="hsl(var(--primary))" strokeWidth={2} />
+                    <Line type="monotone" dataKey="profit" name={t("insight_sim_monthly_profit")} stroke="hsl(var(--chart-2))" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -530,6 +538,8 @@ function SliderField({ label, value, onChange, min, max, suffix, testid }: any) 
 // 5) Budget vs Actual
 // ============================================================================
 function BudgetTab() {
+  const t = useT();
+  const { locale } = useLocale();
   const fmtMoney = useFormatMoney();
   const fmtCurrency = (n: number | string | null | undefined) => fmtMoney(n);
   const settings = useSettings();
@@ -554,35 +564,35 @@ function BudgetTab() {
         accountId: Number(accountId), year, month, amount: Number(amount),
       }).then((r) => r.json()),
     onSuccess: () => {
-      toast({ title: "تم حفظ الميزانية" });
+      toast({ title: t("insight_budget_saved") });
       setAmount("");
       queryClient.invalidateQueries({ queryKey: ["/api/insights/budget-vs-actual", year, month] });
     },
-    onError: () => toast({ variant: "destructive", title: "فشل الحفظ" }),
+    onError: () => toast({ variant: "destructive", title: t("insight_save_failed") }),
   });
 
   const expenseAccounts = (accounts || []).filter((a: any) => !a.isHeader && (a.type === "expense" || a.type === "revenue"));
-  const months = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const months = Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat(locale === "ar" ? "ar" : locale === "de" ? "de" : locale === "fr" ? "fr" : "en", { month: "long" }).format(new Date(2000, i, 1)));
 
   return (
     <div className="space-y-4">
       <Card className="bg-muted/30">
         <CardContent className="py-3 flex items-center gap-2 text-sm text-muted-foreground" data-testid="text-budget-period">
           <Calendar className="w-4 h-4" />
-          الميزانية تتبع الفترة المختارة في الأعلى — حالياً <span className="font-semibold text-foreground">{months[month - 1]} {year}</span>
+          {t("insight_budget_follows")} <span className="font-semibold text-foreground">{months[month - 1]} {year}</span>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>إضافة / تعديل ميزانية</CardTitle>
-          <CardDescription>حدّد سقف الإنفاق المخطط لكل بند هذا الشهر</CardDescription>
+          <CardTitle>{t("insight_budget_add_edit")}</CardTitle>
+          <CardDescription>{t("insight_budget_add_desc")}</CardDescription>
         </CardHeader>
         <CardContent className="grid md:grid-cols-3 gap-3 items-end">
           <div>
-            <Label>الحساب</Label>
+            <Label>{t("insight_account")}</Label>
             <Select value={accountId} onValueChange={setAccountId}>
-              <SelectTrigger className="mt-2" data-testid="select-account"><SelectValue placeholder="اختر حساباً" /></SelectTrigger>
+              <SelectTrigger className="mt-2" data-testid="select-account"><SelectValue placeholder={t("insight_select_account")} /></SelectTrigger>
               <SelectContent>
                 {expenseAccounts.map((a: any) => (
                   <SelectItem key={a.id} value={String(a.id)}>{a.code} — {a.nameAr}</SelectItem>
@@ -591,24 +601,24 @@ function BudgetTab() {
             </Select>
           </div>
           <div>
-            <Label>المبلغ المخطط ({settings.currencySymbol})</Label>
+            <Label>{t("insight_planned_amount").replace("{sym}", settings.currencySymbol)}</Label>
             <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-2" data-testid="input-budget-amount" />
           </div>
           <Button onClick={() => save.mutate()} disabled={!accountId || !amount || save.isPending} data-testid="button-save-budget">
-            {save.isPending ? "جارٍ الحفظ..." : "حفظ"}
+            {save.isPending ? t("insight_saving") : t("insight_save")}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>المخطط مقابل الفعلي — {months[month - 1]} {year}</CardTitle>
+          <CardTitle>{t("insight_plan_vs_actual")} {months[month - 1]} {year}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-40 w-full" />
           ) : !bva?.rows.length ? (
-            <p className="text-muted-foreground text-center py-8">لا توجد ميزانيات لهذا الشهر — أضف ميزانية أعلاه للبدء</p>
+            <p className="text-muted-foreground text-center py-8">{t("insight_no_budgets")}</p>
           ) : (
             <div className="space-y-3">
               {bva.rows.map((r) => {
@@ -640,6 +650,7 @@ function BudgetTab() {
 // 6) AI Coach
 // ============================================================================
 function CoachTab() {
+  const t = useT();
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState<{ q: string; a: string }[]>([]);
   const { toast } = useToast();
@@ -651,39 +662,39 @@ function CoachTab() {
       setHistory((h) => [{ q: question, a: data.answer }, ...h]);
       setQuestion("");
     },
-    onError: () => toast({ variant: "destructive", title: "تعذر الحصول على إجابة" }),
+    onError: () => toast({ variant: "destructive", title: t("insight_coach_no_answer") }),
   });
 
   const suggestions = [
-    "هل أستطيع توظيف موظف جديد براتب 6000؟",
-    "ما أكبر 3 مصاريف يجب أن أقلصها؟",
-    "هل أنا في وضع صحي مالياً؟",
-    "كم يجب أن أبيع شهرياً للوصول لربح 10,000؟",
+    t("insight_coach_q1"),
+    t("insight_coach_q2"),
+    t("insight_coach_q3"),
+    t("insight_coach_q4"),
   ];
 
   return (
     <div className="grid lg:grid-cols-3 gap-4">
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Brain className="w-5 h-5 text-foreground/70" strokeWidth={1.75} />اسأل المستشار المالي</CardTitle>
-          <CardDescription>سؤالك يُحلَّل بالاعتماد على أرقامك الفعلية اللحظية</CardDescription>
+          <CardTitle className="flex items-center gap-2"><Brain className="w-5 h-5 text-foreground/70" strokeWidth={1.75} />{t("insight_coach_title")}</CardTitle>
+          <CardDescription>{t("insight_coach_desc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="اكتب سؤالك المالي هنا..."
+            placeholder={t("insight_coach_placeholder")}
             rows={3}
             data-testid="input-coach-question"
           />
           <Button onClick={() => ask.mutate()} disabled={!question.trim() || ask.isPending} className="w-full" data-testid="button-ask-coach">
-            {ask.isPending ? <span>جارٍ التحليل…</span> : <><Send className="w-4 h-4 ml-2" />اسأل</>}
+            {ask.isPending ? <span>{t("insight_coach_analyzing")}</span> : <><Send className="w-4 h-4 ml-2" />{t("insight_coach_ask")}</>}
           </Button>
 
           <div className="space-y-3 max-h-[500px] overflow-y-auto pt-2">
             {history.map((h, i) => (
               <div key={i} className="border rounded-xl p-4 bg-muted/30" data-testid={`coach-answer-${i}`}>
-                <div className="text-sm font-bold mb-2 text-primary">س: {h.q}</div>
+                <div className="text-sm font-bold mb-2 text-primary">{t("insight_coach_q_prefix").replace("{q}", h.q)}</div>
                 <div className="text-sm whitespace-pre-line">{h.a}</div>
               </div>
             ))}
@@ -693,7 +704,7 @@ function CoachTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">أسئلة مقترحة</CardTitle>
+          <CardTitle className="text-base">{t("insight_coach_suggested")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {suggestions.map((s, i) => (
