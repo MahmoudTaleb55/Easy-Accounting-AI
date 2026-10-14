@@ -67,6 +67,8 @@ import {
   type BalanceBreakdown,
 } from "@/pages/chart-of-accounts-rollup"
 import { useLocale } from "@/contexts/locale-context"
+import { useT, type StringKey } from "@/i18n/dict"
+import { mapErrorKey } from "@/lib/error-messages"
 import { useAuth } from "@/hooks/use-auth"
 import { useFormatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -106,12 +108,12 @@ interface LedgerJE {
 type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense"
 const TYPE_ORDER: AccountType[] = ["asset", "liability", "equity", "revenue", "expense"]
 
-const typeLabel: Record<AccountType, { ar: string; en: string }> = {
-  asset: { ar: "أصول", en: "Assets" },
-  liability: { ar: "خصوم", en: "Liabilities" },
-  equity: { ar: "حقوق ملكية", en: "Equity" },
-  revenue: { ar: "إيرادات", en: "Revenue" },
-  expense: { ar: "مصروفات", en: "Expenses" },
+const typeLabelKey: Record<AccountType, StringKey> = {
+  asset: "coa_type_asset",
+  liability: "coa_type_liability",
+  equity: "coa_type_equity",
+  revenue: "coa_type_revenue",
+  expense: "coa_type_expense",
 }
 
 // Each type maps to one of the chart-N tokens for a coherent palette.
@@ -147,6 +149,7 @@ interface BalancesResponse {
 
 export default function ChartOfAccountsPage() {
   const { locale } = useLocale()
+  const tr = useT()
   const { toast } = useToast()
   const { activeCompanyId } = useAuth()
   const canWrite = useCanWrite()
@@ -175,122 +178,62 @@ export default function ChartOfAccountsPage() {
 
   const t = useMemo(
     () => ({
-      eyebrow: locale === "ar" ? "دليل الحسابات" : "Chart of accounts",
-      title:
-        locale === "ar"
-          ? "بنية حساباتك، وفق IFRS."
-          : "Your account structure, IFRS-aligned.",
-      subtitle:
-        locale === "ar"
-          ? "خمس فئات: أصول، خصوم، حقوق ملكية، إيرادات، مصروفات."
-          : "Five buckets: assets, liabilities, equity, revenue, expenses.",
-      add: locale === "ar" ? "حساب جديد" : "New account",
-      addTitle: locale === "ar" ? "إضافة حساب" : "Add account",
-      addDesc:
-        locale === "ar"
-          ? "حدّد الكود والنوع والاسم لإضافة حساب جديد إلى الدليل."
-          : "Set code, type, and name to add a new account to the chart.",
-      searchPh: locale === "ar" ? "ابحث عن حساب…" : "Search accounts…",
-      code: locale === "ar" ? "الكود" : "Code",
-      type: locale === "ar" ? "النوع" : "Type",
-      nameAr: locale === "ar" ? "الاسم بالعربية" : "Arabic name",
-      nameEn: locale === "ar" ? "الاسم بالإنجليزية" : "English name",
-      subtype: locale === "ar" ? "التصنيف الفرعي" : "Subtype",
-      save: locale === "ar" ? "حفظ" : "Save",
-      created: locale === "ar" ? "تم إضافة الحساب" : "Account added",
-      createFailed: locale === "ar" ? "فشل الإنشاء" : "Could not create account",
-      empty: locale === "ar" ? "لا حسابات مطابقة" : "No matching accounts",
-      noAccounts:
-        locale === "ar"
-          ? "لا يوجد دليل حسابات بعد"
-          : "No chart of accounts yet",
-      noAccountsDesc:
-        locale === "ar"
-          ? "ابدأ بإضافة حساب يدوياً، أو استعد الدليل الافتراضي المتوافق مع IFRS لتنطلق فوراً."
-          : "Add an account manually, or restore the default IFRS-ready chart to start in one click.",
-      restoreDefaults:
-        locale === "ar" ? "استعادة الدليل الافتراضي" : "Restore default chart",
-      restoredOk:
-        locale === "ar"
-          ? "تم زرع الدليل الافتراضي"
-          : "Default chart of accounts seeded",
-      restoreFailed:
-        locale === "ar"
-          ? "تعذّر استعادة الدليل الافتراضي"
-          : "Could not restore the default chart",
-      ledgerTitle: locale === "ar" ? "حركة الحساب" : "Account ledger",
-      ledgerDesc:
-        locale === "ar"
-          ? "كل سطر مدين/دائن مرحَّل إلى هذا الحساب، مع رابط إلى قيد اليومية الأصلي."
-          : "Every debit/credit posted to this account, each linked back to its journal entry.",
-      ledgerDate: locale === "ar" ? "التاريخ" : "Date",
-      ledgerMemo: locale === "ar" ? "البيان" : "Memo",
-      ledgerDebit: locale === "ar" ? "مدين" : "Debit",
-      ledgerCredit: locale === "ar" ? "دائن" : "Credit",
-      ledgerJE: locale === "ar" ? "القيد" : "Entry",
-      ledgerEmpty:
-        locale === "ar"
-          ? "لا حركة على هذا الحساب بعد"
-          : "No postings to this account yet",
-      ledgerEmptyHint:
-        locale === "ar"
-          ? "ستظهر هنا أسطر القيود فور ترحيل أول قيد يستخدم الحساب."
-          : "Lines will appear here as soon as a journal entry posts to this account.",
-      // Period-aware empty title — substitutes the active range so users can
-      // tell at a glance which window they're looking through. Date strings
-      // are formatted by the sheet (it owns the locale + period context) and
-      // spliced in via the {start}/{end} placeholders below.
-      ledgerEmptyPeriodRange:
-        locale === "ar"
-          ? "لا حركة على هذا الحساب بين {start} و{end}"
-          : "No postings between {start} and {end}",
-      ledgerEmptyPeriodHint:
-        locale === "ar"
-          ? "جرّب توسيع نطاق الفترة من الأعلى لاستعراض المزيد من الحركات."
-          : "Try widening the period range above to see more postings.",
-      // Inline jump-to-YTD shortcut, surfaced when the active window is
-      // narrower than the whole year so users don't have to hunt for the
-      // chip dropdown to broaden their view.
-      ledgerEmptyPeriodSwitchYtd:
-        locale === "ar"
-          ? "عرض منذ بداية السنة"
-          : "Switch to year-to-date",
-      ledgerJumpPast: (date: string) =>
-        locale === "ar"
-          ? `الانتقال إلى أحدث حركة سابقة (${date})`
-          : `Jump to latest earlier posting (${date})`,
-      ledgerJumpFuture: (date: string) =>
-        locale === "ar"
-          ? `الانتقال إلى أقرب حركة قادمة (${date})`
-          : `Jump to nearest upcoming posting (${date})`,
-      ledgerOpenAria: locale === "ar" ? "فتح حركة الحساب" : "Open account ledger",
-      ledgerJEAria:
-        locale === "ar" ? "فتح قيد اليومية" : "Open journal entry",
-      ledgerTotalDebit: locale === "ar" ? "إجمالي المدين" : "Total debit",
-      ledgerTotalCredit: locale === "ar" ? "إجمالي الدائن" : "Total credit",
-      ledgerBalance: locale === "ar" ? "الرصيد" : "Balance",
-      ledgerOpening: locale === "ar" ? "الرصيد الافتتاحي" : "Opening balance",
-      ledgerClosing: locale === "ar" ? "الرصيد الختامي" : "Closing balance",
-      ledgerDownload: locale === "ar" ? "تنزيل CSV" : "Download CSV",
-      ledgerDownloadAria:
-        locale === "ar"
-          ? "تنزيل حركة الحساب كملف CSV"
-          : "Download account ledger as CSV",
-      ledgerCsvFilenamePrefix: locale === "ar" ? "حركة-حساب" : "ledger",
-      periodLabel: locale === "ar" ? "نطاق الأرصدة" : "Balances scope",
-      periodMonth: locale === "ar" ? "هذا الشهر" : "This month",
-      periodYear: locale === "ar" ? "هذه السنة" : "This year",
-      periodAll: locale === "ar" ? "كل الفترات" : "All time",
-      balanceAria: locale === "ar" ? "الرصيد الحالي" : "Current balance",
-      balanceBreakdownDebit: locale === "ar" ? "مدين" : "Debit",
-      balanceBreakdownCredit: locale === "ar" ? "دائن" : "Credit",
-      balanceBreakdownNet: locale === "ar" ? "صافي" : "Net",
-      balanceBreakdownAria:
-        locale === "ar"
-          ? "تفصيل الرصيد لهذه الفترة"
-          : "Balance breakdown for this period",
+      eyebrow: tr("coa_eyebrow"),
+      title: tr("coa_title"),
+      subtitle: tr("coa_subtitle"),
+      add: tr("coa_add"),
+      addTitle: tr("coa_add_title"),
+      addDesc: tr("coa_add_desc"),
+      searchPh: tr("coa_search_ph"),
+      code: tr("coa_code"),
+      type: tr("coa_type"),
+      nameAr: tr("coa_name_ar"),
+      nameEn: tr("coa_name_en"),
+      subtype: tr("coa_subtype"),
+      save: tr("coa_save"),
+      created: tr("coa_created"),
+      createFailed: tr("coa_create_failed"),
+      empty: tr("coa_empty"),
+      noAccounts: tr("coa_empty_none"),
+      noAccountsDesc: tr("coa_empty_none_hint"),
+      restoreDefaults: tr("coa_restore_default"),
+      restoredOk: tr("coa_seeded"),
+      restoreFailed: tr("coa_seed_failed"),
+      ledgerTitle: tr("coa_ledger_title"),
+      ledgerDesc: tr("coa_ledger_desc"),
+      ledgerDate: tr("coa_ledger_date"),
+      ledgerMemo: tr("coa_ledger_memo"),
+      ledgerDebit: tr("coa_ledger_debit"),
+      ledgerCredit: tr("coa_ledger_credit"),
+      ledgerJE: tr("coa_ledger_je"),
+      ledgerEmpty: tr("coa_ledger_empty"),
+      ledgerEmptyHint: tr("coa_ledger_empty_hint"),
+      ledgerEmptyPeriodRange: tr("coa_ledger_empty_range"),
+      ledgerEmptyPeriodHint: tr("coa_ledger_empty_range_hint"),
+      ledgerEmptyPeriodSwitchYtd: tr("coa_ledger_ytd"),
+      ledgerOpenAria: tr("coa_ledger_open_aria"),
+      ledgerJEAria: tr("coa_ledger_open_je"),
+      ledgerTotalDebit: tr("coa_ledger_total_debit"),
+      ledgerTotalCredit: tr("coa_ledger_total_credit"),
+      ledgerBalance: tr("coa_ledger_balance"),
+      ledgerOpening: tr("coa_ledger_opening"),
+      ledgerClosing: tr("coa_ledger_closing"),
+      ledgerDownload: tr("coa_ledger_download"),
+      ledgerDownloadAria: tr("coa_ledger_download_aria"),
+      ledgerCsvFilenamePrefix: tr("coa_ledger_csv_prefix"),
+      periodLabel: tr("coa_period_label"),
+      periodMonth: tr("coa_period_month"),
+      periodYear: tr("coa_period_year"),
+      periodAll: tr("coa_period_all"),
+      balanceAria: tr("coa_balance_aria"),
+      balanceBreakdownDebit: tr("coa_bd_debit"),
+      balanceBreakdownCredit: tr("coa_bd_credit"),
+      balanceBreakdownNet: tr("coa_bd_net"),
+      balanceBreakdownAria: tr("coa_bd_aria"),
+      ledgerJumpPast: (date: string) => tr("coa_ledger_jump_prev").replace("{date}", date),
+      ledgerJumpFuture: (date: string) => tr("coa_ledger_jump_next").replace("{date}", date),
     }),
-    [locale]
+    [tr]
   )
 
   // Account ledger drawer — chosen account row whose postings we surface.
@@ -433,7 +376,7 @@ export default function ChartOfAccountsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] })
       queryClient.invalidateQueries({ queryKey: ["/api/accounts/balances"] })
       toast({
-        title: locale === "ar" ? "تم الحذف" : "Account deleted",
+        title: tr("coa_toast_deleted"),
       })
       setAccountToDelete(null)
     },
@@ -442,8 +385,8 @@ export default function ChartOfAccountsPage() {
       // or 409 (still has postings or children). Surface the message verbatim
       // so the owner knows exactly which safety rule blocked the delete.
       toast({
-        title: locale === "ar" ? "تعذّر الحذف" : "Delete failed",
-        description: err?.message,
+        title: tr("coa_toast_delete_failed"),
+        description: tr(mapErrorKey(err)),
         variant: "destructive",
       })
     },
@@ -669,7 +612,7 @@ export default function ChartOfAccountsPage() {
                       <SelectContent>
                         {TYPE_ORDER.map((tt) => (
                           <SelectItem key={tt} value={tt}>
-                            {locale === "ar" ? typeLabel[tt].ar : typeLabel[tt].en}
+                            {tr(typeLabelKey[tt])}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -744,11 +687,7 @@ export default function ChartOfAccountsPage() {
       ) : TYPE_ORDER.filter((tt) => tree.byType[tt].length).length === 0 ? (
         <EmptyState
           title={t.empty}
-          description={
-            locale === "ar"
-              ? "جرّب كلمة بحث أخرى أو امسح المرشّح للعودة إلى كامل الدليل."
-              : "Try a different search term or clear the filter to see the full chart."
-          }
+          description={tr("coa_search_empty_hint")}
           testId="empty-coa"
         />
       ) : (
@@ -767,7 +706,7 @@ export default function ChartOfAccountsPage() {
                     className={cn("inline-block h-3.5 w-1 rounded-sm", typeAccent[type])}
                   />
                   <h3 className="text-sm font-semibold text-foreground">
-                    {locale === "ar" ? typeLabel[type].ar : typeLabel[type].en}
+                    {tr(typeLabelKey[type])}
                   </h3>
                 </div>
                 <span className="text-xs font-numeric tabular-nums text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border">
@@ -827,35 +766,23 @@ export default function ChartOfAccountsPage() {
         <AlertDialogContent data-testid="dialog-delete-account">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {locale === "ar" ? "حذف الحساب" : "Delete account"}
+              {tr("coa_delete_account")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {accountToDelete && (
-                locale === "ar" ? (
-                  <>
-                    سيتم حذف الحساب{" "}
-                    <span className="font-medium text-foreground">
-                      {accountToDelete.code} — {accountToDelete.nameAr}
-                    </span>
-                    . هذا الإجراء لا يمكن التراجع عنه. لا يمكن حذف حساب يحتوي
-                    على قيود مسجلة أو حسابات فرعية.
-                  </>
-                ) : (
-                  <>
-                    Account{" "}
-                    <span className="font-medium text-foreground">
-                      {accountToDelete.code} — {accountToDelete.nameEn}
-                    </span>
-                    {" "}will be deleted. This cannot be undone. Accounts with
-                    posted journal lines or sub-accounts cannot be deleted.
-                  </>
-                )
+                <>
+                  {tr("coa_delete_desc_1")}{" "}
+                  <span className="font-medium text-foreground">
+                    {accountToDelete.code} — {locale === "ar" ? accountToDelete.nameAr : accountToDelete.nameEn}
+                  </span>
+                  {tr("coa_delete_desc_2")}
+                </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-delete-account">
-              {locale === "ar" ? "إلغاء" : "Cancel"}
+              {tr("coa_cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
@@ -873,13 +800,7 @@ export default function ChartOfAccountsPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete-account"
             >
-              {deleteMutation.isPending
-                ? locale === "ar"
-                  ? "جارٍ الحذف…"
-                  : "Deleting…"
-                : locale === "ar"
-                ? "حذف"
-                : "Delete"}
+              {deleteMutation.isPending ? tr("coa_deleting") : tr("coa_delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -973,6 +894,7 @@ function TreeRow({
   canDelete,
   onDelete,
 }: TreeRowProps) {
+  const tr = useT()
   const { account } = node
   const hasChildren = node.children.length > 0
   const expanded = hasChildren && isExpanded(account.code)
@@ -1017,15 +939,7 @@ function TreeRow({
             type="button"
             onClick={() => onToggle(account.code)}
             aria-expanded={expanded}
-            aria-label={
-              locale === "ar"
-                ? expanded
-                  ? "طيّ الفرع"
-                  : "فتح الفرع"
-                : expanded
-                ? "Collapse"
-                : "Expand"
-            }
+            aria-label={expanded ? tr("coa_collapse_branch") : tr("coa_expand_branch")}
             className={cn(
               "shrink-0 inline-flex items-center justify-center w-5 h-5 -m-0.5 rounded",
               "text-muted-foreground hover:text-foreground hover:bg-muted",
@@ -1092,11 +1006,9 @@ function TreeRow({
               "opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             )}
-            aria-label={
-              locale === "ar"
-                ? `حذف الحساب ${account.code} ${account.nameAr}`
-                : `Delete account ${account.code} ${account.nameAr}`
-            }
+            aria-label={tr("coa_delete_account_aria")
+              .replace("{code}", account.code)
+              .replace("{name}", locale === "ar" ? account.nameAr : account.nameEn)}
             data-testid={`button-delete-account-${account.code}`}
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -1114,11 +1026,7 @@ function TreeRow({
           <span
             className="ms-auto shrink-0 text-muted-foreground/60 text-[12.5px]"
             data-testid={`text-balance-${account.code}-error`}
-            title={
-              locale === "ar"
-                ? "تعذّر تحميل الأرصدة"
-                : "Could not load balances"
-            }
+            title={tr("coa_balances_failed")}
           >
             ·
           </span>
@@ -1302,7 +1210,7 @@ interface AccountLedgerSheetLabels {
   download: string
   downloadAria: string
   // Localized prefix for the exported CSV filename (e.g. "ledger" or
-  // "حركة-حساب"). The full name is built as `<prefix>-<code>-<timestamp>.csv`
+  // the localized ledger prefix). The full name is built as `<prefix>-<code>-<timestamp>.csv`
   // so finance users can keep multiple exports straight in their downloads
   // folder without renaming each one.
   csvFilenamePrefix: string
