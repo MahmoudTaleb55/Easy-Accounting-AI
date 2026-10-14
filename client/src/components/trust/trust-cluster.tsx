@@ -4,6 +4,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescri
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, AlertCircle, RefreshCw, Shield, Database, Plug, UserCheck, Landmark, QrCode } from "lucide-react";
 import { useLocale } from "@/contexts/locale-context";
+import { useT, type StringKey } from "@/i18n/dict";
 import { formatDistanceToNow } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -13,8 +14,7 @@ type IntegrationHealth = "healthy" | "degraded" | "down" | "not_configured";
 
 interface IntegrationStatus {
   id: string;
-  nameAr: string;
-  nameEn: string;
+  labelKey: StringKey;
   health: IntegrationHealth;
   lastSyncAt?: Date | null;
   nextSyncAt?: Date | null;
@@ -35,11 +35,11 @@ const HEALTH_TONE: Record<IntegrationHealth, string> = {
   not_configured: "bg-muted-foreground/40",
 };
 
-const HEALTH_LABEL: Record<IntegrationHealth, { ar: string; en: string }> = {
-  healthy:        { ar: "يعمل", en: "Healthy" },
-  degraded:       { ar: "تأخر", en: "Degraded" },
-  down:           { ar: "متوقف", en: "Down" },
-  not_configured: { ar: "غير مفعّل", en: "Not configured" },
+const HEALTH_LABEL: Record<IntegrationHealth, StringKey> = {
+  healthy: "trust_health_healthy",
+  degraded: "trust_health_degraded",
+  down: "trust_health_down",
+  not_configured: "trust_health_not_configured",
 };
 
 /**
@@ -48,6 +48,7 @@ const HEALTH_LABEL: Record<IntegrationHealth, { ar: string; en: string }> = {
  */
 function useIntegrationStatuses(lastFetchAt: Date | null): IntegrationStatus[] {
   const { locale } = useLocale();
+  const t = useT();
 
   const { data: bankAccounts } = useQuery<BankAccount[]>({
     queryKey: ["/api/banking/accounts"],
@@ -65,61 +66,41 @@ function useIntegrationStatuses(lastFetchAt: Date | null): IntegrationStatus[] {
   return [
     {
       id: "database",
-      nameAr: "قاعدة البيانات الرئيسية",
-      nameEn: "Primary database",
+      labelKey: "trust_int_db",
       health: lastFetchAt ? "healthy" : "degraded",
       lastSyncAt: lastFetchAt,
-      cadence: locale === "ar" ? "لحظي" : "Real-time on every write",
-      detail:
-        locale === "ar"
-          ? "قاعدة بيانات Postgres مُدارة — مزامنة لحظية مع كل عملية كتابة."
-          : "Cloud-managed Postgres — real-time on every write.",
+      cadence: t("trust_int_db_cadence"),
+      detail: t("trust_int_db_detail"),
     },
     {
       id: "ai",
-      nameAr: "المساعد الذكي",
-      nameEn: "AI assistant",
+      labelKey: "trust_int_ai",
       health: "healthy",
       lastSyncAt: lastFetchAt,
-      cadence: locale === "ar" ? "عند الطلب" : "On demand",
-      detail:
-        locale === "ar"
-          ? "OpenAI — لا تُخزَّن المطالبات في خدمات خارجية."
-          : "OpenAI integration — prompts not retained externally.",
+      cadence: t("trust_int_ai_cadence"),
+      detail: t("trust_int_ai_detail"),
     },
     {
       id: "bank-feed",
-      nameAr: "مزامنة البنك",
-      nameEn: "Bank feed",
+      labelKey: "trust_int_bank",
       health: hasBankAccounts ? "healthy" : "not_configured",
       lastSyncAt: hasBankAccounts ? lastFetchAt : null,
-      cadence: hasBankAccounts
-        ? (locale === "ar" ? "لحظي" : "Real-time on every entry")
-        : (locale === "ar" ? "غير مجدول" : "Not scheduled"),
+      cadence: hasBankAccounts ? t("trust_int_bank_cadence_on") : t("trust_cadence_off"),
       detail: hasBankAccounts
-        ? locale === "ar"
-          ? `${bankAccounts!.length} حساب بنكي مُفعَّل — المعاملات تُرحَّل تلقائياً.`
-          : `${bankAccounts!.length} bank account(s) linked — transactions auto-posted.`
-        : locale === "ar"
-          ? "لم يتم ربط حساب بنكي بعد. أضف حساباً من قسم البنك."
-          : "No bank account linked yet. Add one under Banking.",
+        ? t("trust_int_bank_detail_on").replace("{n}", String(bankAccounts!.length))
+        : t("trust_int_bank_detail_off"),
     },
     {
       id: "zatca",
-      nameAr: "الفوترة الإلكترونية (ZATCA)",
-      nameEn: "E-invoicing (ZATCA)",
+      labelKey: "trust_int_zatca",
       health: isZatcaActive ? "healthy" : "not_configured",
       lastSyncAt: isZatcaActive ? lastFetchAt : null,
-      cadence: isZatcaActive
-        ? (locale === "ar" ? "عند إصدار كل فاتورة" : "On every invoice")
-        : (locale === "ar" ? "غير مجدول" : "Not scheduled"),
+      cadence: isZatcaActive ? t("trust_int_zatca_cadence_on") : t("trust_cadence_off"),
       detail: isZatcaActive
-        ? locale === "ar"
-          ? `مفعّل — رمز QR على كل فاتورة. VAT: ${zatcaConfig!.vatNumber} | ${zatcaConfig!.environment === "sandbox" ? "اختبار" : "إنتاج"}`
-          : `Active — QR code on every invoice. VAT: ${zatcaConfig!.vatNumber} | ${zatcaConfig!.environment}`
-        : locale === "ar"
-          ? "غير مفعّل. فعّله من الإعدادات ← ZATCA."
-          : "Not configured. Activate under Settings → ZATCA.",
+        ? t("trust_int_zatca_detail_on")
+            .replace("{vat}", zatcaConfig!.vatNumber)
+            .replace("{env}", zatcaConfig!.environment === "sandbox" ? t("trust_env_sandbox") : t("trust_env_production"))
+        : t("trust_int_zatca_detail_off"),
     },
   ];
 }
@@ -130,14 +111,15 @@ interface MeRole {
   role: "owner" | "accountant" | "viewer";
 }
 
-const ROLE_LABEL: Record<MeRole["role"], { ar: string; en: string }> = {
-  owner: { ar: "مالك", en: "Owner" },
-  accountant: { ar: "محاسب", en: "Accountant" },
-  viewer: { ar: "مشاهد", en: "Viewer" },
+const ROLE_LABEL: Record<MeRole["role"], StringKey> = {
+  owner: "trust_role_owner",
+  accountant: "trust_role_accountant",
+  viewer: "trust_role_viewer",
 };
 
 export function TrustCluster() {
   const { locale } = useLocale();
+  const t = useT();
   const dfLocale = locale === "ar" ? ar : enUS;
   const { data: me } = useQuery<MeRole>({ queryKey: ["/api/auth/me"] });
 
@@ -159,39 +141,37 @@ export function TrustCluster() {
     : "degraded";
 
   const freshLabel = lastFetchAt
-    ? `${locale === "ar" ? "محدَّث" : "Updated"} ${formatDistanceToNow(lastFetchAt, {
+    ? `${t("trust_updated")} ${formatDistanceToNow(lastFetchAt, {
         addSuffix: true,
         locale: dfLocale,
       })}`
-    : locale === "ar"
-    ? "في انتظار البيانات…"
-    : "Waiting for data…";
+    : t("trust_waiting");
 
   // A very short version of the freshness signal so the topbar can keep
   // showing "how recent" at tablet widths (768–1023px) without blowing the
-  // horizontal budget. "2m", "5h", "3d" — or "الآن" / "now" near zero.
+  // horizontal budget. "2m", "5h", "3d" — or a localized "now" near zero.
   const compactFreshLabel = (() => {
     if (!lastFetchAt) return locale === "ar" ? "—" : "—";
     const diffSec = Math.max(0, Math.floor((Date.now() - lastFetchAt.getTime()) / 1000));
-    if (diffSec < 45) return locale === "ar" ? "الآن" : "now";
+    if (diffSec < 45) return t("trust_now");
     const mins = Math.round(diffSec / 60);
-    if (mins < 60) return locale === "ar" ? `${mins}د` : `${mins}m`;
+    if (mins < 60) return `${mins}${t("trust_abbr_min")}`;
     const hours = Math.round(mins / 60);
-    if (hours < 24) return locale === "ar" ? `${hours}س` : `${hours}h`;
+    if (hours < 24) return `${hours}${t("trust_abbr_hour")}`;
     const days = Math.round(hours / 24);
-    return locale === "ar" ? `${days}ي` : `${days}d`;
+    return `${days}${t("trust_abbr_day")}`;
   })();
 
-  const roleLabel = me ? ROLE_LABEL[me.role][locale === "ar" ? "ar" : "en"] : null;
+  const roleLabel = me ? t(ROLE_LABEL[me.role]) : null;
   // Tablet-width abbreviation: keep role explicit without leaning on title/hover
   // (which is unreliable on touch). English: first 3 chars + dot when longer.
   // Arabic labels here are already short, so use them as-is.
   const roleLabelShort = me
     ? locale === "ar"
-      ? ROLE_LABEL[me.role].ar
+      ? t(ROLE_LABEL[me.role])
       : me.role === "accountant"
       ? "Acc."
-      : ROLE_LABEL[me.role].en
+      : t(ROLE_LABEL[me.role])
     : null;
 
   return (
@@ -202,11 +182,7 @@ export function TrustCluster() {
           size="sm"
           className="h-9 px-2.5 gap-2 text-xs font-medium text-muted-foreground hover:text-foreground"
           data-testid="button-trust-cluster"
-          aria-label={
-            locale === "ar"
-              ? "حالة المزامنة وسلامة الخدمات"
-              : "Sync status and service health"
-          }
+          aria-label={t("trust_aria_status")}
         >
           <span className="relative inline-flex items-center justify-center w-4 h-4">
             <span
@@ -252,7 +228,7 @@ export function TrustCluster() {
           <div className="flex items-center justify-between gap-3">
             <SheetTitle className="flex items-center gap-2 text-base">
               <Shield className="w-4 h-4 text-primary" />
-              {locale === "ar" ? "حالة الخدمات والمزامنة" : "Service & sync status"}
+              {t("trust_title")}
             </SheetTitle>
             <button
               onClick={() => refetch()}
@@ -260,7 +236,7 @@ export function TrustCluster() {
               data-testid="button-refresh-status"
             >
               <RefreshCw className={cn("w-3 h-3", isFetching && "motion-safe:animate-spin")} />
-              {locale === "ar" ? "تحديث" : "Refresh"}
+              {t("trust_refresh")}
             </button>
           </div>
           <SheetDescription className="text-[11px] text-muted-foreground">{freshLabel}</SheetDescription>
@@ -285,11 +261,11 @@ export function TrustCluster() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-medium text-foreground truncate">
-                      {locale === "ar" ? it.nameAr : it.nameEn}
+                      {t(it.labelKey)}
                     </p>
                     <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground shrink-0">
                       <span className={cn("h-1.5 w-1.5 rounded-full", HEALTH_TONE[it.health])} />
-                      {locale === "ar" ? HEALTH_LABEL[it.health].ar : HEALTH_LABEL[it.health].en}
+                      {t(HEALTH_LABEL[it.health])}
                     </span>
                   </div>
                   {it.detail && (
@@ -300,7 +276,7 @@ export function TrustCluster() {
                   <div className="mt-1 flex items-center gap-2 flex-wrap text-[10px] uppercase tracking-wider font-mono text-muted-foreground/70">
                     {it.lastSyncAt && (
                       <span>
-                        {locale === "ar" ? "آخر مزامنة" : "Last sync"} ·{" "}
+                        {t("trust_last_sync")} ·{" "}
                         <span className="tabular-nums">
                           {formatDistanceToNow(it.lastSyncAt, {
                             addSuffix: true,
@@ -311,7 +287,7 @@ export function TrustCluster() {
                     )}
                     {it.cadence && (
                       <span>
-                        {locale === "ar" ? "التالي" : "Next"} · {it.cadence}
+                        {t("trust_next")} · {it.cadence}
                       </span>
                     )}
                   </div>
@@ -325,16 +301,12 @@ export function TrustCluster() {
             {overall === "healthy" ? (
               <>
                 <CheckCircle2 className="w-3 h-3 text-success" />
-                {locale === "ar"
-                  ? "كل الخدمات الأساسية تعمل."
-                  : "All core services operational."}
+                {t("trust_all_ok")}
               </>
             ) : (
               <>
                 <AlertCircle className="w-3 h-3 text-warning" />
-                {locale === "ar"
-                  ? "بعض الخدمات تحتاج اهتماماً."
-                  : "Some services need attention."}
+                {t("trust_some_attention")}
               </>
             )}
           </p>

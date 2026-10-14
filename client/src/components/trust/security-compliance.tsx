@@ -13,6 +13,7 @@ import {
   CircleCheck,
 } from "lucide-react";
 import { useLocale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
 import { formatDistanceToNow } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
 import { SourceLinkBadge } from "@/components/journal/source-link-badge";
@@ -58,13 +59,13 @@ function Mark({ status, children }: MarkProps) {
 }
 
 function StatusMark({ status }: { status: "ok" | "info" | "todo" }) {
-  const { locale } = useLocale();
+  const t = useT();
   const label =
     status === "ok"
-      ? locale === "ar" ? "مفعّل" : "Active"
+      ? t("trust_sec_status_active")
       : status === "info"
-      ? locale === "ar" ? "موثّق" : "Noted"
-      : locale === "ar" ? "قيد التطوير" : "Pending";
+      ? t("trust_sec_status_noted")
+      : t("trust_sec_status_pending");
   return <Mark status={status}>{label}</Mark>;
 }
 
@@ -104,49 +105,32 @@ function Row({
 
 export function SecurityCompliance() {
   const { locale } = useLocale();
+  const tr = useT();
   const dfLocale = locale === "ar" ? ar : enUS;
   const t = {
-    eyebrow: locale === "ar" ? "الأمان والامتثال" : "Security & compliance",
-    title:
-      locale === "ar"
-        ? "كيف نحمي بياناتك ومن يصل إليها."
-        : "How your data is protected and who can access it.",
-    posture: locale === "ar" ? "وضع الأمان" : "Security posture",
-    residency: locale === "ar" ? "موقع البيانات وتشفيرها" : "Data residency & encryption",
-    region: locale === "ar" ? "منطقة الاستضافة" : "Hosting region",
-    regionVal:
-      locale === "ar"
-        ? "السحابة المؤسسية — المنطقة الافتراضية مع نسخ احتياطي مستمر."
-        : "Managed cloud deployment — default region with continuous backups.",
-    encAtRest: locale === "ar" ? "تشفير في حالة السكون" : "Encryption at rest",
+    eyebrow: tr("trust_sec_eyebrow"),
+    title: tr("trust_sec_title"),
+    posture: tr("trust_sec_posture"),
+    residency: tr("trust_sec_residency"),
+    region: tr("trust_sec_region"),
+    regionVal: tr("trust_sec_region_val"),
+    encAtRest: tr("trust_sec_enc_rest"),
     encAtRestVal: "AES-256",
-    encInTransit: locale === "ar" ? "تشفير أثناء النقل" : "Encryption in transit",
+    encInTransit: tr("trust_sec_enc_transit"),
     encInTransitVal: "TLS 1.3",
-    retention: locale === "ar" ? "احتفاظ النسخ الاحتياطية" : "Backup retention",
-    retentionVal: locale === "ar" ? "تلقائي عبر النظام الأساسي" : "Platform-managed",
-    audit: locale === "ar" ? "السجل ومسارات المراجعة" : "Audit & change history",
-    auditCaption:
-      locale === "ar"
-        ? "كل قيد يحمل مرجعاً ومصدراً (يدوي / تلقائي / AI). يظهر سجل كامل بجانب كل صف."
-        : "Every entry carries a reference and source (manual / auto / AI). A full log appears next to each row.",
-    rbac: locale === "ar" ? "الأدوار والصلاحيات" : "Roles & permissions",
-    rbacCaption:
-      locale === "ar"
-        ? "أدوار حقيقية: المالك يحرر الإعدادات والفريق، المحاسب يحرر القيود والمعاملات، المشاهد يقرأ فقط."
-        : "Live roles: owners manage settings & team, accountants edit entries & transactions, viewers are read-only.",
-    integrations: locale === "ar" ? "أمان التكاملات" : "Integration security",
-    integrationsCaption:
-      locale === "ar"
-        ? "الذكاء الاصطناعي يعمل عبر تكامل OpenAI الموثّق في النشر الحالي. لا تُخزَّن المطالبات في خدمات خارجية."
-        : "AI runs through the vetted OpenAI integration configured for this deployment. Prompts are not retained externally.",
-    activity: locale === "ar" ? "آخر النشاط الإداري" : "Recent admin activity",
-    activityCaption:
-      locale === "ar"
-        ? "آخر القيود التي أنشأها مستخدمون أو الذكاء الاصطناعي."
-        : "Recent entries created by users or the AI.",
-    none: locale === "ar" ? "لا يوجد نشاط مسجَّل بعد." : "No recorded activity yet.",
-    sourceManual: locale === "ar" ? "يدوي" : "Manual",
-    sourceTransaction: locale === "ar" ? "تلقائي" : "Auto",
+    retention: tr("trust_sec_retention"),
+    retentionVal: tr("trust_sec_retention_val"),
+    audit: tr("trust_sec_audit"),
+    auditCaption: tr("trust_sec_audit_caption"),
+    rbac: tr("trust_sec_rbac"),
+    rbacCaption: tr("trust_sec_rbac_caption"),
+    integrations: tr("trust_sec_integrations"),
+    integrationsCaption: tr("trust_sec_integrations_caption"),
+    activity: tr("trust_sec_activity"),
+    activityCaption: tr("trust_sec_activity_caption"),
+    none: tr("trust_sec_none"),
+    sourceManual: tr("trust_sec_source_manual"),
+    sourceTransaction: tr("trust_sec_source_auto"),
     sourceAI: "AI",
   };
 
@@ -223,15 +207,11 @@ export function SecurityCompliance() {
                 <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
                   <Badge variant="secondary" className="text-[10px]" data-testid="badge-role-counts">
                     <Users className="w-3 h-3 me-1" />
-                    {locale === "ar"
-                      ? `${ownerCount} مالك · ${accountantCount} محاسب · ${viewerCount} مشاهد`
-                      : `${ownerCount} owner · ${accountantCount} accountant · ${viewerCount} viewer`}
+                    {tr("trust_sec_role_counts").replace("{owner}", String(ownerCount)).replace("{acc}", String(accountantCount)).replace("{viewer}", String(viewerCount))}
                   </Badge>
                   {pendingInvites > 0 && (
                     <Badge variant="outline" className="text-[10px]" data-testid="badge-pending-invites">
-                      {locale === "ar"
-                        ? `${pendingInvites} دعوة معلّقة`
-                        : `${pendingInvites} pending invite${pendingInvites === 1 ? "" : "s"}`}
+                      {tr("trust_sec_pending_invites").replace("{n}", String(pendingInvites))}
                     </Badge>
                   )}
                 </span>
