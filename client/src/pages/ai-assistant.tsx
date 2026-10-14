@@ -22,6 +22,7 @@ import {
   Camera,
 } from "lucide-react"
 import { useLocale } from "@/contexts/locale-context"
+import { useT } from "@/i18n/dict"
 import { cn } from "@/lib/utils"
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link"
 import { CameraCaptureDialog } from "@/components/camera/camera-capture-dialog"
@@ -42,6 +43,7 @@ function pickByLocale<T extends string>(
 export default function AiAssistant() {
   const { locale } = useLocale()
   const isAr = locale === "ar"
+  const tr = useT()
   const { data: messages, isLoading } = useChatMessages()
   const sendMessage = useSendMessage()
   const { toast } = useToast()
@@ -60,75 +62,35 @@ export default function AiAssistant() {
 
   const t = useMemo(
     () => ({
-      sectionLabel: pickByLocale(locale, { ar: "المساعد", en: "Assistant", de: "Assistent", fr: "Assistant" }),
-      title: pickByLocale(locale, {
-        ar: "اختصر يومك المحاسبي.",
-        en: "Shorten your accounting day.",
-        de: "Kürzer arbeiten – mehr erledigen.",
-        fr: "Raccourcissez votre journée comptable.",
-      }),
-      subtitle: pickByLocale(locale, {
-        ar: "اطلب من المساعد أن يسجّل معاملة، يكتب قيداً، أو يولّد تقريراً. النتائج تُرحّل مباشرة إلى دفاترك.",
-        en: "Ask the assistant to post a transaction, write a journal, or build a report. Results post straight to your books.",
-        de: "Bitten Sie den Assistenten, eine Transaktion zu buchen, einen Journalbuchungssatz zu erstellen oder einen Bericht zu generieren. Ergebnisse fließen direkt in Ihre Bücher.",
-        fr: "Demandez à l'assistant d'enregistrer une transaction, d'écrire un journal ou de générer un rapport. Les résultats sont publiés directement dans vos livres.",
-      }),
-      quickHeader: pickByLocale(locale, { ar: "عمليات سريعة", en: "Quick actions", de: "Schnellaktionen", fr: "Actions rapides" }),
-      placeholder: pickByLocale(locale, {
-        ar: "اكتب أو تحدّث… مثلاً: ولّد ميزان مراجعة Excel",
-        en: "Type or speak… e.g. Generate a Trial Balance in Excel",
-        de: "Tippen oder sprechen… z. B. Generiere eine Saldenliste in Excel",
-        fr: "Écrivez ou parlez… ex. Générez une balance dans Excel",
-      }),
-      placeholderWithImage: pickByLocale(locale, { ar: "أضف ملاحظة (اختياري)…", en: "Add a note (optional)…", de: "Notiz hinzufügen (optional)…", fr: "Ajouter une note (facultatif)…" }),
-      sizeError: pickByLocale(locale, { ar: "حجم كبير جداً", en: "File too large", de: "Datei zu groß", fr: "Fichier trop volumineux" }),
-      sizeErrorDesc: pickByLocale(locale, { ar: "الحد الأقصى ١٠ ميجابايت.", en: "Maximum size is 10MB.", de: "Maximale Größe: 10 MB.", fr: "Taille maximale : 10 Mo." }),
-      typeError: pickByLocale(locale, { ar: "نوع غير مدعوم", en: "Unsupported type", de: "Nicht unterstützter Typ", fr: "Type non pris en charge" }),
-      typeErrorDesc: pickByLocale(locale, { ar: "الرجاء اختيار صورة فقط.", en: "Please choose an image file.", de: "Bitte nur Bilddateien wählen.", fr: "Veuillez choisir uniquement une image." }),
-      footnote: pickByLocale(locale, {
-        ar: "كل ناتج هنا يُسجَّل في اليومية. راجع دفاترك بعد كل عملية.",
-        en: "Every result here is recorded in the journal. Review your books after each action.",
-        de: "Jedes Ergebnis hier wird im Journal erfasst. Prüfen Sie Ihre Bücher nach jeder Aktion.",
-        fr: "Chaque résultat est enregistré dans le journal. Consultez vos livres après chaque action.",
-      }),
-      uploadAria: pickByLocale(locale, { ar: "ارفع صورة فاتورة", en: "Upload a receipt image", de: "Belegbild hochladen", fr: "Téléverser une image de reçu" }),
-      cameraAria: pickByLocale(locale, {
-        ar: "صوّر فاتورة بالكاميرا",
-        en: "Take a photo with the camera",
-        de: "Foto mit Kamera aufnehmen",
-        fr: "Prendre une photo avec la caméra",
-      }),
-      sendAria: pickByLocale(locale, { ar: "إرسال", en: "Send", de: "Senden", fr: "Envoyer" }),
-      receipt: pickByLocale(locale, { ar: "فاتورة", en: "Receipt", de: "Beleg", fr: "Reçu" }),
-      newChat: pickByLocale(locale, { ar: "محادثة جديدة", en: "New", de: "Neu", fr: "Nouveau" }),
-      micStartAria: pickByLocale(locale, { ar: "تحدّث إلى المساعد", en: "Speak to the assistant", de: "Mit dem Assistenten sprechen", fr: "Parler à l'assistant" }),
-      micStopAria: pickByLocale(locale, { ar: "إيقاف التسجيل", en: "Stop recording", de: "Aufnahme beenden", fr: "Arrêter l'enregistrement" }),
-      micErrorTitle: pickByLocale(locale, { ar: "تعذّر استخدام المايك", en: "Microphone unavailable", de: "Mikrofon nicht verfügbar", fr: "Micro indisponible" }),
-      micErrorDesc: pickByLocale(locale, {
-        ar: "تأكد من السماح للمتصفح باستخدام المايكروفون.",
-        en: "Please allow the browser to use your microphone.",
-        de: "Bitte erlauben Sie dem Browser den Mikrofonzugriff.",
-        fr: "Autorisez le navigateur à accéder au microphone.",
-      }),
-      transcribeError: pickByLocale(locale, {
-        ar: "تعذّر تحويل الصوت إلى نص.",
-        en: "Failed to transcribe audio.",
-        de: "Audio konnte nicht transkribiert werden.",
-        fr: "Échec de la transcription audio.",
-      }),
-      capabilities: isAr ? [
-        { icon: FileSpreadsheet, label: "ولّد ميزان مراجعة بصيغة Excel", prompt: "ولّد لي ميزان مراجعة بصيغة Excel" },
-        { icon: FileText, label: "اطبع قائمة الدخل بصيغة PDF", prompt: "اطبع قائمة الدخل بصيغة PDF" },
-        { icon: BookOpen, label: "اكتب قيد يومية مزدوج", prompt: "اكتب قيد: ١٠٠٠ نقدية مدين، ١٠٠٠ مبيعات دائن، وصف: مبيعات نقدية" },
-        { icon: CheckCircle2, label: "ما رصيدي وأكبر فئة إنفاق هذا الشهر", prompt: "ما رصيدي الحالي وأكبر فئة إنفاقاً هذا الشهر؟" },
-      ] : [
-        { icon: FileSpreadsheet, label: "Generate Trial Balance in Excel", prompt: "Generate a Trial Balance in Excel" },
-        { icon: FileText, label: "Print Profit & Loss as PDF", prompt: "Print the Profit & Loss statement as PDF" },
-        { icon: BookOpen, label: "Post a double-entry journal", prompt: "Post a journal: debit Cash 1000, credit Sales 1000, memo: cash sale" },
-        { icon: CheckCircle2, label: "Show balance and top expense this month", prompt: "What's my current balance and top expense this month?" },
+      sectionLabel: tr("ai_section_label"),
+      title: tr("ai_page_title"),
+      subtitle: tr("ai_page_subtitle"),
+      quickHeader: tr("ai_quick_header"),
+      placeholder: tr("ai_placeholder"),
+      placeholderWithImage: tr("ai_placeholder_with_image"),
+      sizeError: tr("ai_size_error"),
+      sizeErrorDesc: tr("ai_size_error_desc"),
+      typeError: tr("ai_type_error"),
+      typeErrorDesc: tr("ai_type_error_desc"),
+      footnote: tr("ai_footnote"),
+      uploadAria: tr("ai_upload_aria"),
+      cameraAria: tr("ai_camera_aria"),
+      sendAria: tr("ai_send_aria"),
+      receipt: tr("ai_receipt"),
+      newChat: tr("ai_new_chat"),
+      micStartAria: tr("ai_mic_start_aria"),
+      micStopAria: tr("ai_mic_stop_aria"),
+      micErrorTitle: tr("ai_mic_error_title"),
+      micErrorDesc: tr("ai_mic_error_desc"),
+      transcribeError: tr("ai_transcribe_error"),
+      capabilities: [
+        { icon: FileSpreadsheet, label: tr("ai_cap1_label"), prompt: tr("ai_cap1_prompt") },
+        { icon: FileText, label: tr("ai_cap2_label"), prompt: tr("ai_cap2_prompt") },
+        { icon: BookOpen, label: tr("ai_cap3_label"), prompt: tr("ai_cap3_prompt") },
+        { icon: CheckCircle2, label: tr("ai_cap4_label"), prompt: tr("ai_cap4_prompt") },
       ],
     }),
-    [isAr]
+    [tr]
   )
 
   /* ───────────────────────── side-effects ───────────────────────── */
@@ -334,7 +296,7 @@ export default function AiAssistant() {
                         {artifacts.length > 0 && (
                           <div className={cn("space-y-2", text && "mt-3")}>
                             {artifacts.map((a, i) => (
-                              <ArtifactCard key={i} artifact={a} isAr={isAr} />
+                              <ArtifactCard key={i} artifact={a} />
                             ))}
                           </div>
                         )}
@@ -612,14 +574,15 @@ function parseAssistantContent(content: string): { text: string; artifacts: Arti
   return { text, artifacts }
 }
 
-function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean }) {
+function ArtifactCard({ artifact }: { artifact: Artifact }) {
+  const t = useT()
   if (artifact.kind === "file") {
     const isExcel = artifact.format === "excel"
     const Icon = isExcel ? FileSpreadsheet : FileText
     const reportLabel =
-      artifact.report === "trial_balance" ? (isAr ? "ميزان المراجعة" : "Trial Balance")
-      : artifact.report === "profit_loss" ? (isAr ? "قائمة الدخل" : "Profit & Loss")
-      : (isAr ? "قائمة المركز المالي" : "Balance Sheet")
+      artifact.report === "trial_balance" ? t("ai_art_trial_balance")
+      : artifact.report === "profit_loss" ? t("ai_art_profit_loss")
+      : t("ai_art_balance_sheet")
 
     return (
       <a
@@ -642,7 +605,7 @@ function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean })
         </div>
         <span className="shrink-0 inline-flex items-center gap-1.5 text-[12px] text-muted-foreground group-hover:text-foreground">
           <Download className="w-3.5 h-3.5" />
-          {isAr ? "تنزيل" : "Download"}
+          {t("ai_art_download")}
         </span>
       </a>
     )
@@ -661,7 +624,7 @@ function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean })
             {artifact.description}
           </div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            {artifact.category} · {isAr ? (isIncome ? "إيراد" : "مصروف") : (isIncome ? "Income" : "Expense")}
+            {artifact.category} · {isIncome ? t("ai_art_income") : t("ai_art_expense")}
           </div>
         </div>
         <div className="text-[14px] font-semibold tabular-nums shrink-0 text-foreground font-mono">
@@ -672,9 +635,11 @@ function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean })
   }
 
   if (artifact.kind === "account") {
-    const typeLabel = isAr
-      ? ({ asset: "أصول", liability: "التزامات", equity: "حقوق ملكية", revenue: "إيرادات", expense: "مصروفات" } as Record<string, string>)[artifact.type] ?? artifact.type
-      : artifact.type
+    const typeKeyMap: Record<string, Parameters<typeof t>[0]> = {
+      asset: "ai_art_type_asset", liability: "ai_art_type_liability", equity: "ai_art_type_equity",
+      revenue: "ai_art_type_revenue", expense: "ai_art_type_expense",
+    }
+    const typeLabel = typeKeyMap[artifact.type] ? t(typeKeyMap[artifact.type]) : artifact.type
     return (
       <div
         data-testid={`card-account-${artifact.code}`}
@@ -689,7 +654,7 @@ function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean })
               {artifact.name}
             </div>
             <div className="text-[11px] text-muted-foreground mt-0.5">
-              {isAr ? "تم إضافة الحساب إلى دليل الحسابات" : "Added to chart of accounts"} · {typeLabel}
+              {t("ai_art_account_added")} · {typeLabel}
             </div>
           </div>
         </div>
@@ -712,7 +677,7 @@ function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean })
               {artifact.name}
             </div>
             <div className="text-[11px] text-muted-foreground mt-0.5">
-              {artifact.categoryName} · {artifact.usefulLifeMonths} {isAr ? "شهر" : "months"}
+              {artifact.categoryName} · {artifact.usefulLifeMonths} {t("ai_art_months")}
             </div>
           </div>
           <div className="text-[14px] font-semibold tabular-nums shrink-0 text-foreground font-mono">
@@ -745,7 +710,7 @@ function ArtifactCard({ artifact, isAr }: { artifact: Artifact; isAr: boolean })
               {artifact.description}
             </span>
             <span className="block text-[11px] text-muted-foreground mt-0.5 tabular-nums font-mono">
-              {artifact.lines} {isAr ? "سطر" : "lines"} · {isAr ? "مدين" : "Dr"} {artifact.totalDebit.toLocaleString()} = {isAr ? "دائن" : "Cr"} {artifact.totalCredit.toLocaleString()}
+              {artifact.lines} {t("ai_art_lines")} · {t("ai_art_dr")} {artifact.totalDebit.toLocaleString()} = {t("ai_art_cr")} {artifact.totalCredit.toLocaleString()}
             </span>
           </span>
         </span>
