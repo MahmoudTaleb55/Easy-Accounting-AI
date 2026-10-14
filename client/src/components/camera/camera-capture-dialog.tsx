@@ -20,199 +20,12 @@ import {
   Upload,
 } from "lucide-react";
 import type { Locale } from "@/contexts/locale-context";
+import { useT } from "@/i18n/dict";
 import {
   enhanceAndCompressDataUrl,
   enhanceAndCompressImageFile,
 } from "@/lib/image-enhance";
 import { isScannerSupported, scanDataUrl } from "@/lib/document-scanner";
-
-type Strings = {
-  title: string;
-  description: string;
-  capture: string;
-  retake: string;
-  accept: string;
-  cancel: string;
-  switchCamera: string;
-  permissionDenied: string;
-  unavailable: string;
-  hardwareMissing: string;
-  hardwareBusy: string;
-  overconstrained: string;
-  processing: string;
-  hint: string;
-  previewAlt: string;
-  processingFailed: string;
-  iframeBlocked: string;
-  openInNewTab: string;
-  insecureContext: string;
-  tryAgain: string;
-  uploadInstead: string;
-  // Permission denied — step-by-step recovery instructions shown inside
-  // the camera area when the browser has blocked camera access.
-  permissionDeniedTitle: string;
-  permissionStep1: string;
-  permissionStep2: string;
-  permissionStep3: string;
-  // Scanner-stage micro-copy (task #345). Each badge is shown briefly
-  // under the captured preview so the operator can see whether the
-  // automatic edge-detection / perspective-correction pass succeeded
-  // before they hit Accept.
-  scanning: string;
-  scanReady: string;
-  scanRaw: string;
-};
-
-const I18N: Record<Locale, Strings> = {
-  ar: {
-    title: "تصوير الفاتورة بالكاميرا",
-    description:
-      "ضع الفاتورة أمام الكاميرا في إضاءة جيدة، ثم اضغط لالتقاط الصورة. سنقوم بتحسينها وضغطها قبل الرفع.",
-    capture: "التقاط",
-    retake: "إعادة التصوير",
-    accept: "اعتماد ورفع",
-    cancel: "إلغاء",
-    switchCamera: "تبديل الكاميرا",
-    permissionDenied: "تم حظر الكاميرا على هذا الموقع.",
-    permissionDeniedTitle: "الكاميرا محظورة",
-    permissionStep1: "انقر على أيقونة القفل 🔒 أو الكاميرا 📷 بجانب شريط العنوان",
-    permissionStep2: "اختر «السماح» للكاميرا",
-    permissionStep3: "اضغط «إعادة المحاولة» أدناه — ستطلب المتصفح إذناً تلقائياً",
-    unavailable: "تعذّر الاتصال بالكاميرا. حاول مجدداً أو ارفع صورة من جهازك.",
-    hardwareMissing:
-      "لم يتم العثور على كاميرا متصلة. تحقق من توصيل الكاميرا أو ارفع صورة بدلاً من ذلك.",
-    hardwareBusy:
-      "الكاميرا قيد الاستخدام من قبل تطبيق آخر. أغلق تطبيقات الفيديو الأخرى ثم أعد المحاولة.",
-    overconstrained:
-      "إعدادات الكاميرا المطلوبة غير مدعومة. حاول تبديل الكاميرا الأمامية/الخلفية أو ارفع صورة.",
-    processing: "جارٍ المعالجة…",
-    hint: "نصيحة: حاذِ حواف الفاتورة داخل الإطار.",
-    previewAlt: "معاينة الفاتورة الملتقطة",
-    processingFailed: "تعذرت معالجة الصورة. حاول إعادة التصوير.",
-    iframeBlocked:
-      "الكاميرا محظورة داخل النافذة المضمّنة (iframe) في بيئة المعاينة. افتح التطبيق في علامة تبويب جديدة للسماح بالكاميرا.",
-    openInNewTab: "فتح في علامة تبويب جديدة",
-    insecureContext:
-      "تتطلب الكاميرا اتصالاً آمناً (HTTPS) أو localhost.",
-    tryAgain: "إعادة المحاولة",
-    uploadInstead: "رفع صورة بدلاً من ذلك",
-    scanning: "جارٍ كشف حواف المستند…",
-    scanReady: "تم كشف حواف المستند",
-    scanRaw: "صورة خام (لم يتم كشف الحواف)",
-  },
-  en: {
-    title: "Capture invoice with camera",
-    description:
-      "Place the invoice in front of the camera under good lighting, then tap to capture. We will enhance and compress it before upload.",
-    capture: "Capture",
-    retake: "Retake",
-    accept: "Accept & upload",
-    cancel: "Cancel",
-    switchCamera: "Switch camera",
-    permissionDenied: "Camera access is blocked for this site.",
-    permissionDeniedTitle: "Camera blocked",
-    permissionStep1: "Click the lock 🔒 or camera 📷 icon next to the address bar",
-    permissionStep2: "Set Camera to 'Allow'",
-    permissionStep3: "Click 'Try Again' below — the browser will then prompt you",
-    unavailable:
-      "Could not connect to the camera. Try again or upload a file instead.",
-    hardwareMissing:
-      "No camera was detected. Check that a camera is connected, or upload a file instead.",
-    hardwareBusy:
-      "The camera is being used by another application. Close other video apps and try again.",
-    overconstrained:
-      "The requested camera settings are not supported. Try switching the camera or upload a file instead.",
-    processing: "Processing…",
-    hint: "Tip: align the edges of the invoice within the frame.",
-    previewAlt: "Preview of the captured invoice",
-    processingFailed: "Could not process the image. Please retake the photo.",
-    iframeBlocked:
-      "Camera is blocked inside the embedded preview frame. Open the app in a new browser tab to allow the camera.",
-    openInNewTab: "Open in a new tab",
-    insecureContext: "Camera requires a secure connection (HTTPS) or localhost.",
-    tryAgain: "Try again",
-    uploadInstead: "Upload a file instead",
-    scanning: "Detecting document edges…",
-    scanReady: "Document edges detected",
-    scanRaw: "Raw image (no edges detected)",
-  },
-  de: {
-    title: "Rechnung mit Kamera erfassen",
-    description:
-      "Halten Sie die Rechnung bei guter Beleuchtung vor die Kamera und tippen Sie zum Aufnehmen. Wir verbessern und komprimieren das Bild vor dem Hochladen.",
-    capture: "Aufnehmen",
-    retake: "Neu aufnehmen",
-    accept: "Übernehmen & hochladen",
-    cancel: "Abbrechen",
-    switchCamera: "Kamera wechseln",
-    permissionDenied: "Der Kamerazugriff ist für diese Seite gesperrt.",
-    permissionDeniedTitle: "Kamera gesperrt",
-    permissionStep1: "Klicken Sie auf das Schloss- 🔒 oder Kamera-Symbol 📷 neben der Adressleiste",
-    permissionStep2: "Kamera auf 'Zulassen' setzen",
-    permissionStep3: "Klicken Sie unten auf 'Erneut versuchen' — der Browser fragt Sie dann",
-    unavailable:
-      "Verbindung zur Kamera fehlgeschlagen. Versuchen Sie es erneut oder laden Sie eine Datei hoch.",
-    hardwareMissing:
-      "Keine Kamera erkannt. Prüfen Sie die Verbindung oder laden Sie stattdessen eine Datei hoch.",
-    hardwareBusy:
-      "Die Kamera wird von einer anderen Anwendung verwendet. Schließen Sie andere Video-Apps und versuchen Sie es erneut.",
-    overconstrained:
-      "Die angeforderten Kameraeinstellungen werden nicht unterstützt. Wechseln Sie die Kamera oder laden Sie eine Datei hoch.",
-    processing: "Wird verarbeitet…",
-    hint: "Tipp: Richten Sie die Kanten der Rechnung im Rahmen aus.",
-    previewAlt: "Vorschau der erfassten Rechnung",
-    processingFailed:
-      "Das Bild konnte nicht verarbeitet werden. Bitte erneut aufnehmen.",
-    iframeBlocked:
-      "Die Kamera ist im eingebetteten Vorschau-Frame blockiert. Öffnen Sie die App in einem neuen Browser-Tab, um die Kamera zu erlauben.",
-    openInNewTab: "In neuem Tab öffnen",
-    insecureContext:
-      "Die Kamera erfordert eine sichere Verbindung (HTTPS) oder localhost.",
-    tryAgain: "Erneut versuchen",
-    uploadInstead: "Stattdessen Datei hochladen",
-    scanning: "Dokumentkanten werden erkannt…",
-    scanReady: "Dokumentkanten erkannt",
-    scanRaw: "Rohbild (keine Kanten erkannt)",
-  },
-  fr: {
-    title: "Capturer la facture avec la caméra",
-    description:
-      "Placez la facture devant la caméra avec un bon éclairage, puis appuyez pour capturer. Nous améliorerons et compresserons l'image avant l'envoi.",
-    capture: "Capturer",
-    retake: "Reprendre",
-    accept: "Valider et envoyer",
-    cancel: "Annuler",
-    switchCamera: "Changer de caméra",
-    permissionDenied: "L'accès à la caméra est bloqué pour ce site.",
-    permissionDeniedTitle: "Caméra bloquée",
-    permissionStep1: "Cliquez sur l'icône cadenas 🔒 ou caméra 📷 à côté de la barre d'adresse",
-    permissionStep2: "Mettez la Caméra sur 'Autoriser'",
-    permissionStep3: "Cliquez sur 'Réessayer' ci-dessous — le navigateur vous demandera alors",
-    unavailable:
-      "Impossible de se connecter à la caméra. Réessayez ou téléversez un fichier.",
-    hardwareMissing:
-      "Aucune caméra détectée. Vérifiez le branchement ou téléversez un fichier à la place.",
-    hardwareBusy:
-      "La caméra est utilisée par une autre application. Fermez les autres applications vidéo et réessayez.",
-    overconstrained:
-      "Les réglages de caméra demandés ne sont pas pris en charge. Changez de caméra ou téléversez un fichier.",
-    processing: "Traitement…",
-    hint: "Astuce : alignez les bords de la facture dans le cadre.",
-    previewAlt: "Aperçu de la facture capturée",
-    processingFailed:
-      "Impossible de traiter l'image. Veuillez reprendre la photo.",
-    iframeBlocked:
-      "La caméra est bloquée dans le cadre d'aperçu intégré. Ouvrez l'application dans un nouvel onglet du navigateur pour autoriser la caméra.",
-    openInNewTab: "Ouvrir dans un nouvel onglet",
-    insecureContext:
-      "La caméra nécessite une connexion sécurisée (HTTPS) ou localhost.",
-    tryAgain: "Réessayer",
-    uploadInstead: "Téléverser un fichier à la place",
-    scanning: "Détection des bords du document…",
-    scanReady: "Bords du document détectés",
-    scanRaw: "Image brute (aucun bord détecté)",
-  },
-};
 
 type Props = {
   open: boolean;
@@ -273,7 +86,7 @@ export function CameraCaptureDialog({
   onCapture,
   locale,
 }: Props) {
-  const t = I18N[locale] ?? I18N.en;
+  const t = useT();
   const isRtl = locale === "ar";
   const webcamRef = useRef<Webcam>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -316,8 +129,8 @@ export function CameraCaptureDialog({
     const env = detectCameraEnvironment();
     if (env.kind !== "ok") {
       setBlockReason(env.kind);
-      if (env.kind === "iframe") setError(t.iframeBlocked);
-      else if (env.kind === "insecure") setError(t.insecureContext);
+      if (env.kind === "iframe") setError(t("cam_iframe_blocked"));
+      else if (env.kind === "insecure") setError(t("cam_insecure_context"));
       return;
     }
     setBlockReason(null);
@@ -338,7 +151,7 @@ export function CameraCaptureDialog({
       if (state === "denied") {
         const inIframe = window.self !== window.top;
         setBlockReason(inIframe ? "iframe" : "permission");
-        setError(inIframe ? t.iframeBlocked : t.permissionDenied);
+        setError(inIframe ? t("cam_iframe_blocked") : t("cam_permission_denied"));
       } else {
         // "granted" or "prompt" — only clear errors that *this* check set;
         // leave hardware-busy / overconstrained messages untouched.
@@ -346,7 +159,7 @@ export function CameraCaptureDialog({
           prev === "permission" || prev === "iframe" ? null : prev,
         );
         setError((prev) =>
-          prev === t.permissionDenied || prev === t.iframeBlocked ? null : prev,
+          prev === t("cam_permission_denied") || prev === t("cam_iframe_blocked") ? null : prev,
         );
       }
     };
@@ -370,7 +183,7 @@ export function CameraCaptureDialog({
         permStatus.removeEventListener("change", changeHandler);
       }
     };
-  }, [open, t.iframeBlocked, t.insecureContext, t.permissionDenied]);
+  }, [open, t("cam_iframe_blocked"), t("cam_insecure_context"), t("cam_permission_denied")]);
 
   const videoConstraints = useMemo(
     () => ({
@@ -387,7 +200,7 @@ export function CameraCaptureDialog({
     const shot = cam.getScreenshot({ width: 1920, height: 1440 });
     if (!shot) {
       setBlockReason("unknown");
-      setError(t.unavailable);
+      setError(t("cam_unavailable"));
       return;
     }
     // Always show the raw frame immediately so the operator gets instant
@@ -422,7 +235,7 @@ export function CameraCaptureDialog({
         if (scanRequestIdRef.current !== myRequestId) return;
         setScanState("raw");
       });
-  }, [t.unavailable]);
+  }, [t]);
 
   const handleRetake = useCallback(() => {
     // Invalidate any in-flight scan so its late resolution doesn't paint
@@ -453,11 +266,11 @@ export function CameraCaptureDialog({
       setScanState("idle");
       onOpenChange(false);
     } catch {
-      setError(t.processingFailed);
+      setError(t("cam_processing_failed"));
     } finally {
       setProcessing(false);
     }
-  }, [snapshot, rawSnapshot, onCapture, onOpenChange, t.processingFailed]);
+  }, [snapshot, rawSnapshot, onCapture, onOpenChange, t("cam_processing_failed")]);
 
   const handleSwitch = useCallback(() => {
     setFacingMode((m) => (m === "environment" ? "user" : "environment"));
@@ -480,8 +293,8 @@ export function CameraCaptureDialog({
     const env = detectCameraEnvironment();
     if (env.kind !== "ok") {
       setBlockReason(env.kind);
-      if (env.kind === "iframe") setError(t.iframeBlocked);
-      else if (env.kind === "insecure") setError(t.insecureContext);
+      if (env.kind === "iframe") setError(t("cam_iframe_blocked"));
+      else if (env.kind === "insecure") setError(t("cam_insecure_context"));
       // Even when the env still blocks, bump the key so the next ok detection
       // remounts cleanly.
       setStreamKey((k) => k + 1);
@@ -491,7 +304,7 @@ export function CameraCaptureDialog({
     setError(null);
     setSnapshot(null);
     setStreamKey((k) => k + 1);
-  }, [t.iframeBlocked, t.insecureContext]);
+  }, [t]);
 
   /** Always-available escape hatch: open the system file picker and feed the
    *  chosen image through the same enhance/compress pipeline as a captured
@@ -516,12 +329,12 @@ export function CameraCaptureDialog({
         setBlockReason(null);
         onOpenChange(false);
       } catch {
-        setError(t.processingFailed);
+        setError(t("cam_processing_failed"));
       } finally {
         setProcessing(false);
       }
     },
-    [onCapture, onOpenChange, t.processingFailed],
+    [onCapture, onOpenChange, t("cam_processing_failed")],
   );
 
   const handleUserMediaError = useCallback(
@@ -540,7 +353,7 @@ export function CameraCaptureDialog({
         inIframe
       ) {
         setBlockReason("iframe");
-        setError(t.iframeBlocked);
+        setError(t("cam_iframe_blocked"));
         return;
       }
       switch (name) {
@@ -548,36 +361,29 @@ export function CameraCaptureDialog({
         case "PermissionDeniedError":
         case "SecurityError":
           setBlockReason("permission");
-          setError(t.permissionDenied);
+          setError(t("cam_permission_denied"));
           return;
         case "NotFoundError":
         case "DevicesNotFoundError":
           setBlockReason("hardware-missing");
-          setError(t.hardwareMissing);
+          setError(t("cam_hardware_missing"));
           return;
         case "NotReadableError":
         case "TrackStartError":
           setBlockReason("hardware-busy");
-          setError(t.hardwareBusy);
+          setError(t("cam_hardware_busy"));
           return;
         case "OverconstrainedError":
         case "ConstraintNotSatisfiedError":
           setBlockReason("overconstrained");
-          setError(t.overconstrained);
+          setError(t("cam_overconstrained"));
           return;
         default:
           setBlockReason("unknown");
-          setError(t.unavailable);
+          setError(t("cam_unavailable"));
       }
     },
-    [
-      t.permissionDenied,
-      t.unavailable,
-      t.iframeBlocked,
-      t.hardwareMissing,
-      t.hardwareBusy,
-      t.overconstrained,
-    ],
+    [t],
   );
 
   // The "Try again" button only makes sense when the failure could plausibly
@@ -625,9 +431,9 @@ export function CameraCaptureDialog({
         data-testid="dialog-camera-capture"
       >
         <DialogHeader>
-          <DialogTitle data-testid="text-camera-title">{t.title}</DialogTitle>
+          <DialogTitle data-testid="text-camera-title">{t("cam_title")}</DialogTitle>
           <DialogDescription data-testid="text-camera-description">
-            {t.description}
+            {t("cam_description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -655,13 +461,13 @@ export function CameraCaptureDialog({
                   data-testid="text-camera-error"
                 >
                   <VideoOff className="h-10 w-10 opacity-50" />
-                  <p className="text-sm font-semibold">{t.permissionDeniedTitle}</p>
+                  <p className="text-sm font-semibold">{t("cam_permission_denied_title")}</p>
                   <ol
                     className={`text-xs space-y-2 opacity-90 list-decimal ${isRtl ? "pr-4 text-right" : "pl-4 text-left"}`}
                   >
-                    <li>{t.permissionStep1}</li>
-                    <li>{t.permissionStep2}</li>
-                    <li>{t.permissionStep3}</li>
+                    <li>{t("cam_permission_step1")}</li>
+                    <li>{t("cam_permission_step2")}</li>
+                    <li>{t("cam_permission_step3")}</li>
                   </ol>
                 </div>
               ) : (
@@ -676,7 +482,7 @@ export function CameraCaptureDialog({
               <>
                 <img
                   src={snapshot}
-                  alt={t.previewAlt}
+                  alt={t("cam_preview_alt")}
                   className="h-full w-full object-contain"
                   data-testid="img-camera-preview"
                 />
@@ -693,10 +499,10 @@ export function CameraCaptureDialog({
                     data-testid={`badge-camera-scan-${scanState}`}
                   >
                     {scanState === "scanning"
-                      ? t.scanning
+                      ? t("cam_scanning")
                       : scanState === "scanned"
-                        ? t.scanReady
-                        : t.scanRaw}
+                        ? t("cam_scan_ready")
+                        : t("cam_scan_raw")}
                   </div>
                 )}
               </>
@@ -722,7 +528,7 @@ export function CameraCaptureDialog({
               className="text-xs text-muted-foreground"
               data-testid="text-camera-hint"
             >
-              {t.hint}
+              {t("cam_hint")}
             </p>
           )}
         </div>
@@ -734,7 +540,7 @@ export function CameraCaptureDialog({
             onClick={() => onOpenChange(false)}
             data-testid="button-camera-cancel"
           >
-            {t.cancel}
+            {t("cam_cancel")}
           </Button>
 
           {/* Iframe block: only meaningful recovery is opening a new tab */}
@@ -747,7 +553,7 @@ export function CameraCaptureDialog({
               data-testid="button-camera-open-new-tab"
             >
               <ExternalLink className="me-2 h-4 w-4" />
-              {t.openInNewTab}
+              {t("cam_open_new_tab")}
             </Button>
           )}
 
@@ -762,7 +568,7 @@ export function CameraCaptureDialog({
               data-testid="button-camera-upload-fallback"
             >
               <Upload className="me-2 h-4 w-4" />
-              {t.uploadInstead}
+              {t("cam_upload_instead")}
             </Button>
           )}
 
@@ -776,7 +582,7 @@ export function CameraCaptureDialog({
               data-testid="button-camera-try-again"
             >
               <RefreshCcw className="me-2 h-4 w-4" />
-              {t.tryAgain}
+              {t("cam_try_again")}
             </Button>
           )}
 
@@ -788,7 +594,7 @@ export function CameraCaptureDialog({
               data-testid="button-camera-switch"
             >
               <SwitchCamera className="me-2 h-4 w-4" />
-              {t.switchCamera}
+              {t("cam_switch_camera")}
             </Button>
           )}
           {snapshot ? (
@@ -801,7 +607,7 @@ export function CameraCaptureDialog({
                 data-testid="button-camera-retake"
               >
                 <RefreshCcw className="me-2 h-4 w-4" />
-                {t.retake}
+                {t("cam_retake")}
               </Button>
               <Button
                 type="button"
@@ -812,12 +618,12 @@ export function CameraCaptureDialog({
                 {processing ? (
                   <>
                     <Loader2 className="me-2 h-4 w-4 animate-spin" />
-                    {t.processing}
+                    {t("cam_processing")}
                   </>
                 ) : (
                   <>
                     <Check className="me-2 h-4 w-4" />
-                    {t.accept}
+                    {t("cam_accept")}
                   </>
                 )}
               </Button>
@@ -830,7 +636,7 @@ export function CameraCaptureDialog({
                 data-testid="button-camera-capture"
               >
                 <Camera className="me-2 h-4 w-4" />
-                {t.capture}
+                {t("cam_capture")}
               </Button>
             )
           )}
