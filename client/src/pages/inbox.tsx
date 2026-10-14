@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { JournalEntryRefLink } from "@/components/journal/journal-entry-ref-link";
 import { useLocale, type Locale } from "@/contexts/locale-context";
+import { useT, type StringKey } from "@/i18n/dict";
 import { detectedLanguageLabel, resolveInboxError } from "@/lib/inbox-error-i18n";
 import { enhanceAndCompressImageFile } from "@/lib/image-enhance";
 import { apiRequest, queryClient, invalidateAccountBalances, uploadFormData } from "@/lib/queryClient";
@@ -68,17 +69,17 @@ function shortDate(d: string | Date | null | undefined, ar: boolean) {
   });
 }
 
-function timeAgo(d: string | Date | null | undefined, ar: boolean): string {
+function timeAgo(d: string | Date | null | undefined, t: (k: StringKey) => string): string {
   if (!d) return "";
-  const t = typeof d === "string" ? new Date(d).getTime() : d.getTime();
-  const diff = Date.now() - t;
+  const ms = typeof d === "string" ? new Date(d).getTime() : d.getTime();
+  const diff = Date.now() - ms;
   const m = Math.floor(diff / 60_000);
-  if (m < 1) return ar ? "الآن" : "now";
-  if (m < 60) return ar ? `قبل ${m}د` : `${m}m ago`;
+  if (m < 1) return t("inbox_time_now");
+  if (m < 60) return t("inbox_time_min").replace("{n}", String(m));
   const h = Math.floor(m / 60);
-  if (h < 24) return ar ? `قبل ${h}س` : `${h}h ago`;
+  if (h < 24) return t("inbox_time_hour").replace("{n}", String(h));
   const days = Math.floor(h / 24);
-  return ar ? `قبل ${days}ي` : `${days}d ago`;
+  return t("inbox_time_day").replace("{n}", String(days));
 }
 
 function statusBucket(s: Status): "review" | "posted" | "error" {
@@ -103,13 +104,14 @@ function StatusDot({ status }: { status: Status }) {
   return <span className={`inline-block h-1.5 w-1.5 rounded-full ${cls}`} />;
 }
 
-function StatusLabel({ status, ar }: { status: Status; ar: boolean }) {
+function StatusLabel({ status }: { status: Status }) {
+  const t = useT();
   const map: Record<Status, string> = {
-    extracting: ar ? "قيد القراءة" : "Reading",
-    ready: ar ? "جاهز" : "Ready",
-    posting: ar ? "ترحيل…" : "Posting",
-    posted: ar ? "مُرحَّل" : "Posted",
-    error: ar ? "خطأ" : "Error",
+    extracting: t("inbox_status_extracting"),
+    ready: t("inbox_status_ready"),
+    posting: t("inbox_status_posting"),
+    posted: t("inbox_status_posted"),
+    error: t("inbox_status_error"),
   };
   return (
     <span
@@ -138,6 +140,7 @@ function AccountPicker({
   ar: boolean;
   testid: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const selected = accounts.find((a) => a.id === value);
   return (
@@ -159,7 +162,7 @@ function AccountPicker({
             </span>
           ) : (
             <span className="text-muted-foreground">
-              {ar ? "اختر حساباً" : "Select account"}
+              {t("inbox_select_account")}
             </span>
           )}
           <ChevronsUpDown className="h-3 w-3 text-muted-foreground shrink-0" />
@@ -168,11 +171,11 @@ function AccountPicker({
       <PopoverContent className="p-0 w-[320px]" align="start">
         <Command>
           <CommandInput
-            placeholder={ar ? "ابحث برمز أو اسم…" : "Search code or name…"}
+            placeholder={t("inbox_search_account")}
             className="h-9"
           />
           <CommandList>
-            <CommandEmpty>{ar ? "لا نتائج" : "No accounts"}</CommandEmpty>
+            <CommandEmpty>{t("inbox_no_accounts")}</CommandEmpty>
             <CommandGroup>
               {accounts.map((a) => (
                 <CommandItem
@@ -206,6 +209,7 @@ function AccountPicker({
 export default function InboxPage() {
   const { locale } = useLocale();
   const ar = locale === "ar";
+  const t = useT();
   const { toast } = useToast();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [filter, setFilter] = useState<FilterStatus>("all");
@@ -324,7 +328,7 @@ export default function InboxPage() {
     onError: (e: Error) => {
       toast({
         variant: "destructive",
-        title: ar ? "فشل الرفع" : "Upload failed",
+        title: t("inbox_upload_failed"),
         description: e.message.replace(/^\d+:\s*/, ""),
       });
     },
@@ -371,7 +375,7 @@ export default function InboxPage() {
       <header className="flex items-end justify-between gap-6 flex-wrap">
         <div className="space-y-1.5">
           <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground font-medium">
-            {ar ? "محاسب · ذكي" : "Smart Accountant"} · {ar ? "الوارد" : "Inbox"}
+            {t("inbox_brand")} · {t("inbox_label")}
           </div>
           <h1
             className={`text-[28px] leading-[1.1] tracking-tight ${
@@ -379,14 +383,10 @@ export default function InboxPage() {
             }`}
             data-testid="heading-inbox"
           >
-            {ar
-              ? "كل فاتورة، قيدٌ موزون."
-              : "Every receipt, a balanced entry."}
+            {t("inbox_title")}
           </h1>
           <p className="text-sm text-muted-foreground max-w-xl">
-            {ar
-              ? "ارفع، راجع، ورحّل. نقرأ المستند، نطابق الحسابات، ونقترح القيد المحاسبي الصحيح."
-              : "Upload, review, post. We read the document, map the accounts, and propose the correct journal entry."}
+            {t("inbox_subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -400,15 +400,7 @@ export default function InboxPage() {
             data-testid="button-camera"
           >
             <Camera className="me-2 h-4 w-4" />
-            {(() => {
-              const labels: Record<typeof locale, string> = {
-                ar: "تصوير بالكاميرا",
-                en: "Capture with camera",
-                de: "Mit Kamera erfassen",
-                fr: "Capturer avec la caméra",
-              };
-              return labels[locale];
-            })()}
+            {t("inbox_camera")}
           </Button>
           <Button
             onClick={() => fileInput.current?.click()}
@@ -416,15 +408,7 @@ export default function InboxPage() {
             data-testid="button-upload"
           >
             <Upload className="me-2 h-4 w-4" />
-            {(() => {
-              const labels: Record<typeof locale, string> = {
-                ar: "رفع مستند",
-                en: "Upload document",
-                de: "Dokument hochladen",
-                fr: "Téléverser un document",
-              };
-              return labels[locale];
-            })()}
+            {t("inbox_upload_doc")}
           </Button>
           <input
             ref={fileInput}
@@ -450,25 +434,25 @@ export default function InboxPage() {
         data-testid="kpi-strip"
       >
         <Kpi
-          label={ar ? "للمراجعة" : "To review"}
+          label={t("inbox_kpi_review")}
           value={String(stats.review)}
-          hint={ar ? "بانتظار قرارك" : "awaiting your decision"}
+          hint={t("inbox_kpi_review_hint")}
           accent={stats.review > 0}
         />
         <Kpi
-          label={ar ? "قيد القراءة" : "Reading"}
+          label={t("inbox_kpi_reading")}
           value={String(stats.reading)}
-          hint={ar ? "تتم المعالجة" : "in progress"}
+          hint={t("inbox_kpi_reading_hint")}
         />
         <Kpi
-          label={ar ? "مُرحَّل هذا الشهر" : "Posted this month"}
+          label={t("inbox_kpi_posted_month")}
           value={String(stats.postedCount)}
-          hint={ar ? "قيد محاسبي" : "journal entries"}
+          hint={t("inbox_kpi_posted_hint")}
         />
         <Kpi
-          label={ar ? "إجمالي الشهر" : "Month total"}
+          label={t("inbox_kpi_month_total")}
           value={fmtMoney(stats.totalThisMonth)}
-          hint={ar ? "قيمة المُرحَّل" : "value posted"}
+          hint={t("inbox_kpi_month_total_hint")}
           mono
         />
       </section>
@@ -478,10 +462,10 @@ export default function InboxPage() {
         <div className="flex items-center gap-1 text-xs">
           {(["all", "review", "posted", "error"] as FilterStatus[]).map((f) => {
             const labels: Record<FilterStatus, string> = {
-              all: ar ? "الكل" : "All",
-              review: ar ? "للمراجعة" : "Review",
-              posted: ar ? "مُرحَّل" : "Posted",
-              error: ar ? "أخطاء" : "Errors",
+              all: t("inbox_filter_all"),
+              review: t("inbox_filter_review"),
+              posted: t("inbox_filter_posted"),
+              error: t("inbox_filter_error"),
             };
             const counts: Record<FilterStatus, number> = {
               all: docs.length,
@@ -514,7 +498,7 @@ export default function InboxPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={ar ? "بحث المورد، رقم الفاتورة…" : "Search vendor, invoice #…"}
+            placeholder={t("inbox_search_docs")}
             className="h-8 ps-7 text-xs"
             data-testid="input-search"
           />
@@ -545,7 +529,7 @@ export default function InboxPage() {
             data-testid="dropzone"
           >
             <span className="uppercase tracking-[0.14em] text-muted-foreground text-[10px]">
-              {ar ? "اسحب وأفلت أو اضغط U" : "Drag & drop · press U"}
+              {t("inbox_drag_drop")}
             </span>
             <span className="font-mono text-[10px] text-muted-foreground">
               {filtered.length}/{docs.length}
@@ -559,12 +543,12 @@ export default function InboxPage() {
               ))}
             </div>
           ) : filtered.length === 0 && docs.length === 0 ? (
-            <EmptyState ar={ar} onPick={() => fileInput.current?.click()} />
+            <EmptyState onPick={() => fileInput.current?.click()} />
           ) : filter === "review" && filtered.length === 0 ? (
-            <ZeroInboxState ar={ar} docs={docs} />
+            <ZeroInboxState docs={docs} />
           ) : filtered.length === 0 ? (
             <div className="p-10 text-center text-xs text-muted-foreground">
-              {ar ? "لا نتائج للفلتر الحالي" : "No documents match this filter"}
+              {t("inbox_no_filter_match")}
             </div>
           ) : (
             <ul
@@ -668,7 +652,7 @@ export default function InboxPage() {
             />
           ) : (
             <div className="h-full flex items-center justify-center p-10 text-sm text-muted-foreground">
-              {ar ? "اختر مستنداً من القائمة" : "Select a document"}
+              {t("inbox_select_doc")}
             </div>
           )}
         </div>
@@ -715,7 +699,10 @@ function Kpi({
 // Empty state — typography-only, instructive, no clip art
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ZeroInboxState({ ar, docs }: { ar: boolean; docs: DocumentRow[] }) {
+function ZeroInboxState({ docs }: { docs: DocumentRow[] }) {
+  const t = useT();
+  const { locale } = useLocale();
+  const ar = locale === "ar";
   const recent = docs
     .filter((d) => d.status === "posted")
     .sort((a, b) => new Date(b.postedAt!).getTime() - new Date(a.postedAt!).getTime())
@@ -724,21 +711,19 @@ function ZeroInboxState({ ar, docs }: { ar: boolean; docs: DocumentRow[] }) {
     <div className="flex-1 flex flex-col">
       <div className="px-6 py-10 text-center">
         <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-2">
-          {ar ? "صندوق المراجعة فارغ" : "Inbox zero"}
+          {t("inbox_zero_title")}
         </div>
         <div className={`text-base font-medium mb-1 ${ar ? "" : "font-display text-lg"}`}>
-          {ar ? "لا شيء بانتظارك." : "Nothing waiting on you."}
+          {t("inbox_zero_desc")}
         </div>
         <p className="text-xs text-muted-foreground">
-          {ar
-            ? "اشحن دفعة جديدة من الإيصالات."
-            : "Drop the next batch of receipts when they arrive."}
+          {t("inbox_zero_hint")}
         </p>
       </div>
       {recent.length > 0 && (
         <div className="border-t border-border px-4 py-3">
           <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground mb-2 px-1">
-            {ar ? "آخر ما رحّلته" : "Recently posted"}
+            {t("inbox_recently_posted")}
           </div>
           <ul className="divide-y divide-border" data-testid="list-recent-posted">
             {recent.map((d) => {
@@ -758,11 +743,11 @@ function ZeroInboxState({ ar, docs }: { ar: boolean; docs: DocumentRow[] }) {
                           id={d.journalEntryId}
                           className="text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm"
                           data-testid={`link-journal-entry-recent-${d.id}`}
-                          title={ar ? `فتح قيد اليومية JE #${d.journalEntryId}` : `Open journal entry JE #${d.journalEntryId}`}
+                          title={t("inbox_open_je").replace("{id}", String(d.journalEntryId))}
                         >
                           JE #{d.journalEntryId}
                         </JournalEntryRefLink>
-                      ) : "—"} · {timeAgo(d.postedAt!, ar)}
+                      ) : "—"} · {timeAgo(d.postedAt!, t)}
                     </div>
                   </div>
                   <span className="font-mono tabular-nums text-foreground/70 shrink-0">
@@ -778,25 +763,22 @@ function ZeroInboxState({ ar, docs }: { ar: boolean; docs: DocumentRow[] }) {
   );
 }
 
-function EmptyState({ ar, onPick }: { ar: boolean; onPick: () => void }) {
+function EmptyState({ onPick }: { onPick: () => void }) {
+  const t = useT();
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center px-8 py-14">
       <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-3">
-        {ar ? "لا مستندات بعد" : "Nothing here yet"}
+        {t("inbox_nothing_yet")}
       </div>
       <div className="text-base font-medium mb-2 max-w-xs">
-        {ar
-          ? "ابدأ بصورة فاتورة أو إيصال."
-          : "Start with a photo of an invoice or receipt."}
+        {t("inbox_nothing_hint")}
       </div>
       <p className="text-xs text-muted-foreground max-w-xs leading-relaxed mb-5">
-        {ar
-          ? "PNG، JPEG، WEBP حتى 10 ميجابايت. ندعم العربية والإنجليزية والألمانية والفرنسية مع ضرائب القيمة المضافة الخليجية."
-          : "PNG, JPEG, WEBP up to 10 MB. Arabic, English, German, and French with GCC VAT awareness."}
+        {t("inbox_formats_hint")}
       </p>
       <Button size="sm" onClick={onPick} variant="outline" data-testid="button-empty-upload">
         <Upload className="me-2 h-3.5 w-3.5" />
-        {ar ? "اختر ملفاً" : "Choose file"}
+        {t("inbox_choose_file")}
       </Button>
     </div>
   );
@@ -830,6 +812,7 @@ function DocumentDetail({
   pileTotal: number;
 }) {
   const { toast } = useToast();
+  const t = useT();
   const ext = (doc.extractedJson as ExtractedDocument | null) ?? null;
   const sug = (doc.suggestedJournalJson as SuggestedJournal | null) ?? null;
   const status = doc.status as Status;
@@ -892,17 +875,15 @@ function DocumentDetail({
       queryClient.invalidateQueries({ queryKey: ["/api/journal-entries"] });
       invalidateAccountBalances();
       toast({
-        title: ar ? "تم الترحيل" : "Posted",
-        description: ar
-          ? "تم إنشاء قيد اليومية وربطه بالمستند."
-          : "Journal entry created and linked.",
+        title: t("inbox_toast_posted"),
+        description: t("inbox_toast_posted_desc"),
       });
       onPosted();
     },
     onError: (e: Error) => {
       toast({
         variant: "destructive",
-        title: ar ? "فشل الترحيل" : "Post failed",
+        title: t("inbox_toast_post_failed"),
         description: e.message.replace(/^\d+:\s*/, ""),
       });
     },
@@ -931,9 +912,9 @@ function DocumentDetail({
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1.5">
             <StatusDot status={status} />
-            <StatusLabel status={status} ar={ar} />
+            <StatusLabel status={status} />
             <span className="text-[10px] text-muted-foreground font-mono">
-              · {timeAgo(doc.uploadedAt!, ar)}
+              · {timeAgo(doc.uploadedAt!, t)}
             </span>
             {pileTotal > 1 && pileIndex > 0 && (
               <span
@@ -941,7 +922,7 @@ function DocumentDetail({
                 data-testid="text-pile-progress"
               >
                 <span>
-                  {ar ? "مراجعة " : "reviewing "}
+                  {t("inbox_reviewing")}
                   {pileIndex}/{pileTotal}
                 </span>
                 <span className="inline-block h-px w-12 bg-border relative overflow-hidden">
@@ -995,22 +976,22 @@ function DocumentDetail({
                 data-testid="img-document"
               />
               <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
-                <span>{ar ? "المستند الأصلي" : "Original document"}</span>
+                <span>{t("inbox_original_doc")}</span>
                 <span className="inline-flex items-center gap-1">
-                  {ar ? "فتح" : "Open"} <ArrowUpRight className="h-3 w-3" />
+                  {t("inbox_open")} <ArrowUpRight className="h-3 w-3" />
                 </span>
               </div>
             </a>
           ) : (
             <div className="text-sm text-muted-foreground">
-              {ar ? "معاينة غير متوفرة" : "Preview unavailable"}
+              {t("inbox_preview_unavailable")}
             </div>
           )}
         </div>
 
         {/* Right: facts + JE editor */}
         <div className="overflow-y-auto">
-          {status === "extracting" && <ExtractingSkeleton ar={ar} />}
+          {status === "extracting" && <ExtractingSkeleton />}
 
           {status === "error" && (() => {
             // Map persisted server error code → friendly localized copy.
@@ -1051,7 +1032,7 @@ function DocumentDetail({
               {/* Hero total — display weight, mono, tabular */}
               <div>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-2">
-                  {ar ? "الإجمالي" : "Total"}
+                  {t("inbox_total")}
                 </div>
                 <div className="flex items-baseline gap-2">
                   <span
@@ -1068,14 +1049,14 @@ function DocumentDetail({
                   <div className="text-xs text-muted-foreground font-mono mt-2">
                     {ext.subtotal != null && (
                       <span>
-                        {ar ? "صافي " : "net "}
+                        {t("inbox_net")}
                         {fmtMoney(ext.subtotal)}
                       </span>
                     )}
                     {ext.vatAmount != null && (
                       <>
                         {" · "}
-                        {ar ? "ض.ق.م " : "VAT "}
+                        {t("inbox_vat_label")}
                         {fmtMoney(ext.vatAmount)}
                         {ext.vatRate ? ` (${(ext.vatRate * 100).toFixed(0)}%)` : ""}
                       </>
@@ -1098,9 +1079,7 @@ function DocumentDetail({
                       data-testid="text-vat-reconciled"
                     >
                       <ShieldCheck className="h-3 w-3" />
-                      {ar
-                        ? `ضريبة القيمة المضافة متطابقة${ext.vatRate ? ` · ${(ext.vatRate * 100).toFixed(0)}٪` : ""}`
-                        : `VAT reconciled${ext.vatRate ? ` · ${(ext.vatRate * 100).toFixed(0)}%` : ""}`}
+                      {t("inbox_vat_matched").replace("{extra}", ext.vatRate ? ` · ${(ext.vatRate * 100).toFixed(0)}%` : "")}
                     </div>
                   );
                 })()}
@@ -1108,19 +1087,19 @@ function DocumentDetail({
 
               {/* Facts grid */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm border-t border-border pt-5">
-                <Field label={ar ? "المورد" : "Vendor"} value={ext.vendor} />
+                <Field label={t("inbox_vendor")} value={ext.vendor} />
                 <Field
-                  label={ar ? "رقم الفاتورة" : "Invoice #"}
+                  label={t("inbox_invoice_no")}
                   value={ext.invoiceNumber}
                   mono
                 />
                 <Field
-                  label={ar ? "تاريخ المستند" : "Document date"}
+                  label={t("inbox_doc_date")}
                   value={shortDate(ext.documentDate, ar)}
                   mono
                 />
                 <Field
-                  label={ar ? "طريقة الدفع" : "Payment"}
+                  label={t("inbox_payment")}
                   value={ext.paymentMethod}
                 />
               </div>
@@ -1132,13 +1111,13 @@ function DocumentDetail({
                     <div className="flex items-center gap-2.5 text-sm">
                       <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       <span className="text-emerald-700 dark:text-emerald-400">
-                        {ar ? "تم الترحيل كقيد رقم " : "Posted as journal entry "}
+                        {t("inbox_posted_as_je")}
                         {doc.journalEntryId ? (
                           <JournalEntryRefLink
                             id={doc.journalEntryId}
                             className="underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none rounded-sm font-medium"
                             data-testid={`link-journal-entry-posted-${doc.id}`}
-                            title={ar ? `فتح قيد اليومية ${doc.journalEntryId}` : `Open journal entry #${doc.journalEntryId}`}
+                            title={t("inbox_open_je_short").replace("{id}", String(doc.journalEntryId))}
                           >
                             {ar ? doc.journalEntryId : `#${doc.journalEntryId}`}
                           </JournalEntryRefLink>
@@ -1151,18 +1130,18 @@ function DocumentDetail({
                         className="text-xs underline-offset-4 hover:underline text-foreground/70 inline-flex items-center gap-1"
                         data-testid="link-view-journal"
                       >
-                        {ar ? "عرض" : "View"} <ArrowUpRight className="h-3 w-3" />
+                        {t("inbox_view")} <ArrowUpRight className="h-3 w-3" />
                       </JournalEntryRefLink>
                     ) : (
                       <span className="text-xs text-muted-foreground inline-flex items-center gap-1" data-testid="link-view-journal-disabled">
-                        {ar ? "عرض" : "View"} <ArrowUpRight className="h-3 w-3" />
+                        {t("inbox_view")} <ArrowUpRight className="h-3 w-3" />
                       </span>
                     )}
                   </div>
                   {doc.postedAt && (
                     <div className="text-[11px] text-muted-foreground font-mono mt-2">
-                      {ar ? "وقت الترحيل · " : "posted · "}
-                      {timeAgo(doc.postedAt, ar)}
+                      {t("inbox_posted_time")}
+                      {timeAgo(doc.postedAt, t)}
                     </div>
                   )}
                 </div>
@@ -1174,7 +1153,7 @@ function DocumentDetail({
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-                        {ar ? "القيد المقترح" : "Suggested journal"}
+                        {t("inbox_suggested_journal")}
                       </div>
                       {sug?.reasoning && (
                         <p className="text-xs text-muted-foreground mt-1 italic max-w-md leading-relaxed">
@@ -1187,7 +1166,7 @@ function DocumentDetail({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                        {ar ? "الوصف" : "Description"}
+                        {t("inbox_description")}
                       </Label>
                       <Input
                         value={description}
@@ -1198,7 +1177,7 @@ function DocumentDetail({
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                        {ar ? "تاريخ القيد" : "Entry date"}
+                        {t("inbox_entry_date")}
                       </Label>
                       <Input
                         type="date"
@@ -1213,9 +1192,9 @@ function DocumentDetail({
                   {/* JE table */}
                   <div className="border border-border rounded-sm overflow-hidden">
                     <div className="grid grid-cols-[1fr_120px_120px_28px] gap-2 px-3 py-2 bg-muted/40 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                      <div>{ar ? "الحساب" : "Account"}</div>
-                      <div className="text-end">{ar ? "مدين" : "Debit"}</div>
-                      <div className="text-end">{ar ? "دائن" : "Credit"}</div>
+                      <div>{t("inbox_account")}</div>
+                      <div className="text-end">{t("inbox_debit")}</div>
+                      <div className="text-end">{t("inbox_credit")}</div>
                       <div></div>
                     </div>
                     <div className="divide-y divide-border">
@@ -1284,7 +1263,7 @@ function DocumentDetail({
                     </div>
                     <div className="grid grid-cols-[1fr_120px_120px_28px] gap-2 px-3 py-2 bg-muted/40 border-t border-border text-sm">
                       <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground self-center">
-                        {ar ? "الإجمالي" : "Totals"}
+                        {t("inbox_totals")}
                       </div>
                       <div
                         className="text-end font-mono tabular-nums"
@@ -1316,7 +1295,7 @@ function DocumentDetail({
                         className="text-xs text-muted-foreground hover:text-foreground"
                         data-testid="button-add-line"
                       >
-                        {ar ? "+ إضافة سطر" : "+ Add line"}
+                        {t("inbox_add_line")}
                       </button>
                       <span
                         className={`text-[11px] font-mono ${
@@ -1327,12 +1306,8 @@ function DocumentDetail({
                         data-testid="text-balance"
                       >
                         {balanced
-                          ? ar
-                            ? "متوازن ✓"
-                            : "balanced ✓"
-                          : ar
-                          ? `فرق ${fmtMoney(Math.abs(drift))}`
-                          : `drift ${fmtMoney(Math.abs(drift))}`}
+                          ? t("inbox_balanced")
+                          : t("inbox_diff").replace("{v}", fmtMoney(Math.abs(drift)))}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1350,13 +1325,7 @@ function DocumentDetail({
                         data-testid="button-post-document"
                       >
                         <Check className="me-2 h-4 w-4" />
-                        {status === "posting"
-                          ? ar
-                            ? "جارٍ الترحيل…"
-                            : "Posting…"
-                          : ar
-                          ? "ترحيل القيد"
-                          : "Post entry"}
+                        {status === "posting" ? t("inbox_posting_progress") : t("inbox_post_entry")}
                       </Button>
                     </div>
                   </div>
@@ -1366,7 +1335,7 @@ function DocumentDetail({
               {/* Audit trail micro-line */}
               <div className="border-t border-border pt-3 text-[10px] uppercase tracking-[0.14em] text-muted-foreground font-mono flex items-center justify-between">
                 <span>
-                  {ar ? "رفع " : "uploaded "} {timeAgo(doc.uploadedAt!, ar)}
+                  {t("inbox_uploaded")} {timeAgo(doc.uploadedAt!, t)}
                 </span>
                 <span>
                   {(doc.sizeBytes / 1024).toFixed(0)}KB · {doc.mimeType.split("/")[1]}
@@ -1384,12 +1353,13 @@ function DocumentDetail({
 // Loading skeleton during extraction
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ExtractingSkeleton({ ar }: { ar: boolean }) {
+function ExtractingSkeleton() {
+  const t = useT();
   return (
     <div className="p-6 space-y-7">
       <div>
         <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-2">
-          {ar ? "جارٍ القراءة" : "Reading"}
+          {t("inbox_reading")}
         </div>
         <Skeleton className="h-10 w-48 rounded-sm" />
         <Skeleton className="h-3 w-32 rounded-sm mt-2" />
