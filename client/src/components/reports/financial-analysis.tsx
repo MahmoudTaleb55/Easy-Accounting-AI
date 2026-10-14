@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { buildIfrsStatement } from "@/lib/ifrs-classifier";
+import { useT } from "@/i18n/dict";
 import type { Transaction } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ interface Props {
 }
 
 export function FinancialAnalysis({ transactions, periodLabel }: Props) {
+  const t = useT();
   const [result, setResult] = useState<AnalysisResult | null>(null);
 
   const ratios = useMemo(() => {
@@ -112,28 +114,28 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <RatioCard
           icon={<Percent className="w-5 h-5" />}
-          label="هامش الربح الإجمالي"
+          label={t("report_fa_margin_gross")}
           value={ratios.grossMargin}
           benchmark={30}
           testId="ratio-gross-margin"
         />
         <RatioCard
           icon={<Activity className="w-5 h-5" />}
-          label="هامش الربح التشغيلي"
+          label={t("report_fa_margin_op")}
           value={ratios.operatingMargin}
           benchmark={15}
           testId="ratio-operating-margin"
         />
         <RatioCard
           icon={<TrendingUp className="w-5 h-5" />}
-          label="هامش صافي الربح"
+          label={t("report_fa_margin_net")}
           value={ratios.netMargin}
           benchmark={10}
           testId="ratio-net-margin"
         />
         <RatioCard
           icon={<TrendingDown className="w-5 h-5" />}
-          label="نسبة المصروفات"
+          label={t("report_fa_expense_ratio")}
           value={ratios.expenseRatio}
           benchmark={70}
           inverse
@@ -151,11 +153,10 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
               </div>
               <div>
                 <h3 className="text-xl font-extrabold text-foreground">
-                  تحليل ذكي لأدائك المالي
+                  {t("report_fa_title")}
                 </h3>
                 <p className="text-sm text-muted-foreground mt-2 font-medium leading-relaxed max-w-xl">
-                  دع الذكاء الاصطناعي يحلل بياناتك ويخبرك بنقاط القوة والضعف ويقترح
-                  قرارات عملية لتحسين أرباحك بناءً على المعايير المحاسبية الدولية.
+                  {t("report_fa_intro")}
                 </p>
               </div>
             </div>
@@ -168,12 +169,12 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
               {mutation.isPending ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  جاري التحليل...
+                  {t("report_fa_analyzing")}
                 </>
               ) : (
                 <>
                   <Zap className="w-5 h-5" />
-                  {result ? "تحليل جديد" : "ابدأ التحليل"}
+                  {result ? t("report_fa_new") : t("report_fa_start")}
                 </>
               )}
             </Button>
@@ -183,7 +184,7 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
               className="text-sm text-muted-foreground mt-4 text-center font-medium"
               data-testid="text-no-data"
             >
-              لا توجد معاملات في هذه الفترة لتحليلها.
+              {t("report_fa_no_tx")}
             </p>
           )}
         </CardContent>
@@ -194,7 +195,7 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
         <Card className="rounded-2xl border-rose-200 bg-rose-50">
           <CardContent className="p-6 flex items-center gap-3 text-rose-700">
             <AlertCircle className="w-5 h-5" />
-            <p className="font-bold">تعذر توليد التحليل. حاول مرة أخرى من فضلك.</p>
+            <p className="font-bold">{t("report_fa_failed")}</p>
           </CardContent>
         </Card>
       )}
@@ -208,7 +209,7 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
                 <HealthGauge score={result.healthScore} />
                 <div className="flex-1 space-y-3 text-center lg:text-right">
                   <h3 className="text-2xl font-extrabold text-foreground">
-                    التقييم العام
+                    {t("report_fa_overall")}
                   </h3>
                   <p
                     className="text-base text-foreground/80 leading-relaxed font-medium"
@@ -230,7 +231,7 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-amber-700 uppercase tracking-wider">
-                    الخطوة الأولى الموصى بها
+                    {t("report_fa_first_step")}
                   </h4>
                   <p
                     className="text-lg font-extrabold text-amber-900 mt-1 leading-relaxed"
@@ -246,20 +247,20 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
           {/* Strengths / Weaknesses */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ListCard
-              title="نقاط القوة"
+              title={t("report_fa_strengths")}
               items={result.strengths}
               icon={<CheckCircle2 className="w-5 h-5" />}
               accent="emerald"
               testId="list-strengths"
-              emptyText="لم يتم تحديد نقاط قوة بعد."
+              emptyText={t("report_fa_no_strengths")}
             />
             <ListCard
-              title="نقاط تحتاج تحسين"
+              title={t("report_fa_weaknesses")}
               items={result.weaknesses}
               icon={<AlertCircle className="w-5 h-5" />}
               accent="rose"
               testId="list-weaknesses"
-              emptyText="لا توجد ملاحظات سلبية."
+              emptyText={t("report_fa_no_weaknesses")}
             />
           </div>
 
@@ -271,7 +272,7 @@ export function FinancialAnalysis({ transactions, periodLabel }: Props) {
                   <div className="p-2 bg-primary/10 rounded-xl">
                     <Lightbulb className="w-5 h-5 text-primary" />
                   </div>
-                  التوصيات العملية
+                  {t("report_fa_recommendations")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -302,6 +303,7 @@ function RatioCard({
   inverse?: boolean;
   testId: string;
 }) {
+  const t = useT();
   // For inverse metrics (like expense ratio), lower is better
   const isGood = inverse ? value <= benchmark : value >= benchmark;
   const isOk = inverse
@@ -329,7 +331,7 @@ function RatioCard({
           <span className="text-base font-bold opacity-70 mr-1">%</span>
         </div>
         <p className="text-xs text-muted-foreground font-medium mt-1">
-          المعيار الصحي: {inverse ? "≤" : "≥"} {benchmark}%
+          {t("report_fa_benchmark").replace("{op}", inverse ? "\u2264" : "\u2265").replace("{benchmark}", String(benchmark))}
         </p>
       </CardContent>
     </Card>
@@ -337,9 +339,10 @@ function RatioCard({
 }
 
 function HealthGauge({ score }: { score: number }) {
+  const t = useT();
   const angle = (score / 100) * 180;
   const color = score >= 70 ? "#10b981" : score >= 40 ? "#f59e0b" : "#f43f5e";
-  const label = score >= 70 ? "ممتاز" : score >= 40 ? "متوسط" : "يحتاج انتباه";
+  const label = score >= 70 ? t("report_fa_excellent") : score >= 40 ? t("report_fa_average") : t("report_fa_needs_attention");
 
   return (
     <div className="relative w-48 h-48 shrink-0" data-testid="gauge-health-score">
@@ -369,7 +372,7 @@ function HealthGauge({ score }: { score: number }) {
         <div className="text-5xl font-black tabular-nums" style={{ color }}>
           {score}
         </div>
-        <div className="text-xs text-muted-foreground font-bold mt-1">من 100</div>
+        <div className="text-xs text-muted-foreground font-bold mt-1">{t("report_fa_out_of_100")}</div>
         <div
           className="text-sm font-extrabold mt-2 px-3 py-1 rounded-full"
           style={{ background: `${color}20`, color }}
@@ -441,10 +444,11 @@ function RecommendationCard({
   recommendation: { title: string; detail: string; priority: "high" | "medium" | "low" };
   index: number;
 }) {
+  const t = useT();
   const priorityMap = {
-    high: { label: "أولوية عالية", color: "bg-rose-100 text-rose-700 border-rose-200" },
-    medium: { label: "أولوية متوسطة", color: "bg-amber-100 text-amber-700 border-amber-200" },
-    low: { label: "أولوية منخفضة", color: "bg-blue-100 text-blue-700 border-blue-200" },
+    high: { label: t("report_fa_prio_high"), color: "bg-rose-100 text-rose-700 border-rose-200" },
+    medium: { label: t("report_fa_prio_medium"), color: "bg-amber-100 text-amber-700 border-amber-200" },
+    low: { label: t("report_fa_prio_low"), color: "bg-blue-100 text-blue-700 border-blue-200" },
   };
   const p = priorityMap[recommendation.priority];
 

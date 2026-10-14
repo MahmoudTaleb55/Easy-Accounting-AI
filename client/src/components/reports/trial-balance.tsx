@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Scale, CheckCircle2, AlertCircle } from "lucide-react";
+import { useT } from "@/i18n/dict";
 
 interface TBRow {
   accountId: number;
@@ -21,6 +22,7 @@ interface TBData {
 const fmt = (n: number) => n.toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function TrialBalance() {
+  const t = useT();
   const { data, isLoading } = useQuery<TBData>({ queryKey: ["/api/reports/trial-balance"] });
 
   if (isLoading) return <Skeleton className="h-96" />;
@@ -34,11 +36,11 @@ export function TrialBalance() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <CardTitle className="flex items-center gap-2 text-xl">
             <Scale className="w-5 h-5 text-primary" />
-            ميزان المراجعة
+            {t("report_tb_title")}
           </CardTitle>
           <div className={`flex items-center gap-2 text-sm font-medium ${balanced ? "text-emerald-600" : "text-rose-600"}`}>
             {balanced ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-            {balanced ? "متوازن" : "غير متوازن"}
+            {balanced ? t("report_tb_balanced") : t("report_tb_unbalanced")}
           </div>
         </div>
       </CardHeader>
@@ -47,11 +49,11 @@ export function TrialBalance() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase">
               <tr>
-                <th className="px-4 py-3 text-right">الكود</th>
-                <th className="px-4 py-3 text-right">اسم الحساب</th>
-                <th className="px-4 py-3 text-left">إجمالي مدين</th>
-                <th className="px-4 py-3 text-left">إجمالي دائن</th>
-                <th className="px-4 py-3 text-left">الرصيد</th>
+                <th className="px-4 py-3 text-right">{t("report_tb_code")}</th>
+                <th className="px-4 py-3 text-right">{t("report_tb_account")}</th>
+                <th className="px-4 py-3 text-left">{t("report_tb_total_debit")}</th>
+                <th className="px-4 py-3 text-left">{t("report_tb_total_credit")}</th>
+                <th className="px-4 py-3 text-left">{t("report_tb_balance")}</th>
               </tr>
             </thead>
             <tbody>
@@ -67,7 +69,7 @@ export function TrialBalance() {
             </tbody>
             <tfoot className="bg-muted/40 font-bold">
               <tr>
-                <td colSpan={2} className="px-4 py-3 text-right">الإجمالي</td>
+                <td colSpan={2} className="px-4 py-3 text-right">{t("report_tb_total")}</td>
                 <td className="px-4 py-3 text-left tabular-nums" data-testid="text-tb-total-debit">{fmt(data.totalDebit)}</td>
                 <td className="px-4 py-3 text-left tabular-nums" data-testid="text-tb-total-credit">{fmt(data.totalCredit)}</td>
                 <td></td>

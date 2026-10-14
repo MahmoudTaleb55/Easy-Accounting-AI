@@ -37,6 +37,7 @@ import {
   AreaChart,
 } from "recharts"
 import { useLocale } from "@/contexts/locale-context"
+import { useT } from "@/i18n/dict"
 import { usePeriod } from "@/contexts/period-context"
 import { PeriodChip } from "@/components/dashboard/period-chip"
 import { useFormatMoney } from "@/lib/format"
@@ -54,6 +55,7 @@ type ViewMode = "analytics" | "ifrs" | "trial-balance" | "balance-sheet" | "anal
 
 export default function Reports() {
   const { locale } = useLocale()
+  const tr = useT()
   const fmt = useFormatMoney()
   const dfLocale = locale === "ar" ? ar : enUS
   const { data: transactions, isLoading } = useTransactions()
@@ -62,66 +64,45 @@ export default function Reports() {
 
   const t = useMemo(
     () => ({
-      eyebrow: locale === "ar" ? "التقارير" : "Reports",
-      title:
-        locale === "ar"
-          ? "صورة واضحة لأداء أعمالك."
-          : "A clear view of your business performance.",
-      subtitle:
-        locale === "ar"
-          ? "قوائم متوافقة مع IFRS، تحليلات لحظية، وقابلة للطباعة والتصدير."
-          : "IFRS-aligned statements with live analytics, ready to print or export.",
-      print: locale === "ar" ? "طباعة" : "Print",
-      exportCsv: locale === "ar" ? "تصدير CSV" : "Export CSV",
-      analytics: locale === "ar" ? "نظرة تحليلية" : "Analytics",
-      ifrs: locale === "ar" ? "قائمة الدخل" : "Income statement",
-      trial: locale === "ar" ? "ميزان المراجعة" : "Trial balance",
-      balance: locale === "ar" ? "المركز المالي" : "Balance sheet",
-      analysis: locale === "ar" ? "تحليل ذكي" : "AI analysis",
-      kpiIncome: locale === "ar" ? "الإيرادات" : "Revenue",
-      kpiExpense: locale === "ar" ? "المصروفات" : "Expenses",
-      kpiNet: locale === "ar" ? "صافي الربح" : "Net profit",
-      kpiSavings: locale === "ar" ? "هامش الربح" : "Profit margin",
-      insightsTitle: locale === "ar" ? "ملخص ذكي" : "Smart summary",
-      monthlyTrend:
-        locale === "ar" ? "الاتجاه الشهري — آخر 6 أشهر" : "Monthly trend — last 6 months",
-      expensesByCat:
-        locale === "ar" ? "المصروفات حسب الفئة" : "Expenses by category",
-      incomeByCat:
-        locale === "ar" ? "الإيرادات حسب الفئة" : "Revenue by category",
-      txDetails: locale === "ar" ? "تفاصيل المعاملات" : "Transaction details",
-      noExpense:
-        locale === "ar" ? "لا توجد مصروفات في هذه الفترة." : "No expenses in this period.",
-      noIncome:
-        locale === "ar" ? "لا توجد إيرادات في هذه الفترة." : "No revenue in this period.",
-      noTx: locale === "ar" ? "لا توجد معاملات في هذه الفترة." : "No transactions in this period.",
-      colDate: locale === "ar" ? "التاريخ" : "Date",
-      colType: locale === "ar" ? "النوع" : "Type",
-      colCat: locale === "ar" ? "الفئة" : "Category",
-      colDesc: locale === "ar" ? "البيان" : "Description",
-      colAmount: locale === "ar" ? "المبلغ" : "Amount",
-      typeIncome: locale === "ar" ? "إيراد" : "Revenue",
-      typeExpense: locale === "ar" ? "مصروف" : "Expense",
-      insPositive: (n: number) =>
-        locale === "ar" ? `وضعك المالي إيجابي. فائض قدره ${fmt(n)}.` : `Net positive. Surplus of ${fmt(n)}.`,
-      insNegative: (n: number) =>
-        locale === "ar"
-          ? `المصروفات تتجاوز الإيرادات بـ ${fmt(n)}. راجع أكبر بنود الإنفاق.`
-          : `Expenses exceed revenue by ${fmt(n)}. Review your largest spending lines.`,
+      eyebrow: tr("report_eyebrow"),
+      title: tr("report_title"),
+      subtitle: tr("report_subtitle"),
+      print: tr("report_print"),
+      exportCsv: tr("report_export_csv"),
+      analytics: tr("report_analytics"),
+      ifrs: tr("report_ifrs"),
+      trial: tr("report_trial"),
+      balance: tr("report_balance"),
+      analysis: tr("report_analysis"),
+      kpiIncome: tr("report_kpi_income"),
+      kpiExpense: tr("report_kpi_expense"),
+      kpiNet: tr("report_kpi_net"),
+      kpiSavings: tr("report_kpi_savings"),
+      insightsTitle: tr("report_insights_title"),
+      monthlyTrend: tr("report_monthly_trend"),
+      expensesByCat: tr("report_exp_by_cat"),
+      incomeByCat: tr("report_rev_by_cat"),
+      txDetails: tr("report_tx_details"),
+      noExpense: tr("report_no_expenses"),
+      noIncome: tr("report_no_revenue"),
+      noTx: tr("report_no_tx"),
+      colDate: tr("report_col_date"),
+      colType: tr("report_col_type"),
+      colCat: tr("report_col_cat"),
+      colDesc: tr("report_col_desc"),
+      colAmount: tr("report_col_amount"),
+      typeIncome: tr("report_type_income"),
+      typeExpense: tr("report_type_expense"),
+      insPositive: (n: number) => tr("report_ins_surplus").replace("{n}", fmt(n)),
+      insNegative: (n: number) => tr("report_ins_deficit").replace("{n}", fmt(n)),
       insTopCat: (name: string, pct: number) =>
-        locale === "ar"
-          ? `أكبر فئة إنفاق: ${name} (${pct}% من إجمالي المصروفات).`
-          : `Top spending category: ${name} (${pct}% of total expenses).`,
-      insCount: (n: number) =>
-        locale === "ar" ? `سُجّلت ${n} معاملة خلال هذه الفترة.` : `${n} transactions recorded in this period.`,
-      insMargin: (n: number) =>
-        locale === "ar"
-          ? `هامش الربح ${n}% — فوق المتوسط الموصى به.`
-          : `Profit margin at ${n}% — above the recommended threshold.`,
-      reportTitle: locale === "ar" ? "تقرير مالي — محاسب ذكي" : "Financial report — Smart Books",
-      reportDate: locale === "ar" ? "تاريخ التقرير" : "Report date",
+        tr("report_ins_top_cat").replace("{name}", name).replace("{pct}", String(pct)),
+      insCount: (n: number) => tr("report_ins_tx_count").replace("{n}", String(n)),
+      insMargin: (n: number) => tr("report_ins_margin").replace("{n}", String(n)),
+      reportTitle: tr("report_title_doc"),
+      reportDate: tr("report_doc_date"),
     }),
-    [locale, fmt],
+    [tr, fmt],
   )
 
   const VIEW_MODES: { key: ViewMode; label: string; icon: typeof LayoutDashboard }[] = [
@@ -188,8 +169,8 @@ export default function Reports() {
   }, [filteredTx])
 
   const monthlyTrend = useMemo(() => {
-    const incomeKey = locale === "ar" ? "إيراد" : "Income"
-    const expenseKey = locale === "ar" ? "مصروف" : "Expense"
+    const incomeKey = tr("report_type_income")
+    const expenseKey = tr("report_type_expense")
     if (!transactions) return { data: [], incomeKey, expenseKey }
     const now = new Date()
     const months: Array<Record<string, string | number>> = []
@@ -214,7 +195,7 @@ export default function Reports() {
       })
     }
     return { data: months, incomeKey, expenseKey }
-  }, [transactions, dfLocale, locale])
+  }, [transactions, dfLocale, tr])
 
   const handlePrint = () => window.print()
 
@@ -234,7 +215,7 @@ export default function Reports() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `${locale === "ar" ? "تقرير-مالي" : "report"}-${format(new Date(), "yyyy-MM-dd")}.csv`
+    a.download = `${tr("report_csv_filename")}-${format(new Date(), "yyyy-MM-dd")}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }

@@ -5,6 +5,8 @@ import { ar } from "date-fns/locale";
 import { api } from "@shared/routes";
 import { useSettings } from "@/lib/format";
 import { formatMoney, type IfrsLineItem, type IfrsStatement } from "@/lib/ifrs-classifier";
+import { useT } from "@/i18n/dict";
+import { useLocale } from "@/contexts/locale-context";
 
 interface Props {
   periodStart: Date | null;
@@ -15,8 +17,11 @@ interface Props {
 export function IfrsIncomeStatement({
   periodStart,
   periodEnd,
-  companyName = "منشأتي",
+  companyName,
 }: Props) {
+  const t = useT();
+  const { dir } = useLocale();
+  const resolvedCompanyName = companyName ?? t("report_default_company");
   const settings = useSettings();
   // Service workspaces have no inventory and therefore no Cost of Goods Sold,
   // so we hide the COGS block + the gross-profit subtotal entirely. Trading
@@ -75,17 +80,17 @@ export function IfrsIncomeStatement({
     >
       {/* Statement header */}
       <div className="p-8 text-center border-b-2 border-foreground/10">
-        <h2 className="text-2xl font-extrabold text-foreground">{companyName}</h2>
-        <h3 className="text-xl font-bold text-foreground mt-2">قائمة الأرباح والخسائر</h3>
-        <p className="text-sm text-muted-foreground mt-1 font-medium">الأساس: استحقاق الدفع</p>
+        <h2 className="text-2xl font-extrabold text-foreground">{resolvedCompanyName}</h2>
+        <h3 className="text-xl font-bold text-foreground mt-2">{t("report_pl_title")}</h3>
+        <p className="text-sm text-muted-foreground mt-1 font-medium">{t("report_pl_basis")}</p>
         <p className="text-sm text-muted-foreground mt-1 font-medium">
           {periodStart && periodEnd
-            ? `من ${format(periodStart, "d MMMM yyyy", { locale: ar })} إلى ${format(
+            ? `${format(periodStart, "d MMMM yyyy", { locale: ar })} — ${format(
                 periodEnd,
                 "d MMMM yyyy",
                 { locale: ar }
               )}`
-            : "كل الفترات"}
+            : t("report_all_periods")}
         </p>
       </div>
 
@@ -95,7 +100,7 @@ export function IfrsIncomeStatement({
           className="p-8 text-center text-muted-foreground text-sm"
           data-testid="status-ifrs-loading"
         >
-          جاري تحميل قائمة الدخل…
+          {t("report_loading_pl")}
         </div>
       )}
       {isError && (
@@ -103,14 +108,14 @@ export function IfrsIncomeStatement({
           className="p-8 text-center text-rose-600 text-sm flex flex-col items-center gap-3"
           data-testid="status-ifrs-error"
         >
-          <span>تعذّر تحميل قائمة الدخل.</span>
+          <span>{t("report_pl_error")}</span>
           <button
             type="button"
             onClick={() => refetch()}
             className="px-4 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 text-sm font-semibold transition-colors"
             data-testid="button-ifrs-retry"
           >
-            إعادة المحاولة
+            {t("report_retry")}
           </button>
         </div>
       )}
@@ -119,18 +124,18 @@ export function IfrsIncomeStatement({
         <>
           {/* Statement table */}
           <div className="overflow-x-auto table-sticky-first">
-            <table className="w-full text-sm" dir="rtl">
+            <table className="w-full text-sm" dir={dir}>
               <thead>
                 <tr className="bg-muted/40 text-foreground/70 text-xs uppercase tracking-wider">
-                  <th className="p-3 text-right font-bold w-3/4">الحساب</th>
-                  <th className="p-3 text-left font-bold">{`الإجمالي (${settings.currencySymbol})`}</th>
+                  <th className="p-3 text-right font-bold w-3/4">{t("report_account")}</th>
+                  <th className="p-3 text-left font-bold">{t("report_total_col").replace("{sym}", settings.currencySymbol)}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
                 {/* Operating Revenue */}
-                <SectionHeader title="إيرادات التشغيل" />
+                <SectionHeader title={t("report_op_revenue")} />
                 {stmt.revenueItems.length === 0 ? (
-                  <EmptyRow label="لا توجد إيرادات" />
+                  <EmptyRow label={t("report_no_revenue_sec")} />
                 ) : (
                   stmt.revenueItems.map((it) => (
                     <LineRow
@@ -141,7 +146,7 @@ export function IfrsIncomeStatement({
                   ))
                 )}
                 <SubtotalRow
-                  label="إجمالي إيرادات التشغيل"
+                  label={t("report_total_op_revenue")}
                   value={stmt.totalRevenue}
                   testId="row-total-revenue"
                 />
@@ -150,9 +155,9 @@ export function IfrsIncomeStatement({
                     gross-profit subtotal because they have no inventory. */}
                 {showCogs && (
                   <>
-                    <SectionHeader title="تكلفة البضائع المباعة" />
+                    <SectionHeader title={t("report_cogs")} />
                     {stmt.cogsItems.length === 0 ? (
-                      <EmptyRow label="لا توجد تكلفة بضائع مسجلة" />
+                      <EmptyRow label={t("report_no_cogs")} />
                     ) : (
                       stmt.cogsItems.map((it) => (
                         <LineRow
@@ -163,14 +168,14 @@ export function IfrsIncomeStatement({
                       ))
                     )}
                     <SubtotalRow
-                      label="إجمالي تكلفة البضائع المباعة"
+                      label={t("report_total_cogs")}
                       value={stmt.totalCogs}
                       testId="row-total-cogs"
                     />
 
                     {/* Gross Profit — only meaningful when COGS is in play */}
                     <TotalRow
-                      label="إجمالي الربح"
+                      label={t("report_gross_profit")}
                       value={stmt.grossProfit}
                       tone="primary"
                       testId="row-gross-profit"
@@ -193,25 +198,21 @@ export function IfrsIncomeStatement({
                   <tr data-testid="row-cogs-warning-service">
                     <td colSpan={2} className="px-4 py-3">
                       <div className="rounded-lg border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 px-4 py-2.5 text-[12.5px] text-amber-900 dark:text-amber-200 leading-relaxed">
-                        <span className="font-semibold">تنبيه:</span>{" "}
-                        نوع المنشأة مُعرَّف كـ"شركة خدمات"، ومع ذلك توجد قيود
-                        بقيمة{" "}
+                        <span className="font-semibold">{t("report_cogs_warning_label")}</span>{" "}
+                        {t("report_cogs_warn_1")}{" "}
                         <span className="font-numeric tabular-nums font-semibold">
                           {formatMoney(stmt.totalCogs)} {settings.currencySymbol}
                         </span>{" "}
-                        مرحَّلة على حسابات تكلفة البضائع المباعة. هذه القيود
-                        ما زالت تُخصم من صافي الربح. لإظهار قسم تكلفة البضائع،
-                        غيِّر نوع النشاط من الإعدادات إلى "تجارية" أو "تصنيع"،
-                        أو أعد تصنيف هذه القيود إلى مصروفات تشغيلية.
+                        {t("report_cogs_warn_2")}
                       </div>
                     </td>
                   </tr>
                 )}
 
                 {/* Operating Expenses */}
-                <SectionHeader title="مصروفات التشغيل" />
+                <SectionHeader title={t("report_op_expenses")} />
                 {stmt.operatingExpenseItems.length === 0 ? (
-                  <EmptyRow label="لا توجد مصروفات تشغيلية" />
+                  <EmptyRow label={t("report_no_op_expenses")} />
                 ) : (
                   stmt.operatingExpenseItems.map((it) => (
                     <LineRow
@@ -222,7 +223,7 @@ export function IfrsIncomeStatement({
                   ))
                 )}
                 <SubtotalRow
-                  label="إجمالي مصروفات التشغيل"
+                  label={t("report_total_op_expenses")}
                   value={stmt.totalOperatingExpenses}
                   testId="row-total-opex"
                 />
@@ -230,7 +231,7 @@ export function IfrsIncomeStatement({
                 {/* Other Income (only if present) */}
                 {stmt.otherIncomeItems.length > 0 && (
                   <>
-                    <SectionHeader title="إيرادات أخرى" />
+                    <SectionHeader title={t("report_other_income")} />
                     {stmt.otherIncomeItems.map((it) => (
                       <LineRow
                         key={`oi-${it.category}`}
@@ -239,7 +240,7 @@ export function IfrsIncomeStatement({
                       />
                     ))}
                     <SubtotalRow
-                      label="إجمالي الإيرادات الأخرى"
+                      label={t("report_total_other_income")}
                       value={stmt.totalOtherIncome}
                       testId="row-total-other-inc"
                     />
@@ -248,7 +249,7 @@ export function IfrsIncomeStatement({
 
                 {/* Net Profit */}
                 <TotalRow
-                  label="صافي الربح / الخسارة"
+                  label={t("report_net_profit_loss")}
                   value={stmt.netProfit}
                   tone={stmt.netProfit >= 0 ? "success" : "danger"}
                   testId="row-net-profit"
@@ -260,8 +261,7 @@ export function IfrsIncomeStatement({
 
           {/* Footer note */}
           <div className="p-4 bg-muted/20 text-xs text-muted-foreground text-center font-medium border-t border-border/40">
-            تم إعداد هذا البيان وفق المبادئ العامة للمعايير الدولية لإعداد التقارير المالية (IFRS) -
-            مبني على قيود اليومية المرحّلة.
+            {t("report_ifrs_footer")}
           </div>
         </>
       )}
