@@ -153,6 +153,14 @@ const openai = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL,
 });
 
+// AI model names are configurable so a deployment can point the OpenAI-SDK
+// client at any OpenAI-compatible endpoint/model via env, without code
+// changes. Defaults are standard OpenAI models so an out-of-the-box OpenAI
+// API key just works.
+const CHAT_MODEL = process.env.AI_CHAT_MODEL || "gpt-4o";
+const TRANSCRIBE_MODEL = process.env.AI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
+const TTS_MODEL = process.env.AI_TTS_MODEL || "gpt-4o-mini-tts";
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -383,7 +391,7 @@ export async function registerRoutes(
       const userPayload = JSON.stringify(input, null, 2);
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: CHAT_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `حلّل البيانات التالية وأعد ردّك بصيغة JSON فقط:\n${userPayload}` },
@@ -2003,7 +2011,7 @@ export async function registerRoutes(
 - إذا الأرقام لا تكفي للإجابة، قل ذلك صراحة واطلب البيانات الناقصة.`;
 
       const response = await openai.chat.completions.create({
-        model: "gpt-5.2",
+        model: CHAT_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
           {
@@ -2276,7 +2284,7 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
 
       for (let iter = 0; iter < MAX_ITERS; iter++) {
         const completion = await openai.chat.completions.create({
-          model: "gpt-5.2",
+          model: CHAT_MODEL,
           messages,
           tools: ASSISTANT_TOOLS as any,
         });
@@ -2466,7 +2474,7 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
           file: audioFile,
           // gpt-4o-mini-transcribe gives better quality on short utterances and
           // handles all four supported languages natively.
-          model: "gpt-4o-mini-transcribe",
+          model: TRANSCRIBE_MODEL,
           language: locale, // hint when known, auto-detect when not
           // Dialect prompt: primes Whisper to correctly transcribe regional
           // Arabic varieties (Egyptian, Gulf, Levantine, Maghrebi, Iraqi,
@@ -2495,7 +2503,7 @@ For ALL three: pass the language ("ar" | "en" | "de" | "fr") so the file gets co
       if (!text.trim()) return res.status(400).json({ message: "Missing text" });
       // gpt-4o-mini-tts handles AR/EN/DE/FR with the same multilingual voice.
       const speech = await openai.audio.speech.create({
-        model: "gpt-4o-mini-tts",
+        model: TTS_MODEL,
         voice: "alloy",
         input: text,
         response_format: "mp3",

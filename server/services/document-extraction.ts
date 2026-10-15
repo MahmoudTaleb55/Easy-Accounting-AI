@@ -35,8 +35,10 @@ function getOpenAI(): OpenAI {
   return openaiClient;
 }
 
-// gpt-4o reads images natively and returns json reliably with response_format.
-const MODEL = "gpt-4o";
+// Vision model for reading receipts/invoices. Configurable via env so the
+// deployment can target any OpenAI-compatible vision model; defaults to a
+// standard multimodal OpenAI model so an out-of-the-box OpenAI key works.
+const MODEL = process.env.AI_VISION_MODEL || "gpt-4o";
 
 const EXTRACTION_SYSTEM = `You are a multilingual accounting assistant that
 reads receipts, invoices and credit notes for an IFRS-compliant platform.

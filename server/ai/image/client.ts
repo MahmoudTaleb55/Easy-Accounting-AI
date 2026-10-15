@@ -7,6 +7,10 @@ export const openai = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL,
 });
 
+// Image model, configurable via env; defaults to the standard OpenAI image
+// model so an out-of-the-box OpenAI key works.
+const IMAGE_MODEL = process.env.AI_IMAGE_MODEL || "gpt-image-1";
+
 /**
  * Generate an image and return as Buffer.
  * Uses gpt-image-1 model via the configured OpenAI-compatible deployment.
@@ -16,7 +20,7 @@ export async function generateImageBuffer(
   size: "1024x1024" | "512x512" | "256x256" = "1024x1024"
 ): Promise<Buffer> {
   const response = await openai.images.generate({
-    model: "gpt-image-1",
+    model: IMAGE_MODEL,
     prompt,
     size,
   });
@@ -42,7 +46,7 @@ export async function editImages(
   );
 
   const response = await openai.images.edit({
-    model: "gpt-image-1",
+    model: IMAGE_MODEL,
     image: images,
     prompt,
   });

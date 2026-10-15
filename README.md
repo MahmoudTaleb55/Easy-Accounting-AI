@@ -38,7 +38,7 @@ Orqam ("numbers" in Arabic) is a double-entry accounting and business-operations
 **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Radix UI (shadcn-style), Wouter, TanStack React Query, React Hook Form, Zod, Recharts.
 **Backend:** Node.js, Express 5 (ESM), TypeScript, Passport (local email/password + Google/Microsoft OIDC), `express-session` with PostgreSQL-backed session store.
 **Data:** PostgreSQL via Drizzle ORM; migrations via Drizzle Kit and a checked-in SQL migration runner. Shared schema (`shared/schema.ts`) and API contracts (`shared/routes.ts`).
-**AI:** OpenAI SDK (server-side); configurable `OPENAI_BASE_URL` allows any OpenAI-compatible endpoint (e.g. Amazon Bedrock via a compatibility gateway).
+**AI:** OpenAI SDK (server-side); `OPENAI_BASE_URL` and the `AI_*` model variables let a deployment target any OpenAI-compatible endpoint/model without code changes.
 **Object storage:** AWS S3 (or any S3-compatible service) via the AWS SDK v3.
 **Testing:** Vitest (unit + DB/S3 integration), Playwright (end-to-end).
 
@@ -193,7 +193,7 @@ docs/design/       architecture decision records
 
 **Done:** independent of its original scaffolding platform; multi-tenant with RLS; full four-language localization (English/Arabic/German/French) across the entire in-app UI; S3 document/avatar storage; OAuth (Google/Microsoft); accounting-integrity guards (atomic postings, over-application and disposed-asset guards, journal/subledger reversal integrity); automated security scanning with the high-severity findings and a batch of medium/low findings remediated; connection-pool model tuned to stay resilient on a hosted/connection-limited Postgres; vendor + route code-splitting for load performance.
 
-**Roadmap:** CSRF/CSP hardening; two-factor authentication; remaining low-severity security findings; localization of the public marketing pages (the in-app product is fully localized); real bank-feed integration via an Open Banking aggregator (today's banking module is manual entry); expanded automated test coverage; AI via Amazon Bedrock as an alternative to OpenAI.
+**Roadmap:** CSRF/CSP hardening; two-factor authentication; remaining low-severity security findings; localization of the public marketing pages (the in-app product is fully localized); real bank-feed integration via an Open Banking aggregator (today's banking module is manual entry); expanded automated test coverage.
 
 ---
 
