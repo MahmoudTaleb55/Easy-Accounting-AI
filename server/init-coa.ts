@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { accounts, journalEntries, journalLines, transactions } from "@shared/schema";
 import { DEFAULT_COA, CASH_ACCOUNT_CODE, pickExpenseAccountCode, pickRevenueAccountCode, PAYROLL_EXTRA_ACCOUNTS, FIXED_ASSETS_EXTRA_ACCOUNTS, INVENTORY_EXTRA_ACCOUNTS, PURCHASES_EXTRA_ACCOUNTS, FA_CATEGORY_DEFAULTS, FA_ACCUM_IMP_CODE, FA_DEP_EXPENSE_CODE, FA_IMP_LOSS_CODE, FA_REVAL_SURPLUS_CODE, FA_GAIN_LOSS_DISPOSAL_CODE } from "@shared/coa-seed";
-import { companies, assetCategories } from "@shared/schema";
+import { companies, assetCategories, budgets } from "@shared/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { storage, type AuditContext } from "./storage";
 
@@ -62,6 +62,16 @@ async function rowIsReferenced(
       .where(eq(col, accountId));
     if (c > 0) return true;
   }
+
+  // Budgets reference accounts via budgets_account_company_fk. Missing this
+  // check let the seed try to DROP/renumber an account a budget row points
+  // at, which the composite FK rejected (23503) and aborted the whole IFRS
+  // bootstrap on boot. Treat a budgeted account as referenced.
+  const [{ c: bud }] = await tx
+    .select({ c: sql<number>`count(*)::int` })
+    .from(budgets)
+    .where(eq(budgets.accountId, accountId));
+  if (bud > 0) return true;
 
   return false;
 }
@@ -164,6 +174,15 @@ export async function seedDefaultCoaInTx(
         .from(journalLines)
         .where(inArray(journalLines.accountId, orphanIds));
       jlRefs.forEach((r) => referenced.add(r.accountId));
+
+      // Budgets reference accounts (budgets_account_company_fk). Without this
+      // the drop below issued a DELETE on a budgeted account and hit a 23503
+      // ("still referenced from table budgets"), aborting the IFRS bootstrap.
+      const budgetRefs = await tx
+        .select({ accountId: budgets.accountId })
+        .from(budgets)
+        .where(inArray(budgets.accountId, orphanIds));
+      budgetRefs.forEach((r) => referenced.add(r.accountId));
 
       // Asset categories reference accounts via a half-dozen FK columns —
       // one targeted query per column is the simplest portable form.
