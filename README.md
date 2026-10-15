@@ -29,7 +29,7 @@ Orqam ("numbers" in Arabic) is a double-entry accounting and business-operations
 - **Double-entry accounting** — chart of accounts, journal entries, IFRS-oriented statements. Postings are balanced and committed atomically (the bank-transaction → journal-entry write is a single database transaction).
 - **Business operations** — Sales (customers, invoices, receipts, AR aging), Purchases (vendors, bills, AP payments, AP aging), Inventory (items, locations, valuation), Banking, HR & Payroll (attendance, leave, payroll runs), Fixed Assets (depreciation, impairment, revaluation, disposal).
 - **Multi-tenant by design** — every workspace's data is isolated at the database layer (PostgreSQL row-level security) in addition to route-level authorization and composite foreign keys.
-- **Localization** — Arabic-first UI with full RTL, plus English/German/French. Per-country packs (tax rate, weekend days, leave, social-insurance, end-of-service) for MENA (SA, AE, EG, KW, QA, JO) **and** global markets (US, UK, DE, FR, IN). English is the default UI language; any locale is user-selectable.
+- **Localization** — the entire in-app UI is fully translated across **English, Arabic, German, and French**, with direction following the locale (RTL for Arabic, LTR otherwise). English is the default; any locale is user-selectable and switches every label, dialog, table, and message. Per-country business packs (tax rate, weekend days, leave, social-insurance, end-of-service) for MENA (SA, AE, EG, KW, QA, JO) **and** global markets (US, UK, DE, FR, IN).
 - **AI assistant** — natural-language accounting actions, receipt/invoice vision extraction, and document generation (server-side only; API keys never reach the browser).
 - **Private object storage** — documents and avatars live in a private S3 bucket (server-side encryption, no public access); protected downloads are proxied through the authenticated backend.
 
@@ -73,7 +73,7 @@ Full design rationale: [`docs/design/workspace-isolation-defense-in-depth.md`](d
 
 ## Getting started
 
-**Prerequisites:** Node.js 20+, a PostgreSQL database (local or hosted, e.g. Neon). **Object storage (AWS S3 or any S3-compatible service) is optional** — without it, uploaded documents/avatars fall back to local disk (suitable for development; for production or multi-instance deployments, configure your own private S3 bucket). OpenAI and OAuth credentials are also optional — those features simply stay dormant when unconfigured.
+**Prerequisites:** Node.js 20+, a PostgreSQL database (local, or hosted such as Supabase or Neon). For a hosted provider that offers connection pooling, use the **session-mode** pooler (or a direct connection) — not a transaction-mode pooler — because the per-request workspace scoping relies on session-level settings persisting on one connection. Choose a database region close to your users; a distant region adds latency to every request. **Object storage (AWS S3 or any S3-compatible service) is optional** — without it, uploaded documents/avatars fall back to local disk (suitable for development; for production or multi-instance deployments, configure your own private S3 bucket). OpenAI and OAuth credentials are also optional — those features simply stay dormant when unconfigured.
 
 ```bash
 # 1. Install dependencies
@@ -98,7 +98,7 @@ On first boot the server applies all SQL migrations, installs the RLS policies, 
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | PostgreSQL connection string. For hosted Postgres over the internet, include `?sslmode=require`. |
+| `DATABASE_URL` | PostgreSQL connection string. For hosted Postgres over the internet, enable TLS (e.g. `?sslmode=require`). With a connection pooler (Supabase, PgBouncer), use the **session-mode** endpoint (commonly port `5432`), not transaction mode (`6543`) — workspace scoping sets a session variable that must survive across the queries in a request. URL-encode any special characters in the password. |
 | `SESSION_SECRET` | Random secret that signs session cookies. **Generate one**, do not reuse the placeholder: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. In production the server refuses to boot if this is missing or shorter than 32 characters. |
 
 **Optional** (each enables a feature; absent = feature disabled, app still works):
@@ -191,9 +191,9 @@ docs/design/       architecture decision records
 
 ## Status & roadmap
 
-**Done:** independent of its original scaffolding platform; multi-tenant with RLS; S3 document/avatar storage; OAuth (Google/Microsoft); accounting-integrity guards (atomic postings, over-application and disposed-asset guards); automated security scanning with a batch of high-severity findings remediated; vendor + route code-splitting for load performance.
+**Done:** independent of its original scaffolding platform; multi-tenant with RLS; full four-language localization (English/Arabic/German/French) across the entire in-app UI; S3 document/avatar storage; OAuth (Google/Microsoft); accounting-integrity guards (atomic postings, over-application and disposed-asset guards, journal/subledger reversal integrity); automated security scanning with the high-severity findings and a batch of medium/low findings remediated; connection-pool model tuned to stay resilient on a hosted/connection-limited Postgres; vendor + route code-splitting for load performance.
 
-**Roadmap:** CSRF/CSP hardening; two-factor authentication; remaining medium/low security findings; expanded automated test coverage; AI via Amazon Bedrock as an alternative to OpenAI.
+**Roadmap:** CSRF/CSP hardening; two-factor authentication; remaining low-severity security findings; localization of the public marketing pages (the in-app product is fully localized); real bank-feed integration via an Open Banking aggregator (today's banking module is manual entry); expanded automated test coverage; AI via Amazon Bedrock as an alternative to OpenAI.
 
 ---
 
