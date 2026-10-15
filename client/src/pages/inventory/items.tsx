@@ -126,7 +126,6 @@ export default function InventoryItemsPage() {
   // (items list, product pickers, inventory alerts/valuation/stock-levels).
   const invalidateProductCaches = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/sales/products"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/products"] });
     queryClient.invalidateQueries({ queryKey: ["/api/inventory/alerts"] });
     queryClient.invalidateQueries({ queryKey: ["/api/inventory/valuation"] });
     queryClient.invalidateQueries({ queryKey: ["/api/inventory/stock-levels"] });

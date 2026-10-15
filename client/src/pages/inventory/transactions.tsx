@@ -50,7 +50,12 @@ export default function InventoryTransactionsPage() {
     queryKey: ["/api/inventory/transactions"],
   });
   const { data: locations } = useQuery<InventoryLocation[]>({ queryKey: ["/api/inventory/locations"] });
-  const { data: products } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  // Use the real products endpoint. `/api/products` is NOT a registered API
+  // route — it fell through to the SPA catch-all (returning index.html), so
+  // `products` parsed to [] and the item picker in the add-transaction dialog
+  // was always empty even when physical products existed. The canonical list
+  // endpoint is /api/sales/products (same one the Items + Sales pages use).
+  const { data: products } = useQuery<Product[]>({ queryKey: ["/api/sales/products"] });
 
   const locName = (id: number | null | undefined) => {
     if (!id) return "—";
