@@ -47,12 +47,25 @@ function mapRole(role: string | undefined | null): WorkspaceRole {
  * stable user id.
  */
 interface SessionUser {
+  // Canonical shape written by both auth providers today: the user id lives
+  // at `id` (see buildLocalSession + the OIDC verify callbacks). `claims.sub`
+  // is the dead Replit-era shape that no longer exists in live sessions.
+  id?: string;
   claims?: { sub?: string } & Record<string, unknown>;
 }
 
 function getSessionUserId(req: Request): string | null {
   if (!req.isAuthenticated?.()) return null;
   const user = req.user as SessionUser | undefined;
+  // BUG FIX: this used to read ONLY `user.claims.sub` — the legacy Replit-era
+  // session shape that no live session carries (sessions store the id at
+  // `user.id`, same as server/auth/middleware.ts's loadMembership). So this
+  // always returned null → resolveCurrentMember returned null → /api/auth/me
+  // fell back to the anonymous `role: "viewer"` default, making the topbar
+  // trust-cluster chip show "Viewer" for every user including owners. Prefer
+  // the real `id`, keep `claims.sub` only as a legacy fallback.
+  const id = user?.id;
+  if (typeof id === "string" && id.length > 0) return id;
   const sub = user?.claims?.sub;
   return typeof sub === "string" && sub.length > 0 ? sub : null;
 }

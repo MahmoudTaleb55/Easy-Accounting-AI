@@ -16,15 +16,23 @@ export interface MembershipsPayload {
   activeCompanyId: number | null;
 }
 
+// NOTE: `cache: "no-store"` is deliberate. These auth endpoints are served
+// with validators that let the browser return a conditional 304, and a stale
+// EMPTY body cached during an earlier broken state (e.g. before this DB had
+// the user's memberships, or during a prior 403 window) would then be reused
+// forever — the server keeps answering 304 "your cache is fine" against that
+// stale empty array, so useAuth saw memberships: [] and role: undefined even
+// though the DB had the real owner memberships. Bypassing the HTTP cache
+// guarantees we always get the fresh 200 body and resolve the real role.
 async function fetchUser(): Promise<User | null> {
-  const r = await fetch("/api/auth/user", { credentials: "include" });
+  const r = await fetch("/api/auth/user", { credentials: "include", cache: "no-store" });
   if (r.status === 401) return null;
   if (!r.ok) throw new Error(`${r.status}: ${r.statusText}`);
   return r.json();
 }
 
 async function fetchMemberships(): Promise<MembershipsPayload | null> {
-  const r = await fetch("/api/auth/memberships", { credentials: "include" });
+  const r = await fetch("/api/auth/memberships", { credentials: "include", cache: "no-store" });
   if (r.status === 401) return null;
   if (!r.ok) throw new Error(`${r.status}: ${r.statusText}`);
   return r.json();
