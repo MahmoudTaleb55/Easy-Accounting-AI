@@ -49,7 +49,7 @@ function mapRole(role: string | undefined | null): WorkspaceRole {
 interface SessionUser {
   // Canonical shape written by both auth providers today: the user id lives
   // at `id` (see buildLocalSession + the OIDC verify callbacks). `claims.sub`
-  // is the dead Replit-era shape that no longer exists in live sessions.
+  // is the old session shape that no longer exists in live sessions.
   id?: string;
   claims?: { sub?: string } & Record<string, unknown>;
 }
@@ -57,7 +57,7 @@ interface SessionUser {
 function getSessionUserId(req: Request): string | null {
   if (!req.isAuthenticated?.()) return null;
   const user = req.user as SessionUser | undefined;
-  // BUG FIX: this used to read ONLY `user.claims.sub` — the legacy Replit-era
+  // BUG FIX: this used to read ONLY `user.claims.sub` — the legacy
   // session shape that no live session carries (sessions store the id at
   // `user.id`, same as server/auth/middleware.ts's loadMembership). So this
   // always returned null → resolveCurrentMember returned null → /api/auth/me

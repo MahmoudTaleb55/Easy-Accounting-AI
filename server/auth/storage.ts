@@ -204,7 +204,7 @@ export const authBizStorage = {
   async listSessionsForUser(userId: string, currentSid?: string) {
     // The passport session stores the user as { id, email, provider, ... }
     // (see buildLocalSession and the OIDC verify callbacks). The id lives at
-    // sess.passport.user.id. The legacy `claims.sub` path is the Replit-era
+    // sess.passport.user.id. The legacy `claims.sub` path is the old session
     // shape that no longer exists — matching only on it returned zero rows,
     // so this panel silently showed no sessions (scan finding, auth/storage).
     const rows = await db.execute(sql`
@@ -230,7 +230,7 @@ export const authBizStorage = {
     // DELETEs matched zero rows — meaning password-reset, change-password and
     // "sign out other sessions" never actually revoked anything (scan finding,
     // SESSION_TOKEN_VULNERABILITIES). The legacy paths are kept as an extra
-    // OR so any residual Replit-era rows are still swept.
+    // OR so any residual legacy `claims.sub` rows are still swept.
     if (keepSid) {
       await db.execute(sql`
         DELETE FROM sessions

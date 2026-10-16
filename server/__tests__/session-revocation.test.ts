@@ -7,7 +7,7 @@ import pg from "pg";
  *
  * The passport session stores the user as { id, email, provider, ... } at
  * sess.passport.user.id. The pre-fix queries matched on `_uid` / `claims.sub`
- * (dead Replit-era shape), so deleteSessionsForUserExcept matched ZERO rows —
+ * (dead legacy `claims.sub` shape), so deleteSessionsForUserExcept matched ZERO rows —
  * password-reset, change-password and "sign out other sessions" silently
  * revoked nothing, and listSessionsForUser showed nothing.
  *
