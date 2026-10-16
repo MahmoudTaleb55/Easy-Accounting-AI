@@ -15,4 +15,6 @@ playwright-report
 test-results/
 # Local on-disk upload artifacts produced by document-storage at runtime
 uploads/
+# Agent investigation/review reports — local reference only, not committed
+.agents/
 
