@@ -1,6 +1,6 @@
 # Orqam (أرقام)
 
-**A full-stack, multi-tenant ERP prototype for accounting and business operations, built for Arabic-speaking and MENA-region businesses — with first-class global support.**
+**A full-stack, multi-tenant ERP prototype for accounting and business operations, built for Arabic-speaking and MULTI-region businesses — with first-class global support.**
 
 Orqam ("numbers" in Arabic) is a double-entry accounting and business-operations platform: IFRS-aligned books, sales & purchases, inventory, banking, HR & payroll, fixed assets, reporting, an AI assistant, and document/receipt processing — all under strict per-company (workspace) isolation.
 
